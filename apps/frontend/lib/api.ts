@@ -211,11 +211,54 @@ async function parseError(response: Response): Promise<never> {
 }
 
 export async function login(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
-  const response = await fetch(buildApiUrl("/auth/login"), {
+  const trimmedEmail = email.trim();
+  const trimmedPassword = password.trim();
+  const loginUrl = buildApiUrl("/auth/login");
+  let apiHost = "";
+  try {
+    apiHost = new URL(loginUrl).host;
+  } catch {
+    apiHost = "invalid-url";
+  }
+  // #region agent log
+  fetch("http://127.0.0.1:7901/ingest/b922825d-35ae-4829-9f7a-7cefcedf0249", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "bb57c3" },
+    body: JSON.stringify({
+      sessionId: "bb57c3",
+      hypothesisId: "H1-H3",
+      location: "api.ts:login:pre",
+      message: "login preflight",
+      data: {
+        apiHost,
+        emailLen: trimmedEmail.length,
+        pwdLen: trimmedPassword.length,
+        hadEmailSpace: email !== trimmedEmail,
+        hadPwdSpace: password !== trimmedPassword
+      },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+  const response = await fetch(loginUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword })
   });
+  // #region agent log
+  fetch("http://127.0.0.1:7901/ingest/b922825d-35ae-4829-9f7a-7cefcedf0249", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "bb57c3" },
+    body: JSON.stringify({
+      sessionId: "bb57c3",
+      hypothesisId: "H2",
+      location: "api.ts:login:post",
+      message: "login response",
+      data: { status: response.status, ok: response.ok },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
   if (!response.ok) {
     await parseError(response);
   }
