@@ -83,7 +83,7 @@ export class HrDataStore {
     },
     {
       id: "u-manager",
-      email: "manager.controllo@payday.local",
+      email: "manager@payday.ch",
       fullName: "Manager Controllo",
       firstName: "Manager",
       lastName: "Controllo",
@@ -97,7 +97,7 @@ export class HrDataStore {
     },
     {
       id: "u-employee",
-      email: "dipendente.demo@payday.local",
+      email: "employee@payday.ch",
       fullName: "Dipendente Demo",
       firstName: "Dipendente",
       lastName: "Demo",

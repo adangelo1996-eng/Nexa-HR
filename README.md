@@ -65,10 +65,12 @@ Quando hai i valori reali (`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`):
 
 Il frontend usa login reale su `POST /api/auth/login` e token JWT Bearer.
 
-Credenziali demo:
+Credenziali demo (stesse email in tabella `users` al primo seed):
 - `admin@payday.ch` / `AdminPayday123!`
 - `manager@payday.ch` / `ManagerPayday123!`
 - `employee@payday.ch` / `EmployeePayday123!`
+
+Se non imposti le variabili sotto, il backend usa proprio queste password come default (`auth.service.ts`).
 
 Le password demo sono configurabili con:
 - `AUTH_ADMIN_PASSWORD`

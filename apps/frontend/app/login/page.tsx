@@ -68,9 +68,12 @@ export default function LoginPage(): React.JSX.Element {
                 {loading ? "Accesso in corso..." : "Entra"}
               </Button>
             </form>
-            <p className="mt-4 text-xs text-slate-500">
-              Demo: admin@payday.ch / PasswordAdmin - manager.controllo@payday.local / ManagerPayday123! -
-              dipendente.demo@payday.local / EmployeePayday123!
+            <p className="mt-4 text-xs leading-relaxed text-slate-500">
+              Account demo:{" "}
+              <span className="text-slate-400">
+                admin@payday.ch / AdminPayday123! · manager@payday.ch / ManagerPayday123! · employee@payday.ch /
+                EmployeePayday123!
+              </span>
             </p>
           </CardContent>
         </Card>
