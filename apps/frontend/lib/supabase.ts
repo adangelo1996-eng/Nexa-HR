@@ -3,8 +3,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 let cached: SupabaseClient | null | undefined;
 
 /**
- * Client browser opzionale: senza env pubbliche Supabase restituisce null (build/preview senza segreti).
- * I dati HR restano su Nest + JWT; usare questo client solo per integrazioni future (Auth, Realtime, ecc.).
+ * Client browser: necessario per OAuth (Google / Microsoft via Supabase). Senza env pubbliche restituisce null.
+ * Dopo il callback OAuth il backend Nest emette il JWT applicativo come per il login password.
  */
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (cached !== undefined) {

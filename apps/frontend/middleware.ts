@@ -7,9 +7,10 @@ export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(AUTH_COOKIE)?.value);
   const isLoginPage = pathname.startsWith("/login");
+  const isOAuthCallback = pathname.startsWith("/auth/callback");
   const isHealthCheck = pathname === "/health";
 
-  if (!hasSession && !isLoginPage && !isHealthCheck) {
+  if (!hasSession && !isLoginPage && !isOAuthCallback && !isHealthCheck) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
