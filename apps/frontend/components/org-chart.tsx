@@ -81,9 +81,9 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
           position: { x: index * 260, y: level * 140 },
           data: {
             label: (
-              <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
-                <p className="text-sm font-medium text-slate-100">{node.label}</p>
-                <p className="text-xs text-cyan-300">{node.role}</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{node.label}</p>
+                <p className="text-xs text-cyan-700 dark:text-cyan-300">{node.role}</p>
               </div>
             )
           },
@@ -104,8 +104,8 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
 
   return (
     <section className="card mt-6">
-      <h2 className="text-xl font-semibold">Organigramma dinamico</h2>
-      <div className="mt-4 h-[460px] rounded-lg border border-slate-700">
+      <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Organigramma dinamico</h2>
+      <div className="mt-4 h-[460px] rounded-lg border border-slate-200 dark:border-slate-700">
         <ReactFlow nodes={flowNodes} edges={flowEdges} fitView proOptions={{ hideAttribution: true }}>
           <MiniMap />
           <Controls />

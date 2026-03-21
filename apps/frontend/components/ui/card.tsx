@@ -7,15 +7,7 @@ function cn(...values: Array<string | undefined | false>): string {
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Card({ className, ...props }: CardProps): React.JSX.Element {
-  return (
-    <section
-      className={cn(
-        "rounded-2xl border border-slate-700 bg-card/95 p-5 shadow-soft backdrop-blur-sm",
-        className
-      )}
-      {...props}
-    />
-  );
+  return <section className={cn("card", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
@@ -23,11 +15,18 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>): React.JSX.Element {
-  return <h2 className={cn("text-xl font-semibold tracking-tight", className)} {...props} />;
+  return (
+    <h2
+      className={cn("text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50", className)}
+      {...props}
+    />
+  );
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>): React.JSX.Element {
-  return <p className={cn("text-sm text-slate-400", className)} {...props} />;
+  return (
+    <p className={cn("text-sm text-slate-600 dark:text-slate-400", className)} {...props} />
+  );
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
@@ -37,4 +36,3 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
   return <div className={cn("mt-4 flex items-center justify-between gap-3", className)} {...props} />;
 }
-

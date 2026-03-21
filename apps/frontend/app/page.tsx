@@ -229,12 +229,12 @@ export default function HomePage(): React.JSX.Element {
     return (
       <main className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 py-16">
         <div
-          className="h-12 w-12 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+          className="h-12 w-12 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent dark:border-cyan-400"
           role="presentation"
           aria-hidden
         />
-        <p className="text-center text-slate-200">Caricamento dashboard in corso…</p>
-        <p className="max-w-md text-center text-sm text-slate-500">
+        <p className="text-center text-slate-800 dark:text-slate-200">Caricamento dashboard in corso…</p>
+        <p className="max-w-md text-center text-sm text-slate-600 dark:text-slate-500">
           Recupero timbrature, organigramma e altri dati dal server. Il primo avvio può richiedere qualche
           secondo.
         </p>
@@ -245,7 +245,7 @@ export default function HomePage(): React.JSX.Element {
   if (!user) {
     return (
       <main className="mx-auto max-w-7xl px-6 py-8">
-        <p className="text-rose-300">{error ?? "Utente non disponibile"}</p>
+        <p className="text-rose-600 dark:text-rose-300">{error ?? "Utente non disponibile"}</p>
       </main>
     );
   }
@@ -255,32 +255,44 @@ export default function HomePage(): React.JSX.Element {
       <header className="mb-8 flex items-end justify-between">
         <div>
           <h1 className="text-3xl">
-            <span className="font-synapse font-semibold tracking-tight text-slate-50" style={{ fontSynthesis: "none" }}>
+            <span
+              className="font-synapse font-semibold tracking-tight text-slate-900 dark:text-slate-50"
+              style={{ fontSynthesis: "none" }}
+            >
               Nexa HR
             </span>
-            <span className="font-sans font-bold text-slate-500"> — Cloud Enterprise</span>
+            <span className="font-sans font-bold text-slate-500 dark:text-slate-500"> — Cloud Enterprise</span>
           </h1>
-          <p className="mt-1 text-slate-400">
+          <p className="mt-1 text-slate-600 dark:text-slate-400">
             Benvenuto {user.fullName}. Timbratura, ferie, malattia, approvazioni e payroll svizzero
             integrato.
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-sm">
-            <Link href="/attendance" className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800">
+            <Link
+              href="/attendance"
+              className="rounded-lg border border-slate-300 px-3 py-1 text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+            >
               Vai a Timbrature
             </Link>
-            <Link href="/workflow" className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800">
+            <Link
+              href="/workflow"
+              className="rounded-lg border border-slate-300 px-3 py-1 text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+            >
               Workflow approvazioni
             </Link>
             {user.role !== "employee" ? (
               <Link
                 href="/payroll-calc"
-                className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800"
+                className="rounded-lg border border-slate-300 px-3 py-1 text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
               >
                 Calcolo cedolino
               </Link>
             ) : null}
             {user.role === "admin" ? (
-              <Link href="/admin" className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800">
+              <Link
+                href="/admin"
+                className="rounded-lg border border-slate-300 px-3 py-1 text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
                 Amministrazione utenti
               </Link>
             ) : null}
@@ -306,8 +318,9 @@ export default function HomePage(): React.JSX.Element {
           Pulsanti principali centrali: puoi timbrare solo l&apos;azione valida in questo momento.
         </p>
         <div className="mt-2 text-center">
-          <p className="text-sm text-slate-300">
-            Tempo residuo a fine giornata: <span className="font-semibold text-cyan-300">{formattedCountdown}</span>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            Tempo residuo a fine giornata:{" "}
+            <span className="font-semibold text-cyan-700 dark:text-cyan-300">{formattedCountdown}</span>
           </p>
         </div>
         <div className="mt-5 flex flex-wrap justify-center gap-4">
@@ -328,8 +341,8 @@ export default function HomePage(): React.JSX.Element {
             {clockLoading === "clock_out" ? "Timbrando..." : "Timbratura uscita"}
           </Button>
         </div>
-        {clockError ? <p className="mt-3 text-sm text-rose-300">{clockError}</p> : null}
-        <div className="mt-4 text-sm text-slate-300">
+        {clockError ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{clockError}</p> : null}
+        <div className="mt-4 text-sm text-slate-700 dark:text-slate-300">
           <p>Timbrature oggi: {todayEntries.length}</p>
           <p>
             Minuti lavorati oggi: {todaySummary?.minutesWorked ?? 0} ({todaySummary?.mode ?? "office"})
@@ -345,16 +358,18 @@ export default function HomePage(): React.JSX.Element {
       </section>
 
       <section className="card mt-6">
-        <h2 className="text-xl font-semibold">Storico timbrature di oggi</h2>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Storico timbrature di oggi</h2>
         <div className="mt-4 space-y-2 text-sm">
-          {todayEntries.length === 0 ? <p className="text-slate-400">Nessuna timbratura registrata oggi.</p> : null}
+          {todayEntries.length === 0 ? (
+            <p className="text-slate-600 dark:text-slate-400">Nessuna timbratura registrata oggi.</p>
+          ) : null}
           {todayEntries.map((item) => (
             <div
               key={item.id}
               className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
                 item.type === "clock_in"
-                  ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
-                  : "border-rose-700 bg-rose-950/40 text-rose-200"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
+                  : "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200"
               }`}
             >
               <span>{item.type === "clock_in" ? "Entrata" : "Uscita"}</span>
@@ -362,18 +377,21 @@ export default function HomePage(): React.JSX.Element {
             </div>
           ))}
         </div>
-        <details className="mt-4 rounded-lg border border-slate-700 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-slate-300">
+        <details className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <summary className="cursor-pointer text-sm font-medium text-slate-800 dark:text-slate-300">
             Timbrature dei giorni precedenti
           </summary>
           <div className="mt-3 space-y-2 text-sm">
             {olderEntries.length === 0 ? (
-              <p className="text-slate-400">Nessuna timbratura precedente.</p>
+              <p className="text-slate-600 dark:text-slate-400">Nessuna timbratura precedente.</p>
             ) : (
               olderEntries.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-700 px-3 py-2">
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700"
+                >
                   <span>{item.type === "clock_in" ? "Entrata" : "Uscita"}</span>
-                  <span className="text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</span>
+                  <span className="text-slate-600 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</span>
                 </div>
               ))
             )}
@@ -382,27 +400,28 @@ export default function HomePage(): React.JSX.Element {
       </section>
 
       <section className="card mt-6">
-        <h2 className="text-xl font-semibold">Ferie</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Residuo disponibile: <span className="font-semibold text-cyan-300">{leaveBalance?.residualDays ?? 0} giorni</span>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Ferie</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Residuo disponibile:{" "}
+          <span className="font-semibold text-cyan-700 dark:text-cyan-300">{leaveBalance?.residualDays ?? 0} giorni</span>
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-slate-800 dark:text-slate-200">
             Dal
             <input
               type="date"
               value={leaveStart}
               onChange={(event) => setLeaveStart(event.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-slate-800 dark:text-slate-200">
             Al
             <input
               type="date"
               value={leaveEnd}
               onChange={(event) => setLeaveEnd(event.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </label>
         </div>
@@ -415,19 +434,21 @@ export default function HomePage(): React.JSX.Element {
             {leaveSubmitting ? "Invio richiesta..." : "Richiedi ferie"}
           </Button>
         </div>
-        {leaveError ? <p className="mt-3 text-sm text-rose-300">{leaveError}</p> : null}
+        {leaveError ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{leaveError}</p> : null}
       </section>
 
       {user.role !== "employee" ? (
         <section className="card mt-6">
-          <h2 className="text-xl font-semibold">Workflow team</h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Workflow team</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Per ogni richiesta di ferie visualizzi chiaramente il periodo richiesto e lo stato.
           </p>
           <div className="mt-4 space-y-2 text-sm">
-            {approvals.length === 0 ? <p className="text-slate-400">Nessuna autorizzazione visibile.</p> : null}
+            {approvals.length === 0 ? (
+              <p className="text-slate-600 dark:text-slate-400">Nessuna autorizzazione visibile.</p>
+            ) : null}
             {approvals.slice(0, 8).map((item) => (
-              <div key={item.id} className="rounded-lg border border-slate-700 p-3">
+              <div key={item.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">
                     {item.type === "leave" ? "Ferie" : "Malattia"} · {item.requesterName ?? item.requestedBy}
@@ -444,11 +465,11 @@ export default function HomePage(): React.JSX.Element {
                     {item.status}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                   Richiesta il {new Date(item.at).toLocaleString("it-CH")}
                 </p>
                 {item.startDate && item.endDate ? (
-                  <p className="mt-1 text-xs text-slate-300">
+                  <p className="mt-1 text-xs text-slate-700 dark:text-slate-300">
                     Periodo: <span className="font-medium">{item.startDate}</span> →{" "}
                     <span className="font-medium">{item.endDate}</span>
                   </p>

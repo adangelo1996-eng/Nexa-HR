@@ -2,12 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Synapse / Nexa — light */
+:root {
+  color-scheme: light;
+  --page-gradient: radial-gradient(120% 80% at 100% 0%, rgb(224 242 254 / 0.45), transparent 50%),
+    radial-gradient(80% 60% at 0% 100%, rgb(226 232 240 / 0.9), transparent 55%),
+    linear-gradient(165deg, #f8fafc 0%, #f1f5f9 45%, #e2e8f0 100%);
+  --bar-bg: rgb(255 255 255 / 0.72);
+  --bar-border: rgb(15 23 42 / 0.08);
+  --bar-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset;
+}
+
+/* Synapse / Nexa — dark */
+html.dark {
+  color-scheme: dark;
+  --page-gradient: radial-gradient(circle at 100% 0%, rgb(56 189 248 / 0.12), transparent 42%),
+    radial-gradient(circle at 0% 100%, rgb(30 41 59 / 0.85), transparent 50%),
+    linear-gradient(165deg, #0f172a 0%, #020617 55%, #020617 100%);
+  --bar-bg: rgb(2 6 23 / 0.65);
+  --bar-border: rgb(148 163 184 / 0.14);
+  --bar-shadow: none;
+}
+
 body {
-  background: radial-gradient(circle at top right, #1f2937, #020617 40%);
-  color: #e5e7eb;
+  background: var(--page-gradient);
+  background-attachment: fixed;
+  color: rgb(15 23 42);
   min-height: 100vh;
+  transition: color 0.25s ease, background 0.35s ease;
+}
+
+html.dark body {
+  color: rgb(241 245 249);
 }
 
 .card {
-  @apply rounded-2xl border border-slate-700 bg-card p-5 shadow-soft;
+  @apply rounded-2xl border p-5 backdrop-blur-md transition-colors duration-300;
+  border-color: rgb(15 23 42 / 0.1);
+  background: rgb(255 255 255 / 0.78);
+  box-shadow: 0 18px 50px -24px rgb(15 23 42 / 0.12);
+}
+
+html.dark .card {
+  border-color: rgb(51 65 85 / 0.55);
+  background: rgb(17 24 39 / 0.72);
+  box-shadow: 0 10px 40px -20px rgb(34 211 238 / 0.35), 0 20px 50px -20px rgb(0 0 0 / 0.45);
+}
+
+@layer components {
+  .synapse-nav-link {
+    @apply rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 transition-colors hover:bg-slate-100/90 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800/90;
+  }
+  .synapse-nav-link-compact {
+    @apply rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-800 transition-colors hover:bg-slate-100/90 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800/90;
+  }
 }

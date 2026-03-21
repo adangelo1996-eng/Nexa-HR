@@ -34,18 +34,18 @@ export default function LoginPage(): React.JSX.Element {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-slate-950 px-6">
+    <main className="relative flex min-h-[calc(100dvh-3.25rem)] items-center justify-center px-6 py-12">
       {busy ? (
         <div
-          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-950/75 backdrop-blur-sm"
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-md dark:bg-slate-950/75"
           aria-live="polite"
           aria-busy="true"
         >
           <div
-            className="h-10 w-10 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+            className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent dark:border-cyan-400"
             role="presentation"
           />
-          <p className="text-sm font-medium text-slate-200">
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
             {phase === "redirecting" ? "Reindirizzamento alla dashboard…" : "Accesso in corso…"}
           </p>
         </div>
@@ -53,6 +53,7 @@ export default function LoginPage(): React.JSX.Element {
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-md"
       >
         <Card>
@@ -80,7 +81,7 @@ export default function LoginPage(): React.JSX.Element {
                 autoComplete="current-password"
                 required
               />
-              {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+              {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
               <Button type="submit" disabled={busy} className="w-full" size="md" variant="primary">
                 {phase === "redirecting"
                   ? "Reindirizzamento…"
@@ -89,9 +90,9 @@ export default function LoginPage(): React.JSX.Element {
                     : "Entra"}
               </Button>
             </form>
-            <p className="mt-4 text-xs leading-relaxed text-slate-500">
+            <p className="mt-4 text-xs leading-relaxed text-slate-600 dark:text-slate-500">
               Account demo:{" "}
-              <span className="text-slate-400">
+              <span className="text-slate-500 dark:text-slate-400">
                 admin@payday.ch / AdminPayday123! · manager@payday.ch / ManagerPayday123! · employee@payday.ch /
                 EmployeePayday123!
               </span>

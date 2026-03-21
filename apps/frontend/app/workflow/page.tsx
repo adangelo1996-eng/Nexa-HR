@@ -92,7 +92,7 @@ export default function WorkflowPage(): React.JSX.Element {
   if (loading) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <p className="text-slate-300">Caricamento workflow...</p>
+        <p className="text-slate-700 dark:text-slate-300">Caricamento workflow...</p>
       </main>
     );
   }
@@ -101,12 +101,12 @@ export default function WorkflowPage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Workflow autorizzazioni</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Workflow autorizzazioni</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Vista di richieste dei sottoposti per {user?.fullName} ({user?.role}).
           </p>
         </div>
-        <Link href="/" className="rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800">
+        <Link href="/" className="synapse-nav-link">
           Torna alla dashboard
         </Link>
       </header>
@@ -125,25 +125,29 @@ export default function WorkflowPage(): React.JSX.Element {
           ))}
         </div>
         <div className="mt-4 space-y-3">
-          {approvals.length === 0 ? <p className="text-sm text-slate-400">Nessuna autorizzazione disponibile.</p> : null}
+          {approvals.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna autorizzazione disponibile.</p>
+          ) : null}
           {approvals.map((item) => (
-            <article key={item.id} className="rounded-lg border border-slate-700 p-3">
+            <article key={item.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex items-center justify-between">
-                <p className="font-medium">{item.type === "leave" ? "Richiesta ferie" : "Richiesta malattia"}</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100">
+                  {item.type === "leave" ? "Richiesta ferie" : "Richiesta malattia"}
+                </p>
                 <span
                   className={`rounded px-2 py-1 text-xs ${
                     item.status === "approved"
-                      ? "bg-emerald-900/60 text-emerald-200"
+                      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200"
                       : item.status === "rejected"
-                        ? "bg-rose-900/60 text-rose-200"
-                        : "bg-amber-900/60 text-amber-200"
+                        ? "bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-200"
+                        : "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200"
                   }`}
                 >
                   {item.status}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">Richiedente: {item.requestedBy}</p>
-              <p className="text-xs text-slate-500">{new Date(item.at).toLocaleString("it-CH")}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Richiedente: {item.requestedBy}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</p>
               {item.status === "pending" ? (
                 <div className="mt-3 flex gap-2">
                   <Button
@@ -167,7 +171,7 @@ export default function WorkflowPage(): React.JSX.Element {
             </article>
           ))}
         </div>
-        {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+        {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
       </section>
     </main>
   );

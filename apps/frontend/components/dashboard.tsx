@@ -31,11 +31,11 @@ export function Dashboard({
           transition={{ delay: index * 0.08, duration: 0.35 }}
         >
           <div className="mb-3 flex items-center justify-between">
-            <card.icon className="h-5 w-5 text-cyan-300" />
-            <span className="text-xs uppercase text-slate-400">Live</span>
+            <card.icon className="h-5 w-5 text-cyan-700 dark:text-cyan-300" />
+            <span className="text-xs uppercase text-slate-500 dark:text-slate-400">Live</span>
           </div>
-          <h3 className="text-sm text-slate-300">{card.title}</h3>
-          <p className="mt-2 text-3xl font-semibold text-white">{card.value}</p>
+          <h3 className="text-sm text-slate-700 dark:text-slate-300">{card.title}</h3>
+          <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">{card.value}</p>
         </motion.article>
       ))}
     </section>

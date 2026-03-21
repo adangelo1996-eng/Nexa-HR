@@ -92,7 +92,7 @@ export default function PayrollCalcPage(): React.JSX.Element {
   if (loading) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <p className="text-slate-300">Caricamento area payroll...</p>
+        <p className="text-slate-700 dark:text-slate-300">Caricamento area payroll...</p>
       </main>
     );
   }
@@ -101,25 +101,25 @@ export default function PayrollCalcPage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Calcolo cedolino</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Calcolo cedolino</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Area manager/admin. Operatore attuale: {user?.fullName}
           </p>
         </div>
-        <Link href="/" className="rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800">
+        <Link href="/" className="synapse-nav-link">
           Torna alla dashboard
         </Link>
       </header>
 
       <section className="card">
-        <h2 className="text-lg font-semibold">Nuovo calcolo</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Nuovo calcolo</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-slate-800 dark:text-slate-200">
             Dipendente
             <select
               value={selectedUserId}
               onChange={(event) => setSelectedUserId(event.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               {users.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -142,38 +142,40 @@ export default function PayrollCalcPage(): React.JSX.Element {
           <button
             onClick={() => void onGenerate()}
             disabled={submitting || !selectedUserId || !period}
-            className="rounded-lg bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-70"
+            className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-70 dark:bg-cyan-400 dark:text-slate-900 dark:hover:bg-cyan-300"
           >
             {submitting ? "Calcolo in corso..." : "Calcola cedolino"}
           </button>
           <button
             onClick={() => void onExportPdf()}
             disabled={!result}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-sm disabled:opacity-60"
+            className="synapse-nav-link disabled:opacity-60"
           >
             Esporta PDF
           </button>
         </div>
-        {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+        {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
       </section>
 
       {result ? (
         <section className="card mt-6">
-          <h2 className="text-lg font-semibold">Risultato cedolino</h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Risultato cedolino</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {selectedUser?.fullName} - {result.period}
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-lg border border-slate-700 p-3">
-              <p className="text-xs text-slate-400">Lordo</p>
-              <p className="text-xl font-semibold">CHF {(result.grossSalary ?? 0).toFixed(2)}</p>
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400">Lordo</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">
+                CHF {(result.grossSalary ?? 0).toFixed(2)}
+              </p>
             </div>
-            <div className="rounded-lg border border-slate-700 p-3">
-              <p className="text-xs text-slate-400">Netto</p>
-              <p className="text-xl font-semibold">CHF {result.netSalary.toFixed(2)}</p>
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400">Netto</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">CHF {result.netSalary.toFixed(2)}</p>
             </div>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2 text-slate-800 dark:text-slate-200">
             {(result.lines ?? []).slice(0, 8).map((line) => (
               <div key={`${line.code}-${line.description}`} className="flex items-center justify-between text-sm">
                 <span>

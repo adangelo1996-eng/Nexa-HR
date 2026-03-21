@@ -1,11 +1,15 @@
 import { ImageResponse } from "next/og";
+import { readFile } from "fs/promises";
+import { join } from "path";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-export default function Icon(): ImageResponse {
+export default async function Icon(): Promise<ImageResponse> {
+  const fontData = await readFile(join(process.cwd(), "fonts", "golden-rooster.ttf"));
+
   return new ImageResponse(
     (
       <div
@@ -15,16 +19,18 @@ export default function Icon(): ImageResponse {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#020617",
-          color: "#38bdf8",
-          fontSize: 18,
-          fontWeight: 700,
-          fontFamily: "ui-sans-serif, system-ui, sans-serif"
+          background: "#000000",
+          color: "#f1f5f9",
+          fontSize: 20,
+          fontFamily: "SynapseWordmark"
         }}
       >
         N
       </div>
     ),
-    { ...size }
+    {
+      ...size,
+      fonts: [{ name: "SynapseWordmark", data: fontData, style: "normal", weight: 600 }]
+    }
   );
 }

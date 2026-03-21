@@ -160,7 +160,7 @@ export default function AdminPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-sm text-slate-300">Caricamento area amministrazione...</p>
+        <p className="text-sm text-slate-700 dark:text-slate-300">Caricamento area amministrazione...</p>
       </div>
     );
   }
@@ -169,17 +169,12 @@ export default function AdminPage(): React.JSX.Element {
     <div className="space-y-5">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-50">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
             {adminStrings.users.title}
           </h1>
-          <p className="mt-1 text-xs text-slate-400">
-            {adminStrings.users.subtitle}
-          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{adminStrings.users.subtitle}</p>
         </div>
-        <Link
-          href="/"
-          className="rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200 shadow-sm shadow-black/40 transition hover:bg-slate-800/80"
-        >
+        <Link href="/" className="synapse-nav-link-compact">
           {adminStrings.users.backToDashboard}
         </Link>
       </header>
@@ -205,15 +200,15 @@ export default function AdminPage(): React.JSX.Element {
                 className={[
                   "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition",
                   selectedUserId === item.id
-                    ? "bg-slate-800/80 text-slate-50"
-                    : "bg-slate-900/60 text-slate-300 hover:bg-slate-800/80 hover:text-slate-50"
+                    ? "bg-slate-200 text-slate-900 dark:bg-slate-800/80 dark:text-slate-50"
+                    : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-slate-50"
                 ].join(" ")}
               >
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium">{item.fullName}</p>
-                  <p className="truncate text-[11px] text-slate-400">{item.email}</p>
+                  <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-50">{item.fullName}</p>
+                  <p className="truncate text-[11px] text-slate-600 dark:text-slate-400">{item.email}</p>
                 </div>
-                <span className="ml-2 rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-200">
+                <span className="ml-2 rounded-full bg-slate-300/90 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-800 dark:bg-slate-800/80 dark:text-slate-200">
                   {item.role}
                 </span>
               </button>
@@ -225,7 +220,7 @@ export default function AdminPage(): React.JSX.Element {
                 setSelectedUserId("");
                 setNewUser(DEFAULT_NEW_USER);
               }}
-              className="mt-2 flex w-full items-center justify-center rounded-xl border border-dashed border-slate-600/80 bg-slate-900/40 px-3 py-2 text-[11px] font-medium text-slate-200 transition hover:border-slate-300 hover:bg-slate-900/80"
+              className="mt-2 flex w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600/80 dark:bg-slate-900/40 dark:text-slate-200 dark:hover:border-slate-300 dark:hover:bg-slate-900/80"
             >
               + Aggiungi nuovo utente
             </button>
@@ -246,7 +241,7 @@ export default function AdminPage(): React.JSX.Element {
         >
           <div className="grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Nome</span>
+              <span className="text-slate-700 dark:text-slate-300">Nome</span>
               <input
                 value={selectedUser ? selectedUser.firstName ?? "" : newUser.firstName}
                 onChange={(event) =>
@@ -254,11 +249,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ firstName: event.target.value })
                     : setNewUser((current) => ({ ...current, firstName: event.target.value }))
                 }
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Cognome</span>
+              <span className="text-slate-700 dark:text-slate-300">Cognome</span>
               <input
                 value={selectedUser ? selectedUser.lastName ?? "" : newUser.lastName}
                 onChange={(event) =>
@@ -266,11 +261,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ lastName: event.target.value })
                     : setNewUser((current) => ({ ...current, lastName: event.target.value }))
                 }
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Ruolo accesso</span>
+              <span className="text-slate-700 dark:text-slate-300">Ruolo accesso</span>
               <select
                 value={selectedUser ? selectedUser.role : newUser.role}
                 onChange={(event) =>
@@ -281,7 +276,7 @@ export default function AdminPage(): React.JSX.Element {
                         role: event.target.value as CreateUserPayload["role"]
                       }))
                 }
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               >
                 <option value="employee">employee</option>
                 <option value="manager_controllo_gestione">manager_controllo_gestione</option>
@@ -289,7 +284,7 @@ export default function AdminPage(): React.JSX.Element {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Ruolo organizzativo</span>
+              <span className="text-slate-700 dark:text-slate-300">Ruolo organizzativo</span>
               <select
                 value={selectedUser ? selectedUser.roleId ?? "" : newUser.roleId ?? ""}
                 onChange={(event) => {
@@ -309,7 +304,7 @@ export default function AdminPage(): React.JSX.Element {
                     }));
                   }
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               >
                 <option value="">Nessun ruolo organizzativo</option>
                 {roles.map((role) => (
@@ -320,7 +315,7 @@ export default function AdminPage(): React.JSX.Element {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Centro di costo</span>
+              <span className="text-slate-700 dark:text-slate-300">Centro di costo</span>
               <select
                 value={selectedUser ? selectedUser.costCenterId ?? "" : newUser.costCenterId ?? ""}
                 onChange={(event) => {
@@ -329,7 +324,7 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ costCenterId: value })
                     : setNewUser((current) => ({ ...current, costCenterId: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               >
                 <option value="">Nessun centro di costo</option>
                 {costCenters.map((center) => (
@@ -340,7 +335,7 @@ export default function AdminPage(): React.JSX.Element {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Manager</span>
+              <span className="text-slate-700 dark:text-slate-300">Manager</span>
               <select
                 value={selectedUser ? selectedUser.managerId ?? "" : newUser.managerId ?? ""}
                 onChange={(event) => {
@@ -349,7 +344,7 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ managerId: value })
                     : setNewUser((current) => ({ ...current, managerId: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               >
                 <option value="">Nessun manager</option>
                 {users.map((item) => (
@@ -360,7 +355,7 @@ export default function AdminPage(): React.JSX.Element {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Ore contrattuali settimanali</span>
+              <span className="text-slate-700 dark:text-slate-300">Ore contrattuali settimanali</span>
               <input
                 type="number"
                 min={1}
@@ -377,11 +372,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ weeklyContractHours: value })
                     : setNewUser((current) => ({ ...current, weeklyContractHours: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Tipo contratto</span>
+              <span className="text-slate-700 dark:text-slate-300">Tipo contratto</span>
               <input
                 value={selectedUser ? selectedUser.contractType ?? "" : newUser.contractType ?? ""}
                 onChange={(event) => {
@@ -390,11 +385,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ contractType: value })
                     : setNewUser((current) => ({ ...current, contractType: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Numero AVS</span>
+              <span className="text-slate-700 dark:text-slate-300">Numero AVS</span>
               <input
                 value={selectedUser ? selectedUser.avsNumber ?? "" : newUser.avsNumber ?? ""}
                 onChange={(event) => {
@@ -403,11 +398,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ avsNumber: value })
                     : setNewUser((current) => ({ ...current, avsNumber: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Ferie standard annuali</span>
+              <span className="text-slate-700 dark:text-slate-300">Ferie standard annuali</span>
               <input
                 type="number"
                 min={0}
@@ -423,11 +418,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ vacationAllowanceDays: value })
                     : setNewUser((current) => ({ ...current, vacationAllowanceDays: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">IBAN</span>
+              <span className="text-slate-700 dark:text-slate-300">IBAN</span>
               <input
                 value={selectedUser ? selectedUser.iban ?? "" : newUser.iban ?? ""}
                 onChange={(event) => {
@@ -436,11 +431,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ iban: value })
                     : setNewUser((current) => ({ ...current, iban: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Banca</span>
+              <span className="text-slate-700 dark:text-slate-300">Banca</span>
               <input
                 value={selectedUser ? selectedUser.bankName ?? "" : newUser.bankName ?? ""}
                 onChange={(event) => {
@@ -449,11 +444,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ bankName: value })
                     : setNewUser((current) => ({ ...current, bankName: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">BIC/SWIFT</span>
+              <span className="text-slate-700 dark:text-slate-300">BIC/SWIFT</span>
               <input
                 value={selectedUser ? selectedUser.bicSwift ?? "" : newUser.bicSwift ?? ""}
                 onChange={(event) => {
@@ -462,11 +457,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ bicSwift: value })
                     : setNewUser((current) => ({ ...current, bicSwift: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Intestatario conto</span>
+              <span className="text-slate-700 dark:text-slate-300">Intestatario conto</span>
               <input
                 value={selectedUser ? selectedUser.accountHolder ?? "" : newUser.accountHolder ?? ""}
                 onChange={(event) => {
@@ -475,11 +470,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ accountHolder: value })
                     : setNewUser((current) => ({ ...current, accountHolder: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Telefono</span>
+              <span className="text-slate-700 dark:text-slate-300">Telefono</span>
               <input
                 value={selectedUser ? selectedUser.phone ?? "" : newUser.phone ?? ""}
                 onChange={(event) => {
@@ -488,11 +483,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ phone: value })
                     : setNewUser((current) => ({ ...current, phone: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Data di nascita</span>
+              <span className="text-slate-700 dark:text-slate-300">Data di nascita</span>
               <input
                 type="date"
                 value={selectedUser ? selectedUser.birthDate ?? "" : newUser.birthDate ?? ""}
@@ -502,11 +497,11 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ birthDate: value })
                     : setNewUser((current) => ({ ...current, birthDate: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
             <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-              <span className="text-slate-300">Indirizzo</span>
+              <span className="text-slate-700 dark:text-slate-300">Indirizzo</span>
               <input
                 value={selectedUser ? selectedUser.address ?? "" : newUser.address ?? ""}
                 onChange={(event) => {
@@ -515,7 +510,7 @@ export default function AdminPage(): React.JSX.Element {
                     ? updateSelectedUser({ address: value })
                     : setNewUser((current) => ({ ...current, address: value }));
                 }}
-                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
               />
             </label>
           </div>
@@ -530,12 +525,12 @@ export default function AdminPage(): React.JSX.Element {
                 {submitting ? "Creazione..." : "Crea utente"}
               </Button>
             )}
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">
               Admin: {user?.fullName} · Utenti: {users.length} · Ruolo: {selectedRoleName || "-"}
             </span>
           </div>
 
-          {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+          {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
         </GlassCard>
       </div>
     </div>

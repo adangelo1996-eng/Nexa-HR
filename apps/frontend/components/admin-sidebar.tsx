@@ -20,16 +20,16 @@ export function AdminSidebar(): React.JSX.Element {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen flex-col border-r border-slate-800/70 bg-slate-950/70 px-4 py-6 backdrop-blur-xl">
+    <aside className="flex h-screen flex-col border-r px-4 py-6 backdrop-blur-xl transition-colors duration-300 border-slate-200/80 bg-white/75 dark:border-slate-800/70 dark:bg-slate-950/65">
       <div className="mb-8 px-2">
         <p
-          className="font-synapse text-sm font-semibold tracking-tight text-slate-200"
+          className="font-synapse text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-200"
           style={{ fontSynthesis: "none" }}
         >
           Nexa HR
         </p>
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">admin</p>
-        <p className="mt-1 text-sm text-slate-300">Area amministrazione</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-500">admin</p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Area amministrazione</p>
       </div>
       <nav className="space-y-1 text-sm">
         {NAV_ITEMS.map((item) => {
@@ -41,8 +41,8 @@ export function AdminSidebar(): React.JSX.Element {
               className={[
                 "flex items-center rounded-lg px-3 py-2 transition-colors",
                 isActive
-                  ? "bg-slate-800/80 text-slate-50"
-                  : "text-slate-400 hover:bg-slate-900/80 hover:text-slate-100"
+                  ? "bg-cyan-100/90 text-slate-900 dark:bg-slate-800/90 dark:text-slate-50"
+                  : "text-slate-600 hover:bg-slate-100/90 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900/80 dark:hover:text-slate-100"
               ].join(" ")}
             >
               <span className="truncate">{item.label}</span>
@@ -53,4 +53,3 @@ export function AdminSidebar(): React.JSX.Element {
     </aside>
   );
 }
-

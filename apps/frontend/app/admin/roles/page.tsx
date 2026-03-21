@@ -135,14 +135,16 @@ export default function AdminRolesPage(): React.JSX.Element {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-300">Caricamento ruoli...</p>;
+    return <p className="text-sm text-slate-700 dark:text-slate-300">Caricamento ruoli...</p>;
   }
 
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-50">Gestione ruoli</h1>
-        <p className="mt-1 text-xs text-slate-400">Crea, modifica ed elimina i ruoli organizzativi.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Gestione ruoli</h1>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          Crea, modifica ed elimina i ruoli organizzativi.
+        </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -155,7 +157,9 @@ export default function AdminRolesPage(): React.JSX.Element {
                 onClick={() => setSelectedRoleId(role.id)}
                 className={[
                   "w-full rounded-lg px-3 py-2 text-left",
-                  selectedRoleId === role.id ? "bg-slate-800 text-slate-50" : "bg-slate-900/50 text-slate-300"
+                  selectedRoleId === role.id
+                    ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-slate-50"
+                    : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:bg-slate-800/40"
                 ].join(" ")}
               >
                 <p className="font-medium">{role.name}</p>
@@ -169,7 +173,7 @@ export default function AdminRolesPage(): React.JSX.Element {
           {selectedRole ? (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Nome</span>
+                <span className="text-slate-700 dark:text-slate-300">Nome</span>
                 <input
                   value={selectedRole.name}
                   onChange={(event) => updateSelectedRole({ name: event.target.value })}
@@ -177,7 +181,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Descrizione</span>
+                <span className="text-slate-700 dark:text-slate-300">Descrizione</span>
                 <input
                   value={selectedRole.description ?? ""}
                   onChange={(event) => updateSelectedRole({ description: event.target.value || undefined })}
@@ -185,7 +189,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 />
               </label>
               <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Permessi (comma separated)</span>
+                <span className="text-slate-700 dark:text-slate-300">Permessi (comma separated)</span>
                 <input
                   value={selectedRole.permissions.join(", ")}
                   onChange={(event) => updateSelectedRole({ permissions: parsePermissions(event.target.value) })}
@@ -208,7 +212,7 @@ export default function AdminRolesPage(): React.JSX.Element {
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Nome</span>
+                <span className="text-slate-700 dark:text-slate-300">Nome</span>
                 <input
                   value={newName}
                   onChange={(event) => setNewName(event.target.value)}
@@ -216,7 +220,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Descrizione</span>
+                <span className="text-slate-700 dark:text-slate-300">Descrizione</span>
                 <input
                   value={newDescription}
                   onChange={(event) => setNewDescription(event.target.value)}
@@ -224,7 +228,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 />
               </label>
               <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Permessi (comma separated)</span>
+                <span className="text-slate-700 dark:text-slate-300">Permessi (comma separated)</span>
                 <input
                   value={newPermissions}
                   onChange={(event) => setNewPermissions(event.target.value)}
@@ -238,7 +242,7 @@ export default function AdminRolesPage(): React.JSX.Element {
               </div>
             </div>
           )}
-          {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+          {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
         </GlassCard>
       </div>
     </div>
