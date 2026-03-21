@@ -100,6 +100,16 @@ Due **Web Service** sulla root del monorepo, comandi pnpm con `--filter` (vedi [
 
 Dopo il deploy, allinea `CORS_ORIGIN` (backend) e `NEXT_PUBLIC_API_BASE_URL` (frontend) agli URL pubblici dei due servizi.
 
+`NEXT_PUBLIC_API_BASE_URL` può essere l’URL del backend **con o senza** suffisso `/api`: se manca, il client in `lib/api.ts` lo aggiunge.
+
+## Prossimi passi (ordine logico)
+
+1. **Repository** — commit e push su `main` (stesso remote collegato a Render).
+2. **Frontend online** — da [Render Blueprint](render.yaml) aggiungi il servizio `nexa-hr-frontend`, oppure deploy di `apps/frontend` su Vercel.
+3. **Variabili frontend** — `NEXT_PUBLIC_API_BASE_URL` = URL pubblico del backend (es. `https://nexa-hr-backend.onrender.com`). Opzionale: `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` se usi funzionalità che leggono Supabase dal browser.
+4. **Variabili backend** — `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` già necessarie per il DB; `CORS_ORIGIN` = URL del frontend (lista separata da virgole se hai più origini). Nota: in sviluppo il backend accetta anche origini `*.onrender.com` e `*.vercel.app` oltre a `localhost` (vedi `main.ts`).
+5. **Smoke test** — apri il frontend, login con le credenziali demo, prova dashboard e una chiamata API (es. timbratura).
+
 ## Deploy frontend su Vercel (opzionale)
 
 1. Login: `corepack pnpm dlx vercel login`
@@ -111,7 +121,7 @@ Note:
 
 - Su Vercel va solo **Next.js** in `apps/frontend`
 - Il backend Nest resta su Render (o altro hosting Node)
-- In Vercel imposta `NEXT_PUBLIC_API_BASE_URL` (URL del backend, senza `/api` finale) e le altre `NEXT_PUBLIC_*` Supabase
+- In Vercel imposta `NEXT_PUBLIC_API_BASE_URL` (URL del backend; `/api` è opzionale, vedi sopra) e le altre `NEXT_PUBLIC_*` Supabase
 - Sul backend imposta `CORS_ORIGIN` con l’URL del frontend (Vercel o Render)
 
 ## Note compliance CH

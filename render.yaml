@@ -9,7 +9,7 @@
 # 5) Runtime deve essere Node (mai Docker): non c'è Dockerfile nel repo.
 #
 # Dopo il primo deploy: CORS_ORIGIN sul backend = URL https del frontend Render;
-# NEXT_PUBLIC_API_BASE_URL sul frontend = URL https del backend (senza /api finale).
+# NEXT_PUBLIC_API_BASE_URL sul frontend = URL https del backend (/api opzionale, vedi README).
 
 services:
   - type: web
