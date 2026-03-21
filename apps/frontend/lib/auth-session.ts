@@ -29,7 +29,9 @@ const COOKIE_KEY = "nexa_hr_token";
 export function saveSession(token: string, user: SessionUser): void {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
-  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=43200; samesite=lax`;
+  const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+  const secure = isHttps ? "; secure" : "";
+  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=43200; samesite=lax${secure}`;
 }
 
 export function getToken(): string | null {
@@ -51,5 +53,7 @@ export function getSessionUser(): SessionUser | null {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
-  document.cookie = `${COOKIE_KEY}=; path=/; max-age=0; samesite=lax`;
+  const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+  const secure = isHttps ? "; secure" : "";
+  document.cookie = `${COOKIE_KEY}=; path=/; max-age=0; samesite=lax${secure}`;
 }

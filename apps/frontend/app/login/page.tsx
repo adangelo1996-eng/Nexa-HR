@@ -2,37 +2,54 @@
 
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+type LoginPhase = "idle" | "submitting" | "redirecting";
+
 export default function LoginPage(): React.JSX.Element {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<LoginPhase>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  const busy = phase !== "idle";
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
-    setLoading(true);
+    setPhase("submitting");
     try {
       const session = await login(email, password);
       saveSession(session.token, session.user);
-      router.replace("/");
+      setPhase("redirecting");
+      window.location.assign("/");
     } catch (submissionError) {
+      setPhase("idle");
       setError(submissionError instanceof Error ? submissionError.message : "Login non riuscito");
-    } finally {
-      setLoading(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-slate-950 px-6">
+    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-slate-950 px-6">
+      {busy ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-950/75 backdrop-blur-sm"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div
+            className="h-10 w-10 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+            role="presentation"
+          />
+          <p className="text-sm font-medium text-slate-200">
+            {phase === "redirecting" ? "Reindirizzamento alla dashboard…" : "Accesso in corso…"}
+          </p>
+        </div>
+      ) : null}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -64,8 +81,12 @@ export default function LoginPage(): React.JSX.Element {
                 required
               />
               {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-              <Button type="submit" disabled={loading} className="w-full" size="md" variant="primary">
-                {loading ? "Accesso in corso..." : "Entra"}
+              <Button type="submit" disabled={busy} className="w-full" size="md" variant="primary">
+                {phase === "redirecting"
+                  ? "Reindirizzamento…"
+                  : phase === "submitting"
+                    ? "Accesso in corso…"
+                    : "Entra"}
               </Button>
             </form>
             <p className="mt-4 text-xs leading-relaxed text-slate-500">

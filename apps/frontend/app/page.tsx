@@ -69,36 +69,49 @@ export default function HomePage(): React.JSX.Element {
     setToken(tokenValue);
 
     async function load(): Promise<void> {
+      let me: SessionUser;
       try {
-        const me = await fetchCurrentUser(tokenValue);
-        const todayDate = new Date().toISOString().slice(0, 10);
+        me = await fetchCurrentUser(tokenValue);
+      } catch {
+        const fallback = getSessionUser();
+        if (!fallback) {
+          clearSession();
+          router.replace("/login");
+          setLoading(false);
+          return;
+        }
+        me = fallback;
+      }
+
+      setUser(me);
+
+      const todayDate = new Date().toISOString().slice(0, 10);
+      try {
         const [payslipsList, orgChart, todayEntries, todaySummary, todayStatus, overtimeAggregates, yearBalance, workflowApprovals] =
           await Promise.all([
             fetchPayslips(tokenValue).catch(() => [] as Payslip[]),
             fetchOrgChart(tokenValue).catch(() => ({ nodes: [], edges: [] }) as OrgChartResponse),
-            fetchAttendanceEntries(tokenValue),
-            fetchAttendanceSummary(tokenValue),
-            fetchAttendanceStatus(tokenValue, todayDate),
-            fetchAttendanceOvertimeAggregates(tokenValue, todayDate),
-            fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))),
+            fetchAttendanceEntries(tokenValue).catch(() => [] as TimeEntry[]),
+            fetchAttendanceSummary(tokenValue).catch(() => [] as WorkdaySummary[]),
+            fetchAttendanceStatus(tokenValue, todayDate).catch(() => null as AttendanceStatus | null),
+            fetchAttendanceOvertimeAggregates(tokenValue, todayDate).catch(() => null as AttendanceOvertimeAggregates | null),
+            fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
             me.role === "employee"
               ? Promise.resolve([] as ApprovalItem[])
               : fetchApprovals(tokenValue).catch(() => [] as ApprovalItem[])
           ]);
-        setUser(me);
+
         setPayslips(payslipsList);
         setOrgData(orgChart);
         setEntries(todayEntries);
         setSummary(todaySummary);
         setStatus(todayStatus);
         setAggregates(overtimeAggregates);
-        setRemainingSeconds(todayStatus.remainingSeconds);
+        setRemainingSeconds(todayStatus?.remainingSeconds ?? 0);
         setLeaveBalance(yearBalance);
         setApprovals(workflowApprovals);
       } catch (loadError) {
-        clearSession();
-        router.replace("/login");
-        setError(loadError instanceof Error ? loadError.message : "Sessione non valida");
+        setError(loadError instanceof Error ? loadError.message : "Alcuni dati non sono stati caricati");
       } finally {
         setLoading(false);
       }
@@ -214,8 +227,17 @@ export default function HomePage(): React.JSX.Element {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        <p className="text-slate-300">Caricamento dashboard...</p>
+      <main className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 py-16">
+        <div
+          className="h-12 w-12 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+          role="presentation"
+          aria-hidden
+        />
+        <p className="text-center text-slate-200">Caricamento dashboard in corso…</p>
+        <p className="max-w-md text-center text-sm text-slate-500">
+          Recupero timbrature, organigramma e altri dati dal server. Il primo avvio può richiedere qualche
+          secondo.
+        </p>
       </main>
     );
   }
