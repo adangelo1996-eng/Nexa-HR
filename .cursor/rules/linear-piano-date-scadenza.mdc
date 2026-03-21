@@ -1,0 +1,10 @@
+---
+description: Convenzione testi piano Linear (Alessandro - Private e doc progetto)
+alwaysApply: true
+---
+
+# Piano operativo su Linear
+
+- Non usare riferimenti relativi al calendario del lettore (**oggi**, **domani**, **dopodomani**, **ieri**).
+- Usare sempre **Piano del** seguito dalla **data di scadenza per esteso** (es. **22 marzo 2026**), allineata alla **Due date** dell’issue su **Alessandro - Private** (o alla data di fine del blocco operativo).
+- Per piani successivi, solo date esplicite (es. **Piano del 23 marzo 2026**), mai “il giorno dopo” o simili.
