@@ -42,7 +42,7 @@ export default function LoginPage(): React.JSX.Element {
           aria-busy="true"
         >
           <div
-            className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent dark:border-cyan-400"
+            className="h-10 w-10 animate-spin rounded-full border-2 border-synapse-gold border-t-transparent dark:border-synapse-gold-bright"
             role="presentation"
           />
           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">

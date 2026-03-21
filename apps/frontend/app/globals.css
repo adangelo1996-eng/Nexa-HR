@@ -2,58 +2,117 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Synapse / Nexa — light */
+/*
+ * Palette allineata a promethys-site / synapse-site-shared.css (ETL-Aegis).
+ * :root = tema chiaro (html.light-mode sul sito Synapse), html.dark = tema scuro.
+ */
 :root {
   color-scheme: light;
-  --page-gradient: radial-gradient(120% 80% at 100% 0%, rgb(224 242 254 / 0.45), transparent 50%),
-    radial-gradient(80% 60% at 0% 100%, rgb(226 232 240 / 0.9), transparent 55%),
-    linear-gradient(165deg, #f8fafc 0%, #f1f5f9 45%, #e2e8f0 100%);
-  --bar-bg: rgb(255 255 255 / 0.72);
-  --bar-border: rgb(15 23 42 / 0.08);
-  --bar-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset;
+  --prom-bg: #ececec;
+  --prom-surface: #ffffff;
+  --prom-surface-soft: #faf8f4;
+  --prom-line: rgba(55, 48, 38, 0.12);
+  --prom-line-strong: rgba(55, 48, 38, 0.22);
+  --prom-text: #1a1f18;
+  --prom-muted: #4d5248;
+  --prom-gold: #9a7418;
+  --prom-gold-soft: #7a5c14;
+  --page-gradient: radial-gradient(1100px 640px at 100% -18%, rgba(255, 255, 255, 0.95), transparent 60%),
+    radial-gradient(900px 520px at 0% 108%, rgba(120, 120, 120, 0.18), transparent 65%),
+    linear-gradient(165deg, #f7f7f7, #e1e1e1 52%, var(--prom-bg) 100%);
+  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+  --bar-border: rgba(20, 26, 38, 0.16);
+  --bar-shadow: 0 12px 24px rgba(17, 23, 35, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --card-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(252, 249, 243, 0.9));
+  --card-border: rgba(55, 48, 38, 0.12);
+  --card-shadow: 0 8px 32px rgba(26, 31, 24, 0.06);
+  --glass-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(252, 249, 243, 0.82));
+  --glass-border: rgba(55, 48, 38, 0.14);
+  --glass-shadow: 0 14px 36px rgba(26, 31, 24, 0.07);
 }
 
-/* Synapse / Nexa — dark */
 html.dark {
   color-scheme: dark;
-  --page-gradient: radial-gradient(circle at 100% 0%, rgb(56 189 248 / 0.12), transparent 42%),
-    radial-gradient(circle at 0% 100%, rgb(30 41 59 / 0.85), transparent 50%),
-    linear-gradient(165deg, #0f172a 0%, #020617 55%, #020617 100%);
-  --bar-bg: rgb(2 6 23 / 0.65);
-  --bar-border: rgb(148 163 184 / 0.14);
-  --bar-shadow: none;
+  --prom-bg: #0b0b0b;
+  --prom-surface: #141414;
+  --prom-surface-soft: #1d1d1d;
+  --prom-line: rgba(179, 179, 179, 0.35);
+  --prom-line-strong: rgba(179, 179, 179, 0.75);
+  --prom-text: #ffffff;
+  --prom-muted: #c8c8c8;
+  --prom-gold: #c9a03a;
+  --prom-gold-soft: #a3842c;
+  --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(179, 179, 179, 0.08), transparent 62%),
+    radial-gradient(900px 520px at 0% 110%, rgba(120, 120, 120, 0.1), transparent 64%),
+    linear-gradient(165deg, #050505, #0f0f0f 45%, var(--prom-bg) 85%);
+  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
+  --bar-border: rgba(255, 255, 255, 0.18);
+  --bar-shadow: 0 14px 32px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  --card-border: rgba(255, 255, 255, 0.12);
+  --card-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.55), 0 0 24px rgba(154, 170, 189, 0.12);
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
 body {
   background: var(--page-gradient);
   background-attachment: fixed;
-  color: rgb(15 23 42);
+  color: var(--prom-text);
   min-height: 100vh;
-  transition: color 0.25s ease, background 0.35s ease;
-}
-
-html.dark body {
-  color: rgb(241 245 249);
+  transition:
+    color 0.9s cubic-bezier(0.33, 0, 0.2, 1),
+    background 0.9s cubic-bezier(0.33, 0, 0.2, 1);
 }
 
 .card {
-  @apply rounded-2xl border p-5 backdrop-blur-md transition-colors duration-300;
-  border-color: rgb(15 23 42 / 0.1);
-  background: rgb(255 255 255 / 0.78);
-  box-shadow: 0 18px 50px -24px rgb(15 23 42 / 0.12);
-}
-
-html.dark .card {
-  border-color: rgb(51 65 85 / 0.55);
-  background: rgb(17 24 39 / 0.72);
-  box-shadow: 0 10px 40px -20px rgb(34 211 238 / 0.35), 0 20px 50px -20px rgb(0 0 0 / 0.45);
+  @apply rounded-2xl border p-5 backdrop-blur-md transition-[border-color,background,box-shadow] duration-300;
+  border-color: var(--card-border);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
 }
 
 @layer components {
   .synapse-nav-link {
-    @apply rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 transition-colors hover:bg-slate-100/90 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800/90;
+    border-radius: 0.5rem;
+    border: 1px solid var(--prom-line-strong);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--prom-text);
+    background: color-mix(in srgb, var(--prom-surface) 40%, transparent);
+    transition:
+      background 0.35s ease,
+      border-color 0.35s ease,
+      box-shadow 0.35s ease,
+      color 0.35s ease;
   }
+  .synapse-nav-link:hover {
+    border-color: color-mix(in srgb, var(--prom-gold) 35%, var(--prom-line-strong));
+    background: color-mix(in srgb, var(--prom-gold) 10%, var(--prom-surface-soft));
+    box-shadow: 0 8px 24px rgba(26, 31, 24, 0.08);
+  }
+  html.dark .synapse-nav-link:hover {
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 18px rgba(154, 170, 189, 0.15);
+    background: linear-gradient(140deg, rgba(154, 170, 189, 0.14), rgba(255, 255, 255, 0.04));
+  }
+
   .synapse-nav-link-compact {
-    @apply rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-800 transition-colors hover:bg-slate-100/90 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800/90;
+    border-radius: 0.5rem;
+    border: 1px solid var(--prom-line-strong);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--prom-text);
+    background: color-mix(in srgb, var(--prom-surface) 35%, transparent);
+    transition:
+      background 0.35s ease,
+      border-color 0.35s ease,
+      box-shadow 0.35s ease;
+  }
+  .synapse-nav-link-compact:hover {
+    border-color: color-mix(in srgb, var(--prom-gold) 32%, var(--prom-line-strong));
+    background: color-mix(in srgb, var(--prom-gold) 8%, var(--prom-surface-soft));
   }
 }

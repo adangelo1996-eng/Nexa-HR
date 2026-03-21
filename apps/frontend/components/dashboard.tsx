@@ -31,7 +31,7 @@ export function Dashboard({
           transition={{ delay: index * 0.08, duration: 0.35 }}
         >
           <div className="mb-3 flex items-center justify-between">
-            <card.icon className="h-5 w-5 text-cyan-700 dark:text-cyan-300" />
+            <card.icon className="h-5 w-5 text-synapse-gold dark:text-synapse-gold-bright" />
             <span className="text-xs uppercase text-slate-500 dark:text-slate-400">Live</span>
           </div>
           <h3 className="text-sm text-slate-700 dark:text-slate-300">{card.title}</h3>

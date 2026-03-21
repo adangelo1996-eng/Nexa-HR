@@ -158,7 +158,7 @@ export default function AttendancePage(): React.JSX.Element {
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Azioni rapide</h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
           Tempo residuo giornata:{" "}
-          <span className="font-semibold text-cyan-700 dark:text-cyan-300">{formattedCountdown}</span>
+          <span className="font-semibold text-synapse-gold dark:text-synapse-gold-bright">{formattedCountdown}</span>
         </p>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Straordinario oggi:{" "}
@@ -249,7 +249,7 @@ export default function AttendancePage(): React.JSX.Element {
               ) : null}
               {olderDays.map(([day, dayEntries]) => (
                 <article key={day} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  <h3 className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">{day}</h3>
+                  <h3 className="text-sm font-semibold text-synapse-gold dark:text-synapse-gold-bright">{day}</h3>
                   <div className="mt-2 space-y-2">
                     {dayEntries.map((item) => (
                       <div key={item.id} className="flex items-center justify-between text-sm">

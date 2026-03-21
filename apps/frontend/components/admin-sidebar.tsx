@@ -20,10 +20,10 @@ export function AdminSidebar(): React.JSX.Element {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen flex-col border-r px-4 py-6 backdrop-blur-xl transition-colors duration-300 border-slate-200/80 bg-white/75 dark:border-slate-800/70 dark:bg-slate-950/65">
+    <aside className="flex h-screen flex-col border-r border-[color:var(--glass-border)] bg-[var(--glass-bg)] px-4 py-6 backdrop-blur-xl transition-[border-color,background] duration-300">
       <div className="mb-8 px-2">
         <p
-          className="font-synapse text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-200"
+          className="font-synapse text-sm font-semibold tracking-tight text-synapse-text dark:text-white"
           style={{ fontSynthesis: "none" }}
         >
           Nexa HR
@@ -41,8 +41,8 @@ export function AdminSidebar(): React.JSX.Element {
               className={[
                 "flex items-center rounded-lg px-3 py-2 transition-colors",
                 isActive
-                  ? "bg-cyan-100/90 text-slate-900 dark:bg-slate-800/90 dark:text-slate-50"
-                  : "text-slate-600 hover:bg-slate-100/90 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900/80 dark:hover:text-slate-100"
+                  ? "bg-synapse-gold/15 text-synapse-text ring-1 ring-synapse-gold/30 dark:bg-white/[0.08] dark:text-white dark:ring-synapse-gold-bright/35"
+                  : "text-synapse-muted hover:bg-black/[0.04] hover:text-synapse-text dark:text-[#c8c8c8]/90 dark:hover:bg-white/[0.06] dark:hover:text-white"
               ].join(" ")}
             >
               <span className="truncate">{item.label}</span>

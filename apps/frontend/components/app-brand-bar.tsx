@@ -23,16 +23,16 @@ export function AppBrandBar(): React.JSX.Element {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
         <Link href="/" className="group flex flex-wrap items-baseline gap-x-3 gap-y-1 outline-none">
           <span
-            className="font-synapse text-[1.35rem] font-semibold leading-none tracking-tight text-slate-900 transition-colors group-hover:text-slate-950 dark:text-slate-100 dark:group-hover:text-white"
+            className="font-synapse text-[1.35rem] font-semibold leading-none tracking-tight text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
             style={{ fontSynthesis: "none" }}
           >
             SYNAPSE
           </span>
-          <span className="hidden text-slate-400 dark:text-slate-600 sm:inline" aria-hidden>
+          <span className="hidden text-synapse-muted/50 dark:text-white/35 sm:inline" aria-hidden>
             ·
           </span>
           <span
-            className="font-synapse text-lg font-semibold leading-none tracking-tight text-cyan-700 transition-colors group-hover:text-cyan-800 dark:text-cyan-300/95 dark:group-hover:text-cyan-200"
+            className="font-synapse text-lg font-semibold leading-none tracking-tight text-synapse-gold transition-colors group-hover:text-synapse-gold-soft dark:text-synapse-gold-bright dark:group-hover:text-[#dcc069]"
             style={{ fontSynthesis: "none" }}
           >
             Nexa HR
@@ -57,7 +57,7 @@ export function AppBrandBar(): React.JSX.Element {
                 <Moon className="h-4 w-4" aria-hidden />
               )
             ) : (
-              <span className="inline-block h-4 w-4 rounded-full bg-slate-300/40 dark:bg-slate-600/50" aria-hidden />
+              <span className="inline-block h-4 w-4 rounded-full bg-black/10 dark:bg-white/20" aria-hidden />
             )}
           </Button>
         </div>

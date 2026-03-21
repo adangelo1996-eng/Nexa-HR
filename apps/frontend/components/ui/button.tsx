@@ -9,15 +9,15 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const baseClasses =
-  "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-not-allowed dark:focus-visible:ring-offset-slate-950";
+  "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-synapse-gold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-not-allowed dark:focus-visible:ring-synapse-gold-bright/50 dark:focus-visible:ring-offset-[#0b0b0b]";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-cyan-600 text-white hover:bg-cyan-500 dark:bg-cyan-400 dark:text-slate-950 dark:hover:bg-cyan-300",
+    "bg-synapse-gold text-white shadow-sm hover:brightness-110 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105",
   secondary:
-    "border border-slate-300 bg-white/60 text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800/80",
+    "border border-synapse-gold/25 bg-white/70 text-synapse-text hover:bg-[#faf8f4] dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]",
   ghost:
-    "text-slate-700 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800/60"
+    "text-synapse-muted hover:bg-black/[0.04] dark:text-[#c8c8c8] dark:hover:bg-white/[0.06]"
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

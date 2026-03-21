@@ -83,7 +83,7 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
             label: (
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{node.label}</p>
-                <p className="text-xs text-cyan-700 dark:text-cyan-300">{node.role}</p>
+                <p className="text-xs text-synapse-gold dark:text-synapse-gold-bright">{node.role}</p>
               </div>
             )
           },

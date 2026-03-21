@@ -229,7 +229,7 @@ export default function HomePage(): React.JSX.Element {
     return (
       <main className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 py-16">
         <div
-          className="h-12 w-12 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent dark:border-cyan-400"
+          className="h-12 w-12 animate-spin rounded-full border-2 border-synapse-gold border-t-transparent dark:border-synapse-gold-bright"
           role="presentation"
           aria-hidden
         />
@@ -320,7 +320,7 @@ export default function HomePage(): React.JSX.Element {
         <div className="mt-2 text-center">
           <p className="text-sm text-slate-700 dark:text-slate-300">
             Tempo residuo a fine giornata:{" "}
-            <span className="font-semibold text-cyan-700 dark:text-cyan-300">{formattedCountdown}</span>
+            <span className="font-semibold text-synapse-gold dark:text-synapse-gold-bright">{formattedCountdown}</span>
           </p>
         </div>
         <div className="mt-5 flex flex-wrap justify-center gap-4">
@@ -403,7 +403,9 @@ export default function HomePage(): React.JSX.Element {
         <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Ferie</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Residuo disponibile:{" "}
-          <span className="font-semibold text-cyan-700 dark:text-cyan-300">{leaveBalance?.residualDays ?? 0} giorni</span>
+          <span className="font-semibold text-synapse-gold dark:text-synapse-gold-bright">
+            {leaveBalance?.residualDays ?? 0} giorni
+          </span>
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm text-slate-800 dark:text-slate-200">
@@ -429,7 +431,7 @@ export default function HomePage(): React.JSX.Element {
           <Button
             onClick={() => void onSubmitLeave()}
             disabled={leaveSubmitting}
-            className="bg-cyan-400 text-slate-900 hover:bg-cyan-300"
+            className="bg-synapse-gold text-white hover:brightness-110 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105"
           >
             {leaveSubmitting ? "Invio richiesta..." : "Richiedi ferie"}
           </Button>
