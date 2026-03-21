@@ -10,6 +10,8 @@
 #
 # Dopo il primo deploy: CORS_ORIGIN sul backend = URL https del frontend Render;
 # NEXT_PUBLIC_API_BASE_URL sul frontend = URL https del backend (/api opzionale, vedi README).
+#
+# Servizi creati fuori da questo blueprint: impostare a mano Health Check Path frontend = /health (vedi README).
 
 services:
   - type: web

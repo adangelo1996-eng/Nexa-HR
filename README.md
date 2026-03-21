@@ -18,6 +18,7 @@ Piattaforma HR cloud enterprise per:
 ## Documentazione deploy e backend
 
 - [Deploy backend NestJS su Render (Supabase)](docs/deploy/BACKEND_RENDER_DEPLOY.md)
+- [RLS Supabase e accesso ai dati](docs/deploy/SUPABASE_RLS.md)
 - [Piano migrazione backend / Supabase](docs/deploy/BACKEND_SUPABASE_PLAN.md)
 - [Blueprint Render (due servizi: API + web)](render.yaml)
 - [Solo backend — Fase 1](render-phase1-backend.yaml) (blueprint ridotto; vedi commenti nel file)
@@ -109,6 +110,11 @@ Dopo il deploy, allinea `CORS_ORIGIN` (backend) e `NEXT_PUBLIC_API_BASE_URL` (fr
 3. **Variabili frontend** — `NEXT_PUBLIC_API_BASE_URL` = URL pubblico del backend (es. `https://nexa-hr-backend.onrender.com`). Opzionale: `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` se usi funzionalità che leggono Supabase dal browser.
 4. **Variabili backend** — `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` già necessarie per il DB; `CORS_ORIGIN` = URL del frontend (lista separata da virgole se hai più origini). Nota: in sviluppo il backend accetta anche origini `*.onrender.com` e `*.vercel.app` oltre a `localhost` (vedi `main.ts`).
 5. **Smoke test** — apri il frontend, login con le credenziali demo, prova dashboard e una chiamata API (es. timbratura).
+
+## Checklist operativa (Render + Supabase)
+
+- **Health check (frontend)** — Se `nexa-hr-frontend` è stato creato manualmente o via API, in [Render Dashboard](https://dashboard.render.com) apri il servizio → **Settings** → **Health Checks** e imposta **Health Check Path** su `/health` (risposta JSON da `apps/frontend/app/health/route.ts`). I servizi creati dal [blueprint `render.yaml`](render.yaml) hanno già questo valore.
+- **RLS e sicurezza DB** — Leggi [SUPABASE_RLS.md](docs/deploy/SUPABASE_RLS.md): i dati HR passano dal backend Nest con **service_role**; non esporre mai la service role al browser.
 
 ## Deploy frontend su Vercel (opzionale)
 

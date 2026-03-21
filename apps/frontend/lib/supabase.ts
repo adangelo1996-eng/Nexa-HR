@@ -1,11 +1,21 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+let cached: SupabaseClient | null | undefined;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase env vars NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+/**
+ * Client browser opzionale: senza env pubbliche Supabase restituisce null (build/preview senza segreti).
+ * I dati HR restano su Nest + JWT; usare questo client solo per integrazioni future (Auth, Realtime, ecc.).
+ */
+export function getSupabaseBrowserClient(): SupabaseClient | null {
+  if (cached !== undefined) {
+    return cached;
+  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!url || !key) {
+    cached = null;
+    return null;
+  }
+  cached = createClient(url, key);
+  return cached;
 }
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
