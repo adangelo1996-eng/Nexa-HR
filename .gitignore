@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# pnpm
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and debug
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / coverage
+coverage/
+
+# Vercel
+.vercel
+
+# Supabase local (if used)
+infra/supabase/.branches
+infra/supabase/.temp

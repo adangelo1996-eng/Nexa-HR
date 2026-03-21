@@ -1,0 +1,36 @@
+# Fase 1 — solo backend (GitLab repo Nexa-HR, root monorepo). DB: Supabase.
+#
+# Opzione A — Web Service manuale: vedi docs/deploy/BACKEND_RENDER_DEPLOY.md (Fase 1).
+# Opzione B — Blueprint: in Render, "New Blueprint", repo GitLab Nexa-HR, branch main;
+#   se vuoi usare SOLO questo file, rinominalo temporaneamente in `render.yaml` in cima al branch
+#   oppure incolla il blocco `services` in un nuovo blueprint (documentazione Render).
+#
+# Dopo il deploy: Fase 2 = aggiungi frontend (render.yaml completo in root del repo).
+
+services:
+  - type: web
+    name: nexa-hr-backend
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/backend build
+    startCommand: pnpm --filter @payday/backend start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: CORS_ORIGIN
+        value: "http://localhost:3000"
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: AUTH_ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_MANAGER_PASSWORD
+        sync: false
+      - key: AUTH_EMPLOYEE_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

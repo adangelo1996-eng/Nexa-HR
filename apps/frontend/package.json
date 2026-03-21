@@ -1,0 +1,30 @@
+{
+  "name": "@payday/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "corepack pnpm exec next dev -p 3000",
+    "build": "corepack pnpm exec next build",
+    "start": "corepack pnpm exec next start -H 0.0.0.0",
+    "lint": "corepack pnpm exec next lint",
+    "test": "echo \"no tests yet\""
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.8.5",
+    "framer-motion": "^11.11.17",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@supabase/supabase-js": "^2.49.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,59 @@
+# Render Blueprint — repository GitLab: Nexa-HR (root del monorepo).
+# https://render.com/docs/blueprint-spec | GitLab: https://render.com/docs/gitlab
+#
+# Setup iniziale su Render (da fare una volta):
+# 1) Account Render → Integrations → collega GitLab (autorizza il gruppo/utente dove sta Nexa-HR).
+# 2) New + → Blueprint → scegli il repo GitLab "Nexa-HR" e branch `main`.
+# 3) Render rileva questo file alla root; conferma creazione dei due Web Service.
+# 4) Compila le variabili `sync: false` (Supabase, URL incrociati dopo il primo deploy).
+# 5) Runtime deve essere Node (mai Docker): non c'è Dockerfile nel repo.
+#
+# Dopo il primo deploy: CORS_ORIGIN sul backend = URL https del frontend Render;
+# NEXT_PUBLIC_API_BASE_URL sul frontend = URL https del backend (senza /api finale).
+
+services:
+  - type: web
+    name: nexa-hr-backend
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/backend build
+    startCommand: pnpm --filter @payday/backend start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: CORS_ORIGIN
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: AUTH_ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_MANAGER_PASSWORD
+        sync: false
+      - key: AUTH_EMPLOYEE_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+  - type: web
+    name: nexa-hr-frontend
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
+    startCommand: pnpm --filter @payday/frontend start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false

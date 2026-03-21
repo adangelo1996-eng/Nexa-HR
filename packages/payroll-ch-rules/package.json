@@ -1,0 +1,16 @@
+{
+  "name": "@payday/payroll-ch-rules",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "corepack pnpm exec tsc -p tsconfig.json",
+    "lint": "echo \"no lint configured\"",
+    "test": "tsx --test src/index.test.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.3"
+  }
+}

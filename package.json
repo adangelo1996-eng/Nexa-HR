@@ -1,0 +1,35 @@
+{
+  "name": "payday-hr-cloud-ch",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.6.0",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "build": "corepack pnpm -r build",
+    "lint": "corepack pnpm -r lint",
+    "test": "corepack pnpm -r test",
+    "dev": "corepack pnpm --parallel --filter @payday/backend --filter @payday/frontend dev",
+    "build:backend": "corepack pnpm --filter @payday/backend build",
+    "build:frontend": "corepack pnpm --filter @payday/frontend build",
+    "start:backend": "corepack pnpm --filter @payday/backend start",
+    "start:frontend": "corepack pnpm --filter @payday/frontend start",
+    "supabase:login": "corepack pnpm dlx supabase login",
+    "supabase:link": "corepack pnpm dlx supabase link --workdir infra/supabase",
+    "supabase:db:push": "corepack pnpm dlx supabase db push --workdir infra/supabase",
+    "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
+    "vercel:link": "corepack pnpm dlx vercel link --cwd apps/frontend",
+    "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",
+    "vercel:preview": "corepack pnpm dlx vercel --cwd apps/frontend",
+    "vercel:prod": "corepack pnpm dlx vercel --prod --cwd apps/frontend"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "file-type": "21.3.1"
+    }
+  }
+}
