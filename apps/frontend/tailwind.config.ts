@@ -9,7 +9,7 @@ const config: Config = {
         synapse: ["var(--font-synapse-wordmark)", "Montserrat", "Inter", "system-ui", "sans-serif"]
       },
       colors: {
-        /* promethys-site / synapse-site-shared.css */
+        /* Synapse - Site / synapse-site-shared.css */
         synapse: {
           bg: "#0b0b0b",
           "bg-light": "#ececec",

@@ -6,7 +6,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 /**
- * Wordmark SYNAPSE (Golden Rooster, come promethys-site) + prodotto Nexa HR.
+ * Wordmark SYNAPSE (Golden Rooster, come Synapse - Site) + prodotto Nexa HR.
  */
 export function AppBrandBar(): React.JSX.Element {
   const { theme, toggleTheme, mounted } = useTheme();

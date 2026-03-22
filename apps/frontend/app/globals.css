@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Palette allineata a promethys-site / synapse-site-shared.css (ETL-Aegis).
+ * Palette allineata a Synapse - Site / synapse-site-shared.css (ETL-Aegis).
  * :root = tema chiaro (html.light-mode sul sito Synapse), html.dark = tema scuro.
  */
 :root {
