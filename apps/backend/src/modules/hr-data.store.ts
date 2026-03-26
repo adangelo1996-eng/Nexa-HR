@@ -171,6 +171,26 @@ export class HrDataStore {
     this.seeded = true;
   }
 
+  async findUserByEmail(email: string): Promise<User | null> {
+    const normalized = email.trim();
+    if (!normalized) {
+      return null;
+    }
+    await this.ensureSeedUsers();
+    if (this.useDb) {
+      const { data, error } = await this.supabase!
+        .from("users")
+        .select("*")
+        .ilike("email", normalized)
+        .limit(1);
+      if (error) {
+        return null;
+      }
+      return (data?.[0] as User | undefined) ?? null;
+    }
+    return this.users.find((item) => item.email.toLowerCase() === normalized.toLowerCase()) ?? null;
+  }
+
   private async ensureSeedReferenceData(): Promise<void> {
     if (!this.useDb) return;
     const rolesCount = await this.supabase!.from("roles").select("id", { count: "exact", head: true });

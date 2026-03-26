@@ -11,12 +11,6 @@ class LoginDto {
   password!: string;
 }
 
-class OAuthSupabaseDto {
-  @IsString()
-  @MinLength(32)
-  accessToken!: string;
-}
-
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -24,10 +18,5 @@ export class AuthController {
   @Post("login")
   async login(@Body() dto: LoginDto): Promise<unknown> {
     return this.authService.login(dto.email, dto.password);
-  }
-
-  @Post("oauth/supabase")
-  async oauthSupabase(@Body() dto: OAuthSupabaseDto): Promise<unknown> {
-    return this.authService.loginWithSupabaseAccessToken(dto.accessToken);
   }
 }
