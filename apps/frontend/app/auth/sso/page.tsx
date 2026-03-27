@@ -1,13 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { saveSession } from "@/lib/auth-session";
 import { loginWithSynapseSso } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function AuthSsoPage(): React.JSX.Element {
+function SsoFallback(): React.JSX.Element {
+  return (
+    <main className="flex min-h-[calc(100dvh-3.25rem)] items-center justify-center px-6 py-12">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Accesso federato in corso</CardTitle>
+          <CardDescription>Sto verificando il token dal Central Hub...</CardDescription>
+        </CardHeader>
+      </Card>
+    </main>
+  );
+}
+
+function AuthSsoContent(): React.JSX.Element {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -29,26 +42,16 @@ export default function AuthSsoPage(): React.JSX.Element {
     loginWithSynapseSso(token)
       .then((session) => {
         saveSession(session.token, session.user);
-        // Full navigation: session is fresh; typed routes reject dynamic strings for router.replace().
         window.location.replace(nextPath);
       })
       .catch((ssoError) => {
         setError(ssoError instanceof Error ? ssoError.message : "Accesso SSO non riuscito");
         setWorking(false);
       });
-  }, [params, router, nextPath]);
+  }, [params, nextPath]);
 
   if (working) {
-    return (
-      <main className="flex min-h-[calc(100dvh-3.25rem)] items-center justify-center px-6 py-12">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Accesso federato in corso</CardTitle>
-            <CardDescription>Sto verificando il token dal Central Hub...</CardDescription>
-          </CardHeader>
-        </Card>
-      </main>
-    );
+    return <SsoFallback />;
   }
 
   return (
@@ -65,5 +68,13 @@ export default function AuthSsoPage(): React.JSX.Element {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function AuthSsoPage(): React.JSX.Element {
+  return (
+    <Suspense fallback={<SsoFallback />}>
+      <AuthSsoContent />
+    </Suspense>
   );
 }
