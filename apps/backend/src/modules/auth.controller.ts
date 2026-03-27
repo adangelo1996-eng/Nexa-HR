@@ -11,6 +11,12 @@ class LoginDto {
   password!: string;
 }
 
+class SynapseSsoDto {
+  @IsString()
+  @MinLength(16)
+  synapseSsoToken!: string;
+}
+
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -18,5 +24,10 @@ export class AuthController {
   @Post("login")
   async login(@Body() dto: LoginDto): Promise<unknown> {
     return this.authService.login(dto.email, dto.password);
+  }
+
+  @Post("sso")
+  async sso(@Body() dto: SynapseSsoDto): Promise<unknown> {
+    return this.authService.loginWithSynapseSso(dto.synapseSsoToken);
   }
 }

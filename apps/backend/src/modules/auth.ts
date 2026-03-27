@@ -16,6 +16,7 @@ export type AuthRole = "admin" | "manager_controllo_gestione" | "employee";
 export interface AuthContext {
   userId: string;
   role: AuthRole;
+  tenantId?: string;
 }
 
 export const AUTH_ROLE_KEY = "auth-role";
@@ -24,6 +25,7 @@ export const RequireRole = (role: AuthContext["role"]) => SetMetadata(AUTH_ROLE_
 interface TokenPayload {
   sub: string;
   role: AuthRole;
+  tenantId?: string;
 }
 
 const VALID_ROLES = ["admin", "manager_controllo_gestione", "employee"] as const;
@@ -60,7 +62,7 @@ function fromBearerToken(request: Request): AuthContext | undefined {
   if (!payload?.sub || typeof payload.sub !== "string" || !payload.role || !isValidRole(payload.role)) {
     throw new UnauthorizedException("Token non valido");
   }
-  return { userId: payload.sub, role: payload.role };
+  return { userId: payload.sub, role: payload.role, tenantId: payload.tenantId };
 }
 
 export function getAuthContext(request: Request): AuthContext {

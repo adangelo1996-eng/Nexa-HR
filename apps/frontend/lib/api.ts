@@ -224,6 +224,18 @@ export async function login(email: string, password: string): Promise<{ token: s
   return (await response.json()) as { token: string; user: SessionUser };
 }
 
+export async function loginWithSynapseSso(synapseSsoToken: string): Promise<{ token: string; user: SessionUser }> {
+  const response = await fetch(buildApiUrl("/auth/sso"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ synapseSsoToken })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { token: string; user: SessionUser };
+}
+
 export async function fetchCurrentUser(token: string): Promise<SessionUser> {
   const response = await fetch(buildApiUrl("/users/me"), {
     method: "GET",
