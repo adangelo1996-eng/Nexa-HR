@@ -29,7 +29,8 @@ export default function AuthSsoPage(): React.JSX.Element {
     loginWithSynapseSso(token)
       .then((session) => {
         saveSession(session.token, session.user);
-        router.replace(nextPath);
+        // Full navigation: session is fresh; typed routes reject dynamic strings for router.replace().
+        window.location.replace(nextPath);
       })
       .catch((ssoError) => {
         setError(ssoError instanceof Error ? ssoError.message : "Accesso SSO non riuscito");
