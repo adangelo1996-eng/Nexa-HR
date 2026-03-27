@@ -31,9 +31,17 @@ export class AuthService {
       throw new UnauthorizedException("Credenziali non valide");
     }
 
-    const expectedPassword = this.getPasswordForRole(user.role);
-    if (password !== expectedPassword) {
-      throw new UnauthorizedException("Credenziali non valide");
+    const supabasePasswordMode = Boolean(process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+    if (supabasePasswordMode) {
+      const ok = await this.store.verifySupabasePassword(email, password);
+      if (!ok) {
+        throw new UnauthorizedException("Credenziali non valide");
+      }
+    } else {
+      const expectedPassword = this.getPasswordForRole(user.role);
+      if (password !== expectedPassword) {
+        throw new UnauthorizedException("Credenziali non valide");
+      }
     }
 
     const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";

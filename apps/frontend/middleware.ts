@@ -3,50 +3,32 @@ import type { NextRequest } from "next/server";
 
 const AUTH_COOKIE = "nexa_hr_token";
 
-function centralHubOrigin(): string {
-  const raw =
-    process.env.CENTRAL_HUB_ORIGIN?.trim() || process.env.NEXT_PUBLIC_CENTRAL_HUB_ORIGIN?.trim() || "";
-  return raw.replace(/\/$/, "");
+function isPublicPath(pathname: string): boolean {
+  if (pathname.startsWith("/welcome")) return true;
+  if (pathname.startsWith("/login")) return true;
+  if (pathname.startsWith("/auth/sso")) return true;
+  if (pathname === "/health") return true;
+  return false;
 }
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(AUTH_COOKIE)?.value);
   const isLoginPage = pathname.startsWith("/login");
-  const isSsoPage = pathname.startsWith("/auth/sso");
   const isHealthCheck = pathname === "/health";
 
-  if (!hasSession && isLoginPage) {
-    const hub = centralHubOrigin();
-    if (hub && !request.nextUrl.searchParams.has("local")) {
-      const handoff = new URL("/api/auth/handoff", hub);
-      handoff.searchParams.set("app", "nexa");
-      handoff.searchParams.set("next", "/");
-      return NextResponse.redirect(handoff);
-    }
+  if (!hasSession && isPublicPath(pathname)) {
+    return NextResponse.next();
   }
 
-  if (!hasSession && !isLoginPage && !isSsoPage && !isHealthCheck) {
-    const hub = centralHubOrigin();
-    if (hub) {
-      try {
-        const dest = pathname + (request.nextUrl.search ?? "");
-        const safeDest = dest.startsWith("/") ? dest : `/${dest}`;
-        const handoff = new URL("/api/auth/handoff", hub);
-        handoff.searchParams.set("app", "nexa");
-        handoff.searchParams.set("next", safeDest);
-        return NextResponse.redirect(handoff);
-      } catch {
-        // fallback to login
-      }
-    }
+  if (!hasSession && !isPublicPath(pathname) && !isHealthCheck) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/welcome";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
-  // Non reindirizzare /auth/sso: serve per aggiornare la sessione dopo un nuovo handoff dall'hub.
-  if (hasSession && isLoginPage) {
+  if (hasSession && (isLoginPage || pathname.startsWith("/welcome"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

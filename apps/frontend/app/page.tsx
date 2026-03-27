@@ -58,7 +58,7 @@ export default function HomePage(): React.JSX.Element {
   useEffect(() => {
     const currentToken = getToken();
     if (!currentToken) {
-      router.replace("/login");
+      router.replace("/welcome");
       return;
     }
     const tokenValue = currentToken;
@@ -76,7 +76,7 @@ export default function HomePage(): React.JSX.Element {
         const fallback = getSessionUser();
         if (!fallback) {
           clearSession();
-          router.replace("/login");
+          router.replace("/welcome");
           setLoading(false);
           return;
         }
@@ -222,7 +222,7 @@ export default function HomePage(): React.JSX.Element {
 
   function onLogout(): void {
     clearSession();
-    router.replace("/login");
+    router.replace("/welcome");
   }
 
   if (loading) {

@@ -156,6 +156,23 @@ export class HrDataStore {
     }
   }
 
+  /**
+   * Verifica email/password contro Supabase Auth (stesso progetto usato da Plasticity).
+   */
+  async verifySupabasePassword(email: string, password: string): Promise<boolean> {
+    if (!this.supabase) {
+      return false;
+    }
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+    if (error || !data.session) {
+      return false;
+    }
+    return true;
+  }
+
   private get useDb(): boolean {
     return Boolean(this.supabase);
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 
 type LoginPhase = "idle" | "submitting" | "redirecting";
 
-/** Login solo emergenza: l’ingresso normale è tramite Synapse Central Hub (SSO). */
+/** Login con email/password Synapse (Supabase Auth in produzione quando il backend ha le env Supabase). */
 export default function LoginForm(): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,11 +79,10 @@ export default function LoginForm(): React.JSX.Element {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Accesso locale (emergenza)</CardTitle>
+            <CardTitle>Accesso</CardTitle>
             <CardDescription>
-              L’accesso da produzione passa da <strong>Synapse Central Hub</strong> (stesso account, niente seconda
-              password). Questo modulo serve solo se l’hub non è raggiungibile o per supporto, con credenziali Nexa
-              (ruoli / env).
+              Usa la stessa email e password Synapse configurate sul progetto Supabase (come per Plasticity). In
+              ambienti locali senza Supabase sul backend valgono le password di ruolo definite in documentazione/env.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -117,6 +117,11 @@ export default function LoginForm(): React.JSX.Element {
               </Button>
             </form>
             {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
+            <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
+              <Link href="/welcome" className="text-synapse-gold-bright underline-offset-4 hover:underline dark:text-synapse-gold">
+                ← Torna alla home Nexa HR
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </motion.div>
