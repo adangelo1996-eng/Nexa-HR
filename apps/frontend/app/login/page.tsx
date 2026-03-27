@@ -27,7 +27,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps): Promi
     const handoff = new URL("/api/auth/handoff", hub);
     handoff.searchParams.set("app", "nexa");
     handoff.searchParams.set("next", "/");
-    redirect(handoff.toString());
+    // External URL: Next typed routes narrow `redirect` to internal `Route`; handoff is another origin.
+    redirect(handoff.toString() as Parameters<typeof redirect>[0]);
   }
 
   return <LoginForm />;
