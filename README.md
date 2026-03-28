@@ -66,12 +66,11 @@ Quando hai i valori reali (`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`):
 
 Il frontend usa login reale su `POST /api/auth/login` e token JWT Bearer.
 
-Credenziali demo (stesse email in tabella `users` · **password unica per tutti:** `Synapse2026`):
-- `admin@payday.ch`
-- `manager@payday.ch`
-- `employee@payday.ch`
+Account principale (produzione / Supabase attuale): **`admin@synapse.com`** / **`Synapse2026`** (presente in Auth e in `public.users`).
 
-In **Supabase Auth** imposta la stessa password (`Synapse2026`) per ciascun utente così coincide con Plasticity e il resto dell’ecosistema.
+In **modalità in-memory** (backend senza DB), restano anche i demo **`manager@synapse.com`** e **`employee@synapse.com`** con la stessa password **`Synapse2026`** (utile per test gerarchia/payroll in locale).
+
+In **Supabase Auth** usa **`Synapse2026`** per ogni utente email/password così coincide con Plasticity e Nexa.
 
 Senza override in env, in modalità legacy (backend senza `signInWithPassword`) il default nel codice è **`Synapse2026`**.
 

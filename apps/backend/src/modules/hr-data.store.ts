@@ -69,7 +69,7 @@ export class HrDataStore {
   private readonly users: User[] = [
     {
       id: "u-admin",
-      email: "admin@payday.ch",
+      email: "admin@synapse.com",
       fullName: "HR Admin",
       firstName: "HR",
       lastName: "Admin",
@@ -83,7 +83,7 @@ export class HrDataStore {
     },
     {
       id: "u-manager",
-      email: "manager@payday.ch",
+      email: "manager@synapse.com",
       fullName: "Manager Controllo",
       firstName: "Manager",
       lastName: "Controllo",
@@ -97,7 +97,7 @@ export class HrDataStore {
     },
     {
       id: "u-employee",
-      email: "employee@payday.ch",
+      email: "employee@synapse.com",
       fullName: "Dipendente Demo",
       firstName: "Dipendente",
       lastName: "Demo",

@@ -67,8 +67,7 @@ Target architettura:
   - DB Postgres con tabelle da `infra/supabase/migrations/001_payday_hr_core.sql`:
     - `users`, `time_entries`, `workday_summaries`, `leave_plans`,
       `sickness_events`, `approvals`, `delegations`, `payslips`.
-  - **Auth** (email/password) con 3 utenti demo:
-    - `admin@payday.ch`, `manager@payday.ch`, `employee@payday.ch`.
+  - **Auth** (email/password): in produzione tipicamente **`admin@synapse.com`** (password **`Synapse2026`**); opzionalmente anche `manager@synapse.com` / `employee@synapse.com` per demo multi-ruolo.
   - **Edge Functions** che sostituiscono gli endpoint Nest.
 
 - **Frontend Next.js**:
@@ -86,14 +85,14 @@ Target architettura:
 2. **Utenti applicativi**
    - In **Table editor → users**:
      - Inserisci i 3 record standard:
-       - `u-admin`, `admin@payday.ch`, `HR Admin`, `admin`, `companyId = comp-1`.
-       - `u-manager`, `manager@payday.ch`, `Manager Controllo`, `manager_controllo_gestione`, `companyId = comp-1`.
-       - `u-employee`, `employee@payday.ch`, `Dipendente Demo`, `employee`, `managerId = u-manager`, `companyId = comp-1`.
+       - `u-admin`, `admin@synapse.com`, `HR Admin`, `admin`, `companyId = comp-1` (o `id` UUID se allineato ad Auth).
+       - `u-manager`, `manager@synapse.com`, `Manager Controllo`, `manager_controllo_gestione`, `companyId = comp-1`.
+       - `u-employee`, `employee@synapse.com`, `Dipendente Demo`, `employee`, `managerId = u-manager`, `companyId = comp-1`.
 
 3. **Auth**
    - In Supabase Dashboard → Authentication:
      - Abilita **Email/Password**.
-     - Crea gli stessi 3 utenti in Auth (`admin@payday.ch`, ecc.) con password **`Synapse2026`** (allineata al resto dell’ecosistema).
+     - Crea in Auth gli stessi utenti (`admin@synapse.com`, ecc.) con password **`Synapse2026`**. Preferisci **Dashboard** o **Admin API**: inserimenti SQL su `auth.users` richiedono token a stringa vuota (`''`) dove non usati (vedi nota in `docs/render-supabase-live.md`).
 
 4. **Env per frontend**
    - In `apps/frontend/.env.local` (e in Vercel):

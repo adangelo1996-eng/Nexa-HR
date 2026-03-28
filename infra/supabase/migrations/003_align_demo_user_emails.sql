@@ -1,8 +1,8 @@
--- Allinea email utenti seed al README (manager / employee su @payday.ch).
+-- Allinea email utenti demo legacy (se presenti) al dominio @synapse.com.
 update public.users
-set email = 'manager@payday.ch'
+set email = 'manager@synapse.com'
 where id = 'u-manager';
 
 update public.users
-set email = 'employee@payday.ch'
+set email = 'employee@synapse.com'
 where id = 'u-employee';
