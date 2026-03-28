@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dashboard } from "@/components/dashboard";
 import { OrgChart } from "@/components/org-chart";
@@ -65,7 +64,6 @@ function HomeLanding(): React.JSX.Element {
 }
 
 export default function HomePage(): React.JSX.Element {
-  const router = useRouter();
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,8 +107,7 @@ export default function HomePage(): React.JSX.Element {
         const fallback = getSessionUser();
         if (!fallback) {
           clearSession();
-          router.replace("/");
-          setLoading(false);
+          window.location.assign("/");
           return;
         }
         me = fallback;
@@ -151,7 +148,7 @@ export default function HomePage(): React.JSX.Element {
     }
 
     void load();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!status) {
@@ -255,7 +252,7 @@ export default function HomePage(): React.JSX.Element {
 
   function onLogout(): void {
     clearSession();
-    router.replace("/");
+    window.location.assign("/");
   }
 
   if (isGuest) {

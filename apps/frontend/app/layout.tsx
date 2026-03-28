@@ -15,7 +15,7 @@ const themeInitScript = `(function(){try{var k="nexa-hr-theme",t=localStorage.ge
 
 export const metadata: Metadata = {
   title: "Nexa HR — Synapse",
-  description: "Piattaforma enterprise HR con payroll svizzero"
+  description: "Piattaforma enterprise HR — people operations"
 };
 
 export default function RootLayout({
