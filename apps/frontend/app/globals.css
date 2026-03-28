@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Golden Rooster — stesso campionario di ETL-Aegis-main/Synapse - Site/fonts/golden-rooster.ttf */
+@font-face {
+  font-family: "Golden Rooster";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Golden Rooster";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Golden Rooster";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+}
+
 /*
  * Palette allineata a Synapse - Site / synapse-site-shared.css (ETL-Aegis).
  * :root = tema chiaro (html.light-mode sul sito Synapse), html.dark = tema scuro.

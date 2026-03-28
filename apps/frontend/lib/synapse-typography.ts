@@ -1,11 +1,12 @@
 import type { CSSProperties } from "react";
 
 /**
- * Stesso aspetto per SYNAPSE, NEXA HR e mega titolo: Montserrat (Next) per primo,
- * poi Golden Rooster come fallback decorativo — evita il look “monospace” sul titolo grande.
+ * Wordmark suite: **Golden Rooster** (file da Synapse - Site/fonts / `fonts/golden-rooster.ttf`),
+ * poi Montserrat come fallback. Allineato a Plasticity / Synapse Site `--font-synapse-display`.
  */
 export const synapseSuiteDisplayStyle = {
   fontSynthesis: "none",
   fontVariantNumeric: "proportional-nums",
-  fontFamily: "var(--font-montserrat), var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif"
+  fontFamily:
+    '"Golden Rooster", var(--font-synapse-wordmark), var(--font-montserrat), Montserrat, system-ui, sans-serif'
 } satisfies CSSProperties;

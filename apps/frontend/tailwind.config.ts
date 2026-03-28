@@ -6,7 +6,15 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        synapse: ["var(--font-synapse-wordmark)", "Montserrat", "Inter", "system-ui", "sans-serif"]
+        synapse: [
+          '"Golden Rooster"',
+          "var(--font-synapse-wordmark)",
+          "var(--font-montserrat)",
+          "Montserrat",
+          "Inter",
+          "system-ui",
+          "sans-serif"
+        ]
       },
       colors: {
         /* Accento blu di Prussia / grigio — i token “gold” restano per compatibilità classi */
