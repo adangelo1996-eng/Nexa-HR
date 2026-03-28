@@ -55,7 +55,7 @@ Note:
 - la configurazione CLI e' in `infra/supabase/config.toml`
 - il backend usa Supabase solo se trova entrambe le env `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
 - se manca una delle due env, l'API usa fallback in-memory (utile solo per demo)
-- autenticazione backend via JWT (`AUTH_JWT_SECRET`) e credenziali demo per ruolo
+- autenticazione backend via JWT (`AUTH_JWT_SECRET`) e password demo condivisa in modalità legacy
 
 Quando hai i valori reali (`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`):
 1. aggiornali in `apps/backend/.env`
@@ -66,17 +66,17 @@ Quando hai i valori reali (`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`):
 
 Il frontend usa login reale su `POST /api/auth/login` e token JWT Bearer.
 
-Credenziali demo (stesse email in tabella `users` al primo seed):
-- `admin@payday.ch` / `AdminPayday123!`
-- `manager@payday.ch` / `ManagerPayday123!`
-- `employee@payday.ch` / `EmployeePayday123!`
+Credenziali demo (stesse email in tabella `users` · **password unica per tutti:** `Synapse2026`):
+- `admin@payday.ch`
+- `manager@payday.ch`
+- `employee@payday.ch`
 
-Se non imposti le variabili sotto, il backend usa proprio queste password come default (`auth.service.ts`).
+In **Supabase Auth** imposta la stessa password (`Synapse2026`) per ciascun utente così coincide con Plasticity e il resto dell’ecosistema.
 
-Le password demo sono configurabili con:
-- `AUTH_ADMIN_PASSWORD`
-- `AUTH_MANAGER_PASSWORD`
-- `AUTH_EMPLOYEE_PASSWORD`
+Senza override in env, in modalità legacy (backend senza `signInWithPassword`) il default nel codice è **`Synapse2026`**.
+
+Override opzionale:
+- `AUTH_SHARED_PASSWORD` (o `AUTH_PASSWORD`) — sostituisce il default legacy
 
 ## Nuove funzionalita dashboard/payroll
 

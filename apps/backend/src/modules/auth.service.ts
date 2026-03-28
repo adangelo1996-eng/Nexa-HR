@@ -38,7 +38,7 @@ export class AuthService {
         throw new UnauthorizedException("Credenziali non valide");
       }
     } else {
-      const expectedPassword = this.getPasswordForRole(user.role);
+      const expectedPassword = this.getLegacySharedPassword();
       if (password !== expectedPassword) {
         throw new UnauthorizedException("Credenziali non valide");
       }
@@ -122,13 +122,12 @@ export class AuthService {
     }
   }
 
-  private getPasswordForRole(role: AuthRole): string {
-    if (role === "admin") {
-      return process.env.AUTH_ADMIN_PASSWORD ?? "AdminPayday123!";
-    }
-    if (role === "manager_controllo_gestione") {
-      return process.env.AUTH_MANAGER_PASSWORD ?? "ManagerPayday123!";
-    }
-    return process.env.AUTH_EMPLOYEE_PASSWORD ?? "EmployeePayday123!";
+  /** Password unica (demo / legacy) se non usi Supabase Auth sul backend. Default: Synapse2026. */
+  private getLegacySharedPassword(): string {
+    return (
+      process.env.AUTH_SHARED_PASSWORD?.trim() ||
+      process.env.AUTH_PASSWORD?.trim() ||
+      "Synapse2026"
+    );
   }
 }

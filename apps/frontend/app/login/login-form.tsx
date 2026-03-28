@@ -81,8 +81,8 @@ export default function LoginForm(): React.JSX.Element {
           <CardHeader>
             <CardTitle>Accesso</CardTitle>
             <CardDescription>
-              Usa la stessa email e password Synapse configurate sul progetto Supabase (come per Plasticity). In
-              ambienti locali senza Supabase sul backend valgono le password di ruolo definite in documentazione/env.
+              Usa la stessa email e password del progetto Supabase (come Plasticity). Password condivisa consigliata:
+              Synapse2026. Senza Supabase sul backend vale la stessa password in modalità legacy (vedi README).
             </CardDescription>
           </CardHeader>
           <CardContent>

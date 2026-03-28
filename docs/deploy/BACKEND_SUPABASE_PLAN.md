@@ -93,7 +93,7 @@ Target architettura:
 3. **Auth**
    - In Supabase Dashboard → Authentication:
      - Abilita **Email/Password**.
-     - Crea gli stessi 3 utenti in Auth (`admin@payday.ch`, ecc.) con password note.
+     - Crea gli stessi 3 utenti in Auth (`admin@payday.ch`, ecc.) con password **`Synapse2026`** (allineata al resto dell’ecosistema).
 
 4. **Env per frontend**
    - In `apps/frontend/.env.local` (e in Vercel):

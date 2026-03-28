@@ -49,7 +49,7 @@ Questa guida spiega come mettere online il backend NestJS su **Render** così ch
 | `SUPABASE_SERVICE_ROLE_KEY` | Chiave service role (segreta) |
 | `AUTH_JWT_SECRET` | Stringa lunga casuale (es. genera con `openssl rand -hex 32`) |
 | `CORS_ORIGIN` | `http://localhost:3000` se testerai il frontend in locale; in **Fase 2** aggiungerai l’URL https del frontend Render (origini multiple separate da **virgola**). |
-| `AUTH_ADMIN_PASSWORD`, `AUTH_MANAGER_PASSWORD`, `AUTH_EMPLOYEE_PASSWORD` | Opzionali: come in `apps/backend/.env.example` se usi gli utenti demo. |
+| `AUTH_SHARED_PASSWORD` | Opzionale: override della password legacy condivisa (default nel codice `Synapse2026`). Su Render imposta `Synapse2026` se vuoi esplicitarla. |
 
 **3. Deploy**
 
@@ -118,7 +118,7 @@ Nel servizio backend, **Environment Variables**:
 |--------|------|
 | `CORS_ORIGIN` | URL del frontend (es. `https://tuo-frontend.onrender.com`). Più origini separate da virgola. Includi `http://localhost:3000` per sviluppo locale se serve. |
 | `AUTH_JWT_SECRET` | Stringa lunga casuale (non committare). |
-| `AUTH_ADMIN_PASSWORD`, `AUTH_MANAGER_PASSWORD`, `AUTH_EMPLOYEE_PASSWORD` | Opzionali (demo). |
+| `AUTH_SHARED_PASSWORD` | Opzionale: password legacy condivisa (default `Synapse2026`). |
 | `SUPABASE_URL` | URL progetto Supabase. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo server-side. |
 

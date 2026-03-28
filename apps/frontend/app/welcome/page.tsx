@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 /**
- * Landing pubblica prima dell’accesso (stesso spirito della home Plasticity).
- * Link primario (stile Button primary) — niente `asChild` sul Button custom: evita errori TypeScript al build.
+ * Landing pubblica prima dell’accesso — stesso linguaggio visivo della dashboard (homepage autenticata): slate/bianco, no oro.
  */
 export default function WelcomePage(): React.JSX.Element {
   return (
@@ -11,19 +10,19 @@ export default function WelcomePage(): React.JSX.Element {
         People operations · Svizzera
       </p>
       <h1
-        className="mb-4 max-w-[14ch] bg-gradient-to-b from-[#fff8eb] via-[#dfc282] to-[#c9a03a] bg-clip-text font-synapse text-[clamp(2.75rem,11vw,6.5rem)] font-semibold leading-[0.88] tracking-[0.08em] text-transparent dark:from-white dark:via-[#f0e6c8] dark:to-[#c9a03a]"
+        className="mb-4 max-w-[18ch] text-[clamp(2.25rem,8vw,3.75rem)] leading-tight"
         style={{ fontSynthesis: "none" }}
       >
-        NEXA HR
+        <span className="font-synapse font-semibold tracking-tight text-slate-900 dark:text-slate-50">Nexa HR</span>
+        <span className="font-sans font-bold text-slate-500 dark:text-slate-500"> — Cloud Enterprise</span>
       </h1>
-      <p className="max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
-        Un unico punto per presenze, ferie, organigramma e payroll CH: stessa identità Synapse, priorità chiare e controllo
-        operativo quotidiano.
+      <p className="max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-400">
+        Un unico punto per presenze, ferie, organigramma e payroll CH: priorità chiare e controllo operativo quotidiano.
       </p>
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
         <Link
           href="/login"
-          className="inline-flex min-w-[10rem] items-center justify-center rounded-lg bg-synapse-gold px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-synapse-gold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105 dark:focus-visible:ring-synapse-gold-bright/50 dark:focus-visible:ring-offset-[#0b0b0b]"
+          className="inline-flex min-w-[10rem] items-center justify-center rounded-lg border border-slate-300 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 focus-visible:ring-offset-2 dark:border-slate-600 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-slate-800 dark:focus-visible:ring-white/25 dark:focus-visible:ring-offset-[#0b0b0b]"
         >
           Login
         </Link>

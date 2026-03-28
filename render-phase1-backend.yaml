@@ -24,11 +24,7 @@ services:
         value: "http://localhost:3000"
       - key: AUTH_JWT_SECRET
         generateValue: true
-      - key: AUTH_ADMIN_PASSWORD
-        sync: false
-      - key: AUTH_MANAGER_PASSWORD
-        sync: false
-      - key: AUTH_EMPLOYEE_PASSWORD
+      - key: AUTH_SHARED_PASSWORD
         sync: false
       - key: SUPABASE_URL
         sync: false
