@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { AppBrandBar } from "@/components/app-brand-bar";
+import { ConditionalBrandBar } from "@/components/conditional-brand-bar";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const synapseWordmark = localFont({
@@ -30,7 +30,7 @@ export default function RootLayout({
       </head>
       <body className={`${synapseWordmark.variable} antialiased`}>
         <ThemeProvider>
-          <AppBrandBar />
+          <ConditionalBrandBar />
           {children}
         </ThemeProvider>
       </body>

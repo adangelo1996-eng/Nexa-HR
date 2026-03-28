@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 
 type LoginPhase = "idle" | "submitting" | "redirecting";
 
-/** Login: hero SYNAPSE-style + pulsante LOGIN che apre la card credenziali. */
+/**
+ * Pagina accesso allineata a Plasticity (login.html): topbar hubline, hero mega titolo, LOGIN → modale vetro.
+ */
 export default function LoginForm(): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -86,38 +86,76 @@ export default function LoginForm(): React.JSX.Element {
 
   return (
     <>
-      <main className="relative flex min-h-[calc(100dvh-3.25rem)] flex-col items-center justify-center px-6 py-12 text-center">
+      <header
+        className="sticky top-0 z-[60] border-b border-white/[0.14] shadow-[0_14px_32px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-md backdrop-saturate-[1.2]"
+        style={{
+          background: "linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05))"
+        }}
+      >
+        <div className="mx-auto flex min-h-16 w-[min(1280px,95vw)] items-center justify-between gap-3.5 px-4 sm:px-5">
+          <Link
+            href="/welcome"
+            className="inline-flex items-baseline no-underline [mix-blend-mode:normal]"
+            aria-label="SYNAPSE NEXA HR"
+          >
+            <span
+              className="font-synapse text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
+              style={{ fontSynthesis: "none" }}
+            >
+              SYNAPSE
+            </span>
+            <span className="mx-[0.2em] font-sans text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-white" aria-hidden>
+              {" - "}
+            </span>
+            <span
+              className="font-sans text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-[#94a3b8]"
+              style={{ fontSynthesis: "none" }}
+            >
+              NEXA HR
+            </span>
+          </Link>
+          <nav className="flex items-center gap-3" aria-label="Navigazione">
+            <Link
+              href="/welcome"
+              className="rounded-full border border-transparent px-3 py-1.5 text-[0.92rem] text-white no-underline transition duration-300 [mix-blend-mode:difference] [text-shadow:0_0_14px_rgba(0,0,0,0.22)] hover:-translate-y-px hover:scale-[1.04] hover:[text-shadow:0_0_16px_rgba(163,181,205,0.42)]"
+            >
+              ← HOME
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      <div className="relative flex flex-1 flex-col items-center justify-center px-[18px] py-12 text-center [min-height:calc(100dvh-4rem)] [padding-top:clamp(24px,5vw,56px)] [padding-bottom:48px]">
         {busy ? (
           <div
-            className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-md dark:bg-slate-950/75"
+            className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-md"
             aria-live="polite"
             aria-busy="true"
           >
             <div
-              className="h-10 w-10 animate-spin rounded-full border-2 border-synapse-gold border-t-transparent dark:border-synapse-gold-bright"
+              className="h-10 w-10 animate-spin rounded-full border-2 border-white/30 border-t-white"
               role="presentation"
             />
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-              {phase === "redirecting" ? "Reindirizzamento alla dashboard…" : "Accesso in corso…"}
+            <p className="text-sm font-medium text-white/90">
+              {phase === "redirecting" ? "REINDIRIZZAMENTO…" : "ACCESSO IN CORSO…"}
             </p>
           </div>
         ) : null}
 
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          className="flex w-full max-w-4xl flex-col items-center"
+          className="flex w-full max-w-5xl flex-col items-center"
         >
-          <p className="mb-[clamp(12px,2vw,20px)] text-[0.65rem] font-medium uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            PEOPLE OPERATIONS · SVIZZERA
+          <p className="m-0 mb-[clamp(12px,2vw,20px)] text-[clamp(0.62rem,1.4vw,0.72rem)] font-medium uppercase tracking-[0.2em] text-white/50">
+            PEOPLE OPERATIONS
           </p>
           <h1
-            className="mb-[clamp(28px,5vw,44px)] max-w-[20ch] px-[0.04em] font-synapse text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-synapse-text dark:text-[#f5f6fb]"
+            className="m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] font-synapse text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
             style={{
               fontSynthesis: "none",
-              textShadow:
-                "0 0 40px rgba(255, 255, 255, 0.12), 0 0 80px rgba(255, 255, 255, 0.06)"
+              textShadow: "0 0 40px rgba(255, 255, 255, 0.12), 0 0 80px rgba(255, 255, 255, 0.06)"
             }}
           >
             NEXA HR
@@ -125,20 +163,21 @@ export default function LoginForm(): React.JSX.Element {
 
           <button
             type="button"
+            id="btn-open-login"
             onClick={() => setDialogOpen(true)}
-            className="inline-flex min-w-[min(240px,88vw)] items-center justify-center rounded-full border border-slate-300/90 bg-gradient-to-br from-white/95 to-slate-100/70 px-8 py-3.5 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-slate-900 shadow-[0_12px_36px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-[16px] transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-slate-400/80 dark:border-white/28 dark:from-white/[0.22] dark:to-white/[0.06] dark:text-[#fafafa] dark:shadow-[0_12px_36px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] dark:hover:border-white/40"
+            className="inline-flex min-w-[min(240px,88vw)] cursor-pointer items-center justify-center rounded-full border border-white/28 bg-gradient-to-br from-white/[0.22] to-white/[0.06] px-8 py-3.5 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[#fafafa] shadow-[0_12px_36px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-[16px] transition-[transform,border-color] duration-[250ms] ease-out hover:-translate-y-0.5 hover:border-white/[0.42]"
           >
             LOGIN
           </button>
 
           <Link
             href="/welcome"
-            className="mt-7 text-[0.82rem] font-medium uppercase tracking-[0.06em] text-slate-600 underline-offset-4 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            className="mt-7 inline-block text-[0.82rem] font-medium uppercase tracking-[0.06em] text-white/[0.55] no-underline transition-colors hover:text-white/[0.85]"
           >
-            ← TORNA ALLA HOME NEXA HR
+            ← TORNA ALLA HOME
           </Link>
         </motion.div>
-      </main>
+      </div>
 
       <AnimatePresence>
         {dialogOpen ? (
@@ -146,7 +185,7 @@ export default function LoginForm(): React.JSX.Element {
             role="dialog"
             aria-modal="true"
             aria-labelledby="nexa-login-title"
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 px-5 py-8 backdrop-blur-[8px]"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-5 backdrop-blur-[8px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -156,82 +195,75 @@ export default function LoginForm(): React.JSX.Element {
             }}
           >
             <motion.div
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-md"
+              className="w-full max-w-[400px] rounded-[18px] border border-white/22 bg-gradient-to-br from-white/[0.14] to-white/[0.05] p-[clamp(22px,4vw,32px)] shadow-[0_16px_48px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-[18px]"
               onClick={(e) => e.stopPropagation()}
             >
-              <Card className="border-white/22 bg-gradient-to-br from-white/[0.14] to-white/[0.05] shadow-[0_16px_48px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)] dark:border-white/22">
-                <CardHeader>
-                  <CardTitle id="nexa-login-title" className="font-synapse text-base uppercase tracking-[0.14em]">
-                    ACCESSO
-                  </CardTitle>
-                  <CardDescription>
-                    Usa la stessa email e password del progetto Supabase (come Plasticity), es.{" "}
-                    <strong>admin@synapse.com</strong> e la password della suite. Senza Supabase sul backend vale la
-                    password in modalità legacy (vedi README).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {warmingUp ? (
-                    <p className="mb-3 text-xs text-synapse-muted dark:text-[#c8c8c8]">
-                      Sto preparando il server… (se è in standby può richiedere qualche secondo)
-                    </p>
-                  ) : null}
-                  <form onSubmit={onSubmit} className="space-y-4">
-                    <div>
-                      <label htmlFor="nexa-email" className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-[0.14em] text-synapse-muted dark:text-[#c8c8c8]">
-                        Email
-                      </label>
-                      <Input
-                        ref={emailRef}
-                        id="nexa-email"
-                        type="email"
-                        placeholder="email@azienda.ch"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        autoComplete="email"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="nexa-password" className="mb-1.5 block text-[0.72rem] font-medium uppercase tracking-[0.14em] text-synapse-muted dark:text-[#c8c8c8]">
-                        Password
-                      </label>
-                      <Input
-                        id="nexa-password"
-                        type="password"
-                        placeholder="Password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        autoComplete="current-password"
-                        required
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="w-full rounded-full border border-white/35 bg-gradient-to-br from-white/28 to-white/10 px-4 py-3 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-md transition-opacity disabled:opacity-50 dark:border-white/35"
-                    >
-                      {phase === "redirecting"
-                        ? "Reindirizzamento…"
-                        : phase === "submitting"
-                          ? "Accesso in corso…"
-                          : "Entra"}
-                    </button>
-                  </form>
-                  {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
-                  <button
-                    type="button"
-                    className="mt-4 w-full text-[0.75rem] font-medium uppercase tracking-[0.1em] text-slate-500 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200"
-                    onClick={() => setDialogOpen(false)}
-                  >
-                    Chiudi
-                  </button>
-                </CardContent>
-              </Card>
+              <h2
+                id="nexa-login-title"
+                className="m-0 mb-1.5 font-synapse text-[1.1rem] font-semibold uppercase tracking-[0.14em] text-white"
+              >
+                ACCESSO
+              </h2>
+              <p className="lead m-0 mb-5 text-[0.88rem] leading-relaxed text-[#c8c8c8]">
+                Stesso account Supabase delle altre app (es. <strong className="text-white">admin@synapse.com</strong>).
+              </p>
+              {warmingUp ? (
+                <p className="mb-3 text-[0.85rem] text-[#c8c8c8]">Sto preparando il server… (standby Render)</p>
+              ) : null}
+              <form onSubmit={onSubmit}>
+                <label htmlFor="nexa-email" className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[#c8c8c8]">
+                  EMAIL
+                </label>
+                <input
+                  ref={emailRef}
+                  id="nexa-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@synapse.com"
+                  className="mb-4 w-full rounded-lg border border-white/14 bg-black/35 px-3.5 py-3 text-[0.95rem] text-white placeholder:text-white/40 focus:border-white/45 focus:outline-none"
+                />
+
+                <label htmlFor="nexa-password" className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[#c8c8c8]">
+                  PASSWORD
+                </label>
+                <input
+                  id="nexa-password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="mb-4 w-full rounded-lg border border-white/14 bg-black/35 px-3.5 py-3 text-[0.95rem] text-white placeholder:text-white/40 focus:border-white/45 focus:outline-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="mt-2 w-full cursor-pointer rounded-full border border-white/35 bg-gradient-to-br from-white/28 to-white/10 px-4 py-3 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {phase === "redirecting"
+                    ? "REINDIRIZZAMENTO…"
+                    : phase === "submitting"
+                      ? "ACCESSO IN CORSO…"
+                      : "ENTRA"}
+                </button>
+              </form>
+              {error ? <p className="mt-3 text-[0.85rem] text-rose-400">{error}</p> : null}
+              <button
+                type="button"
+                className="mt-3.5 w-full cursor-pointer border-none bg-transparent p-2 text-[0.75rem] font-medium uppercase tracking-[0.1em] text-white/55 hover:text-white/90"
+                onClick={() => setDialogOpen(false)}
+              >
+                CHIUDI
+              </button>
             </motion.div>
           </motion.div>
         ) : null}

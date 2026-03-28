@@ -66,6 +66,19 @@ body {
     background 0.9s cubic-bezier(0.33, 0, 0.2, 1);
 }
 
+/* Shell login Nexa HR — stesso sfondo di Plasticity (shared.css body) */
+.nexa-login-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  color: #ffffff;
+  background:
+    radial-gradient(1100px 640px at 100% -20%, rgba(179, 179, 179, 0.08), transparent 62%),
+    radial-gradient(900px 520px at 0% 110%, rgba(120, 120, 120, 0.1), transparent 64%),
+    linear-gradient(165deg, #050505, #0f0f0f 45%, #0b0b0b 85%);
+  background-attachment: fixed;
+}
+
 .card {
   @apply rounded-2xl border p-5 backdrop-blur-md transition-[border-color,background,box-shadow] duration-300;
   border-color: var(--card-border);
