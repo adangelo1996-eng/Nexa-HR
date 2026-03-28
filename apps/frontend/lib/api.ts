@@ -195,6 +195,51 @@ function getAuthHeaders(token: string): HeadersInit {
   };
 }
 
+function useSupabaseAttendance(): boolean {
+  const v = process.env.NEXT_PUBLIC_NEXA_USE_SUPABASE_ATTENDANCE?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function getSupabaseFunctionsBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, "");
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL richiesto per le Edge Functions");
+  }
+  return `${base}/functions/v1`;
+}
+
+function supabaseEdgeHeaders(token: string): Record<string, string> {
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  };
+  if (anon) {
+    headers.apikey = anon;
+  }
+  return headers;
+}
+
+async function fetchPaydayAttendance(
+  token: string,
+  searchParams: Record<string, string | undefined>,
+  init?: RequestInit
+): Promise<Response> {
+  const url = new URL(`${getSupabaseFunctionsBaseUrl()}/payday-attendance`);
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (v !== undefined && v !== "") {
+      url.searchParams.set(k, v);
+    }
+  }
+  return fetch(url.toString(), {
+    ...init,
+    headers: {
+      ...supabaseEdgeHeaders(token),
+      ...(init?.headers as Record<string, string> | undefined)
+    }
+  });
+}
+
 async function parseError(response: Response): Promise<never> {
   let detail = `Errore API (${response.status})`;
   try {
@@ -309,6 +354,16 @@ export async function fetchOrgChart(token: string): Promise<OrgChartResponse> {
 }
 
 export async function clock(token: string, type: "clock_in" | "clock_out"): Promise<TimeEntry> {
+  if (useSupabaseAttendance()) {
+    const response = await fetchPaydayAttendance(token, { action: "clock" }, {
+      method: "POST",
+      body: JSON.stringify({ type })
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    return (await response.json()) as TimeEntry;
+  }
   const response = await fetch(buildApiUrl("/attendance/clock"), {
     method: "POST",
     headers: getAuthHeaders(token),
@@ -321,6 +376,16 @@ export async function clock(token: string, type: "clock_in" | "clock_out"): Prom
 }
 
 export async function fetchAttendanceEntries(token: string, date?: string): Promise<TimeEntry[]> {
+  if (useSupabaseAttendance()) {
+    const response = await fetchPaydayAttendance(token, {
+      action: "entries",
+      date: date ?? undefined
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    return (await response.json()) as TimeEntry[];
+  }
   const search = date ? `?date=${encodeURIComponent(date)}` : "";
   const response = await fetch(buildApiUrl(`/attendance/entries${search}`), {
     method: "GET",
@@ -333,6 +398,16 @@ export async function fetchAttendanceEntries(token: string, date?: string): Prom
 }
 
 export async function fetchAttendanceSummary(token: string, date?: string): Promise<WorkdaySummary[]> {
+  if (useSupabaseAttendance()) {
+    const response = await fetchPaydayAttendance(token, {
+      action: "summary",
+      date: date ?? undefined
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    return (await response.json()) as WorkdaySummary[];
+  }
   const search = date ? `?date=${encodeURIComponent(date)}` : "";
   const response = await fetch(buildApiUrl(`/attendance/summary${search}`), {
     method: "GET",
@@ -345,6 +420,16 @@ export async function fetchAttendanceSummary(token: string, date?: string): Prom
 }
 
 export async function fetchAttendanceStatus(token: string, date?: string): Promise<AttendanceStatus> {
+  if (useSupabaseAttendance()) {
+    const response = await fetchPaydayAttendance(token, {
+      action: "status",
+      date: date ?? undefined
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    return (await response.json()) as AttendanceStatus;
+  }
   const search = date ? `?date=${encodeURIComponent(date)}` : "";
   const response = await fetch(buildApiUrl(`/attendance/status${search}`), {
     method: "GET",
@@ -360,6 +445,16 @@ export async function fetchAttendanceOvertimeAggregates(
   token: string,
   date?: string
 ): Promise<AttendanceOvertimeAggregates> {
+  if (useSupabaseAttendance()) {
+    const response = await fetchPaydayAttendance(token, {
+      action: "aggregates",
+      date: date ?? undefined
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    return (await response.json()) as AttendanceOvertimeAggregates;
+  }
   const search = date ? `?date=${encodeURIComponent(date)}` : "";
   const response = await fetch(buildApiUrl(`/attendance/aggregates${search}`), {
     method: "GET",

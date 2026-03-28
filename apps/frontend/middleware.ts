@@ -4,7 +4,6 @@ import type { NextRequest } from "next/server";
 const AUTH_COOKIE = "nexa_hr_token";
 
 function isPublicPath(pathname: string): boolean {
-  if (pathname === "/") return true;
   if (pathname.startsWith("/welcome")) return true;
   if (pathname.startsWith("/login")) return true;
   if (pathname.startsWith("/auth/sso")) return true;
@@ -18,13 +17,19 @@ export function middleware(request: NextRequest): NextResponse {
   const isLoginPage = pathname.startsWith("/login");
   const isHealthCheck = pathname === "/health";
 
+  if (!hasSession && pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
   if (!hasSession && isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
   if (!hasSession && !isPublicPath(pathname) && !isHealthCheck) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/login";
     url.search = "";
     return NextResponse.redirect(url);
   }
