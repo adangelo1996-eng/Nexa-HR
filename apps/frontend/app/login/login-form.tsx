@@ -94,7 +94,7 @@ export default function LoginForm(): React.JSX.Element {
       >
         <div className="mx-auto flex min-h-16 w-[min(1280px,95vw)] items-center justify-between gap-3.5 px-4 sm:px-5">
           <Link
-            href="/welcome"
+            href="/"
             className="inline-flex items-baseline no-underline [mix-blend-mode:normal]"
             aria-label="SYNAPSE NEXA HR"
           >
