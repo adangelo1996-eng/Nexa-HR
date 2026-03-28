@@ -1,9 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { isSynapseSuperuserEmail } from "./synapse-superuser";
 import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
-import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
+import { PermissionsService } from "./permissions.service";
 
 class AssignRoleDto {
   @IsString()
@@ -164,11 +165,19 @@ class UpdateUserDto {
   @IsOptional()
   @IsString()
   costCenterId?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(320)
+  email?: string;
 }
 
 @Controller("users")
 export class UserController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Get()
   @UseGuards(RoleGuard, NexaPermissionGuard)
@@ -179,9 +188,10 @@ export class UserController {
   }
 
   @Get("me")
-  async me(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async me(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
-    return { ...user, isSynapseSuperuser: isSynapseSuperuserEmail(user.email) };
+    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
+    return { ...user, isSynapseSuperuser: isSynapseSuperuserEmail(user.email), canNexaAdmin };
   }
 
   @Get("roles")

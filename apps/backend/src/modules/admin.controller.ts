@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Transform } from "class-transformer";
 import { IsArray, IsOptional, IsString } from "class-validator";
-import { RequireRole, RoleGuard } from "./auth";
+import { RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import {
   HUB_PERMISSIONS,
@@ -39,8 +40,20 @@ class UpdateRoleDto {
   permissions?: string[];
 }
 
+function optionalCostCenterCodeTransform(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value));
+  }
+  const s = String(value).trim();
+  return s.length === 0 ? undefined : s;
+}
+
 class CreateCostCenterDto {
   @IsOptional()
+  @Transform(({ value }) => optionalCostCenterCodeTransform(value))
   @IsString()
   code?: string;
 
@@ -54,6 +67,7 @@ class CreateCostCenterDto {
 
 class UpdateCostCenterDto {
   @IsOptional()
+  @Transform(({ value }) => optionalCostCenterCodeTransform(value))
   @IsString()
   code?: string;
 
@@ -68,7 +82,6 @@ class UpdateCostCenterDto {
 
 @Controller("admin")
 @UseGuards(RoleGuard, NexaPermissionGuard)
-@RequireRole("admin")
 export class AdminController {
   constructor(private readonly store: HrDataStore) {}
 

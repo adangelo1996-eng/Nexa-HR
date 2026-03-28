@@ -40,6 +40,7 @@ interface UserUpdateInput {
   firstName?: string;
   lastName?: string;
   fullName?: string;
+  email?: string;
   managerId?: string;
   role?: User["role"];
   roleId?: string;
@@ -441,6 +442,17 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (input.email !== undefined) {
+      const trimmed = input.email.trim();
+      if (!this.simpleEmailRegex().test(trimmed)) {
+        throw new BadRequestException("Formato email non valido");
+      }
+      const lower = trimmed.toLowerCase();
+      const others = (await this.listUsers()).filter((item) => item.id !== userId);
+      if (others.some((item) => item.email.toLowerCase() === lower)) {
+        throw new BadRequestException("Esiste gia un utente con questa email");
+      }
+    }
     const weeklyContractHours =
       input.weeklyContractHours !== undefined
         ? this.normalizeWeeklyContractHours(input.weeklyContractHours)
@@ -448,6 +460,7 @@ export class HrDataStore {
     const nextFirstName = input.firstName ?? user.firstName ?? user.fullName.split(" ")[0] ?? "";
     const nextLastName = input.lastName ?? user.lastName ?? user.fullName.split(" ").slice(1).join(" ") ?? "";
     const fullName = input.fullName ?? this.computeFullName(nextFirstName, nextLastName);
+    const nextEmail = input.email !== undefined ? input.email.trim() : user.email;
     const payload: User = {
       ...user,
       ...input,
@@ -455,7 +468,8 @@ export class HrDataStore {
       dailyTargetSeconds: this.computeDailyTargetSecondsFromWeekly(weeklyContractHours),
       firstName: nextFirstName,
       lastName: nextLastName,
-      fullName
+      fullName,
+      email: nextEmail
     };
     if (this.useDb) {
       const { data } = await this.supabase!

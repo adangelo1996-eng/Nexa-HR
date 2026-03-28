@@ -11,7 +11,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
+import { CurrentAuth, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import {
   assertImportSuperuser,
@@ -24,7 +24,6 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 @Controller("admin/import")
 @UseGuards(RoleGuard, NexaPermissionGuard)
-@RequireRole("admin")
 export class ImportController {
   constructor(
     private readonly store: HrDataStore,

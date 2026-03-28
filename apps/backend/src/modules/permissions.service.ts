@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import type { AuthRole } from "./auth";
 import { ALL_CATALOG_PERMISSION_IDS, LEGACY_TO_NEW_KEYS } from "./permission-catalog";
 import { HrDataStore } from "./hr-data.store";
+import { isSynapseSuperuserEmail } from "./synapse-superuser";
 
 @Injectable()
 export class PermissionsService {
@@ -63,5 +65,25 @@ export class PermissionsService {
       }
     }
     return true;
+  }
+
+  /**
+   * Chi può aprire l’area /admin nel frontend: JWT admin, superuser Synapse, o almeno una lettura su moduli amministrativi.
+   */
+  async canAccessNexaAdminUi(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
+    if (jwtRole === "admin") {
+      return true;
+    }
+    if (isSynapseSuperuserEmail(email)) {
+      return true;
+    }
+    const expanded = await this.getExpandedPermissionsForUserId(userId);
+    const gateKeys = [
+      "nexa.admin_users:read",
+      "nexa.admin_roles:read",
+      "nexa.admin_cost_centers:read",
+      "nexa.import:read"
+    ] as const;
+    return gateKeys.some((k) => this.hasKey(expanded, k));
   }
 }

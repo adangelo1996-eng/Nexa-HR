@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
-import { getSessionUser } from "@/lib/auth-session";
+import { getSessionUser, sessionCanNexaAdmin } from "@/lib/auth-session";
 import { useEffect, useState } from "react";
 
 /**
@@ -13,12 +14,13 @@ import { useEffect, useState } from "react";
  */
 export function AppBrandBar(): React.JSX.Element {
   const { theme, toggleTheme, mounted } = useTheme();
+  const pathname = usePathname();
   const [showAdmin, setShowAdmin] = useState(false);
 
   useEffect(() => {
     const u = getSessionUser();
-    setShowAdmin(u?.role === "admin");
-  }, []);
+    setShowAdmin(sessionCanNexaAdmin(u));
+  }, [pathname]);
 
   return (
     <header

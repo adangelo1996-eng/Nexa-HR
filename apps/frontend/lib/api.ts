@@ -1,6 +1,6 @@
 "use client";
 
-import { getSessionUser, type SessionUser, type UserRole } from "./auth-session";
+import { getSessionUser, saveSession, type SessionUser, type UserRole } from "./auth-session";
 
 export interface Payslip {
   id: string;
@@ -195,6 +195,7 @@ export interface UpdateUserPayload {
   firstName?: string;
   lastName?: string;
   fullName?: string;
+  email?: string;
   role?: UserRole;
   managerId?: string;
   roleId?: string;
@@ -332,7 +333,11 @@ export async function fetchCurrentUser(token: string): Promise<SessionUser> {
     }
     await parseError(response);
   }
-  return (await response.json()) as SessionUser;
+  const me = (await response.json()) as SessionUser;
+  if (typeof window !== "undefined") {
+    saveSession(token, me);
+  }
+  return me;
 }
 
 export async function fetchPayslips(token: string): Promise<Payslip[]> {

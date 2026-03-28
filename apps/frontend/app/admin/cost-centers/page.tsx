@@ -12,13 +12,27 @@ import {
   updateAdminCostCenter,
   type CostCenter
 } from "@/lib/api";
-import { clearSession, getToken } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanNexaAdmin,
+  shouldClearSessionOnUnauthorizedApiError
+} from "@/lib/auth-session";
+import { inputOptionalClass, inputRequiredClass } from "@/lib/form-field-styles";
+
+function generateTenDigitCostCode(): string {
+  const suffix = Math.floor(Math.random() * 10_000_000)
+    .toString()
+    .padStart(7, "0");
+  return `880${suffix}`;
+}
 
 export default function AdminCostCentersPage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
+  const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,7 +53,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const currentUser = await fetchCurrentUser(tokenValue);
-        if (currentUser.role !== "admin") {
+        if (!sessionCanNexaAdmin(currentUser)) {
           router.replace("/");
           return;
         }
@@ -47,8 +61,10 @@ export default function AdminCostCentersPage(): React.JSX.Element {
         setCostCenters(list);
         setSelectedId(list[0]?.id ?? "");
       } catch (loadError) {
-        clearSession();
-        router.replace("/login");
+        if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
+          clearSession();
+          router.replace("/login");
+        }
         setError(loadError instanceof Error ? loadError.message : "Errore caricamento centri di costo");
       } finally {
         setLoading(false);
@@ -69,13 +85,25 @@ export default function AdminCostCentersPage(): React.JSX.Element {
 
   async function onCreate(): Promise<void> {
     if (!token) return;
+    const name = newName.trim();
+    if (!name) {
+      setError("Il nome è obbligatorio.");
+      return;
+    }
+    const codeDigits = newCode.replace(/\D/g, "").slice(0, 10);
+    if (newCode.trim() && codeDigits.length !== 10) {
+      setError("Il codice deve essere esattamente 10 cifre numeriche.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const created = await createAdminCostCenter(token, {
-        name: newName,
-        description: newDescription || undefined
+        name,
+        description: newDescription.trim() || undefined,
+        ...(codeDigits.length === 10 ? { code: codeDigits } : {})
       });
+      setNewCode("");
       setNewName("");
       setNewDescription("");
       await refresh();
@@ -89,12 +117,22 @@ export default function AdminCostCentersPage(): React.JSX.Element {
 
   async function onUpdate(): Promise<void> {
     if (!token || !selected) return;
+    const codeDigits = selected.code.replace(/\D/g, "").slice(0, 10);
+    if (codeDigits.length !== 10) {
+      setError("Il codice deve essere esattamente 10 cifre numeriche.");
+      return;
+    }
+    const name = selected.name.trim();
+    if (!name) {
+      setError("Il nome è obbligatorio.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       await updateAdminCostCenter(token, selected.id, {
-        code: selected.code,
-        name: selected.name,
+        code: codeDigits,
+        name,
         description: selected.description
       });
       await refresh();
@@ -171,27 +209,40 @@ export default function AdminCostCentersPage(): React.JSX.Element {
           title={selected ? "Dettaglio centro di costo" : "Nuovo centro di costo"}
           description={
             selected
-              ? "Il codice a 10 cifre è assegnato dal sistema e non è modificabile."
-              : "Il codice numerico a 10 cifre viene generato automaticamente alla creazione."
+              ? "Codice numerico a 10 cifre: genera una proposta o modifica manualmente prima di salvare."
+              : "Codice a 10 cifre: usa Genera o inserisci manualmente; se lasci vuoto, il sistema assegna un codice."
           }
         >
           {selected ? (
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Codice (sistema)</span>
-                <input
-                  value={selected.code}
-                  readOnly
-                  disabled
-                  className="cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300"
-                />
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
+                <span className="text-slate-700 dark:text-slate-300">Codice (10 cifre) *</span>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={selected.code}
+                    onChange={(event) =>
+                      updateSelected({ code: event.target.value.replace(/\D/g, "").slice(0, 10) })
+                    }
+                    inputMode="numeric"
+                    maxLength={10}
+                    className={`min-w-0 flex-1 ${inputRequiredClass}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0"
+                    onClick={() => updateSelected({ code: generateTenDigitCostCode() })}
+                  >
+                    Genera
+                  </Button>
+                </div>
               </label>
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-700 dark:text-slate-300">Nome</span>
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
+                <span className="text-slate-700 dark:text-slate-300">Nome *</span>
                 <input
                   value={selected.name}
                   onChange={(event) => updateSelected({ name: event.target.value })}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                  className={inputRequiredClass}
                 />
               </label>
               <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -199,7 +250,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                 <input
                   value={selected.description ?? ""}
                   onChange={(event) => updateSelected({ description: event.target.value || undefined })}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                  className={inputOptionalClass}
                 />
               </label>
               <div className="md:col-span-2 flex gap-2">
@@ -218,11 +269,27 @@ export default function AdminCostCentersPage(): React.JSX.Element {
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs md:col-span-2">
-                <span className="text-slate-700 dark:text-slate-300">Nome</span>
+                <span className="text-slate-700 dark:text-slate-300">Codice (10 cifre)</span>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={newCode}
+                    onChange={(event) => setNewCode(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="Opzionale — Genera o 10 cifre"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className={`min-w-0 flex-1 ${inputOptionalClass}`}
+                  />
+                  <Button type="button" variant="secondary" className="shrink-0" onClick={() => setNewCode(generateTenDigitCostCode())}>
+                    Genera
+                  </Button>
+                </div>
+              </label>
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
+                <span className="text-slate-700 dark:text-slate-300">Nome *</span>
                 <input
                   value={newName}
                   onChange={(event) => setNewName(event.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                  className={inputRequiredClass}
                 />
               </label>
               <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -230,7 +297,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                 <input
                   value={newDescription}
                   onChange={(event) => setNewDescription(event.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                  className={inputOptionalClass}
                 />
               </label>
               <div className="md:col-span-2">

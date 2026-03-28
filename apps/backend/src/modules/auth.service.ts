@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { sign } from "jsonwebtoken";
 import type { AuthRole } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { PermissionsService } from "./permissions.service";
 import crypto from "node:crypto";
 
 interface LoginUser {
@@ -11,6 +12,7 @@ interface LoginUser {
   role: AuthRole;
   tenantId: string;
   companyId?: string;
+  canNexaAdmin: boolean;
 }
 
 interface SynapseSsoPayload {
@@ -23,7 +25,10 @@ interface SynapseSsoPayload {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   async login(email: string, password: string): Promise<{ token: string; user: LoginUser }> {
     const user = (await this.store.findUserByEmail(email)) as LoginUser | null;
@@ -48,6 +53,7 @@ export class AuthService {
 
     const tenantId = user.companyId || "synapse-default";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
+    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
     return {
       token,
       user: {
@@ -55,7 +61,9 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        tenantId
+        tenantId,
+        companyId: user.companyId,
+        canNexaAdmin
       }
     };
   }
@@ -79,6 +87,7 @@ export class AuthService {
 
     const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
+    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
     return {
       token,
       user: {
@@ -86,7 +95,9 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        tenantId
+        tenantId,
+        companyId: user.companyId,
+        canNexaAdmin
       }
     };
   }

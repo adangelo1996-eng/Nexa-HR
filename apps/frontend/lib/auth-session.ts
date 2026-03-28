@@ -23,6 +23,30 @@ export interface SessionUser {
   vacationAllowanceDays?: number;
   /** Presente dopo GET /users/me */
   isSynapseSuperuser?: boolean;
+  /** Area /admin (ruoli, centri di costo, utenti con permessi adeguati) */
+  canNexaAdmin?: boolean;
+}
+
+/** Accesso UI admin Nexa: flag dal backend o fallback ruolo legacy `admin`. */
+export function sessionCanNexaAdmin(
+  u: Pick<SessionUser, "role" | "canNexaAdmin"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (u.canNexaAdmin === true) {
+    return true;
+  }
+  if (u.canNexaAdmin === false) {
+    return false;
+  }
+  return u.role === "admin";
+}
+
+/** Solo 401 / token: non sloggare su 403 permessi o errori di rete. */
+export function shouldClearSessionOnUnauthorizedApiError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : "";
+  return /\(401\)|Token non valido|Autenticazione richiesta|scaduto/i.test(msg);
 }
 
 const TOKEN_KEY = "nexa_hr_auth_token";

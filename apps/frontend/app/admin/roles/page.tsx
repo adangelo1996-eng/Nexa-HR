@@ -15,7 +15,12 @@ import {
   type PermissionDefinition,
   type Role
 } from "@/lib/api";
-import { clearSession, getToken } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanNexaAdmin,
+  shouldClearSessionOnUnauthorizedApiError
+} from "@/lib/auth-session";
 import { expandRolePermissions } from "@/lib/permission-legacy";
 
 const CATEGORY_LABEL: Record<keyof PermissionCatalogResponse, string> = {
@@ -112,7 +117,7 @@ export default function AdminRolesPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const currentUser = await fetchCurrentUser(tokenValue);
-        if (currentUser.role !== "admin") {
+        if (!sessionCanNexaAdmin(currentUser)) {
           router.replace("/");
           return;
         }
@@ -124,8 +129,10 @@ export default function AdminRolesPage(): React.JSX.Element {
         setCatalog(cat);
         setSelectedRoleId(list[0]?.id ?? "");
       } catch (loadError) {
-        clearSession();
-        router.replace("/login");
+        if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
+          clearSession();
+          router.replace("/login");
+        }
         setError(loadError instanceof Error ? loadError.message : "Errore caricamento ruoli");
       } finally {
         setLoading(false);

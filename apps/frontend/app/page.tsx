@@ -30,7 +30,13 @@ import {
   type OrgChartResponse,
   type Payslip
 } from "@/lib/api";
-import { clearSession, getToken, getSessionUser, type SessionUser } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  getSessionUser,
+  sessionCanNexaAdmin,
+  type SessionUser
+} from "@/lib/auth-session";
 
 export default function HomePage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
@@ -283,7 +289,7 @@ export default function HomePage(): React.JSX.Element {
                 Calcolo cedolino
               </Link>
             ) : null}
-            {user.role === "admin" ? (
+            {sessionCanNexaAdmin(user) ? (
               <Link
                 href="/admin"
                 className="rounded-lg border border-slate-300 px-3 py-1 text-slate-800 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"

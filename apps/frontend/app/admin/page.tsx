@@ -19,7 +19,14 @@ import {
   type Role,
   type User
 } from "@/lib/api";
-import { clearSession, getToken, type SessionUser } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanNexaAdmin,
+  shouldClearSessionOnUnauthorizedApiError,
+  type SessionUser
+} from "@/lib/auth-session";
+import { inputOptionalClass, inputRequiredClass, selectOptionalClass, selectRequiredClass } from "@/lib/form-field-styles";
 import { previewAutoSynapseEmail, synapseEmailDomain } from "@/lib/email-preview";
 
 const WIZARD_STEPS = 4 as const;
@@ -67,7 +74,7 @@ export default function AdminPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const currentUser = await fetchCurrentUser(tokenValue);
-        if (currentUser.role !== "admin") {
+        if (!sessionCanNexaAdmin(currentUser)) {
           router.replace("/");
           return;
         }
@@ -82,8 +89,10 @@ export default function AdminPage(): React.JSX.Element {
         setCostCenters(allCostCenters);
         setSelectedUserId(allUsers[0]?.id ?? "");
       } catch (loadError) {
-        clearSession();
-        router.replace("/login");
+        if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
+          clearSession();
+          router.replace("/login");
+        }
         setError(loadError instanceof Error ? loadError.message : "Errore caricamento area admin");
       } finally {
         setLoading(false);
@@ -143,10 +152,16 @@ export default function AdminPage(): React.JSX.Element {
     if (!token || !selectedUser) {
       return;
     }
+    const emailTrim = selectedUser.email?.trim() ?? "";
+    if (!emailTrim) {
+      setError("L'email è obbligatoria.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       await updateUser(token, selectedUser.id, {
+        email: emailTrim,
         firstName: selectedUser.firstName,
         lastName: selectedUser.lastName,
         role: selectedUser.role,
@@ -329,7 +344,7 @@ export default function AdminPage(): React.JSX.Element {
                     <input
                       value={newUser.firstName}
                       onChange={(event) => setNewUser((c) => ({ ...c, firstName: event.target.value }))}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -337,7 +352,7 @@ export default function AdminPage(): React.JSX.Element {
                     <input
                       value={newUser.lastName}
                       onChange={(event) => setNewUser((c) => ({ ...c, lastName: event.target.value }))}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -351,7 +366,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, email: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
@@ -373,7 +388,7 @@ export default function AdminPage(): React.JSX.Element {
                           role: event.target.value as CreateUserPayload["role"]
                         }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={selectRequiredClass}
                     >
                       <option value="employee">employee</option>
                       <option value="manager_controllo_gestione">manager_controllo_gestione</option>
@@ -394,7 +409,7 @@ export default function AdminPage(): React.JSX.Element {
                           ...(mapped ? { role: mapped } : {})
                         }));
                       }}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={selectRequiredClass}
                     >
                       <option value="">Seleziona…</option>
                       {roles.map((role) => (
@@ -411,7 +426,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, costCenterId: event.target.value }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={selectRequiredClass}
                     >
                       <option value="">Seleziona…</option>
                       {costCenters.map((center) => (
@@ -431,7 +446,7 @@ export default function AdminPage(): React.JSX.Element {
                           managerId: event.target.value || undefined
                         }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={selectOptionalClass}
                     >
                       <option value="">Nessun manager</option>
                       {users.map((item) => (
@@ -460,7 +475,7 @@ export default function AdminPage(): React.JSX.Element {
                           weeklyContractHours: Number(event.target.value)
                         }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -471,7 +486,7 @@ export default function AdminPage(): React.JSX.Element {
                         setNewUser((c) => ({ ...c, contractType: event.target.value }))
                       }
                       placeholder="es. Indeterminato"
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -487,7 +502,7 @@ export default function AdminPage(): React.JSX.Element {
                           vacationAllowanceDays: Number(event.target.value)
                         }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                 </div>
@@ -502,7 +517,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, avsNumber: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -512,7 +527,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, iban: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -522,7 +537,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, bankName: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -532,7 +547,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, bicSwift: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -542,7 +557,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, accountHolder: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -552,7 +567,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, phone: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -563,7 +578,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, birthDate: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -573,7 +588,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) =>
                         setNewUser((c) => ({ ...c, address: event.target.value || undefined }))
                       }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                      className={inputOptionalClass}
                     />
                   </label>
                 </div>
@@ -606,28 +621,64 @@ export default function AdminPage(): React.JSX.Element {
           ) : (
             <>
               <div className="grid gap-3 md:grid-cols-2">
+                <div className="md:col-span-2 border-b border-slate-200 pb-3 dark:border-slate-700/80">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                    Risorse umane e anagrafica
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-500">
+                    Contatti, organizzazione e dati utili a payroll e presenze.
+                  </p>
+                </div>
+                <label className="md:col-span-2 flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Email *</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={selectedUser ? selectedUser.email : ""}
+                    onChange={(event) =>
+                      selectedUser ? updateSelectedUser({ email: event.target.value }) : undefined
+                    }
+                    className={inputRequiredClass}
+                  />
+                </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Nome</span>
+                  <span className="text-slate-700 dark:text-slate-300">ID utente (sistema)</span>
+                  <input
+                    value={selectedUser ? selectedUser.id : ""}
+                    readOnly
+                    className={`cursor-not-allowed opacity-80 ${inputOptionalClass}`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">ID azienda</span>
+                  <input
+                    value={selectedUser ? selectedUser.companyId : ""}
+                    readOnly
+                    className={`cursor-not-allowed opacity-80 ${inputOptionalClass}`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Nome *</span>
                   <input
                     value={selectedUser ? selectedUser.firstName ?? "" : ""}
                     onChange={(event) =>
                       selectedUser ? updateSelectedUser({ firstName: event.target.value }) : undefined
                     }
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Cognome</span>
+                  <span className="text-slate-700 dark:text-slate-300">Cognome *</span>
                   <input
                     value={selectedUser ? selectedUser.lastName ?? "" : ""}
                     onChange={(event) =>
                       selectedUser ? updateSelectedUser({ lastName: event.target.value }) : undefined
                     }
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Ruolo accesso</span>
+                  <span className="text-slate-700 dark:text-slate-300">Ruolo accesso *</span>
                   <select
                     value={selectedUser ? selectedUser.role : "employee"}
                     onChange={(event) =>
@@ -635,7 +686,7 @@ export default function AdminPage(): React.JSX.Element {
                         ? updateSelectedUser({ role: event.target.value as User["role"] })
                         : undefined
                     }
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={selectRequiredClass}
                   >
                     <option value="employee">employee</option>
                     <option value="manager_controllo_gestione">manager_controllo_gestione</option>
@@ -656,7 +707,7 @@ export default function AdminPage(): React.JSX.Element {
                           : undefined;
                       updateSelectedUser({ roleId: value, ...(mappedRole ? { role: mappedRole } : {}) });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={selectOptionalClass}
                   >
                     <option value="">Nessun ruolo organizzativo</option>
                     {roles.map((role) => (
@@ -674,7 +725,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ costCenterId: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={selectOptionalClass}
                   >
                     <option value="">Nessun centro di costo</option>
                     {costCenters.map((center) => (
@@ -692,7 +743,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ managerId: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={selectOptionalClass}
                   >
                     <option value="">Nessun manager</option>
                     {users.map((item) => (
@@ -703,7 +754,7 @@ export default function AdminPage(): React.JSX.Element {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Ore contrattuali settimanali</span>
+                  <span className="text-slate-700 dark:text-slate-300">Ore contrattuali settimanali *</span>
                   <input
                     type="number"
                     min={1}
@@ -714,18 +765,18 @@ export default function AdminPage(): React.JSX.Element {
                       const value = Number(event.target.value);
                       if (selectedUser) updateSelectedUser({ weeklyContractHours: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Tipo contratto</span>
+                  <span className="text-slate-700 dark:text-slate-300">Tipo contratto *</span>
                   <input
                     value={selectedUser ? selectedUser.contractType ?? "" : ""}
                     onChange={(event) => {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ contractType: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -736,7 +787,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ avsNumber: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -750,7 +801,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = Number(event.target.value);
                       if (selectedUser) updateSelectedUser({ vacationAllowanceDays: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -761,7 +812,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ iban: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -772,7 +823,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ bankName: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -783,7 +834,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ bicSwift: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -794,7 +845,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ accountHolder: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -805,7 +856,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ phone: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -817,7 +868,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ birthDate: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -828,7 +879,7 @@ export default function AdminPage(): React.JSX.Element {
                       const value = event.target.value || undefined;
                       if (selectedUser) updateSelectedUser({ address: value });
                     }}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                    className={inputOptionalClass}
                   />
                 </label>
               </div>
