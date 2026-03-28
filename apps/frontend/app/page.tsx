@@ -42,14 +42,14 @@ function HomeLanding(): React.JSX.Element {
       <h1 className="mb-6 flex max-w-[22ch] flex-col items-center gap-[0.65rem]">
         <span
           className="font-synapse text-[clamp(2.75rem,12vw,5.25rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-slate-900 dark:text-[#f5f6fb] dark:[text-shadow:0_0_40px_rgba(255,255,255,0.12),0_0_80px_rgba(255,255,255,0.06)]"
-          style={{ fontSynthesis: "none" }}
+          style={{ fontSynthesis: "none", fontFamily: "var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif" }}
         >
           NEXA HR
         </span>
       </h1>
 
       <p className="max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-400">
-        Un unico punto per presenze, ferie, organigramma e payroll CH: priorità chiare e controllo operativo quotidiano.
+        Un unico punto per presenze, ferie, organigramma e payroll: priorità chiare e controllo operativo quotidiano.
       </p>
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
         <Link

@@ -39,9 +39,6 @@ export function AppBrandBar(): React.JSX.Element {
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 sm:block">
-            Enterprise HR · CH
-          </span>
           <Button
             type="button"
             variant="ghost"

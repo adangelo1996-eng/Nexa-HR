@@ -1,7 +1,6 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
@@ -92,15 +91,14 @@ export default function LoginForm(): React.JSX.Element {
           background: "linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05))"
         }}
       >
-        <div className="mx-auto flex min-h-16 w-[min(1280px,95vw)] items-center justify-between gap-3.5 px-4 sm:px-5">
-          <Link
-            href="/"
-            className="inline-flex items-baseline no-underline [mix-blend-mode:normal]"
+        <div className="mx-auto flex min-h-16 w-[min(1280px,95vw)] items-center px-4 sm:px-5">
+          <div
+            className="inline-flex items-baseline [mix-blend-mode:normal]"
             aria-label="SYNAPSE NEXA HR"
           >
             <span
               className="font-synapse text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
-              style={{ fontSynthesis: "none" }}
+              style={{ fontSynthesis: "none", fontFamily: "var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif" }}
             >
               SYNAPSE
             </span>
@@ -113,15 +111,7 @@ export default function LoginForm(): React.JSX.Element {
             >
               NEXA HR
             </span>
-          </Link>
-          <nav className="flex items-center gap-3" aria-label="Navigazione">
-            <Link
-              href="/"
-              className="rounded-full border border-transparent px-3 py-1.5 text-[0.92rem] text-white no-underline transition duration-300 [mix-blend-mode:difference] [text-shadow:0_0_14px_rgba(0,0,0,0.22)] hover:-translate-y-px hover:scale-[1.04] hover:[text-shadow:0_0_16px_rgba(163,181,205,0.42)]"
-            >
-              ← HOME
-            </Link>
-          </nav>
+          </div>
         </div>
       </header>
 
@@ -155,6 +145,7 @@ export default function LoginForm(): React.JSX.Element {
             className="m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] font-synapse text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
             style={{
               fontSynthesis: "none",
+              fontFamily: "var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif",
               textShadow: "0 0 40px rgba(255, 255, 255, 0.12), 0 0 80px rgba(255, 255, 255, 0.06)"
             }}
           >
@@ -169,13 +160,6 @@ export default function LoginForm(): React.JSX.Element {
           >
             LOGIN
           </button>
-
-          <Link
-            href="/"
-            className="mt-7 inline-block text-[0.82rem] font-medium uppercase tracking-[0.06em] text-white/[0.55] no-underline transition-colors hover:text-white/[0.85]"
-          >
-            ← TORNA ALLA HOME
-          </Link>
         </motion.div>
       </div>
 
