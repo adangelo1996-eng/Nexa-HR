@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 
 /**
  * Landing pubblica prima dell’accesso (stesso spirito della home Plasticity).
+ * Link primario (stile Button primary) — niente `asChild` sul Button custom: evita errori TypeScript al build.
  */
 export default function WelcomePage(): React.JSX.Element {
   return (
@@ -21,9 +21,12 @@ export default function WelcomePage(): React.JSX.Element {
         operativo quotidiano.
       </p>
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-        <Button asChild size="md" variant="primary" className="min-w-[10rem]">
-          <Link href="/login">Login</Link>
-        </Button>
+        <Link
+          href="/login"
+          className="inline-flex min-w-[10rem] items-center justify-center rounded-lg bg-synapse-gold px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-synapse-gold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105 dark:focus-visible:ring-synapse-gold-bright/50 dark:focus-visible:ring-offset-[#0b0b0b]"
+        >
+          Login
+        </Link>
       </div>
     </main>
   );
