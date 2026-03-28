@@ -16,13 +16,15 @@ interface ApprovalRecord {
 interface UserCreateInput {
   firstName: string;
   lastName: string;
+  /** Se valorizzata, ha priorità sulla generazione automatica da nome/cognome */
+  email?: string;
   role: User["role"];
   managerId?: string;
   companyId: string;
-  roleId?: string;
-  costCenterId?: string;
-  contractType?: string;
-  weeklyContractHours?: number;
+  roleId: string;
+  costCenterId: string;
+  contractType: string;
+  weeklyContractHours: number;
   avsNumber?: string;
   iban?: string;
   bankName?: string;
@@ -75,7 +77,7 @@ export class HrDataStore {
       lastName: "Admin",
       role: "admin",
       companyId: "comp-1",
-      roleId: "r1",
+      roleId: "r-super",
       costCenterId: "cc-1",
       weeklyContractHours: 40,
       dailyTargetSeconds: 28800,
@@ -115,6 +117,12 @@ export class HrDataStore {
   private roles: Role[] = [
     { id: "r1", name: "admin", permissions: ["*"] },
     {
+      id: "r-super",
+      name: "Superuser",
+      description: "Tutte le autorizzazioni sul catalogo permessi",
+      permissions: ["*"]
+    },
+    {
       id: "r2",
       name: "manager_controllo_gestione",
       permissions: ["approve:leave", "approve:sickness", "read:team", "read:payslip:team"]
@@ -122,7 +130,14 @@ export class HrDataStore {
     {
       id: "r3",
       name: "employee",
-      permissions: ["clock", "request:leave", "request:sickness", "read:self", "read:payslip:self"]
+      permissions: [
+        "clock",
+        "request:leave",
+        "request:sickness",
+        "read:self",
+        "read:payslip:self",
+        "nexa.payroll:write"
+      ]
     }
   ];
 
@@ -309,13 +324,19 @@ export class HrDataStore {
       .replace(/[^a-z0-9]+/g, ".");
   }
 
+  private emailDomain(): string {
+    const d = process.env.SYNAPSE_EMAIL_DOMAIN?.trim().toLowerCase();
+    return d && d.length > 0 ? d.replace(/^@/, "") : "synapse.com";
+  }
+
   private composeEmail(firstName: string, lastName: string): string {
     const localPart = `${this.normalizePart(firstName)}.${this.normalizePart(lastName)}`.replace(/\.+/g, ".");
-    return `${localPart}@payday.local`;
+    return `${localPart}@${this.emailDomain()}`;
   }
 
   private async getUniqueEmail(firstName: string, lastName: string): Promise<string> {
     const users = await this.listUsers();
+    const domain = this.emailDomain();
     const base = this.composeEmail(firstName, lastName);
     if (!users.some((item) => item.email.toLowerCase() === base.toLowerCase())) {
       return base;
@@ -323,13 +344,37 @@ export class HrDataStore {
     let suffix = 1;
     while (suffix < 5000) {
       const [local] = base.split("@");
-      const candidate = `${local}${suffix}@payday.local`;
+      const candidate = `${local}${suffix}@${domain}`;
       if (!users.some((item) => item.email.toLowerCase() === candidate.toLowerCase())) {
         return candidate;
       }
       suffix += 1;
     }
     throw new BadRequestException("Impossibile generare una email univoca");
+  }
+
+  private simpleEmailRegex(): RegExp {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  }
+
+  private async resolveCreateEmail(
+    firstName: string,
+    lastName: string,
+    explicit?: string
+  ): Promise<string> {
+    const trimmed = explicit?.trim();
+    if (trimmed) {
+      if (!this.simpleEmailRegex().test(trimmed)) {
+        throw new BadRequestException("Formato email non valido");
+      }
+      const users = await this.listUsers();
+      const lower = trimmed.toLowerCase();
+      if (users.some((item) => item.email.toLowerCase() === lower)) {
+        throw new BadRequestException("Esiste gia un utente con questa email");
+      }
+      return trimmed;
+    }
+    return this.getUniqueEmail(firstName, lastName);
   }
 
   private computeFullName(firstName: string, lastName: string): string {
@@ -360,7 +405,7 @@ export class HrDataStore {
     await this.validateReferenceIds(input.roleId, input.costCenterId);
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
-    const email = await this.getUniqueEmail(firstName, lastName);
+    const email = await this.resolveCreateEmail(firstName, lastName, input.email);
     const user: User = {
       id: `u-${Date.now()}`,
       firstName,
@@ -510,8 +555,8 @@ export class HrDataStore {
     if (!role) {
       throw new NotFoundException("Ruolo non trovato");
     }
-    if (role.name === "admin") {
-      throw new BadRequestException("Il ruolo admin non puo essere eliminato");
+    if (role.name === "admin" || role.name === "Superuser") {
+      throw new BadRequestException("Questo ruolo di sistema non puo essere eliminato");
     }
     const remainingAdmin = currentRoles.some((item) => item.id !== roleId && item.name === "admin");
     if (!remainingAdmin) {
@@ -538,11 +583,33 @@ export class HrDataStore {
     return this.costCenters;
   }
 
-  async createCostCenter(input: { code: string; name: string; description?: string }): Promise<CostCenter> {
-    const code = input.code.trim();
+  private async generateUniqueCostCenterCode10(): Promise<string> {
+    const centers = await this.listCostCenters();
+    const existing = new Set(centers.map((c) => c.code.toLowerCase()));
+    for (let attempt = 0; attempt < 8000; attempt++) {
+      const suffix = Math.floor(Math.random() * 10_000_000)
+        .toString()
+        .padStart(7, "0");
+      const code = `880${suffix}`;
+      if (code.length === 10 && !existing.has(code.toLowerCase())) {
+        return code;
+      }
+    }
+    throw new BadRequestException("Impossibile generare un codice centro di costo univoco");
+  }
+
+  async createCostCenter(input: { code?: string; name: string; description?: string }): Promise<CostCenter> {
     const name = input.name.trim();
-    if (!code || !name) {
-      throw new BadRequestException("Codice e nome centro di costo sono obbligatori");
+    if (!name) {
+      throw new BadRequestException("Nome centro di costo obbligatorio");
+    }
+    let code = input.code?.trim() ?? "";
+    if (!code) {
+      code = await this.generateUniqueCostCenterCode10();
+    } else {
+      if (!/^\d{10}$/.test(code)) {
+        throw new BadRequestException("Il codice deve essere esattamente 10 cifre numeriche");
+      }
     }
     const existing = (await this.listCostCenters()).find(
       (center) => center.code.toLowerCase() === code.toLowerCase()

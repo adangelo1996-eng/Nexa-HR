@@ -7,9 +7,13 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { AdminController } from "./admin.controller";
 import { HrDataStore } from "./hr-data.store";
+import { ImportController } from "./import.controller";
+import { ImportService } from "./import.service";
 import { LeaveController } from "./leave.controller";
+import { NexaPermissionGuard } from "./nexa-permission.guard";
 import { OrgController } from "./org.controller";
 import { PayrollController } from "./payroll.controller";
+import { PermissionsService } from "./permissions.service";
 import { SicknessController } from "./sickness.controller";
 import { UserController } from "./user.controller";
 
@@ -17,6 +21,7 @@ import { UserController } from "./user.controller";
   controllers: [
     AuthController,
     AdminController,
+    ImportController,
     UserController,
     AttendanceController,
     ApprovalsController,
@@ -27,7 +32,10 @@ import { UserController } from "./user.controller";
   ],
   providers: [
     HrDataStore,
+    ImportService,
     AuthService,
+    PermissionsService,
+    NexaPermissionGuard,
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor

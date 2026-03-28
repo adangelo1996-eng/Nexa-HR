@@ -19,7 +19,6 @@ export default function AdminCostCentersPage(): React.JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [loading, setLoading] = useState(true);
@@ -73,15 +72,14 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     setSubmitting(true);
     setError(null);
     try {
-      await createAdminCostCenter(token, {
-        code: newCode,
+      const created = await createAdminCostCenter(token, {
         name: newName,
         description: newDescription || undefined
       });
-      setNewCode("");
       setNewName("");
       setNewDescription("");
       await refresh();
+      setSelectedId(created.id);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore creazione centro di costo");
     } finally {
@@ -171,16 +169,21 @@ export default function AdminCostCentersPage(): React.JSX.Element {
 
         <GlassCard
           title={selected ? "Dettaglio centro di costo" : "Nuovo centro di costo"}
-          description="Compila codice, nome e descrizione."
+          description={
+            selected
+              ? "Il codice a 10 cifre è assegnato dal sistema e non è modificabile."
+              : "Il codice numerico a 10 cifre viene generato automaticamente alla creazione."
+          }
         >
           {selected ? (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Codice</span>
+                <span className="text-slate-300">Codice (sistema)</span>
                 <input
                   value={selected.code}
-                  onChange={(event) => updateSelected({ code: event.target.value })}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
+                  readOnly
+                  disabled
+                  className="cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300"
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs">
@@ -214,15 +217,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-300">Codice</span>
-                <input
-                  value={newCode}
-                  onChange={(event) => setNewCode(event.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-100"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
                 <span className="text-slate-700 dark:text-slate-300">Nome</span>
                 <input
                   value={newName}

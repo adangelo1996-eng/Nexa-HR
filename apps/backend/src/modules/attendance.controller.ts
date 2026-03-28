@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { IsIn, IsISO8601, IsOptional, IsString } from "class-validator";
 import { CurrentAuth } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class ClockDto {
   @IsIn(["clock_in", "clock_out"])
@@ -31,20 +32,24 @@ class WorkModeDto {
 }
 
 @Controller("attendance")
+@UseGuards(NexaPermissionGuard)
 export class AttendanceController {
   constructor(private readonly store: HrDataStore) {}
 
   @Post("clock")
+  @RequireNexaPermissions("nexa.attendance:write")
   async clock(@CurrentAuth() auth: { userId: string }, @Body() dto: ClockDto): Promise<unknown> {
     return this.store.addTimeEntry(auth.userId, dto.type, dto.at);
   }
 
   @Post("mode")
+  @RequireNexaPermissions("nexa.attendance:write")
   async setMode(@CurrentAuth() auth: { userId: string }, @Body() dto: WorkModeDto): Promise<unknown> {
     return this.store.upsertWorkMode(auth.userId, dto.date, dto.mode);
   }
 
   @Get("entries")
+  @RequireNexaPermissions("nexa.attendance:read")
   async entries(
     @CurrentAuth() auth: { userId: string },
     @Query("userId") userId?: string,
@@ -54,6 +59,7 @@ export class AttendanceController {
   }
 
   @Get("summary")
+  @RequireNexaPermissions("nexa.attendance:read")
   async summary(
     @CurrentAuth() auth: { userId: string },
     @Query("userId") userId?: string,
@@ -63,12 +69,14 @@ export class AttendanceController {
   }
 
   @Get("status")
+  @RequireNexaPermissions("nexa.attendance:read")
   async status(@CurrentAuth() auth: { userId: string }, @Query("date") date?: string): Promise<unknown> {
     const targetDate = date ?? new Date().toISOString().slice(0, 10);
     return this.store.getClockStatus(auth.userId, targetDate);
   }
 
   @Get("aggregates")
+  @RequireNexaPermissions("nexa.attendance:read")
   async aggregates(
     @CurrentAuth() auth: { userId: string },
     @Query() query: AggregateQueryDto

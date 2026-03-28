@@ -5,17 +5,21 @@ import {
   Param,
   Post,
   Query,
-  StreamableFile
+  StreamableFile,
+  UseGuards
 } from "@nestjs/common";
 import PDFDocument from "pdfkit";
 import { CurrentAuth } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 @Controller("payroll")
+@UseGuards(NexaPermissionGuard)
 export class PayrollController {
   constructor(private readonly store: HrDataStore) {}
 
   @Post(":userId/:period/generate")
+  @RequireNexaPermissions("nexa.payroll:write")
   async generate(
     @CurrentAuth() auth: { userId: string; role: string },
     @Param("userId") userId: string,
@@ -35,6 +39,7 @@ export class PayrollController {
   }
 
   @Post(":period/generate-self")
+  @RequireNexaPermissions("nexa.payroll:write")
   async generateSelf(
     @CurrentAuth() auth: { userId: string; role: string },
     @Param("period") period: string
@@ -46,6 +51,7 @@ export class PayrollController {
   }
 
   @Get("payslips")
+  @RequireNexaPermissions("nexa.payslips:read")
   async list(
     @CurrentAuth() auth: { userId: string; role: string },
     @Query("userId") userId?: string
@@ -65,6 +71,7 @@ export class PayrollController {
   }
 
   @Get(":userId/:period/pdf")
+  @RequireNexaPermissions("nexa.payslips:read")
   async exportPdf(
     @CurrentAuth() auth: { userId: string; role: string },
     @Param("userId") userId: string,

@@ -1,5 +1,6 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { json, urlencoded } from "express";
 import { AppModule } from "./modules/app.module";
 
 async function bootstrap(): Promise<void> {
@@ -16,6 +17,7 @@ async function bootstrap(): Promise<void> {
   const allowedOrigins = origins.length > 0 ? origins : defaultOrigins;
 
   const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
     cors: {
       origin: (origin, callback) => {
         if (!origin) {
@@ -36,7 +38,22 @@ async function bootstrap(): Promise<void> {
     }
   });
 
+  app.use(json({ limit: "12mb" }));
+  app.use(urlencoded({ extended: true, limit: "12mb" }));
+
   const http = app.getHttpAdapter().getInstance();
+  http.use(
+    (
+      _req: unknown,
+      res: { setHeader: (name: string, value: string) => void },
+      next: () => void
+    ) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+      res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      next();
+    }
+  );
   http.get("/", (_req: unknown, res: { json: (body: unknown) => void }) => {
     res.json({ status: "ok", service: "nexa-hr-backend", basePath: "/api" });
   });

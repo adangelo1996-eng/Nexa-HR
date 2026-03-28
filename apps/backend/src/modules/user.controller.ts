@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
+import { isSynapseSuperuserEmail } from "./synapse-superuser";
+import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class AssignRoleDto {
   @IsString()
@@ -18,6 +20,11 @@ class CreateUserDto {
   @IsString()
   lastName!: string;
 
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(320)
+  email?: string;
+
   @IsIn(["admin", "manager_controllo_gestione", "employee"])
   role!: "admin" | "manager_controllo_gestione" | "employee";
 
@@ -28,23 +35,19 @@ class CreateUserDto {
   @IsString()
   companyId!: string;
 
-  @IsOptional()
   @IsString()
-  roleId?: string;
+  roleId!: string;
 
-  @IsOptional()
   @IsString()
-  costCenterId?: string;
+  costCenterId!: string;
 
-  @IsOptional()
   @IsNumber()
   @Min(1)
   @Max(80)
-  weeklyContractHours?: number;
+  weeklyContractHours!: number;
 
-  @IsOptional()
   @IsString()
-  contractType?: string;
+  contractType!: string;
 
   @IsOptional()
   @IsString()
@@ -168,48 +171,55 @@ export class UserController {
   constructor(private readonly store: HrDataStore) {}
 
   @Get()
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("manager_controllo_gestione")
+  @RequireNexaPermissions("nexa.admin_users:read")
   async list(): Promise<unknown> {
     return this.store.listUsers();
   }
 
   @Get("me")
   async me(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
-    return this.store.getUser(auth.userId);
+    const user = await this.store.getUser(auth.userId);
+    return { ...user, isSynapseSuperuser: isSynapseSuperuserEmail(user.email) };
   }
 
   @Get("roles")
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_roles:read")
   roles(): unknown {
     return this.store.listRoles();
   }
 
   @Patch("assign-role")
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_users:write")
   async assignRole(@Body() dto: AssignRoleDto): Promise<unknown> {
     return this.store.assignRole(dto.userId, dto.role);
   }
 
   @Post()
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_users:write")
   async create(@Body() dto: CreateUserDto): Promise<unknown> {
     return this.store.createUser(dto);
   }
 
   @Patch(":userId")
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_users:write")
   async update(@Param("userId") userId: string, @Body() dto: UpdateUserDto): Promise<unknown> {
     return this.store.updateUser(userId, dto);
   }
 
   @Patch(":userId/manager")
-  @UseGuards(RoleGuard)
+  @UseGuards(RoleGuard, NexaPermissionGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_users:write")
   async updateManager(
     @Param("userId") userId: string,
     @Body() dto: { managerId?: string }

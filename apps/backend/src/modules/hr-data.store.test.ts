@@ -19,6 +19,9 @@ describe("HrDataStore", () => {
       lastName: "Rossi",
       role: "employee",
       companyId: "comp-1",
+      roleId: "r3",
+      costCenterId: "cc-2",
+      contractType: "Indeterminato",
       weeklyContractHours: 40
     });
     const day = "2026-03-12";
@@ -46,6 +49,9 @@ describe("HrDataStore", () => {
       lastName: "Bianchi",
       role: "employee",
       companyId: "comp-1",
+      roleId: "r3",
+      costCenterId: "cc-2",
+      contractType: "Indeterminato",
       weeklyContractHours: 30
     });
     const day = "2026-03-13";
@@ -74,6 +80,9 @@ describe("HrDataStore", () => {
       lastName: "Verdi",
       role: "employee",
       companyId: "comp-1",
+      roleId: "r3",
+      costCenterId: "cc-2",
+      contractType: "Indeterminato",
       weeklyContractHours: 40
     });
     await store.addTimeEntry(user.id, "clock_in", "2026-03-10T08:00:00.000Z");

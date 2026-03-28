@@ -1,0 +1,221 @@
+/**
+ * Catalogo permessi Nexa HR / ecosistema Synapse.
+ */
+
+export type PermissionCategoryId = "nexa_hr" | "plasticity" | "soma" | "hub";
+
+export interface PermissionDefinition {
+  id: string;
+  category: PermissionCategoryId;
+  resourceKey: string;
+  suffix: "read" | "write";
+  labelIt: string;
+  descriptionReadIt: string;
+  descriptionWriteIt: string;
+}
+
+const cat = (id: PermissionCategoryId, resourceKey: string, labelIt: string, dr: string, dw: string): PermissionDefinition[] => [
+  {
+    id: `nexa.${resourceKey}:read`,
+    category: id,
+    resourceKey,
+    suffix: "read",
+    labelIt,
+    descriptionReadIt: dr,
+    descriptionWriteIt: dw
+  },
+  {
+    id: `nexa.${resourceKey}:write`,
+    category: id,
+    resourceKey,
+    suffix: "write",
+    labelIt,
+    descriptionReadIt: dr,
+    descriptionWriteIt: dw
+  }
+];
+
+export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
+  ...cat(
+    "nexa_hr",
+    "attendance",
+    "Timbrature e presenze",
+    "Consultare timbrature, riepiloghi e stato presenza.",
+    "Registrare timbrature entrata/uscita e aggiornare lo stato presenza."
+  ),
+  ...cat(
+    "nexa_hr",
+    "leaves",
+    "Ferie e permessi",
+    "Vedere piani ferie, saldi e richieste.",
+    "Creare o modificare richieste ferie e permessi."
+  ),
+  ...cat(
+    "nexa_hr",
+    "sickness",
+    "Malattia e certificati",
+    "Consultare eventi di malattia e allegati.",
+    "Inserire o aggiornare comunicazioni e certificati di malattia."
+  ),
+  ...cat(
+    "nexa_hr",
+    "approvals",
+    "Approvazioni",
+    "Vedere le richieste in attesa di approvazione.",
+    "Approvare o rifiutare richieste (ferie, malattia, ecc.)."
+  ),
+  ...cat(
+    "nexa_hr",
+    "payslips",
+    "Cedolini",
+    "Consultare cedolini e dettagli retributivi consentiti.",
+    "Operazioni su cedolini se previsto."
+  ),
+  ...cat(
+    "nexa_hr",
+    "org",
+    "Organigramma",
+    "Visualizzare struttura organizzativa e collegamenti.",
+    "Modificare viste o dati organizzativi se previsto."
+  ),
+  ...cat(
+    "nexa_hr",
+    "payroll",
+    "Payroll e calcoli",
+    "Accedere a simulazioni e report payroll consentiti.",
+    "Eseguire calcoli o ricalcoli payroll se previsto."
+  ),
+  ...cat(
+    "nexa_hr",
+    "admin_users",
+    "Amministrazione utenti",
+    "Elencare e consultare anagrafiche utente.",
+    "Creare, modificare o disattivare utenti."
+  ),
+  ...cat(
+    "nexa_hr",
+    "admin_roles",
+    "Amministrazione ruoli",
+    "Consultare ruoli e permessi.",
+    "Creare o modificare ruoli e assegnazioni permessi."
+  ),
+  ...cat(
+    "nexa_hr",
+    "admin_cost_centers",
+    "Centri di costo",
+    "Consultare centri di costo.",
+    "Creare o modificare centri di costo."
+  ),
+  ...cat(
+    "nexa_hr",
+    "import",
+    "Import dati",
+    "Scaricare template e vedere lo storico import.",
+    "Eseguire import massivi da file."
+  )
+];
+
+function plasticityPair(resource: string, labelIt: string, dr: string, dw: string): PermissionDefinition[] {
+  return [
+    {
+      id: `plasticity.${resource}:read`,
+      category: "plasticity",
+      resourceKey: resource,
+      suffix: "read",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    },
+    {
+      id: `plasticity.${resource}:write`,
+      category: "plasticity",
+      resourceKey: resource,
+      suffix: "write",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    }
+  ];
+}
+
+export const PLASTICITY_PERMISSIONS: PermissionDefinition[] = [
+  ...plasticityPair("dashboard", "Dashboard BI", "Aprire dashboard e indicatori.", "Modificare layout o filtri salvati."),
+  ...plasticityPair("reports", "Report", "Esportare e consultare report.", "Creare o pubblicare report."),
+  ...plasticityPair("kpi_settings", "Impostazioni KPI", "Vedere configurazioni KPI.", "Modificare soglie e definizioni KPI.")
+];
+
+function somaPair(resource: string, labelIt: string, dr: string, dw: string): PermissionDefinition[] {
+  return [
+    {
+      id: `soma.${resource}:read`,
+      category: "soma",
+      resourceKey: resource,
+      suffix: "read",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    },
+    {
+      id: `soma.${resource}:write`,
+      category: "soma",
+      resourceKey: resource,
+      suffix: "write",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    }
+  ];
+}
+
+export const SOMA_PERMISSIONS: PermissionDefinition[] = [
+  ...somaPair("module_a", "Modulo SOMA (A)", "Consultare dati del modulo.", "Modificare dati del modulo."),
+  ...somaPair("module_b", "Modulo SOMA (B)", "Consultare report di sintesi.", "Gestire configurazioni modulo.")
+];
+
+function hubPair(resource: string, labelIt: string, dr: string, dw: string): PermissionDefinition[] {
+  return [
+    {
+      id: `hub.${resource}:read`,
+      category: "hub",
+      resourceKey: resource,
+      suffix: "read",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    },
+    {
+      id: `hub.${resource}:write`,
+      category: "hub",
+      resourceKey: resource,
+      suffix: "write",
+      labelIt,
+      descriptionReadIt: dr,
+      descriptionWriteIt: dw
+    }
+  ];
+}
+
+export const HUB_PERMISSIONS: PermissionDefinition[] = [
+  ...hubPair("profile", "Profilo Hub", "Vedere preferenze e profilo.", "Aggiornare preferenze account."),
+  ...hubPair("handoff", "Handoff tra app", "Usare link di handoff in lettura.", "Avviare handoff verso altre app.")
+];
+
+export const ALL_CATALOG_PERMISSION_IDS: string[] = [
+  ...NEXA_HR_PERMISSIONS.map((p) => p.id),
+  ...PLASTICITY_PERMISSIONS.map((p) => p.id),
+  ...SOMA_PERMISSIONS.map((p) => p.id),
+  ...HUB_PERMISSIONS.map((p) => p.id)
+];
+
+export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
+  "*": ALL_CATALOG_PERMISSION_IDS,
+  clock: ["nexa.attendance:write"],
+  "request:leave": ["nexa.leaves:write"],
+  "request:sickness": ["nexa.sickness:write"],
+  "approve:leave": ["nexa.approvals:write"],
+  "approve:sickness": ["nexa.approvals:write"],
+  "read:team": ["nexa.org:read", "nexa.admin_users:read"],
+  "read:self": ["nexa.attendance:read", "nexa.leaves:read", "nexa.sickness:read", "nexa.org:read"],
+  "read:payslip:self": ["nexa.payslips:read"],
+  "read:payslip:team": ["nexa.payslips:read", "nexa.org:read"]
+};

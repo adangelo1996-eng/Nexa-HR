@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, U
 import { IsDateString, IsInt, IsString, Max, Min } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class LeaveDto {
   @IsDateString()
@@ -19,10 +20,12 @@ class LeaveAllowanceDto {
 }
 
 @Controller("leave")
+@UseGuards(NexaPermissionGuard)
 export class LeaveController {
   constructor(private readonly store: HrDataStore) {}
 
   @Post("plan")
+  @RequireNexaPermissions("nexa.leaves:write")
   async create(@CurrentAuth() auth: { userId: string }, @Body() dto: LeaveDto): Promise<unknown> {
     return this.store.createLeavePlan({
       userId: auth.userId,
@@ -32,6 +35,7 @@ export class LeaveController {
   }
 
   @Patch("plan/:leaveId")
+  @RequireNexaPermissions("nexa.leaves:write")
   async update(
     @Param("leaveId") leaveId: string,
     @Body() dto: LeaveDto
@@ -42,6 +46,7 @@ export class LeaveController {
   @Patch("approve/:leaveId")
   @UseGuards(RoleGuard)
   @RequireRole("manager_controllo_gestione")
+  @RequireNexaPermissions("nexa.approvals:write")
   async approve(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
     if (!(await this.store.isManagerOf(auth.userId, leave.userId))) {
@@ -53,6 +58,7 @@ export class LeaveController {
   @Patch("reject/:leaveId")
   @UseGuards(RoleGuard)
   @RequireRole("manager_controllo_gestione")
+  @RequireNexaPermissions("nexa.approvals:write")
   async reject(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
     if (!(await this.store.isManagerOf(auth.userId, leave.userId))) {
@@ -62,11 +68,13 @@ export class LeaveController {
   }
 
   @Get("plan")
+  @RequireNexaPermissions("nexa.leaves:read")
   async list(@CurrentAuth() auth: { userId: string }, @Query("userId") userId?: string): Promise<unknown> {
     return this.store.listLeave(userId ?? auth.userId);
   }
 
   @Get("balance")
+  @RequireNexaPermissions("nexa.leaves:read")
   async balance(
     @CurrentAuth() auth: { userId: string; role: "admin" | "manager_controllo_gestione" | "employee" },
     @Query("userId") userId?: string,
@@ -87,6 +95,7 @@ export class LeaveController {
   @Patch("balance/:userId")
   @UseGuards(RoleGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.leaves:write")
   async setBalance(@Param("userId") userId: string, @Body() dto: LeaveAllowanceDto): Promise<unknown> {
     return this.store.setLeaveAllowance(userId, dto.allocatedDays);
   }

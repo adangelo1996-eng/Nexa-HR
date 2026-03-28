@@ -14,6 +14,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { IsDateString } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class SicknessDto {
   @IsDateString()
@@ -24,10 +25,12 @@ class SicknessDto {
 }
 
 @Controller("sickness")
+@UseGuards(NexaPermissionGuard)
 export class SicknessController {
   constructor(private readonly store: HrDataStore) {}
 
   @Post("report")
+  @RequireNexaPermissions("nexa.sickness:write")
   @UseInterceptors(FileInterceptor("document"))
   async report(
     @CurrentAuth() auth: { userId: string },
@@ -49,6 +52,7 @@ export class SicknessController {
   @Patch("approve/:id")
   @UseGuards(RoleGuard)
   @RequireRole("manager_controllo_gestione")
+  @RequireNexaPermissions("nexa.approvals:write")
   async approve(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
     if (!(await this.store.isManagerOf(auth.userId, sickness.userId))) {
@@ -60,6 +64,7 @@ export class SicknessController {
   @Patch("reject/:id")
   @UseGuards(RoleGuard)
   @RequireRole("manager_controllo_gestione")
+  @RequireNexaPermissions("nexa.approvals:write")
   async reject(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
     if (!(await this.store.isManagerOf(auth.userId, sickness.userId))) {
@@ -69,6 +74,7 @@ export class SicknessController {
   }
 
   @Get("events")
+  @RequireNexaPermissions("nexa.sickness:read")
   async list(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
     return this.store.listSickness(auth.userId);
   }

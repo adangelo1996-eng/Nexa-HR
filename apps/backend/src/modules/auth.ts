@@ -35,6 +35,12 @@ function isValidRole(role: string): role is AuthRole {
 }
 
 function fromLegacyHeaders(request: Request): AuthContext | undefined {
+  const allowLegacy =
+    process.env.ALLOW_LEGACY_AUTH_HEADERS === "true" ||
+    (process.env.NODE_ENV !== "production" && process.env.ALLOW_LEGACY_AUTH_HEADERS !== "false");
+  if (!allowLegacy) {
+    return undefined;
+  }
   const userId = request.headers["x-user-id"];
   const role = request.headers["x-role"];
   if (typeof userId !== "string" || typeof role !== "string") {

@@ -43,6 +43,43 @@ export interface Role {
   permissions: string[];
 }
 
+export type PermissionCategoryId = "nexa_hr" | "plasticity" | "soma" | "hub";
+
+export interface PermissionDefinition {
+  id: string;
+  category: PermissionCategoryId;
+  resourceKey: string;
+  suffix: "read" | "write";
+  labelIt: string;
+  descriptionReadIt: string;
+  descriptionWriteIt: string;
+}
+
+export interface PermissionCatalogResponse {
+  nexa_hr: PermissionDefinition[];
+  plasticity: PermissionDefinition[];
+  soma: PermissionDefinition[];
+  hub: PermissionDefinition[];
+}
+
+export interface ImportCellError {
+  row: number;
+  field: string;
+  message: string;
+}
+
+export interface ImportHistoryItem {
+  id: string;
+  category: string;
+  startedAt: string;
+  finishedAt: string;
+  status: string;
+  rowCount: number;
+  errorCount: number;
+  errorsSnapshot?: ImportCellError[];
+  createdByUserId: string;
+}
+
 export interface CostCenter {
   id: string;
   code: string;
@@ -134,13 +171,15 @@ export interface ApprovalItem {
 export interface CreateUserPayload {
   firstName: string;
   lastName: string;
+  /** Se presente, sostituisce l'email generata automaticamente */
+  email?: string;
   role: UserRole;
   managerId?: string;
   companyId: string;
-  roleId?: string;
-  costCenterId?: string;
-  contractType?: string;
-  weeklyContractHours?: number;
+  roleId: string;
+  costCenterId: string;
+  contractType: string;
+  weeklyContractHours: number;
   avsNumber?: string;
   iban?: string;
   bankName?: string;
@@ -532,7 +571,7 @@ export async function fetchAdminCostCenters(token: string): Promise<CostCenter[]
 
 export async function createAdminCostCenter(
   token: string,
-  payload: { code: string; name: string; description?: string }
+  payload: { code?: string; name: string; description?: string }
 ): Promise<CostCenter> {
   const response = await fetch(buildApiUrl("/admin/cost-centers"), {
     method: "POST",
@@ -570,6 +609,79 @@ export async function deleteAdminCostCenter(token: string, costCenterId: string)
     await parseError(response);
   }
   return (await response.json()) as CostCenter;
+}
+
+export async function fetchPermissionCatalog(token: string): Promise<PermissionCatalogResponse> {
+  const response = await fetch(buildApiUrl("/admin/permission-catalog"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as PermissionCatalogResponse;
+}
+
+export async function downloadImportTemplate(
+  token: string,
+  category: "users" | "cost_centers" | "roles"
+): Promise<Blob> {
+  const response = await fetch(buildApiUrl(`/admin/import/template?category=${encodeURIComponent(category)}`), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.blob();
+}
+
+export async function validateImportFile(
+  token: string,
+  category: "users" | "cost_centers" | "roles",
+  file: File
+): Promise<{ errors: ImportCellError[]; rows: unknown[] }> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(
+    buildApiUrl(`/admin/import/validate?category=${encodeURIComponent(category)}`),
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body
+    }
+  );
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { errors: ImportCellError[]; rows: unknown[] };
+}
+
+export async function applyImport(
+  token: string,
+  category: "users" | "cost_centers" | "roles",
+  rows: unknown[]
+): Promise<{ created: number; errors: ImportCellError[] }> {
+  const response = await fetch(buildApiUrl("/admin/import/apply"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ category, rows })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { created: number; errors: ImportCellError[] };
+}
+
+export async function fetchImportHistory(token: string): Promise<ImportHistoryItem[]> {
+  const response = await fetch(buildApiUrl("/admin/import/history"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as ImportHistoryItem[];
 }
 
 export async function createLeavePlan(

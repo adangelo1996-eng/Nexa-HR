@@ -21,6 +21,8 @@ export interface SessionUser {
   accountHolder?: string;
   dailyTargetSeconds?: number;
   vacationAllowanceDays?: number;
+  /** Presente dopo GET /users/me */
+  isSynapseSuperuser?: boolean;
 }
 
 const TOKEN_KEY = "nexa_hr_auth_token";

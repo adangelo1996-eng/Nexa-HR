@@ -323,7 +323,7 @@ export default function HomePage(): React.JSX.Element {
             onClick={() => void onClock("clock_in")}
             disabled={!canClockIn}
             size="xl"
-            className="min-w-64 bg-emerald-400 font-semibold text-slate-900 hover:bg-emerald-300"
+            className="min-w-64 border-2 border-emerald-700/80 bg-emerald-600 font-semibold text-white shadow-md shadow-emerald-900/20 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-500/90 dark:bg-emerald-600 dark:hover:bg-emerald-500"
           >
             {clockLoading === "clock_in" ? "Timbrando..." : "Timbratura entrata"}
           </Button>
@@ -331,7 +331,7 @@ export default function HomePage(): React.JSX.Element {
             onClick={() => void onClock("clock_out")}
             disabled={!canClockOut}
             size="xl"
-            className="min-w-64 bg-rose-300 font-semibold text-slate-900 hover:bg-rose-200"
+            className="min-w-64 border-2 border-red-800/80 bg-red-600 font-semibold text-white shadow-md shadow-red-900/25 hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-500/90 dark:bg-red-600 dark:hover:bg-red-500"
           >
             {clockLoading === "clock_out" ? "Timbrando..." : "Timbratura uscita"}
           </Button>

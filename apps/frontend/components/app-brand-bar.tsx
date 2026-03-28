@@ -5,12 +5,20 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
+import { getSessionUser } from "@/lib/auth-session";
+import { useEffect, useState } from "react";
 
 /**
  * Stile Central Hub / sito Synapse: SYNAPSE - NEXA HR (tutto maiuscolo).
  */
 export function AppBrandBar(): React.JSX.Element {
   const { theme, toggleTheme, mounted } = useTheme();
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    const u = getSessionUser();
+    setShowAdmin(u?.role === "admin");
+  }, []);
 
   return (
     <header
@@ -43,7 +51,34 @@ export function AppBrandBar(): React.JSX.Element {
             NEXA HR
           </span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <nav className="mr-1 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-slate-600 dark:text-slate-400">
+            <Link href="/" className="hover:text-synapse-text dark:hover:text-white">
+              Home
+            </Link>
+            <span className="text-slate-400" aria-hidden>
+              |
+            </span>
+            <Link href="/attendance" className="hover:text-synapse-text dark:hover:text-white">
+              Timbrature
+            </Link>
+            <span className="text-slate-400" aria-hidden>
+              |
+            </span>
+            <Link href="/settings" className="hover:text-synapse-text dark:hover:text-white">
+              Impostazioni
+            </Link>
+            {showAdmin ? (
+              <>
+                <span className="text-slate-400" aria-hidden>
+                  |
+                </span>
+                <Link href="/admin" className="hover:text-synapse-text dark:hover:text-white">
+                  Admin
+                </Link>
+              </>
+            ) : null}
+          </nav>
           <Button
             type="button"
             variant="ghost"

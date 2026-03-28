@@ -2,6 +2,7 @@ import { Controller, Get, Param, Patch, Query, UseGuards } from "@nestjs/common"
 import { IsIn, IsOptional } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class ApprovalListQuery {
   @IsOptional()
@@ -10,12 +11,13 @@ class ApprovalListQuery {
 }
 
 @Controller("approvals")
-@UseGuards(RoleGuard)
+@UseGuards(RoleGuard, NexaPermissionGuard)
 @RequireRole("manager_controllo_gestione")
 export class ApprovalsController {
   constructor(private readonly store: HrDataStore) {}
 
   @Get()
+  @RequireNexaPermissions("nexa.approvals:read")
   async list(
     @CurrentAuth() auth: { userId: string },
     @Query() query: ApprovalListQuery
@@ -24,6 +26,7 @@ export class ApprovalsController {
   }
 
   @Patch(":approvalId/approve")
+  @RequireNexaPermissions("nexa.approvals:write")
   async approve(
     @CurrentAuth() auth: { userId: string },
     @Param("approvalId") approvalId: string
@@ -32,6 +35,7 @@ export class ApprovalsController {
   }
 
   @Patch(":approvalId/reject")
+  @RequireNexaPermissions("nexa.approvals:write")
   async reject(
     @CurrentAuth() auth: { userId: string },
     @Param("approvalId") approvalId: string

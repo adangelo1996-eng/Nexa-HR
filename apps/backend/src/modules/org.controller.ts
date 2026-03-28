@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { IsDateString, IsString } from "class-validator";
 import { RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
 class DelegationDto {
   @IsString()
@@ -18,15 +19,18 @@ class DelegationDto {
 }
 
 @Controller("org")
+@UseGuards(NexaPermissionGuard)
 export class OrgController {
   constructor(private readonly store: HrDataStore) {}
 
   @Get("chart")
+  @RequireNexaPermissions("nexa.org:read")
   async chart(): Promise<unknown> {
     return this.store.getOrgChart();
   }
 
   @Get("approver-chain")
+  @RequireNexaPermissions("nexa.org:read")
   async approverChain(@Query("userId") userId: string): Promise<unknown> {
     return { userId, chain: await this.store.getApproverChainForUser(userId) };
   }
@@ -34,6 +38,7 @@ export class OrgController {
   @Post("delegation")
   @UseGuards(RoleGuard)
   @RequireRole("admin")
+  @RequireNexaPermissions("nexa.org:write")
   async delegation(@Body() dto: DelegationDto): Promise<unknown> {
     return this.store.addDelegation(dto.managerId, dto.delegateManagerId, dto.from, dto.to);
   }
