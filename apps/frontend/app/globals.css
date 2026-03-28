@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Golden Rooster — stesso campionario di ETL-Aegis-main/Synapse - Site/fonts/golden-rooster.ttf */
+/* Golden Rooster — Synapse - Site/fonts/golden-rooster.ttf (solo file, no local() per evitare collisioni col sistema) */
 @font-face {
   font-family: "Golden Rooster";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+  src: url("/fonts/golden-rooster.ttf") format("truetype");
 }
 
 @font-face {
@@ -16,7 +16,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+  src: url("/fonts/golden-rooster.ttf") format("truetype");
 }
 
 @font-face {
@@ -24,7 +24,23 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: local("Golden Rooster"), url("/fonts/golden-rooster.ttf") format("truetype");
+  src: url("/fonts/golden-rooster.ttf") format("truetype");
+}
+
+@layer components {
+  /* Forza il wordmark su h1 / brand: Tailwind e layer base non devono vincere su Montserrat ereditato */
+  .nexa-wordmark-face {
+    font-family:
+      "Golden Rooster",
+      var(--font-synapse-wordmark),
+      var(--font-montserrat),
+      Montserrat,
+      ui-sans-serif,
+      system-ui,
+      sans-serif !important;
+    font-synthesis: none;
+    font-variant-numeric: proportional-nums;
+  }
 }
 
 /*

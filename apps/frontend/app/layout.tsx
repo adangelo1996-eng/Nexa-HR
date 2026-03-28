@@ -35,6 +35,13 @@ export default function RootLayout({
   return (
     <html lang="it" suppressHydrationWarning>
       <head>
+        <link
+          rel="preload"
+          href="/fonts/golden-rooster.ttf"
+          as="font"
+          type="font/ttf"
+          crossOrigin="anonymous"
+        />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className={`${synapseWordmark.variable} ${montserrat.variable} antialiased`}>

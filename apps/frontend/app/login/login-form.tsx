@@ -98,20 +98,20 @@ export default function LoginForm(): React.JSX.Element {
             aria-label="SYNAPSE NEXA HR"
           >
             <span
-              className="text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
+              className="nexa-wordmark-face text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
               style={synapseSuiteDisplayStyle}
             >
               SYNAPSE
             </span>
             <span
-              className="mx-[0.2em] text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-white"
+              className="nexa-wordmark-face mx-[0.2em] text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-white"
               style={synapseSuiteDisplayStyle}
               aria-hidden
             >
               {" - "}
             </span>
             <span
-              className="text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-[#94a3b8]"
+              className="nexa-wordmark-face text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-white/85"
               style={synapseSuiteDisplayStyle}
             >
               NEXA HR
@@ -147,7 +147,7 @@ export default function LoginForm(): React.JSX.Element {
             PEOPLE OPERATIONS
           </p>
           <h1
-            className="m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
+            className="nexa-wordmark-face m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
             style={{
               ...synapseSuiteDisplayStyle,
               textShadow: "0 0 40px rgba(255, 255, 255, 0.12), 0 0 80px rgba(255, 255, 255, 0.06)"
@@ -192,7 +192,7 @@ export default function LoginForm(): React.JSX.Element {
             >
               <h2
                 id="nexa-login-title"
-                className="m-0 mb-1.5 text-[1.1rem] font-semibold uppercase tracking-[0.14em] text-white"
+                className="nexa-wordmark-face m-0 mb-1.5 text-[1.1rem] font-semibold uppercase tracking-[0.14em] text-white"
                 style={synapseSuiteDisplayStyle}
               >
                 ACCESSO
