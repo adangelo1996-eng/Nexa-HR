@@ -33,8 +33,7 @@ export class PermissionsService {
     if (!user.roleId) {
       return new Set<string>();
     }
-    const roles = await this.store.listRoles();
-    const role = roles.find((r) => r.id === user.roleId);
+    const role = await this.store.getRoleById(user.roleId);
     if (!role) {
       return new Set<string>();
     }

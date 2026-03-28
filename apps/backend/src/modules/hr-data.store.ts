@@ -69,6 +69,8 @@ interface Delegation {
 export class HrDataStore {
   private readonly supabase?: SupabaseClient;
   private seeded = false;
+  /** Evita count+seed su roles/cost_centers a ogni list (molto lento su Supabase/Render). */
+  private referenceDataEnsured = false;
   private readonly users: User[] = [
     {
       id: "u-admin",
@@ -225,17 +227,20 @@ export class HrDataStore {
   }
 
   private async ensureSeedReferenceData(): Promise<void> {
-    if (!this.useDb) return;
-    const rolesCount = await this.supabase!.from("roles").select("id", { count: "exact", head: true });
+    if (!this.useDb || this.referenceDataEnsured) {
+      return;
+    }
+    const [rolesCount, centersCount] = await Promise.all([
+      this.supabase!.from("roles").select("id", { count: "exact", head: true }),
+      this.supabase!.from("cost_centers").select("id", { count: "exact", head: true })
+    ]);
     if (!rolesCount.error && (rolesCount.count ?? 0) === 0) {
       await this.supabase!.from("roles").insert(this.roles);
     }
-    const centersCount = await this.supabase!
-      .from("cost_centers")
-      .select("id", { count: "exact", head: true });
     if (!centersCount.error && (centersCount.count ?? 0) === 0) {
       await this.supabase!.from("cost_centers").insert(this.costCenters);
     }
+    this.referenceDataEnsured = true;
   }
 
   private normalizeWeeklyContractHours(input?: number): number {
@@ -306,8 +311,21 @@ export class HrDataStore {
   }
 
   async getUser(userId: string): Promise<User> {
-    const user = (await this.listUsers()).find((item) => item.id === userId);
-    if (!user) throw new NotFoundException("Utente non trovato");
+    await this.ensureSeedUsers();
+    if (this.useDb) {
+      const { data, error } = await this.supabase!.from("users").select("*").eq("id", userId).maybeSingle();
+      if (error) {
+        throw new NotFoundException("Utente non trovato");
+      }
+      if (!data) {
+        throw new NotFoundException("Utente non trovato");
+      }
+      return data as User;
+    }
+    const user = this.users.find((item) => item.id === userId);
+    if (!user) {
+      throw new NotFoundException("Utente non trovato");
+    }
     return user;
   }
 
@@ -503,6 +521,16 @@ export class HrDataStore {
     return this.roles;
   }
 
+  /** Una riga invece di listRoles() intera (usato da PermissionsService). */
+  async getRoleById(roleId: string): Promise<Role | null> {
+    await this.ensureSeedReferenceData();
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("roles").select("*").eq("id", roleId).maybeSingle();
+      return (data as Role | undefined) ?? null;
+    }
+    return this.roles.find((r) => r.id === roleId) ?? null;
+  }
+
   async createRole(input: { name: string; description?: string; permissions?: string[] }): Promise<Role> {
     const name = input.name.trim();
     if (!name) {
@@ -597,15 +625,13 @@ export class HrDataStore {
     return this.costCenters;
   }
 
-  private async generateUniqueCostCenterCode10(): Promise<string> {
-    const centers = await this.listCostCenters();
-    const existing = new Set(centers.map((c) => c.code.toLowerCase()));
+  private pickUniqueCostCenterCode10(existingCodes: Set<string>): string {
     for (let attempt = 0; attempt < 8000; attempt++) {
       const suffix = Math.floor(Math.random() * 10_000_000)
         .toString()
         .padStart(7, "0");
       const code = `880${suffix}`;
-      if (code.length === 10 && !existing.has(code.toLowerCase())) {
+      if (code.length === 10 && !existingCodes.has(code.toLowerCase())) {
         return code;
       }
     }
@@ -617,18 +643,17 @@ export class HrDataStore {
     if (!name) {
       throw new BadRequestException("Nome centro di costo obbligatorio");
     }
+    const centers = await this.listCostCenters();
+    const codeSet = new Set(centers.map((c) => c.code.toLowerCase()));
     let code = input.code?.trim() ?? "";
     if (!code) {
-      code = await this.generateUniqueCostCenterCode10();
+      code = this.pickUniqueCostCenterCode10(codeSet);
     } else {
       if (!/^\d{10}$/.test(code)) {
         throw new BadRequestException("Il codice deve essere esattamente 10 cifre numeriche");
       }
     }
-    const existing = (await this.listCostCenters()).find(
-      (center) => center.code.toLowerCase() === code.toLowerCase()
-    );
-    if (existing) {
+    if (codeSet.has(code.toLowerCase())) {
       throw new BadRequestException("Esiste gia un centro di costo con questo codice");
     }
     const costCenter: CostCenter = {
