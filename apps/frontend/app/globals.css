@@ -10,23 +10,24 @@
   color-scheme: light;
   --prom-bg: #ececec;
   --prom-surface: #ffffff;
-  --prom-surface-soft: #faf8f4;
+  --prom-surface-soft: #f2f5f7;
   --prom-line: rgba(55, 48, 38, 0.12);
   --prom-line-strong: rgba(55, 48, 38, 0.22);
   --prom-text: #1a1f18;
   --prom-muted: #4d5248;
-  --prom-gold: #9a7418;
-  --prom-gold-soft: #7a5c14;
+  /* Accento blu di Prussia / grigio (sostituisce l’oro suite) */
+  --prom-gold: #3a5466;
+  --prom-gold-soft: #2a3f4d;
   --page-gradient: radial-gradient(1100px 640px at 100% -18%, rgba(255, 255, 255, 0.95), transparent 60%),
     radial-gradient(900px 520px at 0% 108%, rgba(120, 120, 120, 0.18), transparent 65%),
     linear-gradient(165deg, #f7f7f7, #e1e1e1 52%, var(--prom-bg) 100%);
   --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
   --bar-border: rgba(20, 26, 38, 0.16);
   --bar-shadow: 0 12px 24px rgba(17, 23, 35, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --card-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(252, 249, 243, 0.9));
+  --card-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 250, 0.92));
   --card-border: rgba(55, 48, 38, 0.12);
   --card-shadow: 0 8px 32px rgba(26, 31, 24, 0.06);
-  --glass-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(252, 249, 243, 0.82));
+  --glass-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(242, 246, 249, 0.85));
   --glass-border: rgba(55, 48, 38, 0.14);
   --glass-shadow: 0 14px 36px rgba(26, 31, 24, 0.07);
 }
@@ -40,8 +41,8 @@ html.dark {
   --prom-line-strong: rgba(179, 179, 179, 0.75);
   --prom-text: #ffffff;
   --prom-muted: #c8c8c8;
-  --prom-gold: #c9a03a;
-  --prom-gold-soft: #a3842c;
+  --prom-gold: #6b8fa3;
+  --prom-gold-soft: #4a6678;
   --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(179, 179, 179, 0.08), transparent 62%),
     radial-gradient(900px 520px at 0% 110%, rgba(120, 120, 120, 0.1), transparent 64%),
     linear-gradient(165deg, #050505, #0f0f0f 45%, var(--prom-bg) 85%);

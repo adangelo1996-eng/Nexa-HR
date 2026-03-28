@@ -66,7 +66,7 @@ export function PayslipArea({
             <button
               onClick={() => void handleExport(item.userId, item.period, item.id)}
               disabled={busyId === item.id}
-              className="rounded-lg bg-synapse-gold px-3 py-1 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105"
+              className="rounded-lg bg-synapse-gold px-3 py-1 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-synapse-gold-bright dark:text-white dark:hover:brightness-110"
             >
               {busyId === item.id ? "Generazione..." : "Esporta PDF"}
             </button>

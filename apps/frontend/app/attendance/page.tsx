@@ -162,7 +162,7 @@ export default function AttendancePage(): React.JSX.Element {
         </p>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Straordinario oggi:{" "}
-          <span className="font-semibold text-amber-700 dark:text-amber-300">
+          <span className="font-semibold text-[#3a5466] dark:text-[#8aa3b3]">
             {((status?.overtimeSeconds ?? 0) / 3600).toFixed(2)} h
           </span>
           {" · "}

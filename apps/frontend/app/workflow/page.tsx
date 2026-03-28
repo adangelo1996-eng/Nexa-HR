@@ -140,7 +140,7 @@ export default function WorkflowPage(): React.JSX.Element {
                       ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200"
                       : item.status === "rejected"
                         ? "bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-200"
-                        : "bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200"
+                        : "bg-slate-200 text-slate-800 dark:bg-[#2a3f4d]/70 dark:text-[#c5dde8]"
                   }`}
                 >
                   {item.status}

@@ -142,7 +142,7 @@ export default function PayrollCalcPage(): React.JSX.Element {
           <button
             onClick={() => void onGenerate()}
             disabled={submitting || !selectedUserId || !period}
-            className="rounded-lg bg-synapse-gold px-3 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-70 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105"
+            className="rounded-lg bg-synapse-gold px-3 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-70 dark:bg-synapse-gold-bright dark:text-white dark:hover:brightness-110"
           >
             {submitting ? "Calcolo in corso..." : "Calcola cedolino"}
           </button>

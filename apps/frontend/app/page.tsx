@@ -431,7 +431,7 @@ export default function HomePage(): React.JSX.Element {
           <Button
             onClick={() => void onSubmitLeave()}
             disabled={leaveSubmitting}
-            className="bg-synapse-gold text-white hover:brightness-110 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105"
+            className="bg-synapse-gold text-white hover:brightness-110 dark:bg-synapse-gold-bright dark:text-white dark:hover:brightness-110"
           >
             {leaveSubmitting ? "Invio richiesta..." : "Richiedi ferie"}
           </Button>
@@ -461,7 +461,7 @@ export default function HomePage(): React.JSX.Element {
                         ? "bg-emerald-900/60 text-emerald-200"
                         : item.status === "rejected"
                           ? "bg-rose-900/60 text-rose-200"
-                          : "bg-amber-900/60 text-amber-200"
+                          : "bg-[#2a3f4d]/70 text-[#c5dde8]"
                     }`}
                   >
                     {item.status}

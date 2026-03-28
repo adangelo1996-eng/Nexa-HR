@@ -13,9 +13,9 @@ const baseClasses =
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-synapse-gold text-white shadow-sm hover:brightness-110 dark:bg-synapse-gold-bright dark:text-neutral-950 dark:hover:brightness-105",
+    "bg-synapse-gold text-white shadow-sm hover:brightness-110 dark:bg-synapse-gold-bright dark:text-white dark:hover:brightness-110",
   secondary:
-    "border border-synapse-gold/25 bg-white/70 text-synapse-text hover:bg-[#faf8f4] dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]",
+    "border border-synapse-gold/30 bg-white/70 text-synapse-text hover:bg-slate-50 dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]",
   ghost:
     "text-synapse-muted hover:bg-black/[0.04] dark:text-[#c8c8c8] dark:hover:bg-white/[0.06]"
 };
