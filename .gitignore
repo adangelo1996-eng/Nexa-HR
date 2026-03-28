@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# Monorepo usa solo pnpm (evita lockfile npm nelle app)
+apps/*/package-lock.json
 
 # pnpm
 .pnpm-store/

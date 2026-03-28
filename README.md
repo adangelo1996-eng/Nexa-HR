@@ -102,6 +102,12 @@ Dopo il deploy, allinea `CORS_ORIGIN` (backend) e `NEXT_PUBLIC_API_BASE_URL` (fr
 
 `NEXT_PUBLIC_API_BASE_URL` può essere l’URL del backend **con o senza** suffisso `/api`: se manca, il client in `lib/api.ts` lo aggiunge.
 
+### Troubleshooting build Render
+
+- **`pnpm install` fallisce con `frozen-lockfile` / lockfile non allineato** — dopo aver aggiunto dipendenze in un package (es. `apps/backend/package.json`), eseguire in root del monorepo: `pnpm install` e **committare** `pnpm-lock.yaml` aggiornato. Il blueprint usa `--frozen-lockfile`.
+- **Monorepo più grande su GitHub** — se il servizio Render punta al repo **Synapse** invece che al repo **Nexa-HR** dedicato, impostare **Root Directory** su `Nexa-HR` (stessi comandi `pnpm` del [`render.yaml`](render.yaml)).
+- **Evitare `package-lock.json` dentro `apps/*`** — il workspace è solo **pnpm**; un lockfile npm nella frontend confonde Next.js. Usare solo `pnpm-lock.yaml` in root.
+
 ## Prossimi passi (ordine logico)
 
 1. **Repository** — commit e push su `main` (stesso remote collegato a Render).
