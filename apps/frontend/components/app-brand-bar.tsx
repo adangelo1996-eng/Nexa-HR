@@ -6,7 +6,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 /**
- * Wordmark SYNAPSE (Golden Rooster, come Synapse - Site) + prodotto Nexa HR.
+ * Stile Central Hub / sito Synapse: SYNAPSE - NEXA HR (tutto maiuscolo).
  */
 export function AppBrandBar(): React.JSX.Element {
   const { theme, toggleTheme, mounted } = useTheme();
@@ -21,25 +21,27 @@ export function AppBrandBar(): React.JSX.Element {
       }}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
-        <Link href="/" className="group flex flex-wrap items-baseline gap-x-3 gap-y-1 outline-none">
+        <Link href="/" className="group flex flex-wrap items-baseline gap-x-0 gap-y-1 outline-none" aria-label="SYNAPSE NEXA HR">
           <span
-            className="font-synapse text-[1.35rem] font-semibold leading-none tracking-tight text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
+            className="font-synapse text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
             style={{ fontSynthesis: "none" }}
           >
             SYNAPSE
           </span>
-          <span className="hidden text-synapse-muted/50 dark:text-white/35 sm:inline" aria-hidden>
-            ·
+          <span className="mx-[0.2em] font-sans text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-synapse-text dark:text-white" aria-hidden>
+            -
           </span>
           <span
-            className="font-synapse text-lg font-semibold leading-none tracking-tight text-synapse-gold transition-colors group-hover:text-synapse-gold-soft dark:text-synapse-gold-bright dark:group-hover:text-[#dcc069]"
+            className="font-sans text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-slate-500 dark:text-slate-400"
             style={{ fontSynthesis: "none" }}
           >
-            Nexa HR
+            NEXA HR
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-slate-500 dark:text-slate-500 sm:block">Enterprise HR · CH</span>
+          <span className="hidden text-xs uppercase tracking-wide text-slate-500 dark:text-slate-500 sm:block">
+            Enterprise HR · CH
+          </span>
           <Button
             type="button"
             variant="ghost"

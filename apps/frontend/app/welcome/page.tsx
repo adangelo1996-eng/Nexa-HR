@@ -7,14 +7,14 @@ export default function WelcomePage(): React.JSX.Element {
   return (
     <main className="flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center px-6 py-16 text-center">
       <p className="mb-4 text-[0.65rem] font-medium uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-        People operations · Svizzera
+        PEOPLE OPERATIONS · SVIZZERA
       </p>
       <h1
         className="mb-4 max-w-[18ch] text-[clamp(2.25rem,8vw,3.75rem)] leading-tight"
         style={{ fontSynthesis: "none" }}
       >
-        <span className="font-synapse font-semibold tracking-tight text-slate-900 dark:text-slate-50">Nexa HR</span>
-        <span className="font-sans font-bold text-slate-500 dark:text-slate-500"> — Cloud Enterprise</span>
+        <span className="font-synapse font-semibold tracking-tight text-slate-900 dark:text-slate-50">NEXA HR</span>
+        <span className="font-sans font-bold text-slate-500 dark:text-slate-500"> — CLOUD ENTERPRISE</span>
       </h1>
       <p className="max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-400">
         Un unico punto per presenze, ferie, organigramma e payroll CH: priorità chiare e controllo operativo quotidiano.
@@ -24,7 +24,7 @@ export default function WelcomePage(): React.JSX.Element {
           href="/login"
           className="inline-flex min-w-[10rem] items-center justify-center rounded-lg border border-slate-300 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 focus-visible:ring-offset-2 dark:border-slate-600 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-slate-800 dark:focus-visible:ring-white/25 dark:focus-visible:ring-offset-[#0b0b0b]"
         >
-          Login
+          LOGIN
         </Link>
       </div>
     </main>
