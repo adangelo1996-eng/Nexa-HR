@@ -116,7 +116,7 @@ export default function LoginForm(): React.JSX.Element {
           </Link>
           <nav className="flex items-center gap-3" aria-label="Navigazione">
             <Link
-              href="/welcome"
+              href="/"
               className="rounded-full border border-transparent px-3 py-1.5 text-[0.92rem] text-white no-underline transition duration-300 [mix-blend-mode:difference] [text-shadow:0_0_14px_rgba(0,0,0,0.22)] hover:-translate-y-px hover:scale-[1.04] hover:[text-shadow:0_0_16px_rgba(163,181,205,0.42)]"
             >
               ← HOME
@@ -171,7 +171,7 @@ export default function LoginForm(): React.JSX.Element {
           </button>
 
           <Link
-            href="/welcome"
+            href="/"
             className="mt-7 inline-block text-[0.82rem] font-medium uppercase tracking-[0.06em] text-white/[0.55] no-underline transition-colors hover:text-white/[0.85]"
           >
             ← TORNA ALLA HOME
