@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
+import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 
 /**
  * Stile Central Hub / sito Synapse: SYNAPSE - NEXA HR (tutto maiuscolo).
@@ -23,17 +24,21 @@ export function AppBrandBar(): React.JSX.Element {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
         <Link href="/" className="group flex flex-wrap items-baseline gap-x-0 gap-y-1 outline-none" aria-label="SYNAPSE NEXA HR">
           <span
-            className="font-synapse text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
-            style={{ fontSynthesis: "none" }}
+            className="text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
+            style={synapseSuiteDisplayStyle}
           >
             SYNAPSE
           </span>
-          <span className="mx-[0.2em] font-sans text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-synapse-text dark:text-white" aria-hidden>
+          <span
+            className="mx-[0.2em] text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-synapse-text dark:text-white"
+            style={synapseSuiteDisplayStyle}
+            aria-hidden
+          >
             -
           </span>
           <span
-            className="font-sans text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-slate-500 dark:text-slate-400"
-            style={{ fontSynthesis: "none" }}
+            className="text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-slate-500 dark:text-slate-400"
+            style={synapseSuiteDisplayStyle}
           >
             NEXA HR
           </span>

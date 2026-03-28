@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
+import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 
 type LoginPhase = "idle" | "submitting" | "redirecting";
 
@@ -97,17 +98,21 @@ export default function LoginForm(): React.JSX.Element {
             aria-label="SYNAPSE NEXA HR"
           >
             <span
-              className="font-synapse text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
-              style={{ fontSynthesis: "none", fontFamily: "var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif" }}
+              className="text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-white"
+              style={synapseSuiteDisplayStyle}
             >
               SYNAPSE
             </span>
-            <span className="mx-[0.2em] font-sans text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-white" aria-hidden>
+            <span
+              className="mx-[0.2em] text-[clamp(0.95rem,1.8vw,1.15rem)] font-semibold text-white"
+              style={synapseSuiteDisplayStyle}
+              aria-hidden
+            >
               {" - "}
             </span>
             <span
-              className="font-sans text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-[#94a3b8]"
-              style={{ fontSynthesis: "none" }}
+              className="text-[clamp(0.78rem,1.5vw,0.95rem)] font-semibold uppercase leading-none tracking-[0.12em] text-[#94a3b8]"
+              style={synapseSuiteDisplayStyle}
             >
               NEXA HR
             </span>
@@ -142,10 +147,9 @@ export default function LoginForm(): React.JSX.Element {
             PEOPLE OPERATIONS
           </p>
           <h1
-            className="m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] font-synapse text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
+            className="m-0 mb-[clamp(28px,5vw,44px)] px-[0.04em] text-[clamp(3rem,14vw,7.5rem)] font-semibold uppercase leading-[0.92] tracking-[0.06em] text-[#f5f6fb]"
             style={{
-              fontSynthesis: "none",
-              fontFamily: "var(--font-synapse-wordmark), Montserrat, system-ui, sans-serif",
+              ...synapseSuiteDisplayStyle,
               textShadow: "0 0 40px rgba(255, 255, 255, 0.12), 0 0 80px rgba(255, 255, 255, 0.06)"
             }}
           >
@@ -188,7 +192,8 @@ export default function LoginForm(): React.JSX.Element {
             >
               <h2
                 id="nexa-login-title"
-                className="m-0 mb-1.5 font-synapse text-[1.1rem] font-semibold uppercase tracking-[0.14em] text-white"
+                className="m-0 mb-1.5 text-[1.1rem] font-semibold uppercase tracking-[0.14em] text-white"
+                style={synapseSuiteDisplayStyle}
               >
                 ACCESSO
               </h2>

@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Montserrat } from "next/font/google";
 import { ConditionalBrandBar } from "@/components/conditional-brand-bar";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -8,6 +9,14 @@ const synapseWordmark = localFont({
   src: "../fonts/golden-rooster.ttf",
   variable: "--font-synapse-wordmark",
   weight: "600",
+  display: "swap"
+});
+
+/** Stesso ordine di Plasticity shared.css: display → Montserrat (mai monospace di fallback). */
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-montserrat",
   display: "swap"
 });
 
@@ -28,7 +37,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className={`${synapseWordmark.variable} antialiased`}>
+      <body className={`${synapseWordmark.variable} ${montserrat.variable} antialiased`}>
         <ThemeProvider>
           <ConditionalBrandBar />
           {children}
