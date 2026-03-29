@@ -1,6 +1,21 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards
+} from "@nestjs/common";
+import type { Response } from "express";
 import { IsIn, IsISO8601, IsOptional, IsString } from "class-validator";
 import { CurrentAuth } from "./auth";
+import { AttendanceTeamService } from "./attendance-team.service";
 import { HrDataStore } from "./hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 
@@ -31,10 +46,35 @@ class WorkModeDto {
   mode!: "office" | "smartworking";
 }
 
+class TeamEntryDto {
+  @IsString()
+  userId!: string;
+
+  @IsIn(["clock_in", "clock_out"])
+  type!: "clock_in" | "clock_out";
+
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+}
+
+class PatchTimeEntryDto {
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+
+  @IsOptional()
+  @IsIn(["clock_in", "clock_out"])
+  type?: "clock_in" | "clock_out";
+}
+
 @Controller("attendance")
 @UseGuards(NexaPermissionGuard)
 export class AttendanceController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly team: AttendanceTeamService
+  ) {}
 
   @Post("clock")
   @RequireNexaPermissions("nexa.attendance:write")
@@ -48,24 +88,104 @@ export class AttendanceController {
     return this.store.upsertWorkMode(auth.userId, dto.date, dto.mode);
   }
 
+  /** Path statico prima di GET entries per evitare conflitti di routing. */
+  @Get("entries/export")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async exportMonth(
+    @CurrentAuth() auth: { userId: string },
+    @Query("month") month: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    await this.team.assertCanManageTeam(auth.userId);
+    AttendanceTeamService.assertValidMonth(month);
+    const buf = await this.team.buildMonthExportXlsx(month);
+    const filename = `nexa-timbrature-${month}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return new StreamableFile(buf);
+  }
+
   @Get("entries")
   @RequireNexaPermissions("nexa.attendance:read")
   async entries(
     @CurrentAuth() auth: { userId: string },
-    @Query("userId") userId?: string,
-    @Query("date") date?: string
+    @Query("userId") queryUserId?: string,
+    @Query("date") date?: string,
+    @Query("month") month?: string
   ): Promise<unknown> {
-    return this.store.listTimeEntries(userId ?? auth.userId, date);
+    const targetUserId = queryUserId ?? auth.userId;
+    await this.team.assertCanViewUserAttendance(auth.userId, targetUserId);
+    if (month) {
+      AttendanceTeamService.assertValidMonth(month);
+      return this.store.listTimeEntries(targetUserId, { month });
+    }
+    return this.store.listTimeEntries(targetUserId, date ? { date } : undefined);
+  }
+
+  @Get("team/users")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async teamUsers(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
+    return this.team.listPickerUsers(auth.userId);
+  }
+
+  @Post("team/entries")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async teamAddEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Body() dto: TeamEntryDto
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    await this.team.assertCanViewUserAttendance(auth.userId, dto.userId);
+    return this.store.addTimeEntryAdmin(dto.userId, dto.type, dto.at);
+  }
+
+  @Patch("entries/:entryId")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async patchEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Param("entryId") entryId: string,
+    @Body() dto: PatchTimeEntryDto
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    const existing = await this.store.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    await this.team.assertCanViewUserAttendance(auth.userId, existing.userId);
+    if (!dto.at && dto.type === undefined) {
+      return existing;
+    }
+    return this.store.updateTimeEntryById(entryId, { at: dto.at, type: dto.type });
+  }
+
+  @Delete("entries/:entryId")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async deleteEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Param("entryId") entryId: string
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    const existing = await this.store.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    await this.team.assertCanViewUserAttendance(auth.userId, existing.userId);
+    return this.store.deleteTimeEntryById(entryId);
   }
 
   @Get("summary")
   @RequireNexaPermissions("nexa.attendance:read")
   async summary(
     @CurrentAuth() auth: { userId: string },
-    @Query("userId") userId?: string,
+    @Query("userId") queryUserId?: string,
     @Query("date") date?: string
   ): Promise<unknown> {
-    return this.store.listWorkdaySummary(userId ?? auth.userId, date);
+    const targetUserId = queryUserId ?? auth.userId;
+    await this.team.assertCanViewUserAttendance(auth.userId, targetUserId);
+    return this.store.listWorkdaySummary(targetUserId, date);
   }
 
   @Get("status")

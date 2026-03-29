@@ -32,6 +32,8 @@ export interface User {
   dailyTargetSeconds?: number;
   vacationAllowanceDays?: number;
   birthDate?: string;
+  /** Data assunzione YYYY-MM-DD */
+  hireDate?: string;
   phone?: string;
   address?: string;
 }
@@ -171,8 +173,7 @@ export interface ApprovalItem {
 export interface CreateUserPayload {
   firstName: string;
   lastName: string;
-  /** Se presente, sostituisce l'email generata automaticamente */
-  email?: string;
+  email: string;
   role: UserRole;
   managerId?: string;
   companyId: string;
@@ -180,15 +181,16 @@ export interface CreateUserPayload {
   costCenterId: string;
   contractType: string;
   weeklyContractHours: number;
-  avsNumber?: string;
-  iban?: string;
-  bankName?: string;
-  bicSwift?: string;
-  accountHolder?: string;
-  vacationAllowanceDays?: number;
-  birthDate?: string;
-  phone?: string;
-  address?: string;
+  avsNumber: string;
+  iban: string;
+  bankName: string;
+  bicSwift: string;
+  accountHolder: string;
+  vacationAllowanceDays: number;
+  birthDate: string;
+  hireDate: string;
+  phone: string;
+  address: string;
 }
 
 export interface UpdateUserPayload {
@@ -209,6 +211,7 @@ export interface UpdateUserPayload {
   accountHolder?: string;
   vacationAllowanceDays?: number;
   birthDate?: string;
+  hireDate?: string;
   phone?: string;
   address?: string;
 }
@@ -235,7 +238,8 @@ function getAuthHeaders(token: string): HeadersInit {
   };
 }
 
-function useSupabaseAttendance(): boolean {
+/** True se le timbrature passano dall'Edge Supabase (API Nest team non disponibili). */
+export function nexaUsesSupabaseAttendance(): boolean {
   const v = process.env.NEXT_PUBLIC_NEXA_USE_SUPABASE_ATTENDANCE?.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
@@ -398,7 +402,7 @@ export async function fetchOrgChart(token: string): Promise<OrgChartResponse> {
 }
 
 export async function clock(token: string, type: "clock_in" | "clock_out"): Promise<TimeEntry> {
-  if (useSupabaseAttendance()) {
+  if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, { action: "clock" }, {
       method: "POST",
       body: JSON.stringify({ type })
@@ -419,19 +423,35 @@ export async function clock(token: string, type: "clock_in" | "clock_out"): Prom
   return (await response.json()) as TimeEntry;
 }
 
-export async function fetchAttendanceEntries(token: string, date?: string): Promise<TimeEntry[]> {
-  if (useSupabaseAttendance()) {
+export type FetchAttendanceEntriesOpts = { date?: string; userId?: string; month?: string };
+
+export async function fetchAttendanceEntries(
+  token: string,
+  opts?: string | FetchAttendanceEntriesOpts
+): Promise<TimeEntry[]> {
+  const o: FetchAttendanceEntriesOpts = typeof opts === "string" ? { date: opts } : (opts ?? {});
+  if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, {
       action: "entries",
-      date: date ?? undefined
+      date: o.date ?? undefined
     });
     if (!response.ok) {
       await parseError(response);
     }
     return (await response.json()) as TimeEntry[];
   }
-  const search = date ? `?date=${encodeURIComponent(date)}` : "";
-  const response = await fetch(buildApiUrl(`/attendance/entries${search}`), {
+  const params = new URLSearchParams();
+  if (o.date) {
+    params.set("date", o.date);
+  }
+  if (o.month) {
+    params.set("month", o.month);
+  }
+  if (o.userId) {
+    params.set("userId", o.userId);
+  }
+  const q = params.toString();
+  const response = await fetch(buildApiUrl(`/attendance/entries${q ? `?${q}` : ""}`), {
     method: "GET",
     headers: getAuthHeaders(token)
   });
@@ -441,19 +461,32 @@ export async function fetchAttendanceEntries(token: string, date?: string): Prom
   return (await response.json()) as TimeEntry[];
 }
 
-export async function fetchAttendanceSummary(token: string, date?: string): Promise<WorkdaySummary[]> {
-  if (useSupabaseAttendance()) {
+export type FetchAttendanceSummaryOpts = { date?: string; userId?: string };
+
+export async function fetchAttendanceSummary(
+  token: string,
+  opts?: string | FetchAttendanceSummaryOpts
+): Promise<WorkdaySummary[]> {
+  const o: FetchAttendanceSummaryOpts = typeof opts === "string" ? { date: opts } : (opts ?? {});
+  if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, {
       action: "summary",
-      date: date ?? undefined
+      date: o.date ?? undefined
     });
     if (!response.ok) {
       await parseError(response);
     }
     return (await response.json()) as WorkdaySummary[];
   }
-  const search = date ? `?date=${encodeURIComponent(date)}` : "";
-  const response = await fetch(buildApiUrl(`/attendance/summary${search}`), {
+  const params = new URLSearchParams();
+  if (o.date) {
+    params.set("date", o.date);
+  }
+  if (o.userId) {
+    params.set("userId", o.userId);
+  }
+  const q = params.toString();
+  const response = await fetch(buildApiUrl(`/attendance/summary${q ? `?${q}` : ""}`), {
     method: "GET",
     headers: getAuthHeaders(token)
   });
@@ -464,7 +497,7 @@ export async function fetchAttendanceSummary(token: string, date?: string): Prom
 }
 
 export async function fetchAttendanceStatus(token: string, date?: string): Promise<AttendanceStatus> {
-  if (useSupabaseAttendance()) {
+  if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, {
       action: "status",
       date: date ?? undefined
@@ -489,7 +522,7 @@ export async function fetchAttendanceOvertimeAggregates(
   token: string,
   date?: string
 ): Promise<AttendanceOvertimeAggregates> {
-  if (useSupabaseAttendance()) {
+  if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, {
       action: "aggregates",
       date: date ?? undefined
@@ -508,6 +541,101 @@ export async function fetchAttendanceOvertimeAggregates(
     await parseError(response);
   }
   return (await response.json()) as AttendanceOvertimeAggregates;
+}
+
+export interface TeamAttendanceUserPicker {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export async function fetchAttendanceTeamUsers(token: string): Promise<TeamAttendanceUserPicker[]> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error(
+      "La gestione timbrature di squadra non è disponibile quando le timbrature usano Supabase Edge."
+    );
+  }
+  const response = await fetch(buildApiUrl("/attendance/team/users"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TeamAttendanceUserPicker[];
+}
+
+export async function downloadAttendanceMonthExport(token: string, month: string): Promise<void> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error(
+      "L'export mensile non è disponibile quando le timbrature usano Supabase Edge."
+    );
+  }
+  const url = buildApiUrl(`/attendance/entries/export?month=${encodeURIComponent(month)}`);
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = `nexa-timbrature-${month}.xlsx`;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function patchTimeEntry(
+  token: string,
+  entryId: string,
+  body: { at?: string; type?: "clock_in" | "clock_out" }
+): Promise<TimeEntry> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error("Modifica timbrature non disponibile con Supabase Edge.");
+  }
+  const response = await fetch(buildApiUrl(`/attendance/entries/${encodeURIComponent(entryId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TimeEntry;
+}
+
+export async function deleteTimeEntry(token: string, entryId: string): Promise<void> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error("Eliminazione timbrature non disponibile con Supabase Edge.");
+  }
+  const response = await fetch(buildApiUrl(`/attendance/entries/${encodeURIComponent(entryId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+}
+
+export async function createTeamTimeEntry(
+  token: string,
+  payload: { userId: string; type: "clock_in" | "clock_out"; at?: string }
+): Promise<TimeEntry> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error("Inserimento timbrature non disponibile con Supabase Edge.");
+  }
+  const response = await fetch(buildApiUrl("/attendance/team/entries"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TimeEntry;
 }
 
 export async function fetchAdminRoles(token: string): Promise<Role[]> {

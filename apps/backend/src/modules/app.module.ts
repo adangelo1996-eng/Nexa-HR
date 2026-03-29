@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ApprovalsController } from "./approvals.controller";
 import { AttendanceController } from "./attendance.controller";
+import { AttendanceTeamService } from "./attendance-team.service";
 import { AuditInterceptor } from "./audit.interceptor";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
@@ -34,6 +35,7 @@ import { UserController } from "./user.controller";
     HrDataStore,
     ImportService,
     AuthService,
+    AttendanceTeamService,
     PermissionsService,
     NexaPermissionGuard,
     {

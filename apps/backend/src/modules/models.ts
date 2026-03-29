@@ -19,6 +19,8 @@ export interface User {
   dailyTargetSeconds?: number;
   vacationAllowanceDays?: number;
   birthDate?: string;
+  /** Data assunzione (YYYY-MM-DD) */
+  hireDate?: string;
   phone?: string;
   address?: string;
 }

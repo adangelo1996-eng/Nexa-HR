@@ -21,10 +21,14 @@ export interface SessionUser {
   accountHolder?: string;
   dailyTargetSeconds?: number;
   vacationAllowanceDays?: number;
+  /** Data assunzione (YYYY-MM-DD), da anagrafica */
+  hireDate?: string;
   /** Presente dopo GET /users/me */
   isSynapseSuperuser?: boolean;
   /** Area /admin (ruoli, centri di costo, utenti con permessi adeguati) */
   canNexaAdmin?: boolean;
+  /** Export mensile e modifica timbrature altrui (admin / centro HR) */
+  canManageTeamAttendance?: boolean;
 }
 
 /** Accesso UI admin Nexa: flag dal backend o fallback ruolo legacy `admin`. */

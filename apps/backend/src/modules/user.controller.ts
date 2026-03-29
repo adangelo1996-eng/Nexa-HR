@@ -4,6 +4,7 @@ import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, M
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
+import { AttendanceTeamService } from "./attendance-team.service";
 import { PermissionsService } from "./permissions.service";
 
 class AssignRoleDto {
@@ -82,6 +83,10 @@ class CreateUserDto {
 
   @IsOptional()
   @IsString()
+  hireDate?: string;
+
+  @IsOptional()
+  @IsString()
   phone?: string;
 
   @IsOptional()
@@ -152,6 +157,10 @@ class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  hireDate?: string;
+
+  @IsOptional()
+  @IsString()
   phone?: string;
 
   @IsOptional()
@@ -176,7 +185,8 @@ class UpdateUserDto {
 export class UserController {
   constructor(
     private readonly store: HrDataStore,
-    private readonly permissions: PermissionsService
+    private readonly permissions: PermissionsService,
+    private readonly attendanceTeam: AttendanceTeamService
   ) {}
 
   @Get()
@@ -191,7 +201,13 @@ export class UserController {
   async me(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
-    return { ...user, isSynapseSuperuser: isSynapseSuperuserEmail(user.email), canNexaAdmin };
+    const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
+    return {
+      ...user,
+      isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
+      canNexaAdmin,
+      canManageTeamAttendance
+    };
   }
 
   @Get("roles")

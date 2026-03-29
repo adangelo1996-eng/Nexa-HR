@@ -121,13 +121,27 @@ export default function AdminRolesPage(): React.JSX.Element {
           router.replace("/");
           return;
         }
-        const [list, cat] = await Promise.all([
+        const [rolesOutcome, catalogOutcome] = await Promise.allSettled([
           fetchAdminRoles(tokenValue),
           fetchPermissionCatalog(tokenValue)
         ]);
+        if (rolesOutcome.status === "rejected") {
+          throw rolesOutcome.reason;
+        }
+        const list = rolesOutcome.value;
         setRoles(list);
-        setCatalog(cat);
         setSelectedRoleId(list[0]?.id ?? "");
+        if (catalogOutcome.status === "rejected") {
+          const msg =
+            catalogOutcome.reason instanceof Error
+              ? catalogOutcome.reason.message
+              : "Errore caricamento catalogo permessi";
+          setError(
+            `${msg} Verifica il permesso nexa.admin_roles:read o che l'API /admin/permission-catalog sia raggiungibile.`
+          );
+        } else {
+          setCatalog(catalogOutcome.value);
+        }
       } catch (loadError) {
         if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
           clearSession();
@@ -281,8 +295,51 @@ export default function AdminRolesPage(): React.JSX.Element {
     });
   }
 
-  if (loading || !catalog) {
+  if (loading) {
     return <p className="text-sm text-slate-700 dark:text-slate-300">Caricamento ruoli...</p>;
+  }
+
+  if (!catalog) {
+    return (
+      <div className="space-y-3 rounded-lg border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-100">
+        <p className="font-medium">Impossibile caricare il catalogo permessi.</p>
+        <p className="text-xs opacity-90">
+          {error ??
+            "Risposta vuota o errore sconosciuto. Controlla i permessi del tuo ruolo e la console di rete."}
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            setLoading(true);
+            setError(null);
+            setCatalog(null);
+            const t = getToken();
+            if (!t) {
+              router.replace("/login");
+              return;
+            }
+            void Promise.allSettled([fetchAdminRoles(t), fetchPermissionCatalog(t)]).then((outcomes) => {
+              if (outcomes[0].status === "fulfilled") {
+                const list = outcomes[0].value;
+                setRoles(list);
+                setSelectedRoleId(list[0]?.id ?? "");
+              }
+              if (outcomes[1].status === "fulfilled") {
+                setCatalog(outcomes[1].value);
+                setError(null);
+              } else {
+                const r = outcomes[1].reason;
+                setError(r instanceof Error ? r.message : "Catalogo non disponibile");
+              }
+              setLoading(false);
+            });
+          }}
+        >
+          Riprova
+        </Button>
+      </div>
+    );
   }
 
   return (

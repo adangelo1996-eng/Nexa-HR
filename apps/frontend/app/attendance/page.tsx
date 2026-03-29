@@ -6,17 +6,46 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   clock,
+  createTeamTimeEntry,
+  deleteTimeEntry,
+  downloadAttendanceMonthExport,
   fetchAttendanceEntries,
   fetchAttendanceOvertimeAggregates,
   fetchAttendanceStatus,
   fetchAttendanceSummary,
+  fetchAttendanceTeamUsers,
   fetchCurrentUser,
+  nexaUsesSupabaseAttendance,
+  patchTimeEntry,
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
+  type TeamAttendanceUserPicker,
   type TimeEntry,
   type WorkdaySummary
 } from "@/lib/api";
 import { clearSession, getToken, type SessionUser } from "@/lib/auth-session";
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value: string): string {
+  return new Date(value).toISOString();
+}
+
+function defaultMonthInput(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+type EntryDraft = { atLocal: string; type: "clock_in" | "clock_out" };
 
 export default function AttendancePage(): React.JSX.Element {
   const router = useRouter();
@@ -30,6 +59,21 @@ export default function AttendancePage(): React.JSX.Element {
   const [submitLoading, setSubmitLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  const [exportMonth, setExportMonth] = useState(defaultMonthInput);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [teamUsers, setTeamUsers] = useState<TeamAttendanceUserPicker[]>([]);
+  const [hrUserSearch, setHrUserSearch] = useState("");
+  const [hrSelectedUserId, setHrSelectedUserId] = useState("");
+  const [hrEditMonth, setHrEditMonth] = useState(defaultMonthInput);
+  const [hrEntries, setHrEntries] = useState<TimeEntry[]>([]);
+  const [hrLoading, setHrLoading] = useState(false);
+  const [hrManageError, setHrManageError] = useState<string | null>(null);
+  const [entryDrafts, setEntryDrafts] = useState<Record<string, EntryDraft>>({});
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
+  const [newEntryType, setNewEntryType] = useState<"clock_in" | "clock_out">("clock_in");
+  const [newEntryAtLocal, setNewEntryAtLocal] = useState(`${defaultMonthInput()}-01T09:00`);
+  const [addLoading, setAddLoading] = useState(false);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -67,6 +111,178 @@ export default function AttendancePage(): React.JSX.Element {
 
     void load();
   }, [router]);
+
+  useEffect(() => {
+    if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
+      return;
+    }
+    let cancelled = false;
+    void fetchAttendanceTeamUsers(token)
+      .then((list) => {
+        if (!cancelled) {
+          setTeamUsers(list);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTeamUsers([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.canManageTeamAttendance]);
+
+  useEffect(() => {
+    setNewEntryAtLocal(`${hrEditMonth}-01T09:00`);
+  }, [hrEditMonth]);
+
+  useEffect(() => {
+    if (!token || !hrSelectedUserId || !hrEditMonth) {
+      setHrEntries([]);
+      return;
+    }
+    let cancelled = false;
+    setHrLoading(true);
+    setHrManageError(null);
+    void fetchAttendanceEntries(token, { userId: hrSelectedUserId, month: hrEditMonth })
+      .then((list) => {
+        if (!cancelled) {
+          setHrEntries(list);
+          setEntryDrafts({});
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setHrManageError(err instanceof Error ? err.message : "Errore caricamento timbrature");
+          setHrEntries([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHrLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, hrSelectedUserId, hrEditMonth]);
+
+  const filteredTeamUsers = useMemo(() => {
+    const q = hrUserSearch.trim().toLowerCase();
+    if (!q) {
+      return teamUsers;
+    }
+    return teamUsers.filter(
+      (u) =>
+        u.fullName.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+    );
+  }, [teamUsers, hrUserSearch]);
+
+  function getDraft(entry: TimeEntry): EntryDraft {
+    const d = entryDrafts[entry.id];
+    if (d) {
+      return d;
+    }
+    return { atLocal: toDatetimeLocalValue(entry.at), type: entry.type };
+  }
+
+  async function onExportMonthXlsx(): Promise<void> {
+    if (!token) {
+      return;
+    }
+    setHrManageError(null);
+    setExportLoading(true);
+    try {
+      await downloadAttendanceMonthExport(token, exportMonth);
+    } catch (exportErr) {
+      setHrManageError(exportErr instanceof Error ? exportErr.message : "Export non riuscito");
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  async function onSaveHrEntry(entry: TimeEntry): Promise<void> {
+    if (!token) {
+      return;
+    }
+    const d = getDraft(entry);
+    setHrManageError(null);
+    setRowBusyId(entry.id);
+    try {
+      await patchTimeEntry(token, entry.id, {
+        type: d.type,
+        at: fromDatetimeLocalValue(d.atLocal)
+      });
+      const list = await fetchAttendanceEntries(token, {
+        userId: hrSelectedUserId,
+        month: hrEditMonth
+      });
+      setHrEntries(list);
+      setEntryDrafts((prev) => {
+        const next = { ...prev };
+        delete next[entry.id];
+        return next;
+      });
+    } catch (saveErr) {
+      setHrManageError(saveErr instanceof Error ? saveErr.message : "Salvataggio non riuscito");
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function onDeleteHrEntry(entryId: string): Promise<void> {
+    if (!token) {
+      return;
+    }
+    if (!window.confirm("Eliminare questa timbratura?")) {
+      return;
+    }
+    setHrManageError(null);
+    setRowBusyId(entryId);
+    try {
+      await deleteTimeEntry(token, entryId);
+      const list = await fetchAttendanceEntries(token, {
+        userId: hrSelectedUserId,
+        month: hrEditMonth
+      });
+      setHrEntries(list);
+      setEntryDrafts((prev) => {
+        const next = { ...prev };
+        delete next[entryId];
+        return next;
+      });
+    } catch (delErr) {
+      setHrManageError(delErr instanceof Error ? delErr.message : "Eliminazione non riuscita");
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function onAddHrEntry(): Promise<void> {
+    if (!token || !hrSelectedUserId) {
+      return;
+    }
+    setHrManageError(null);
+    setAddLoading(true);
+    try {
+      await createTeamTimeEntry(token, {
+        userId: hrSelectedUserId,
+        type: newEntryType,
+        at: fromDatetimeLocalValue(newEntryAtLocal)
+      });
+      const list = await fetchAttendanceEntries(token, {
+        userId: hrSelectedUserId,
+        month: hrEditMonth
+      });
+      setHrEntries(list);
+    } catch (addErr) {
+      setHrManageError(addErr instanceof Error ? addErr.message : "Inserimento non riuscito");
+    } finally {
+      setAddLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!status) {
@@ -197,6 +413,234 @@ export default function AttendancePage(): React.JSX.Element {
         </div>
         {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
       </section>
+
+      {user?.canManageTeamAttendance ? (
+        <section className="card mt-6 border-amber-200/80 dark:border-amber-900/40">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            Gestione timbrature (HR / amministratori)
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Export mensile di tutti gli utenti e correzione timbrature per singolo dipendente.
+          </p>
+          {nexaUsesSupabaseAttendance() ? (
+            <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
+              Con le timbrature su Supabase Edge queste funzioni non sono disponibili dall&apos;app Nest.
+              Disattiva <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">NEXT_PUBLIC_NEXA_USE_SUPABASE_ATTENDANCE</code> per usarle.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-8">
+              {hrManageError ? (
+                <p className="text-sm text-rose-600 dark:text-rose-300">{hrManageError}</p>
+              ) : null}
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Export Excel (tutti gli utenti)
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Scarica le timbrature del mese selezionato per l&apos;intera anagrafica consentita.
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Mese
+                    <input
+                      type="month"
+                      className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      value={exportMonth}
+                      onChange={(e) => setExportMonth(e.target.value)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!token || exportLoading}
+                    onClick={() => void onExportMonthXlsx()}
+                  >
+                    {exportLoading ? "Generazione..." : "Scarica XLSX"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-6 dark:border-slate-700">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Visualizza e modifica per utente
+                </h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Cerca (nome o email)
+                    <input
+                      type="search"
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      value={hrUserSearch}
+                      onChange={(e) => setHrUserSearch(e.target.value)}
+                      placeholder="Filtra elenco..."
+                    />
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Utente
+                    <select
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      value={hrSelectedUserId}
+                      onChange={(e) => setHrSelectedUserId(e.target.value)}
+                    >
+                      <option value="">— Seleziona —</option>
+                      {filteredTeamUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} · {u.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300 sm:col-span-2">
+                    Mese timbrature
+                    <input
+                      type="month"
+                      className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      value={hrEditMonth}
+                      onChange={(e) => setHrEditMonth(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                {hrLoading ? (
+                  <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Caricamento timbrature...</p>
+                ) : hrSelectedUserId ? (
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                    <table className="w-full min-w-[640px] text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                        <tr>
+                          <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Tipo</th>
+                          <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Data e ora</th>
+                          <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Azioni</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...hrEntries]
+                          .sort((a, b) => a.at.localeCompare(b.at))
+                          .map((item) => {
+                            const draft = getDraft(item);
+                            const busy = rowBusyId === item.id;
+                            return (
+                              <tr
+                                key={item.id}
+                                className="border-b border-slate-100 dark:border-slate-800"
+                              >
+                                <td className="px-3 py-2">
+                                  <select
+                                    className="w-full max-w-[140px] rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900"
+                                    value={draft.type}
+                                    disabled={busy}
+                                    onChange={(e) =>
+                                      setEntryDrafts((prev) => ({
+                                        ...prev,
+                                        [item.id]: {
+                                          ...draft,
+                                          type: e.target.value as "clock_in" | "clock_out"
+                                        }
+                                      }))
+                                    }
+                                  >
+                                    <option value="clock_in">Entrata</option>
+                                    <option value="clock_out">Uscita</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="datetime-local"
+                                    className="w-full max-w-[220px] rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900"
+                                    value={draft.atLocal}
+                                    disabled={busy}
+                                    onChange={(e) =>
+                                      setEntryDrafts((prev) => ({
+                                        ...prev,
+                                        [item.id]: { ...draft, atLocal: e.target.value }
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="secondary"
+                                      disabled={busy}
+                                      onClick={() => void onSaveHrEntry(item)}
+                                    >
+                                      Salva
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={busy}
+                                      onClick={() => void onDeleteHrEntry(item.id)}
+                                    >
+                                      Elimina
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                    {hrEntries.length === 0 ? (
+                      <p className="px-3 py-4 text-sm text-slate-600 dark:text-slate-400">
+                        Nessuna timbratura in questo mese.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+                    Seleziona un utente per caricare le timbrature del mese.
+                  </p>
+                )}
+
+                {hrSelectedUserId ? (
+                  <div className="mt-6 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-600">
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      Aggiungi timbratura
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-end gap-3">
+                      <label className="text-sm text-slate-700 dark:text-slate-300">
+                        Tipo
+                        <select
+                          className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                          value={newEntryType}
+                          onChange={(e) =>
+                            setNewEntryType(e.target.value as "clock_in" | "clock_out")
+                          }
+                        >
+                          <option value="clock_in">Entrata</option>
+                          <option value="clock_out">Uscita</option>
+                        </select>
+                      </label>
+                      <label className="text-sm text-slate-700 dark:text-slate-300">
+                        Data e ora
+                        <input
+                          type="datetime-local"
+                          className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                          value={newEntryAtLocal}
+                          onChange={(e) => setNewEntryAtLocal(e.target.value)}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={addLoading}
+                        onClick={() => void onAddHrEntry()}
+                      >
+                        {addLoading ? "Aggiunta..." : "Aggiungi"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Riepilogo giorni lavorati</h2>

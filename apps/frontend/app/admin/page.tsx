@@ -31,18 +31,31 @@ import { previewAutoSynapseEmail, synapseEmailDomain } from "@/lib/email-preview
 
 const WIZARD_STEPS = 4 as const;
 
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
 function emptyNewUser(): CreateUserPayload {
   return {
     firstName: "",
     lastName: "",
-    email: undefined,
+    email: "",
     role: "employee",
     companyId: "comp-1",
     roleId: "",
     costCenterId: "",
     contractType: "",
     weeklyContractHours: 40,
-    vacationAllowanceDays: 22
+    vacationAllowanceDays: 22,
+    avsNumber: "",
+    iban: "",
+    bankName: "",
+    bicSwift: "",
+    accountHolder: "",
+    birthDate: "",
+    hireDate: "",
+    phone: "",
+    address: ""
   };
 }
 
@@ -55,6 +68,7 @@ export default function AdminPage(): React.JSX.Element {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [newUser, setNewUser] = useState<CreateUserPayload>(emptyNewUser());
   const [wizardStep, setWizardStep] = useState(1);
+  const [creatingUser, setCreatingUser] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -131,14 +145,26 @@ export default function AdminPage(): React.JSX.Element {
     setError(null);
     setSubmitting(true);
     try {
-      const emailTrim = newUser.email?.trim();
       const payload: CreateUserPayload = {
         ...newUser,
-        email: emailTrim && emailTrim.length > 0 ? emailTrim : undefined
+        firstName: newUser.firstName.trim(),
+        lastName: newUser.lastName.trim(),
+        email: newUser.email.trim(),
+        contractType: newUser.contractType.trim(),
+        avsNumber: newUser.avsNumber.trim(),
+        iban: newUser.iban.trim(),
+        bankName: newUser.bankName.trim(),
+        bicSwift: newUser.bicSwift.trim(),
+        accountHolder: newUser.accountHolder.trim(),
+        birthDate: newUser.birthDate.trim(),
+        hireDate: newUser.hireDate.trim(),
+        phone: newUser.phone.trim(),
+        address: newUser.address.trim()
       };
       const created = await createUser(token, payload);
       setNewUser(emptyNewUser());
       setWizardStep(1);
+      setCreatingUser(false);
       await refreshUsers();
       setSelectedUserId(created.id);
     } catch (submitError) {
@@ -177,6 +203,7 @@ export default function AdminPage(): React.JSX.Element {
         accountHolder: selectedUser.accountHolder,
         vacationAllowanceDays: selectedUser.vacationAllowanceDays,
         birthDate: selectedUser.birthDate,
+        hireDate: selectedUser.hireDate,
         phone: selectedUser.phone,
         address: selectedUser.address
       });
@@ -198,7 +225,12 @@ export default function AdminPage(): React.JSX.Element {
 
   function wizardStepValid(step: number): boolean {
     if (step === 1) {
-      return Boolean(newUser.firstName.trim() && newUser.lastName.trim());
+      return Boolean(
+        newUser.firstName.trim() &&
+          newUser.lastName.trim() &&
+          newUser.email.trim() &&
+          isValidEmail(newUser.email)
+      );
     }
     if (step === 2) {
       return Boolean(newUser.roleId && newUser.costCenterId);
@@ -206,12 +238,43 @@ export default function AdminPage(): React.JSX.Element {
     if (step === 3) {
       return (
         Boolean(newUser.contractType?.trim()) &&
+        Boolean(newUser.hireDate?.trim()) &&
         Number.isFinite(newUser.weeklyContractHours) &&
         newUser.weeklyContractHours >= 1 &&
-        newUser.weeklyContractHours <= 80
+        newUser.weeklyContractHours <= 80 &&
+        Number.isFinite(newUser.vacationAllowanceDays) &&
+        (newUser.vacationAllowanceDays ?? 0) >= 0
+      );
+    }
+    if (step === 4) {
+      const u = newUser;
+      return Boolean(
+        u.avsNumber.trim() &&
+          u.iban.trim() &&
+          u.bankName.trim() &&
+          u.bicSwift.trim() &&
+          u.accountHolder.trim() &&
+          u.phone.trim() &&
+          u.birthDate.trim() &&
+          u.address.trim()
       );
     }
     return true;
+  }
+
+  function openCreateUser(): void {
+    setCreatingUser(true);
+    setSelectedUserId("");
+    setNewUser(emptyNewUser());
+    setWizardStep(1);
+    setError(null);
+  }
+
+  function cancelCreateUser(): void {
+    setCreatingUser(false);
+    setSelectedUserId(users[0]?.id ?? "");
+    setWizardStep(1);
+    setError(null);
   }
 
   function goNext(): void {
@@ -236,10 +299,9 @@ export default function AdminPage(): React.JSX.Element {
     );
   }
 
-  const previewEmail =
-    newUser.email?.trim() && newUser.email.includes("@")
-      ? newUser.email.trim()
-      : previewAutoSynapseEmail(newUser.firstName, newUser.lastName);
+  const previewEmail = newUser.email.trim()
+    ? newUser.email.trim()
+    : previewAutoSynapseEmail(newUser.firstName, newUser.lastName);
 
   return (
     <div className="space-y-5">
@@ -258,21 +320,27 @@ export default function AdminPage(): React.JSX.Element {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)]">
         <GlassCard
           title="Utenti"
-          description="Elenco completo degli utenti con ricerca rapida. Usa il bottone in fondo per crearne uno nuovo."
+          description="Elenco utenti con ricerca rapida. La creazione si apre solo dal pulsante «Nuovo utente»."
           className="h-full"
         >
-          <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <input
               placeholder={adminStrings.users.searchPlaceholder}
-              className="h-8 flex-1 rounded-full border border-slate-700/70 bg-slate-900/70 px-3 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-400/80"
+              className="h-8 min-w-[140px] flex-1 rounded-full border border-slate-700/70 bg-slate-900/70 px-3 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-400/80"
             />
+            <Button type="button" variant="secondary" className="shrink-0 text-xs" onClick={openCreateUser}>
+              Nuovo utente
+            </Button>
           </div>
           <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1 text-xs">
             {users.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setSelectedUserId(item.id)}
+                onClick={() => {
+                  setCreatingUser(false);
+                  setSelectedUserId(item.id);
+                }}
                 className={[
                   "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition",
                   selectedUserId === item.id
@@ -289,36 +357,32 @@ export default function AdminPage(): React.JSX.Element {
                 </span>
               </button>
             ))}
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedUserId("");
-                setNewUser(emptyNewUser());
-                setWizardStep(1);
-                setError(null);
-              }}
-              className="mt-2 flex w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600/80 dark:bg-slate-900/40 dark:text-slate-200 dark:hover:border-slate-300 dark:hover:bg-slate-900/80"
-            >
-              + Aggiungi nuovo utente
-            </button>
           </div>
         </GlassCard>
 
         <GlassCard
           title={
-            selectedUser
-              ? adminStrings.users.detailTitleExisting
-              : adminStrings.users.detailTitleNew
+            creatingUser
+              ? adminStrings.users.detailTitleNew
+              : selectedUser
+                ? adminStrings.users.detailTitleExisting
+                : "Nessun utente selezionato"
           }
           description={
-            selectedUser
-              ? adminStrings.users.detailSubtitleExisting
-              : `Passo ${wizardStep} di ${WIZARD_STEPS}: compila tutti i passaggi obbligatori prima di creare l&apos;utenza.`
+            creatingUser
+              ? `Passo ${wizardStep} di ${WIZARD_STEPS}: tutti i campi sono obbligatori.`
+              : selectedUser
+                ? adminStrings.users.detailSubtitleExisting
+                : "Scegli un utente dall’elenco oppure creane uno nuovo."
           }
         >
-          {!selectedUser ? (
+          {creatingUser ? (
             <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="ghost" className="text-xs" onClick={cancelCreateUser}>
+                  Annulla creazione
+                </Button>
+              </div>
               <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-400">
                 {Array.from({ length: WIZARD_STEPS }, (_, i) => i + 1).map((n) => (
                   <span
@@ -356,21 +420,17 @@ export default function AdminPage(): React.JSX.Element {
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">
-                      Indirizzo email esistente (opzionale)
-                    </span>
+                    <span className="text-slate-700 dark:text-slate-300">Email *</span>
                     <input
                       type="email"
-                      placeholder={`Altrimenti verrà generata automaticamente (@${synapseEmailDomain()})`}
-                      value={newUser.email ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, email: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      placeholder={`es. nome.cognome@${synapseEmailDomain()}`}
+                      value={newUser.email}
+                      onChange={(event) => setNewUser((c) => ({ ...c, email: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">Anteprima email: </span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Anteprima (se lasci vuoto il campo mentre digiti nome): </span>
                     {previewEmail}
                   </div>
                 </div>
@@ -489,20 +549,29 @@ export default function AdminPage(): React.JSX.Element {
                       className={inputRequiredClass}
                     />
                   </label>
+                  <label className="flex flex-col gap-1 text-xs">
+                    <span className="text-slate-700 dark:text-slate-300">Data di assunzione *</span>
+                    <input
+                      type="date"
+                      value={newUser.hireDate}
+                      onChange={(event) => setNewUser((c) => ({ ...c, hireDate: event.target.value }))}
+                      className={inputRequiredClass}
+                    />
+                  </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Ferie standard annuali</span>
+                    <span className="text-slate-700 dark:text-slate-300">Ferie standard annuali *</span>
                     <input
                       type="number"
                       min={0}
                       max={120}
-                      value={newUser.vacationAllowanceDays ?? 22}
+                      value={newUser.vacationAllowanceDays}
                       onChange={(event) =>
                         setNewUser((c) => ({
                           ...c,
                           vacationAllowanceDays: Number(event.target.value)
                         }))
                       }
-                      className={inputOptionalClass}
+                      className={inputRequiredClass}
                     />
                   </label>
                 </div>
@@ -511,84 +580,68 @@ export default function AdminPage(): React.JSX.Element {
               {wizardStep === 4 ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Numero AVS</span>
+                    <span className="text-slate-700 dark:text-slate-300">Numero AVS *</span>
                     <input
-                      value={newUser.avsNumber ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, avsNumber: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.avsNumber}
+                      onChange={(event) => setNewUser((c) => ({ ...c, avsNumber: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">IBAN</span>
+                    <span className="text-slate-700 dark:text-slate-300">IBAN *</span>
                     <input
-                      value={newUser.iban ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, iban: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.iban}
+                      onChange={(event) => setNewUser((c) => ({ ...c, iban: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Banca</span>
+                    <span className="text-slate-700 dark:text-slate-300">Banca *</span>
                     <input
-                      value={newUser.bankName ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, bankName: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.bankName}
+                      onChange={(event) => setNewUser((c) => ({ ...c, bankName: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">BIC/SWIFT</span>
+                    <span className="text-slate-700 dark:text-slate-300">BIC/SWIFT *</span>
                     <input
-                      value={newUser.bicSwift ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, bicSwift: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.bicSwift}
+                      onChange={(event) => setNewUser((c) => ({ ...c, bicSwift: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Intestatario conto</span>
+                    <span className="text-slate-700 dark:text-slate-300">Intestatario conto *</span>
                     <input
-                      value={newUser.accountHolder ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, accountHolder: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.accountHolder}
+                      onChange={(event) => setNewUser((c) => ({ ...c, accountHolder: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Telefono</span>
+                    <span className="text-slate-700 dark:text-slate-300">Telefono *</span>
                     <input
-                      value={newUser.phone ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, phone: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.phone}
+                      onChange={(event) => setNewUser((c) => ({ ...c, phone: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Data di nascita</span>
+                    <span className="text-slate-700 dark:text-slate-300">Data di nascita *</span>
                     <input
                       type="date"
-                      value={newUser.birthDate ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, birthDate: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.birthDate}
+                      onChange={(event) => setNewUser((c) => ({ ...c, birthDate: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Indirizzo</span>
+                    <span className="text-slate-700 dark:text-slate-300">Indirizzo *</span>
                     <input
-                      value={newUser.address ?? ""}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, address: event.target.value || undefined }))
-                      }
-                      className={inputOptionalClass}
+                      value={newUser.address}
+                      onChange={(event) => setNewUser((c) => ({ ...c, address: event.target.value }))}
+                      className={inputRequiredClass}
                     />
                   </label>
                 </div>
@@ -608,7 +661,10 @@ export default function AdminPage(): React.JSX.Element {
                   <Button
                     type="button"
                     onClick={() => void onCreateUser()}
-                    disabled={submitting || !wizardStepValid(1) || !wizardStepValid(2) || !wizardStepValid(3)}
+                    disabled={
+                      submitting ||
+                      ![1, 2, 3, 4].every((s) => wizardStepValid(s))
+                    }
                   >
                     {submitting ? "Creazione..." : "Crea utente"}
                   </Button>
@@ -618,7 +674,7 @@ export default function AdminPage(): React.JSX.Element {
                 </span>
               </div>
             </div>
-          ) : (
+          ) : selectedUser ? (
             <>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="md:col-span-2 border-b border-slate-200 pb-3 dark:border-slate-700/80">
@@ -871,6 +927,18 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Data di assunzione</span>
+                  <input
+                    type="date"
+                    value={selectedUser ? selectedUser.hireDate ?? "" : ""}
+                    onChange={(event) => {
+                      const value = event.target.value || undefined;
+                      if (selectedUser) updateSelectedUser({ hireDate: value });
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
                 <label className="md:col-span-2 flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Indirizzo</span>
                   <input
@@ -893,6 +961,13 @@ export default function AdminPage(): React.JSX.Element {
                 </span>
               </div>
             </>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-center text-sm text-slate-600 dark:text-slate-400">
+              <p>Nessun utente selezionato. Scegli un nome dall&apos;elenco a sinistra o crea un nuovo profilo.</p>
+              <Button type="button" variant="secondary" onClick={openCreateUser}>
+                Nuovo utente
+              </Button>
+            </div>
           )}
 
           {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}

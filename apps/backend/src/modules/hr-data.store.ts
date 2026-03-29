@@ -32,6 +32,7 @@ interface UserCreateInput {
   accountHolder?: string;
   vacationAllowanceDays?: number;
   birthDate?: string;
+  hireDate?: string;
   phone?: string;
   address?: string;
 }
@@ -54,6 +55,7 @@ interface UserUpdateInput {
   accountHolder?: string;
   vacationAllowanceDays?: number;
   birthDate?: string;
+  hireDate?: string;
   phone?: string;
   address?: string;
 }
@@ -446,6 +448,7 @@ export class HrDataStore {
       dailyTargetSeconds: this.computeDailyTargetSecondsFromWeekly(weeklyContractHours),
       vacationAllowanceDays: input.vacationAllowanceDays ?? 22,
       birthDate: input.birthDate,
+      hireDate: input.hireDate,
       phone: input.phone,
       address: input.address
     };
@@ -760,7 +763,7 @@ export class HrDataStore {
     remainingSeconds: number;
     firstClockInAt?: string;
   }> {
-    const todayEntries = (await this.listTimeEntries(userId, date)).sort((a, b) => a.at.localeCompare(b.at));
+    const todayEntries = (await this.listTimeEntries(userId, { date })).sort((a, b) => a.at.localeCompare(b.at));
     const live = this.calculateWorkedSeconds(todayEntries, new Date().toISOString());
     const workedSeconds = live.workedSeconds;
     const minutesWorked = Math.floor(workedSeconds / 60);
@@ -837,18 +840,118 @@ export class HrDataStore {
     return entry;
   }
 
-  async listTimeEntries(userId: string, date?: string): Promise<TimeEntry[]> {
+  async listTimeEntries(userId: string, filter?: { date?: string; month?: string }): Promise<TimeEntry[]> {
+    const prefix = filter?.month ? `${filter.month}-` : filter?.date;
     if (this.useDb) {
       let query = this.supabase!.from("time_entries").select("*").eq("userId", userId);
-      if (date) {
-        query = query.like("at", `${date}%`);
+      if (filter?.month) {
+        query = query.like("at", `${filter.month}%`);
+      } else if (filter?.date) {
+        query = query.like("at", `${filter.date}%`);
       }
       const { data } = await query;
       return ((data as TimeEntry[]) ?? []).sort((a, b) => b.at.localeCompare(a.at));
     }
     return this.timeEntries
-      .filter((item) => item.userId === userId && (!date || item.at.startsWith(date)))
+      .filter((item) => {
+        if (item.userId !== userId) {
+          return false;
+        }
+        if (filter?.month) {
+          return item.at.startsWith(filter.month);
+        }
+        if (filter?.date) {
+          return item.at.startsWith(filter.date);
+        }
+        return true;
+      })
       .sort((a, b) => b.at.localeCompare(a.at));
+  }
+
+  async listAllTimeEntriesInMonth(monthPrefix: string): Promise<TimeEntry[]> {
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("time_entries").select("*").like("at", `${monthPrefix}%`);
+      return ((data as TimeEntry[]) ?? []).sort((a, b) => a.at.localeCompare(b.at));
+    }
+    return this.timeEntries.filter((item) => item.at.startsWith(monthPrefix)).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  async getTimeEntryById(entryId: string): Promise<TimeEntry | null> {
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("time_entries").select("*").eq("id", entryId).maybeSingle();
+      return (data as TimeEntry | undefined) ?? null;
+    }
+    return this.timeEntries.find((item) => item.id === entryId) ?? null;
+  }
+
+  async getCostCenterById(costCenterId: string): Promise<CostCenter | null> {
+    const list = await this.listCostCenters();
+    return list.find((c) => c.id === costCenterId) ?? null;
+  }
+
+  async addTimeEntryAdmin(userId: string, type: "clock_in" | "clock_out", at?: string): Promise<TimeEntry> {
+    const atIso = at ?? new Date().toISOString();
+    const day = atIso.slice(0, 10);
+    const entry: TimeEntry = {
+      id: `te-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userId,
+      type,
+      at: atIso
+    };
+    if (this.useDb) {
+      await this.supabase!.from("time_entries").insert(entry);
+      await this.refreshSummary(userId, day);
+      return entry;
+    }
+    this.timeEntries.push(entry);
+    await this.refreshSummary(userId, day);
+    return entry;
+  }
+
+  async updateTimeEntryById(
+    entryId: string,
+    patch: { at?: string; type?: "clock_in" | "clock_out" }
+  ): Promise<TimeEntry> {
+    const existing = await this.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    const oldDay = existing.at.slice(0, 10);
+    const nextAt = patch.at ?? existing.at;
+    const nextType = patch.type ?? existing.type;
+    const newDay = nextAt.slice(0, 10);
+    const updated: TimeEntry = { ...existing, at: nextAt, type: nextType };
+    if (this.useDb) {
+      await this.supabase!.from("time_entries").update({ at: nextAt, type: nextType }).eq("id", entryId);
+    } else {
+      const idx = this.timeEntries.findIndex((item) => item.id === entryId);
+      if (idx !== -1) {
+        this.timeEntries[idx] = updated;
+      }
+    }
+    await this.refreshSummary(existing.userId, oldDay);
+    if (newDay !== oldDay) {
+      await this.refreshSummary(existing.userId, newDay);
+    }
+    return updated;
+  }
+
+  async deleteTimeEntryById(entryId: string): Promise<TimeEntry> {
+    const existing = await this.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    const day = existing.at.slice(0, 10);
+    if (this.useDb) {
+      await this.supabase!.from("time_entries").delete().eq("id", entryId);
+    } else {
+      const idx = this.timeEntries.findIndex((item) => item.id === entryId);
+      if (idx !== -1) {
+        this.timeEntries.splice(idx, 1);
+      }
+    }
+    await this.refreshSummary(existing.userId, day);
+    return existing;
   }
 
   async listWorkdaySummary(userId: string, date?: string): Promise<WorkdaySummary[]> {
@@ -917,7 +1020,7 @@ export class HrDataStore {
   }
 
   private async refreshSummary(userId: string, date: string): Promise<void> {
-    const dayEntries = (await this.listTimeEntries(userId, date)).sort((a, b) => a.at.localeCompare(b.at));
+    const dayEntries = (await this.listTimeEntries(userId, { date })).sort((a, b) => a.at.localeCompare(b.at));
     const workedSeconds = this.calculateWorkedSeconds(dayEntries).workedSeconds;
     const minutesWorked = Math.floor(workedSeconds / 60);
     const user = await this.getUser(userId);
