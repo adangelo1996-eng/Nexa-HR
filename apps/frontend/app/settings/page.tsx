@@ -14,7 +14,7 @@ import {
   type ImportCellError,
   type ImportHistoryItem
 } from "@/lib/api";
-import { clearSession, getToken } from "@/lib/auth-session";
+import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
 import {
   readNexaHrPrefs,
   readSynapsePrefs,
@@ -62,12 +62,20 @@ export default function SettingsPage(): React.JSX.Element {
         const me = await fetchCurrentUser(tokenValue);
         setIsSuperuser(Boolean(me.isSynapseSuperuser));
         if (Boolean(me.isSynapseSuperuser)) {
-          const h = await fetchImportHistory(tokenValue);
-          setHistory(h);
+          try {
+            const h = await fetchImportHistory(tokenValue);
+            setHistory(h);
+          } catch {
+            setHistory([]);
+          }
         }
-      } catch {
-        clearSession();
-        router.replace("/login");
+      } catch (loadError) {
+        if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
+          clearSession();
+          router.replace("/login");
+        } else {
+          setError(loadError instanceof Error ? loadError.message : "Errore caricamento impostazioni");
+        }
       } finally {
         setLoading(false);
       }
