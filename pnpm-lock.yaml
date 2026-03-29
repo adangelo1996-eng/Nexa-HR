@@ -69,6 +69,9 @@ importers:
       '@types/multer':
         specifier: ^1.4.12
         version: 1.4.13
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.15
       '@types/pdfkit':
         specifier: ^0.17.3
         version: 0.17.5
