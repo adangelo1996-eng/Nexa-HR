@@ -72,14 +72,20 @@ export interface ImportCellError {
 
 export interface ImportHistoryItem {
   id: string;
+  kind: "validate" | "apply";
   category: string;
   startedAt: string;
   finishedAt: string;
   status: string;
   rowCount: number;
+  createdCount?: number | null;
   errorCount: number;
+  fileSizeBytes?: number | null;
+  fileName?: string | null;
   errorsSnapshot?: ImportCellError[];
-  createdByUserId: string;
+  actorUserId?: string | null;
+  actorEmail?: string | null;
+  auditMeta?: Record<string, unknown>;
 }
 
 export interface CostCenter {
@@ -87,6 +93,7 @@ export interface CostCenter {
   code: string;
   name: string;
   description?: string;
+  companyId?: string;
 }
 
 export interface OrgNode {
@@ -755,10 +762,14 @@ export async function fetchPermissionCatalog(token: string): Promise<PermissionC
   return (await response.json()) as PermissionCatalogResponse;
 }
 
-export async function downloadImportTemplate(
-  token: string,
-  category: "users" | "cost_centers" | "roles"
-): Promise<Blob> {
+export type ImportCategory =
+  | "users"
+  | "cost_centers"
+  | "roles"
+  | "leave_allowances"
+  | "user_managers";
+
+export async function downloadImportTemplate(token: string, category: ImportCategory): Promise<Blob> {
   const response = await fetch(buildApiUrl(`/admin/import/template?category=${encodeURIComponent(category)}`), {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` }
@@ -771,7 +782,7 @@ export async function downloadImportTemplate(
 
 export async function validateImportFile(
   token: string,
-  category: "users" | "cost_centers" | "roles",
+  category: ImportCategory,
   file: File
 ): Promise<{ errors: ImportCellError[]; rows: unknown[] }> {
   const body = new FormData();
@@ -792,7 +803,7 @@ export async function validateImportFile(
 
 export async function applyImport(
   token: string,
-  category: "users" | "cost_centers" | "roles",
+  category: ImportCategory,
   rows: unknown[]
 ): Promise<{ created: number; errors: ImportCellError[] }> {
   const response = await fetch(buildApiUrl("/admin/import/apply"), {
@@ -830,6 +841,17 @@ export async function createLeavePlan(
     await parseError(response);
   }
   return (await response.json()) as LeavePlan;
+}
+
+export async function fetchLeavePlans(token: string): Promise<LeavePlan[]> {
+  const response = await fetch(buildApiUrl("/leave/plan"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as LeavePlan[];
 }
 
 export async function fetchLeaveBalance(token: string, year: number): Promise<LeaveBalance> {

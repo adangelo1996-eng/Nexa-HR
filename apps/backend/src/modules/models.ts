@@ -37,6 +37,8 @@ export interface CostCenter {
   code: string;
   name: string;
   description?: string;
+  /** Riferimento anagrafica azienda (es. companyId utente / codice contabile). */
+  companyId?: string;
 }
 
 export interface TimeEntry {

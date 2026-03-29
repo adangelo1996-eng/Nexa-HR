@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ApprovalView, LeaveBalance, LeavePlan, Payslip, SicknessEvent, TimeEntry, User, WorkdaySummary, Role, CostCenter } from "./models";
 import { calculateSwissPayroll } from "./swiss-payroll.util";
@@ -65,6 +65,25 @@ interface Delegation {
   delegateManagerId: string;
   from: string;
   to: string;
+}
+
+/** Riga tabella `nexa_import_events` (audit import). */
+export interface NexaImportEventRow {
+  id: string;
+  kind: "validate" | "apply";
+  category: string;
+  startedAt: string;
+  finishedAt: string;
+  status: string;
+  rowCount: number;
+  createdCount?: number | null;
+  errorCount: number;
+  fileSizeBytes?: number | null;
+  fileName?: string | null;
+  errorsSnapshot?: unknown;
+  actorUserId?: string | null;
+  actorEmail?: string | null;
+  auditMeta?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -153,6 +172,8 @@ export class HrDataStore {
   private readonly approvals: ApprovalRecord[] = [];
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
+  /** Fallback in-memory quando Supabase non è configurato. */
+  private readonly importEventsMemory: NexaImportEventRow[] = [];
   private costCenters: CostCenter[] = [
     {
       id: "cc-1",
@@ -641,7 +662,7 @@ export class HrDataStore {
     throw new BadRequestException("Impossibile generare un codice centro di costo univoco");
   }
 
-  async createCostCenter(input: { code?: string; name: string; description?: string }): Promise<CostCenter> {
+  async createCostCenter(input: { code?: string; name: string; description?: string; companyId?: string }): Promise<CostCenter> {
     const name = input.name.trim();
     if (!name) {
       throw new BadRequestException("Nome centro di costo obbligatorio");
@@ -659,11 +680,13 @@ export class HrDataStore {
     if (codeSet.has(code.toLowerCase())) {
       throw new BadRequestException("Esiste gia un centro di costo con questo codice");
     }
+    const companyId = input.companyId?.trim();
     const costCenter: CostCenter = {
       id: `cc-${Date.now()}`,
       code,
       name,
-      description: input.description
+      description: input.description,
+      ...(companyId ? { companyId } : {})
     };
     if (this.useDb) {
       await this.supabase!.from("cost_centers").insert(costCenter);
@@ -675,7 +698,7 @@ export class HrDataStore {
 
   async updateCostCenter(
     costCenterId: string,
-    input: { code?: string; name?: string; description?: string }
+    input: { code?: string; name?: string; description?: string; companyId?: string | null }
   ): Promise<CostCenter> {
     const currentCostCenters = await this.listCostCenters();
     const center = currentCostCenters.find((item) => item.id === costCenterId);
@@ -704,6 +727,10 @@ export class HrDataStore {
     }
     if (input.description !== undefined) {
       center.description = input.description;
+    }
+    if (input.companyId !== undefined) {
+      const v = input.companyId?.trim();
+      center.companyId = v && v.length > 0 ? v : undefined;
     }
     if (this.useDb) {
       await this.supabase!.from("cost_centers").update(center).eq("id", costCenterId);
@@ -831,7 +858,12 @@ export class HrDataStore {
       at: atIso
     };
     if (this.useDb) {
-      await this.supabase!.from("time_entries").insert(entry);
+      const { error } = await this.supabase!.from("time_entries").insert(entry);
+      if (error) {
+        throw new InternalServerErrorException(
+          `Salvataggio timbratura fallito: ${error.message}. Controlla permessi DB/RLS sulla tabella time_entries.`
+        );
+      }
       await this.refreshSummary(userId, day);
       return entry;
     }
@@ -899,7 +931,10 @@ export class HrDataStore {
       at: atIso
     };
     if (this.useDb) {
-      await this.supabase!.from("time_entries").insert(entry);
+      const { error } = await this.supabase!.from("time_entries").insert(entry);
+      if (error) {
+        throw new InternalServerErrorException(`Salvataggio timbratura fallito: ${error.message}`);
+      }
       await this.refreshSummary(userId, day);
       return entry;
     }
@@ -1153,6 +1188,13 @@ export class HrDataStore {
         .from("leave_plans")
         .update({ startDate, endDate, version: leave.version, status: leave.status })
         .eq("id", leaveId);
+      await this.supabase!.from("approvals").delete().eq("entityId", leaveId).eq("type", "leave").eq("status", "pending");
+    } else {
+      const keep = this.approvals.filter(
+        (a) => !(a.entityId === leaveId && a.type === "leave" && a.status === "pending")
+      );
+      this.approvals.length = 0;
+      this.approvals.push(...keep);
     }
     const approval = {
       id: `ap-${Date.now()}`,
@@ -1170,49 +1212,71 @@ export class HrDataStore {
     return leave;
   }
 
-  async approveLeave(leaveId: string, approverId: string): Promise<LeavePlan> {
+  async approveLeave(leaveId: string, approverId: string, approvalRowId?: string): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
     leave.status = "approved";
+    const at = new Date().toISOString();
     if (this.useDb) {
       await this.supabase!.from("leave_plans").update({ status: "approved" }).eq("id", leaveId);
-    }
-    const approval = {
-      id: `ap-${Date.now()}`,
-      entityId: leave.id,
-      type: "leave",
-      requestedBy: leave.userId,
-      approverId,
-      status: "approved",
-      at: new Date().toISOString()
-    } as ApprovalRecord;
-    if (this.useDb) {
-      await this.supabase!.from("approvals").insert(approval);
+      const { error } = approvalRowId
+        ? await this.supabase!.from("approvals").update({ status: "approved", approverId, at }).eq("id", approvalRowId)
+        : await this.supabase!
+            .from("approvals")
+            .update({ status: "approved", approverId, at })
+            .eq("entityId", leaveId)
+            .eq("type", "leave")
+            .eq("status", "pending");
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento approvazione ferie fallito: ${error.message}`);
+      }
     } else {
-      this.approvals.push(approval);
+      const row = this.approvals.find(
+        (a) =>
+          a.entityId === leaveId &&
+          a.type === "leave" &&
+          a.status === "pending" &&
+          (approvalRowId ? a.id === approvalRowId : true)
+      );
+      if (row) {
+        row.status = "approved";
+        row.approverId = approverId;
+        row.at = at;
+      }
     }
     return leave;
   }
 
-  async rejectLeave(leaveId: string, approverId: string): Promise<LeavePlan> {
+  async rejectLeave(leaveId: string, approverId: string, approvalRowId?: string): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     leave.status = "rejected";
+    const at = new Date().toISOString();
     if (this.useDb) {
       await this.supabase!.from("leave_plans").update({ status: "rejected" }).eq("id", leaveId);
-    }
-    const approval = {
-      id: `ap-${Date.now()}`,
-      entityId: leave.id,
-      type: "leave",
-      requestedBy: leave.userId,
-      approverId,
-      status: "rejected",
-      at: new Date().toISOString()
-    } as ApprovalRecord;
-    if (this.useDb) {
-      await this.supabase!.from("approvals").insert(approval);
+      const { error } = approvalRowId
+        ? await this.supabase!.from("approvals").update({ status: "rejected", approverId, at }).eq("id", approvalRowId)
+        : await this.supabase!
+            .from("approvals")
+            .update({ status: "rejected", approverId, at })
+            .eq("entityId", leaveId)
+            .eq("type", "leave")
+            .eq("status", "pending");
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento rifiuto ferie fallito: ${error.message}`);
+      }
     } else {
-      this.approvals.push(approval);
+      const row = this.approvals.find(
+        (a) =>
+          a.entityId === leaveId &&
+          a.type === "leave" &&
+          a.status === "pending" &&
+          (approvalRowId ? a.id === approvalRowId : true)
+      );
+      if (row) {
+        row.status = "rejected";
+        row.approverId = approverId;
+        row.at = at;
+      }
     }
     return leave;
   }
@@ -1260,49 +1324,71 @@ export class HrDataStore {
     return sickness;
   }
 
-  async approveSickness(id: string, approverId: string): Promise<SicknessEvent> {
+  async approveSickness(id: string, approverId: string, approvalRowId?: string): Promise<SicknessEvent> {
     const sickness = await this.getSickness(id);
     if (!sickness) throw new NotFoundException("Evento malattia non trovato");
     sickness.status = "approved";
+    const at = new Date().toISOString();
     if (this.useDb) {
       await this.supabase!.from("sickness_events").update({ status: "approved" }).eq("id", id);
-    }
-    const approval = {
-      id: `ap-${Date.now()}`,
-      entityId: sickness.id,
-      type: "sickness",
-      requestedBy: sickness.userId,
-      approverId,
-      status: "approved",
-      at: new Date().toISOString()
-    } as ApprovalRecord;
-    if (this.useDb) {
-      await this.supabase!.from("approvals").insert(approval);
+      const { error } = approvalRowId
+        ? await this.supabase!.from("approvals").update({ status: "approved", approverId, at }).eq("id", approvalRowId)
+        : await this.supabase!
+            .from("approvals")
+            .update({ status: "approved", approverId, at })
+            .eq("entityId", id)
+            .eq("type", "sickness")
+            .eq("status", "pending");
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento approvazione malattia fallito: ${error.message}`);
+      }
     } else {
-      this.approvals.push(approval);
+      const row = this.approvals.find(
+        (a) =>
+          a.entityId === id &&
+          a.type === "sickness" &&
+          a.status === "pending" &&
+          (approvalRowId ? a.id === approvalRowId : true)
+      );
+      if (row) {
+        row.status = "approved";
+        row.approverId = approverId;
+        row.at = at;
+      }
     }
     return sickness;
   }
 
-  async rejectSickness(id: string, approverId: string): Promise<SicknessEvent> {
+  async rejectSickness(id: string, approverId: string, approvalRowId?: string): Promise<SicknessEvent> {
     const sickness = await this.getSickness(id);
     sickness.status = "rejected";
+    const at = new Date().toISOString();
     if (this.useDb) {
       await this.supabase!.from("sickness_events").update({ status: "rejected" }).eq("id", id);
-    }
-    const approval = {
-      id: `ap-${Date.now()}`,
-      entityId: sickness.id,
-      type: "sickness",
-      requestedBy: sickness.userId,
-      approverId,
-      status: "rejected",
-      at: new Date().toISOString()
-    } as ApprovalRecord;
-    if (this.useDb) {
-      await this.supabase!.from("approvals").insert(approval);
+      const { error } = approvalRowId
+        ? await this.supabase!.from("approvals").update({ status: "rejected", approverId, at }).eq("id", approvalRowId)
+        : await this.supabase!
+            .from("approvals")
+            .update({ status: "rejected", approverId, at })
+            .eq("entityId", id)
+            .eq("type", "sickness")
+            .eq("status", "pending");
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento rifiuto malattia fallito: ${error.message}`);
+      }
     } else {
-      this.approvals.push(approval);
+      const row = this.approvals.find(
+        (a) =>
+          a.entityId === id &&
+          a.type === "sickness" &&
+          a.status === "pending" &&
+          (approvalRowId ? a.id === approvalRowId : true)
+      );
+      if (row) {
+        row.status = "rejected";
+        row.approverId = approverId;
+        row.at = at;
+      }
     }
     return sickness;
   }
@@ -1450,7 +1536,7 @@ export class HrDataStore {
     const allApprovals = this.useDb
       ? (((await this.supabase!.from("approvals").select("*")).data ?? []) as ApprovalRecord[])
       : this.approvals;
-    const approvals = allApprovals
+    let approvals = allApprovals
       .filter((item) => requester.role === "admin" || visibleUserIds.has(item.requestedBy))
       .filter((item) => (status ? item.status === status : true))
       .sort((a, b) => b.at.localeCompare(a.at));
@@ -1484,6 +1570,18 @@ export class HrDataStore {
       }
     }
 
+    approvals = approvals.filter((item) => {
+      if (item.status !== "pending") {
+        return true;
+      }
+      if (item.type === "leave") {
+        const leave = leavesById.get(item.entityId);
+        return leave?.status === "pending";
+      }
+      const sickness = sicknessById.get(item.entityId);
+      return sickness?.status === "pending";
+    });
+
     const users = await this.listUsers();
     const usersById = new Map(users.map((user) => [user.id, user]));
 
@@ -1513,9 +1611,9 @@ export class HrDataStore {
       throw new NotFoundException("Autorizzazione non trovata");
     }
     if (approval.type === "leave") {
-      await this.approveLeave(approval.entityId, approverId);
+      await this.approveLeave(approval.entityId, approverId, approval.id);
     } else {
-      await this.approveSickness(approval.entityId, approverId);
+      await this.approveSickness(approval.entityId, approverId, approval.id);
     }
     return {
       ...approval,
@@ -1532,9 +1630,9 @@ export class HrDataStore {
       throw new NotFoundException("Autorizzazione non trovata");
     }
     if (approval.type === "leave") {
-      await this.rejectLeave(approval.entityId, approverId);
+      await this.rejectLeave(approval.entityId, approverId, approval.id);
     } else {
-      await this.rejectSickness(approval.entityId, approverId);
+      await this.rejectSickness(approval.entityId, approverId, approval.id);
     }
     return {
       ...approval,
@@ -1620,5 +1718,96 @@ export class HrDataStore {
       }, 0);
     const overtimeHours = overtimeSeconds / 3600;
     return Math.round(overtimeHours * hourlyRate * 100) / 100;
+  }
+
+  async insertImportEvent(row: NexaImportEventRow): Promise<void> {
+    if (!this.useDb) {
+      this.importEventsMemory.unshift(row);
+      if (this.importEventsMemory.length > 500) {
+        this.importEventsMemory.length = 500;
+      }
+      return;
+    }
+    const payload = {
+      id: row.id,
+      kind: row.kind,
+      category: row.category,
+      started_at: row.startedAt,
+      finished_at: row.finishedAt,
+      status: row.status,
+      row_count: row.rowCount,
+      created_count: row.createdCount ?? null,
+      error_count: row.errorCount,
+      file_size_bytes: row.fileSizeBytes ?? null,
+      file_name: row.fileName ?? null,
+      errors_snapshot: row.errorsSnapshot ?? null,
+      actor_user_id: row.actorUserId ?? null,
+      actor_email: row.actorEmail ?? null,
+      audit_meta: row.auditMeta ?? {}
+    };
+    const { error } = await this.supabase!.from("nexa_import_events").insert(payload);
+    if (error) {
+      // Non bloccare l'import: fallback solo log + memoria dev.
+      // eslint-disable-next-line no-console
+      console.error("[nexa_import_events]", error.message);
+      this.importEventsMemory.unshift(row);
+      if (this.importEventsMemory.length > 100) {
+        this.importEventsMemory.length = 100;
+      }
+    }
+  }
+
+  async listImportEvents(limit: number): Promise<NexaImportEventRow[]> {
+    const cap = Math.min(Math.max(limit, 1), 200);
+    if (!this.useDb) {
+      return this.importEventsMemory.slice(0, cap);
+    }
+    if (this.importEventsMemory.length > 0) {
+      // Merge recent fallback (es. insert DB fallito) con lettura DB.
+      const merged = await this.fetchImportEventsFromDb(cap * 2);
+      const seen = new Set(merged.map((x) => x.id));
+      for (const m of this.importEventsMemory) {
+        if (!seen.has(m.id)) {
+          merged.push(m);
+          seen.add(m.id);
+        }
+      }
+      merged.sort((a, b) => b.finishedAt.localeCompare(a.finishedAt));
+      return merged.slice(0, cap);
+    }
+    return this.fetchImportEventsFromDb(cap);
+  }
+
+  private async fetchImportEventsFromDb(cap: number): Promise<NexaImportEventRow[]> {
+    const { data, error } = await this.supabase!
+      .from("nexa_import_events")
+      .select("*")
+      .order("finished_at", { ascending: false })
+      .limit(cap);
+    if (error) {
+      throw new BadRequestException(`Lettura storico import fallita: ${error.message}`);
+    }
+    return this.mapImportEventRows(data ?? []);
+  }
+
+  private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {
+    const rows = data as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      kind: r.kind as "validate" | "apply",
+      category: String(r.category),
+      startedAt: String(r.started_at),
+      finishedAt: String(r.finished_at),
+      status: String(r.status),
+      rowCount: Number(r.row_count ?? 0),
+      createdCount: r.created_count !== null && r.created_count !== undefined ? Number(r.created_count) : null,
+      errorCount: Number(r.error_count ?? 0),
+      fileSizeBytes: r.file_size_bytes !== null && r.file_size_bytes !== undefined ? Number(r.file_size_bytes) : null,
+      fileName: r.file_name ? String(r.file_name) : null,
+      errorsSnapshot: r.errors_snapshot,
+      actorUserId: r.actor_user_id ? String(r.actor_user_id) : null,
+      actorEmail: r.actor_email ? String(r.actor_email) : null,
+      auditMeta: (r.audit_meta as Record<string, unknown>) ?? {}
+    }));
   }
 }

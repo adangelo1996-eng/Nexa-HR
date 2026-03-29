@@ -18,6 +18,7 @@ import {
   fetchAttendanceSummary,
   fetchCurrentUser,
   fetchLeaveBalance,
+  fetchLeavePlans,
   fetchOrgChart,
   fetchPayslips,
   rejectApproval,
@@ -25,6 +26,7 @@ import {
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
   type LeaveBalance,
+  type LeavePlan,
   type TimeEntry,
   type WorkdaySummary,
   type OrgChartResponse,
@@ -50,7 +52,9 @@ export default function HomePage(): React.JSX.Element {
   const [status, setStatus] = useState<AttendanceStatus | null>(null);
   const [aggregates, setAggregates] = useState<AttendanceOvertimeAggregates | null>(null);
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null);
+  const [leavePlans, setLeavePlans] = useState<LeavePlan[]>([]);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [attendanceStatusFailed, setAttendanceStatusFailed] = useState(false);
   const [clockLoading, setClockLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [clockError, setClockError] = useState<string | null>(null);
@@ -90,19 +94,34 @@ export default function HomePage(): React.JSX.Element {
 
       const todayDate = new Date().toISOString().slice(0, 10);
       try {
-        const [payslipsList, orgChart, todayEntries, todaySummary, todayStatus, overtimeAggregates, yearBalance, workflowApprovals] =
-          await Promise.all([
-            fetchPayslips(tokenValue).catch(() => [] as Payslip[]),
-            fetchOrgChart(tokenValue).catch(() => ({ nodes: [], edges: [] }) as OrgChartResponse),
-            fetchAttendanceEntries(tokenValue).catch(() => [] as TimeEntry[]),
-            fetchAttendanceSummary(tokenValue).catch(() => [] as WorkdaySummary[]),
-            fetchAttendanceStatus(tokenValue, todayDate).catch(() => null as AttendanceStatus | null),
-            fetchAttendanceOvertimeAggregates(tokenValue, todayDate).catch(() => null as AttendanceOvertimeAggregates | null),
-            fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
-            me.role === "employee"
-              ? Promise.resolve([] as ApprovalItem[])
-              : fetchApprovals(tokenValue).catch(() => [] as ApprovalItem[])
-          ]);
+        const [
+          payslipsList,
+          orgChart,
+          todayEntries,
+          todaySummary,
+          statusResult,
+          overtimeAggregates,
+          yearBalance,
+          myLeaves,
+          workflowApprovals
+        ] = await Promise.all([
+          fetchPayslips(tokenValue).catch(() => [] as Payslip[]),
+          fetchOrgChart(tokenValue).catch(() => ({ nodes: [], edges: [] }) as OrgChartResponse),
+          fetchAttendanceEntries(tokenValue).catch(() => [] as TimeEntry[]),
+          fetchAttendanceSummary(tokenValue).catch(() => [] as WorkdaySummary[]),
+          fetchAttendanceStatus(tokenValue, todayDate)
+            .then((s) => ({ ok: true as const, s }))
+            .catch(() => ({ ok: false as const, s: null as AttendanceStatus | null })),
+          fetchAttendanceOvertimeAggregates(tokenValue, todayDate).catch(() => null as AttendanceOvertimeAggregates | null),
+          fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
+          fetchLeavePlans(tokenValue).catch(() => [] as LeavePlan[]),
+          me.role === "employee"
+            ? Promise.resolve([] as ApprovalItem[])
+            : fetchApprovals(tokenValue, "pending").catch(() => [] as ApprovalItem[])
+        ]);
+
+        setAttendanceStatusFailed(!statusResult.ok);
+        const todayStatus = statusResult.s;
 
         setPayslips(payslipsList);
         setOrgData(orgChart);
@@ -112,6 +131,7 @@ export default function HomePage(): React.JSX.Element {
         setAggregates(overtimeAggregates);
         setRemainingSeconds(todayStatus?.remainingSeconds ?? 0);
         setLeaveBalance(yearBalance);
+        setLeavePlans(myLeaves);
         setApprovals(workflowApprovals);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Alcuni dati non sono stati caricati");
@@ -144,7 +164,10 @@ export default function HomePage(): React.JSX.Element {
   const todaySummary = summary.find((item) => item.date === today);
   const canClockIn = status?.nextType === "clock_in" && clockLoading === null;
   const canClockOut = status?.nextType === "clock_out" && clockLoading === null;
-  const pendingWorkflowCount = approvals.filter((item) => item.status === "pending").length;
+  const pendingWorkflowCount = approvals.length;
+
+  const leavePendingPlans = leavePlans.filter((p) => p.status === "pending" || p.status === "draft");
+  const leaveHistoryPlans = leavePlans.filter((p) => p.status === "approved" || p.status === "rejected");
 
   const formattedCountdown = useMemo(() => {
     const hours = Math.floor(remainingSeconds / 3600);
@@ -196,8 +219,12 @@ export default function HomePage(): React.JSX.Element {
     setLeaveSubmitting(true);
     try {
       await createLeavePlan(token, { startDate: leaveStart, endDate: leaveEnd });
-      const balance = await fetchLeaveBalance(token, Number(today.slice(0, 4)));
+      const [balance, plans] = await Promise.all([
+        fetchLeaveBalance(token, Number(today.slice(0, 4))),
+        fetchLeavePlans(token)
+      ]);
       setLeaveBalance(balance);
+      setLeavePlans(plans);
     } catch (submitError) {
       setLeaveError(submitError instanceof Error ? submitError.message : "Errore richiesta ferie");
     } finally {
@@ -216,7 +243,7 @@ export default function HomePage(): React.JSX.Element {
       } else {
         await rejectApproval(token, id);
       }
-      const refreshed = await fetchApprovals(token);
+      const refreshed = await fetchApprovals(token, "pending");
       setApprovals(refreshed);
     } catch (actionError) {
       setClockError(actionError instanceof Error ? actionError.message : "Errore aggiornamento workflow");
@@ -324,6 +351,17 @@ export default function HomePage(): React.JSX.Element {
             <span className="font-semibold text-synapse-gold dark:text-synapse-gold-bright">{formattedCountdown}</span>
           </p>
         </div>
+        {attendanceStatusFailed ? (
+          <p className="mb-3 rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
+            Impossibile caricare lo stato timbratura (permessi o rete). Se i pulsanti restano disattivati, verifica che il
+            ruolo includa la timbratura o ricarica la pagina.
+          </p>
+        ) : null}
+        {!attendanceStatusFailed && status === null ? (
+          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+            Stato timbratura non disponibile: attendi il caricamento o controlla la connessione.
+          </p>
+        ) : null}
         <div className="mt-5 flex flex-wrap justify-center gap-4">
           <Button
             onClick={() => void onClock("clock_in")}
@@ -438,13 +476,68 @@ export default function HomePage(): React.JSX.Element {
           </Button>
         </div>
         {leaveError ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{leaveError}</p> : null}
+
+        <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Richieste in corso</h3>
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+            Dopo l&apos;approvazione escono da qui e restano solo nello storico.
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {leavePendingPlans.length === 0 ? (
+              <li className="text-slate-600 dark:text-slate-400">Nessuna richiesta aperta.</li>
+            ) : (
+              leavePendingPlans.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700"
+                >
+                  <span>
+                    {p.startDate} → {p.endDate}
+                  </span>
+                  <span className="rounded bg-[#2a3f4d]/70 px-2 py-0.5 text-xs text-[#c5dde8]">{p.status}</span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+
+        <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Storico ferie (calendario)</h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            {leaveHistoryPlans.length === 0 ? (
+              <li className="text-slate-600 dark:text-slate-400">Nessun periodo approvato o rifiutato.</li>
+            ) : (
+              [...leaveHistoryPlans]
+                .sort((a, b) => b.startDate.localeCompare(a.startDate))
+                .map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700"
+                  >
+                    <span>
+                      {p.startDate} → {p.endDate}
+                    </span>
+                    <span
+                      className={
+                        p.status === "approved"
+                          ? "rounded bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-200"
+                          : "rounded bg-rose-900/50 px-2 py-0.5 text-xs text-rose-200"
+                      }
+                    >
+                      {p.status}
+                    </span>
+                  </li>
+                ))
+            )}
+          </ul>
+        </div>
       </section>
 
       {user.role !== "employee" ? (
         <section className="card mt-6">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Workflow team</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Per ogni richiesta di ferie visualizzi chiaramente il periodo richiesto e lo stato.
+            Solo richieste in attesa di azione. Per lo storico completo usa Workflow approvazioni.
           </p>
           <div className="mt-4 space-y-2 text-sm">
             {approvals.length === 0 ? (

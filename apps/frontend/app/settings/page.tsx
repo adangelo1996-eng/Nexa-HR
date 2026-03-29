@@ -10,6 +10,7 @@ import {
   fetchCurrentUser,
   fetchImportHistory,
   validateImportFile,
+  type ImportCategory,
   type ImportCellError,
   type ImportHistoryItem
 } from "@/lib/api";
@@ -24,12 +25,12 @@ import {
 } from "@/lib/synapse-prefs";
 import { useTheme } from "@/components/theme-provider";
 
-type ImportCat = "users" | "cost_centers" | "roles";
-
-const CAT_LABEL: Record<ImportCat, string> = {
+const CAT_LABEL: Record<ImportCategory, string> = {
   users: "Utenti",
   cost_centers: "Centri di costo",
-  roles: "Ruoli"
+  roles: "Ruoli",
+  leave_allowances: "Ferie (giorni annuali)",
+  user_managers: "Responsabili (email)"
 };
 
 export default function SettingsPage(): React.JSX.Element {
@@ -41,7 +42,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [synapsePrefs, setSynapsePrefs] = useState<SynapsePrefsV1>(() => readSynapsePrefs());
   const [nexaPrefs, setNexaPrefs] = useState<NexaHrPrefsV1>(() => readNexaHrPrefs());
   const [isSuperuser, setIsSuperuser] = useState(false);
-  const [importCategory, setImportCategory] = useState<ImportCat>("users");
+  const [importCategory, setImportCategory] = useState<ImportCategory>("users");
   const [validateErrors, setValidateErrors] = useState<ImportCellError[]>([]);
   const [validatedRows, setValidatedRows] = useState<unknown[] | null>(null);
   const [importBusy, setImportBusy] = useState(false);
@@ -241,19 +242,21 @@ export default function SettingsPage(): React.JSX.Element {
       {isSuperuser ? (
         <GlassCard
           title="Import dati (superuser)"
-          description="Scarica il template, compila, valida e applica. Solo file .xlsx."
+          description="Storico globale su database (eventi validate/apply). Opzionale: dominio operatore (SYNAPSE_IMPORT_OPERATOR_EMAIL_DOMAINS), email righe (IMPORT_STRICT_EMAIL_DOMAIN), notifica IMPORT_NOTIFY_WEBHOOK_URL."
         >
           <div className="space-y-4 text-sm">
             <label className="flex flex-col gap-1">
               <span className="text-slate-700 dark:text-slate-300">Categoria</span>
               <select
                 value={importCategory}
-                onChange={(e) => setImportCategory(e.target.value as ImportCat)}
+                onChange={(e) => setImportCategory(e.target.value as ImportCategory)}
                 className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
               >
-                <option value="users">{CAT_LABEL.users}</option>
-                <option value="cost_centers">{CAT_LABEL.cost_centers}</option>
-                <option value="roles">{CAT_LABEL.roles}</option>
+                {(Object.keys(CAT_LABEL) as ImportCategory[]).map((k) => (
+                  <option key={k} value={k}>
+                    {CAT_LABEL[k]}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="flex flex-wrap gap-2">
@@ -287,11 +290,27 @@ export default function SettingsPage(): React.JSX.Element {
             ) : null}
             {history.length > 0 ? (
               <div className="mt-4 border-t border-slate-800 pt-4">
-                <p className="mb-2 text-xs font-medium text-slate-400">Storico recente</p>
-                <ul className="space-y-1 text-[11px] text-slate-500">
-                  {history.slice(0, 8).map((h) => (
-                    <li key={h.id}>
-                      {h.category} — {h.status} — {h.rowCount} righe — {new Date(h.finishedAt).toLocaleString()}
+                <p className="mb-2 text-xs font-medium text-slate-400">
+                  Storico import (tutti gli eventi, non filtrati per sessione)
+                </p>
+                <ul className="space-y-2 text-[11px] text-slate-500">
+                  {history.slice(0, 12).map((h) => (
+                    <li key={h.id} className="rounded border border-slate-800/80 bg-slate-950/40 p-2">
+                      <span className="font-mono text-slate-400">{h.kind}</span> · {h.category} ·{" "}
+                      <span className={h.status === "ok" ? "text-emerald-400/90" : ""}>{h.status}</span>
+                      {h.kind === "apply" && h.createdCount != null ? (
+                        <> · creati {h.createdCount}</>
+                      ) : null}
+                      {h.rowCount > 0 ? <> · {h.rowCount} righe</> : null}
+                      {h.errorCount > 0 ? <> · {h.errorCount} errori</> : null}
+                      {typeof h.fileSizeBytes === "number" ? (
+                        <> · {(h.fileSizeBytes / 1024).toFixed(1)} KB</>
+                      ) : null}
+                      {h.fileName ? <> · {h.fileName}</> : null}
+                      {h.actorEmail ? <> · da {h.actorEmail}</> : null}
+                      <div className="mt-0.5 text-[10px] text-slate-600">
+                        {new Date(h.finishedAt).toLocaleString()}
+                      </div>
                     </li>
                   ))}
                 </ul>

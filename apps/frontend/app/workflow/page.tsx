@@ -20,7 +20,7 @@ export default function WorkflowPage(): React.JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [filter, setFilter] = useState<StatusFilter>("pending");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export default function WorkflowPage(): React.JSX.Element {
           router.replace("/");
           return;
         }
-        const list = await fetchApprovals(tokenValue);
+        const list = await fetchApprovals(tokenValue, "pending");
         setUser(me);
         setApprovals(list);
       } catch (loadError) {

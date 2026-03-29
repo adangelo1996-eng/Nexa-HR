@@ -105,10 +105,16 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
   return (
     <section className="card mt-6">
       <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Organigramma dinamico</h2>
-      <div className="mt-4 h-[460px] rounded-lg border border-slate-200 dark:border-slate-700">
+      <div className="nexa-orgchart-flow mt-4 h-[460px] rounded-lg border border-slate-200 dark:border-slate-700">
         <ReactFlow nodes={flowNodes} edges={flowEdges} fitView proOptions={{ hideAttribution: true }}>
-          <MiniMap />
-          <Controls />
+          <MiniMap
+            pannable
+            zoomable
+            maskColor="rgba(15, 23, 42, 0.45)"
+            nodeStrokeWidth={2}
+            className="nexa-flow-minimap"
+          />
+          <Controls className="nexa-flow-controls" showInteractive={false} />
           <Background />
         </ReactFlow>
       </div>

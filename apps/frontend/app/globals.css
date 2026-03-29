@@ -171,3 +171,31 @@ body {
     background: color-mix(in srgb, var(--prom-gold) 8%, var(--prom-surface-soft));
   }
 }
+
+/* @xyflow/react: controlli e minimappa (default chiari) su shell dark Nexa */
+html.dark .nexa-flow-controls.react-flow__controls {
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgb(51 65 85);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+html.dark .nexa-flow-controls .react-flow__controls-button {
+  background: rgb(15 23 42);
+  border-bottom: 1px solid rgb(51 65 85);
+  color: #e2e8f0;
+}
+html.dark .nexa-flow-controls .react-flow__controls-button:hover {
+  background: rgb(30 41 59);
+}
+html.dark .nexa-flow-controls .react-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 14px;
+  max-height: 14px;
+}
+html.dark .nexa-flow-minimap.react-flow__minimap {
+  background-color: rgb(15 23 42) !important;
+  border: 1px solid rgb(51 65 85);
+  border-radius: 4px;
+}
+html.dark .nexa-orgchart-flow .react-flow__minimap-mask {
+  fill: rgba(15, 23, 42, 0.55);
+}

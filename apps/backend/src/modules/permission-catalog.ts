@@ -215,7 +215,13 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
   "approve:leave": ["nexa.approvals:write"],
   "approve:sickness": ["nexa.approvals:write"],
   "read:team": ["nexa.org:read", "nexa.admin_users:read"],
-  "read:self": ["nexa.attendance:read", "nexa.leaves:read", "nexa.sickness:read", "nexa.org:read"],
+  "read:self": [
+    "nexa.attendance:read",
+    "nexa.attendance:write",
+    "nexa.leaves:read",
+    "nexa.sickness:read",
+    "nexa.org:read"
+  ],
   "read:payslip:self": ["nexa.payslips:read"],
   "read:payslip:team": ["nexa.payslips:read", "nexa.org:read"]
 };

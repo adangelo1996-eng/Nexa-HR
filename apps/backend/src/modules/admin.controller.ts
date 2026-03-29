@@ -63,6 +63,10 @@ class CreateCostCenterDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }
 
 class UpdateCostCenterDto {
@@ -78,6 +82,10 @@ class UpdateCostCenterDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string | null;
 }
 
 @Controller("admin")
