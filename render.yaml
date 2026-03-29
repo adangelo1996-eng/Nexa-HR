@@ -36,6 +36,8 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
       - key: APP_SSO_SHARED_KEY
         sync: false
 

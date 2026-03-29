@@ -5,6 +5,7 @@
 - Le tabelle in `public` (es. `users`, `time_entries`, …) hanno **Row Level Security (RLS) attivo**.
 - **Non** sono definite policy per i ruoli `anon` e `authenticated` su quei dati HR: in pratica, accesso diretto dal client con la **anon key** non espone righe (comportamento “chiuso”).
 - Il backend **NestJS** usa il client Supabase con **`SUPABASE_SERVICE_ROLE_KEY`**: il service role **non è soggetto a RLS** e può leggere/scrivere come oggi implementato in `HrDataStore`.
+- **Non** chiamare `auth.signInWithPassword` sul client service_role usato per le query: la sessione utente sostituirebbe il contesto e le `insert` andrebbero in errore RLS. La verifica password in `HrDataStore` usa un client separato (preferire `SUPABASE_ANON_KEY` per quel solo scopo; vedi `.env.example` del backend).
 
 ## Cosa non fare
 

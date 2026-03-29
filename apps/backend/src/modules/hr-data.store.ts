@@ -193,25 +193,38 @@ export class HrDataStore {
     const url = process.env.SUPABASE_URL;
     const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (url && serviceRole) {
-      this.supabase = createClient(url, serviceRole);
+      this.supabase = createClient(url, serviceRole, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      });
     }
   }
 
   /**
    * Verifica email/password contro Supabase Auth (stesso progetto usato da Plasticity).
+   * Usa un client dedicato: `signInWithPassword` sulla stessa istanza del client service_role
+   * faceva persistere la sessione utente e le successive `.from()` passavano con JWT utente,
+   * andando incontro a RLS su `time_entries` (errore "new row violates row-level security policy").
    */
   async verifySupabasePassword(email: string, password: string): Promise<boolean> {
     if (!this.supabase) {
       return false;
     }
-    const { data, error } = await this.supabase.auth.signInWithPassword({
+    const url = process.env.SUPABASE_URL?.trim();
+    const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
+    if (!url || !serviceRole) {
+      return false;
+    }
+    const keyForSignIn = anonKey ?? serviceRole;
+    const authOnly = createClient(url, keyForSignIn, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    const { data, error } = await authOnly.auth.signInWithPassword({
       email: email.trim(),
       password
     });
-    if (error || !data.session) {
-      return false;
-    }
-    return true;
+    await authOnly.auth.signOut();
+    return !error && Boolean(data.session);
   }
 
   private get useDb(): boolean {
