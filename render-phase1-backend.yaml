@@ -14,7 +14,7 @@ services:
     plan: free
     region: frankfurt
     branch: main
-    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/backend build
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
     startCommand: pnpm --filter @payday/backend start
     healthCheckPath: /
     envVars:

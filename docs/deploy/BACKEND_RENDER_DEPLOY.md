@@ -33,7 +33,7 @@ Questa guida spiega come mettere online il backend NestJS su **Render** così ch
    - **Runtime**: **Node**
    - **Build Command**:
      ```bash
-     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/backend build
+     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
      ```
    - **Start Command**:
      ```bash
@@ -99,7 +99,7 @@ Dalla dashboard Supabase (Settings → API):
    - **Runtime**: Node
    - **Build Command**:
      ```bash
-     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/backend build
+     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
      ```
    - **Start Command**:
      ```bash
