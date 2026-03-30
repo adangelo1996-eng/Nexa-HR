@@ -12,7 +12,7 @@
     "test": "corepack pnpm -r test",
     "dev": "corepack pnpm --parallel --filter @payday/backend --filter @payday/frontend dev",
     "build:backend": "corepack pnpm --filter @payday/backend build",
-    "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-ch-rules build && corepack pnpm --filter @payday/payroll-adapters-ch build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend build",
+    "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-ch-rules build && corepack pnpm --filter @payday/payroll-adapters-ch build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend exec nest build",
     "build:frontend": "corepack pnpm --filter @payday/frontend build",
     "start:backend": "corepack pnpm --filter @payday/backend start",
     "start:frontend": "corepack pnpm --filter @payday/frontend start",
