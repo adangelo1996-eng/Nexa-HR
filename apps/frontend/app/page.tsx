@@ -144,6 +144,48 @@ export default function HomePage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!token) {
+      return;
+    }
+    const tick = window.setInterval(() => {
+      const todayDate = new Date().toISOString().slice(0, 10);
+      void (async (): Promise<void> => {
+        try {
+          const [entriesList, summaryList, statusValue, overtimeAggregates, yearBalance, myLeaves, workflowApprovals] =
+            await Promise.all([
+              fetchAttendanceEntries(token).catch(() => [] as TimeEntry[]),
+              fetchAttendanceSummary(token).catch(() => [] as WorkdaySummary[]),
+              fetchAttendanceStatus(token, todayDate).catch(() => null as AttendanceStatus | null),
+              fetchAttendanceOvertimeAggregates(token, todayDate).catch(() => null as AttendanceOvertimeAggregates | null),
+              fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
+              fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
+              user && user.role !== "employee"
+                ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
+                : Promise.resolve([] as ApprovalItem[])
+            ]);
+          setEntries(entriesList);
+          setSummary(summaryList);
+          if (statusValue) {
+            setStatus(statusValue);
+            setRemainingSeconds(statusValue.remainingSeconds);
+          }
+          if (overtimeAggregates) {
+            setAggregates(overtimeAggregates);
+          }
+          if (yearBalance) {
+            setLeaveBalance(yearBalance);
+          }
+          setLeavePlans(myLeaves);
+          setApprovals(workflowApprovals);
+        } catch {
+          /* realtime leggero: ignora errori di rete */
+        }
+      })();
+    }, 30_000);
+    return () => window.clearInterval(tick);
+  }, [token, user]);
+
+  useEffect(() => {
     if (!status) {
       return;
     }
@@ -192,7 +234,22 @@ export default function HomePage(): React.JSX.Element {
     setClockError(null);
     setClockLoading(type);
     try {
-      await clock(token, type);
+      const geo =
+        typeof navigator !== "undefined" && navigator.geolocation
+          ? await new Promise<{ lat: number; lon: number; accuracyM?: number } | undefined>((resolve) => {
+              navigator.geolocation.getCurrentPosition(
+                (pos) =>
+                  resolve({
+                    lat: pos.coords.latitude,
+                    lon: pos.coords.longitude,
+                    accuracyM: pos.coords.accuracy
+                  }),
+                () => resolve(undefined),
+                { enableHighAccuracy: false, maximumAge: 60_000, timeout: 8_000 }
+              );
+            })
+          : undefined;
+      await clock(token, type, geo ? { source: "web", geo } : { source: "web" });
       const [entriesList, summaryList, statusValue, overtimeAggregates] = await Promise.all([
         fetchAttendanceEntries(token),
         fetchAttendanceSummary(token),

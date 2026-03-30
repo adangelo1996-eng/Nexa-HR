@@ -1,0 +1,274 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards
+} from "@nestjs/common";
+import type { Response } from "express";
+import { Type } from "class-transformer";
+import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
+import { CurrentAuth, type AuthContext } from "../platform/auth";
+import { sign } from "jsonwebtoken";
+import { AttendanceTeamService } from "./attendance-team.service";
+import { HrDataStore } from "../platform/hr-data.store";
+import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+
+const CLOCK_CHANNELS = ["app", "web", "qr", "nfc", "digital_badge"] as const;
+
+class GeoDto {
+  @IsNumber()
+  lat!: number;
+
+  @IsNumber()
+  lon!: number;
+
+  @IsOptional()
+  @IsNumber()
+  accuracyM?: number;
+
+  @IsOptional()
+  @IsString()
+  capturedAt?: string;
+}
+
+class ClockDto {
+  @IsIn(["clock_in", "clock_out"])
+  type!: "clock_in" | "clock_out";
+
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+
+  @IsOptional()
+  @IsIn(CLOCK_CHANNELS)
+  source?: (typeof CLOCK_CHANNELS)[number];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoDto)
+  geo?: GeoDto;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
+}
+
+class AggregateQueryDto {
+  @IsOptional()
+  @IsIn(["week", "month", "year"])
+  scope?: "week" | "month" | "year";
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+}
+
+class WorkModeDto {
+  @IsString()
+  date!: string;
+
+  @IsIn(["office", "smartworking"])
+  mode!: "office" | "smartworking";
+}
+
+class TeamEntryDto {
+  @IsString()
+  userId!: string;
+
+  @IsIn(["clock_in", "clock_out"])
+  type!: "clock_in" | "clock_out";
+
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+
+  @IsOptional()
+  @IsIn(CLOCK_CHANNELS)
+  source?: (typeof CLOCK_CHANNELS)[number];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoDto)
+  geo?: GeoDto;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
+}
+
+class PatchTimeEntryDto {
+  @IsOptional()
+  @IsISO8601()
+  at?: string;
+
+  @IsOptional()
+  @IsIn(["clock_in", "clock_out"])
+  type?: "clock_in" | "clock_out";
+}
+
+@Controller("attendance")
+@UseGuards(NexaPermissionGuard)
+export class AttendanceController {
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly team: AttendanceTeamService
+  ) {}
+
+  @Post("qr-token")
+  @RequireNexaPermissions("nexa.attendance:write")
+  mintQrToken(@CurrentAuth() auth: AuthContext): { token: string; expiresInSec: number } {
+    const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+    const expiresInSec = 900;
+    const token = sign(
+      { sub: auth.userId, typ: "attendance_qr" },
+      secret,
+      { algorithm: "HS256", expiresIn: expiresInSec }
+    );
+    return { token, expiresInSec };
+  }
+
+  @Post("clock")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async clock(@CurrentAuth() auth: { userId: string }, @Body() dto: ClockDto): Promise<unknown> {
+    return this.store.addTimeEntry(auth.userId, dto.type, dto.at, {
+      source: dto.source,
+      geo: dto.geo,
+      deviceId: dto.deviceId
+    });
+  }
+
+  @Post("mode")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async setMode(@CurrentAuth() auth: { userId: string }, @Body() dto: WorkModeDto): Promise<unknown> {
+    return this.store.upsertWorkMode(auth.userId, dto.date, dto.mode);
+  }
+
+  /** Path statico prima di GET entries per evitare conflitti di routing. */
+  @Get("entries/export")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async exportMonth(
+    @CurrentAuth() auth: { userId: string },
+    @Query("month") month: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    await this.team.assertCanManageTeam(auth.userId);
+    AttendanceTeamService.assertValidMonth(month);
+    const buf = await this.team.buildMonthExportXlsx(month);
+    const filename = `nexa-timbrature-${month}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return new StreamableFile(buf);
+  }
+
+  @Get("entries")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async entries(
+    @CurrentAuth() auth: { userId: string },
+    @Query("userId") queryUserId?: string,
+    @Query("date") date?: string,
+    @Query("month") month?: string
+  ): Promise<unknown> {
+    const targetUserId = queryUserId ?? auth.userId;
+    await this.team.assertCanViewUserAttendance(auth.userId, targetUserId);
+    if (month) {
+      AttendanceTeamService.assertValidMonth(month);
+      return this.store.listTimeEntries(targetUserId, { month });
+    }
+    return this.store.listTimeEntries(targetUserId, date ? { date } : undefined);
+  }
+
+  @Get("team/users")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async teamUsers(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
+    return this.team.listPickerUsers(auth.userId);
+  }
+
+  @Post("team/entries")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async teamAddEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Body() dto: TeamEntryDto
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    await this.team.assertCanViewUserAttendance(auth.userId, dto.userId);
+    return this.store.addTimeEntryAdmin(dto.userId, dto.type, dto.at, {
+      source: dto.source,
+      geo: dto.geo,
+      deviceId: dto.deviceId
+    });
+  }
+
+  @Patch("entries/:entryId")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async patchEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Param("entryId") entryId: string,
+    @Body() dto: PatchTimeEntryDto
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    const existing = await this.store.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    await this.team.assertCanViewUserAttendance(auth.userId, existing.userId);
+    if (!dto.at && dto.type === undefined) {
+      return existing;
+    }
+    return this.store.updateTimeEntryById(entryId, { at: dto.at, type: dto.type });
+  }
+
+  @Delete("entries/:entryId")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async deleteEntry(
+    @CurrentAuth() auth: { userId: string },
+    @Param("entryId") entryId: string
+  ): Promise<unknown> {
+    await this.team.assertCanManageTeam(auth.userId);
+    const existing = await this.store.getTimeEntryById(entryId);
+    if (!existing) {
+      throw new NotFoundException("Timbratura non trovata");
+    }
+    await this.team.assertCanViewUserAttendance(auth.userId, existing.userId);
+    return this.store.deleteTimeEntryById(entryId);
+  }
+
+  @Get("summary")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async summary(
+    @CurrentAuth() auth: { userId: string },
+    @Query("userId") queryUserId?: string,
+    @Query("date") date?: string
+  ): Promise<unknown> {
+    const targetUserId = queryUserId ?? auth.userId;
+    await this.team.assertCanViewUserAttendance(auth.userId, targetUserId);
+    return this.store.listWorkdaySummary(targetUserId, date);
+  }
+
+  @Get("status")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async status(@CurrentAuth() auth: { userId: string }, @Query("date") date?: string): Promise<unknown> {
+    const targetDate = date ?? new Date().toISOString().slice(0, 10);
+    return this.store.getClockStatus(auth.userId, targetDate);
+  }
+
+  @Get("aggregates")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async aggregates(
+    @CurrentAuth() auth: { userId: string },
+    @Query() query: AggregateQueryDto
+  ): Promise<unknown> {
+    const targetDate = query.date ?? new Date().toISOString().slice(0, 10);
+    return this.store.getOvertimeAggregates(auth.userId, targetDate, query.scope);
+  }
+}

@@ -36,6 +36,9 @@ export interface User {
   hireDate?: string;
   phone?: string;
   address?: string;
+  baseSalaryMonthly?: number;
+  taxCanton?: string;
+  taxMunicipality?: string;
 }
 
 export interface Role {
@@ -117,6 +120,9 @@ export interface TimeEntry {
   userId: string;
   type: "clock_in" | "clock_out";
   at: string;
+  source?: "app" | "web" | "qr" | "nfc" | "digital_badge";
+  geo?: { lat: number; lon: number; accuracyM?: number; capturedAt?: string };
+  deviceId?: string;
 }
 
 export interface WorkdaySummary {
@@ -198,6 +204,9 @@ export interface CreateUserPayload {
   hireDate: string;
   phone: string;
   address: string;
+  baseSalaryMonthly?: number;
+  taxCanton?: string;
+  taxMunicipality?: string;
 }
 
 export interface UpdateUserPayload {
@@ -221,6 +230,9 @@ export interface UpdateUserPayload {
   hireDate?: string;
   phone?: string;
   address?: string;
+  baseSalaryMonthly?: number;
+  taxCanton?: string;
+  taxMunicipality?: string;
 }
 
 interface ApiErrorPayload {
@@ -408,11 +420,24 @@ export async function fetchOrgChart(token: string): Promise<OrgChartResponse> {
   return (await response.json()) as OrgChartResponse;
 }
 
-export async function clock(token: string, type: "clock_in" | "clock_out"): Promise<TimeEntry> {
+export type ClockPayload = {
+  type: "clock_in" | "clock_out";
+  source?: "app" | "web" | "qr" | "nfc" | "digital_badge";
+  geo?: { lat: number; lon: number; accuracyM?: number; capturedAt?: string };
+  deviceId?: string;
+};
+
+export async function clock(token: string, type: "clock_in" | "clock_out", extra?: Omit<ClockPayload, "type">): Promise<TimeEntry> {
+  const body: ClockPayload = {
+    type,
+    source: extra?.source ?? "web",
+    ...(extra?.geo ? { geo: { ...extra.geo, capturedAt: new Date().toISOString() } } : {}),
+    ...(extra?.deviceId ? { deviceId: extra.deviceId } : {})
+  };
   if (nexaUsesSupabaseAttendance()) {
     const response = await fetchPaydayAttendance(token, { action: "clock" }, {
       method: "POST",
-      body: JSON.stringify({ type })
+      body: JSON.stringify(body)
     });
     if (!response.ok) {
       await parseError(response);
@@ -422,7 +447,7 @@ export async function clock(token: string, type: "clock_in" | "clock_out"): Prom
   const response = await fetch(buildApiUrl("/attendance/clock"), {
     method: "POST",
     headers: getAuthHeaders(token),
-    body: JSON.stringify({ type })
+    body: JSON.stringify(body)
   });
   if (!response.ok) {
     await parseError(response);
@@ -946,4 +971,131 @@ export async function downloadPayslipPdf(token: string, userId: string, period: 
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(downloadUrl);
+}
+
+export interface CalendarEventDto {
+  id: string;
+  kind: "leave" | "sickness" | "shift" | "deadline";
+  title: string;
+  start: string;
+  end?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface UserNotificationDto {
+  id: string;
+  userId: string;
+  title: string;
+  body?: string;
+  read: boolean;
+  createdAt: string;
+  kind?: string;
+}
+
+export interface ExpenseClaimDto {
+  id: string;
+  userId: string;
+  amountCents: number;
+  currency: string;
+  description: string;
+  kmDistance?: number;
+  status: string;
+  createdAt: string;
+  payslipPeriod?: string;
+  appliedPayslipId?: string;
+}
+
+export async function fetchUserCalendar(
+  token: string,
+  from?: string,
+  to?: string
+): Promise<CalendarEventDto[]> {
+  const q =
+    from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}` : "";
+  const response = await fetch(buildApiUrl(`/users/me/calendar${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { events: CalendarEventDto[] };
+  return body.events;
+}
+
+export async function fetchUserNotifications(
+  token: string,
+  limit?: number
+): Promise<UserNotificationDto[]> {
+  const q = limit != null ? `?limit=${encodeURIComponent(String(limit))}` : "";
+  const response = await fetch(buildApiUrl(`/users/me/notifications${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: UserNotificationDto[] };
+  return body.items;
+}
+
+export async function markUserNotificationRead(
+  token: string,
+  notificationId: string
+): Promise<UserNotificationDto> {
+  const response = await fetch(buildApiUrl(`/users/me/notifications/${notificationId}/read`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as UserNotificationDto;
+}
+
+export async function fetchExpenseClaims(
+  token: string,
+  scope: "self" | "team" = "self"
+): Promise<ExpenseClaimDto[]> {
+  const response = await fetch(buildApiUrl(`/expenses?scope=${scope}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: ExpenseClaimDto[] };
+  return body.items;
+}
+
+export async function createExpenseClaim(
+  token: string,
+  payload: { amountCents: number; currency: string; description: string; kmDistance?: number }
+): Promise<ExpenseClaimDto> {
+  const response = await fetch(buildApiUrl(`/expenses`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ExpenseClaimDto;
+}
+
+export async function approveExpenseClaim(token: string, id: string): Promise<ExpenseClaimDto> {
+  const response = await fetch(buildApiUrl(`/expenses/${id}/approve`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ExpenseClaimDto;
+}
+
+export async function rejectExpenseClaim(token: string, id: string): Promise<ExpenseClaimDto> {
+  const response = await fetch(buildApiUrl(`/expenses/${id}/reject`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ExpenseClaimDto;
+}
+
+export async function fetchQrClockToken(token: string): Promise<{ token: string; expiresInSec: number }> {
+  const response = await fetch(buildApiUrl(`/attendance/qr-token`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { token: string; expiresInSec: number };
 }

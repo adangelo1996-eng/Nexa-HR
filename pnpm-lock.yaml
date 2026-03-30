@@ -26,6 +26,18 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.0.1
         version: 11.1.16(@nestjs/common@11.1.16(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.16)
+      '@payday/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@payday/payroll-adapters-ch':
+        specifier: workspace:*
+        version: link:../../packages/payroll-adapters-ch
+      '@payday/payroll-adapters-it':
+        specifier: workspace:*
+        version: link:../../packages/payroll-adapters-it
+      '@payday/payroll-core':
+        specifier: workspace:*
+        version: link:../../packages/payroll-core
       '@supabase/supabase-js':
         specifier: ^2.49.4
         version: 2.99.0
@@ -134,7 +146,45 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/payroll-adapters-ch:
+    dependencies:
+      '@payday/payroll-ch-rules':
+        specifier: workspace:*
+        version: link:../payroll-ch-rules
+      '@payday/payroll-core':
+        specifier: workspace:*
+        version: link:../payroll-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/payroll-adapters-it:
+    dependencies:
+      '@payday/payroll-core':
+        specifier: workspace:*
+        version: link:../payroll-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   packages/payroll-ch-rules:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/payroll-core:
     devDependencies:
       '@types/node':
         specifier: ^22.10.1

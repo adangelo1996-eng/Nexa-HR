@@ -1,7 +1,7 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json, urlencoded } from "express";
-import { AppModule } from "./modules/app.module";
+import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
   const defaultOrigins = [
@@ -50,7 +50,7 @@ async function bootstrap(): Promise<void> {
     ) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-      res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
       next();
     }
   );

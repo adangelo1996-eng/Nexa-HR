@@ -145,7 +145,7 @@ Endpoint Nest attuali (da replicare):
 2. Implementa routing interno nella funzione in base a:
    - Metodo (`GET` / `POST`).
    - Path secondario (ad es. usare query param `action=clock|entries|summary` o segmenti nel path).
-3. Logica (da `HrDataStore` in `apps/backend/src/modules/hr-data.store.ts`):
+3. Logica (da `HrDataStore` in `apps/backend/src/platform/hr-data.store.ts`):
    - `clock`: inserisce un record in `time_entries` e aggiorna `workday_summaries`.
    - `entries`: seleziona da `time_entries` per `userId`.
    - `summary`: seleziona da `workday_summaries` per `userId`.
