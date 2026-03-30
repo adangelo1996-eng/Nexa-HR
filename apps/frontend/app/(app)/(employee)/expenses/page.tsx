@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { createWorker } from "tesseract.js";
 import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
@@ -12,6 +13,7 @@ export default function ExpensesPage(): React.JSX.Element {
   const [currency, setCurrency] = useState("CHF");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -28,6 +30,32 @@ export default function ExpensesPage(): React.JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function onReceiptSelected(file: File | null): Promise<void> {
+    if (!file) {
+      return;
+    }
+    setOcrBusy(true);
+    setError(null);
+    try {
+      const worker = await createWorker("ita+eng");
+      const {
+        data: { text }
+      } = await worker.recognize(file);
+      await worker.terminate();
+      const amountMatch = text.match(/(\d+[.,]\d{2})/);
+      if (amountMatch) {
+        setAmount(amountMatch[1].replace(",", "."));
+      }
+      if (!description.trim() && /km|km\.|chf|eur/i.test(text)) {
+        setDescription("Spesa da scontrino");
+      }
+    } catch {
+      setError("OCR non disponibile");
+    } finally {
+      setOcrBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -69,6 +97,17 @@ export default function ExpensesPage(): React.JSX.Element {
       </div>
       <form onSubmit={(ev) => void submit(ev)} className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-700">
         <div className="text-sm font-medium">Nuova richiesta</div>
+        <label className="block text-xs text-slate-500 dark:text-slate-400">
+          Scontrino (OCR)
+          <input
+            type="file"
+            accept="image/*"
+            disabled={ocrBusy}
+            className="mt-1 block w-full text-sm"
+            onChange={(ev) => void onReceiptSelected(ev.target.files?.[0] ?? null)}
+          />
+        </label>
+        {ocrBusy ? <p className="text-xs text-slate-500">Lettura immagine…</p> : null}
         <div className="flex gap-2">
           <input
             type="text"

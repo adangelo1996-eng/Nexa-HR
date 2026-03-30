@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   clock,
+  clockNfcPublic,
   createTeamTimeEntry,
   deleteTimeEntry,
   downloadAttendanceMonthExport,
@@ -74,6 +75,8 @@ export default function AttendancePage(): React.JSX.Element {
   const [newEntryType, setNewEntryType] = useState<"clock_in" | "clock_out">("clock_in");
   const [newEntryAtLocal, setNewEntryAtLocal] = useState(`${defaultMonthInput()}-01T09:00`);
   const [addLoading, setAddLoading] = useState(false);
+  const [nfcToken, setNfcToken] = useState("");
+  const [nfcMsg, setNfcMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -369,6 +372,60 @@ export default function AttendancePage(): React.JSX.Element {
           Torna alla dashboard
         </Link>
       </header>
+
+      <section className="card mb-6">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">NFC / QR</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Avvicina il badge NFC al telefono (se supportato) oppure simula con token 16 caratteri.
+        </p>
+        <input
+          value={nfcToken}
+          onChange={(e) => setNfcToken(e.target.value)}
+          maxLength={16}
+          placeholder="Token 16 char"
+          className="mt-3 w-full max-w-xs rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+        />
+        <div className="mt-2 flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              void (async (): Promise<void> => {
+                setNfcMsg(null);
+                try {
+                  await clockNfcPublic({ token: nfcToken.trim(), type: "clock_in" });
+                  setNfcMsg("Entrata registrata.");
+                  router.refresh();
+                } catch (ex) {
+                  setNfcMsg(ex instanceof Error ? ex.message : "Errore NFC");
+                }
+              })();
+            }}
+          >
+            Simula entrata NFC
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void (async (): Promise<void> => {
+                setNfcMsg(null);
+                try {
+                  await clockNfcPublic({ token: nfcToken.trim(), type: "clock_out" });
+                  setNfcMsg("Uscita registrata.");
+                  router.refresh();
+                } catch (ex) {
+                  setNfcMsg(ex instanceof Error ? ex.message : "Errore NFC");
+                }
+              })();
+            }}
+          >
+            Simula uscita NFC
+          </Button>
+        </div>
+        {nfcMsg ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{nfcMsg}</p> : null}
+      </section>
 
       <section className="card">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Azioni rapide</h2>

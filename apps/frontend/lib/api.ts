@@ -9,6 +9,7 @@ export interface Payslip {
   grossSalary?: number;
   lines?: Array<{ code: string; description: string; amount: number }>;
   netSalary: number;
+  isNew?: boolean;
 }
 
 export interface User {
@@ -103,6 +104,7 @@ export interface OrgNode {
   id: string;
   label: string;
   role: UserRole;
+  costCenterId?: string;
 }
 
 export interface OrgEdge {
@@ -363,15 +365,27 @@ export async function fetchCurrentUser(token: string): Promise<SessionUser> {
   return me;
 }
 
-export async function fetchPayslips(token: string): Promise<Payslip[]> {
-  const response = await fetch(buildApiUrl("/payroll/payslips"), {
+export async function fetchPayslips(token: string, query?: { months?: number }): Promise<Payslip[]> {
+  const q = query?.months != null ? `?months=${encodeURIComponent(String(query.months))}` : "";
+  const response = await fetch(buildApiUrl(`/payroll/payslips${q}`), {
     method: "GET",
     headers: getAuthHeaders(token)
   });
   if (!response.ok) {
     await parseError(response);
   }
-  return (await response.json()) as Payslip[];
+  const body = (await response.json()) as Payslip[] | { items: Payslip[] };
+  return Array.isArray(body) ? body : body.items;
+}
+
+export async function markPayslipReadApi(token: string, payslipId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/payroll/payslips/${encodeURIComponent(payslipId)}/read`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
 }
 
 export async function fetchUsers(token: string): Promise<User[]> {
@@ -409,8 +423,19 @@ export async function updateUser(token: string, userId: string, payload: UpdateU
   return (await response.json()) as User;
 }
 
-export async function fetchOrgChart(token: string): Promise<OrgChartResponse> {
-  const response = await fetch(buildApiUrl("/org/chart"), {
+export async function fetchOrgChart(
+  token: string,
+  filters?: { costCenterId?: string; role?: UserRole }
+): Promise<OrgChartResponse> {
+  const q = new URLSearchParams();
+  if (filters?.costCenterId) {
+    q.set("costCenterId", filters.costCenterId);
+  }
+  if (filters?.role) {
+    q.set("role", filters.role);
+  }
+  const qs = q.toString();
+  const response = await fetch(buildApiUrl(`/org/chart${qs ? `?${qs}` : ""}`), {
     method: "GET",
     headers: getAuthHeaders(token)
   });
@@ -928,15 +953,100 @@ export async function approveApproval(token: string, approvalId: string): Promis
   return (await response.json()) as ApprovalItem;
 }
 
-export async function rejectApproval(token: string, approvalId: string): Promise<ApprovalItem> {
+export async function rejectApproval(
+  token: string,
+  approvalId: string,
+  payload?: { reason?: string }
+): Promise<ApprovalItem> {
   const response = await fetch(buildApiUrl(`/approvals/${approvalId}/reject`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload ?? {})
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as ApprovalItem;
+}
+
+export interface SmartworkingRequestDto {
+  id: string;
+  userId: string;
+  day: string;
+  note?: string | null;
+  status: "pending" | "approved" | "rejected";
+  approverId?: string | null;
+  decisionAt?: string | null;
+  rejectReason?: string | null;
+  createdAt: string;
+}
+
+export async function fetchSmartworkingMe(token: string): Promise<{
+  balance: { used: number; quota: number };
+  items: SmartworkingRequestDto[];
+}> {
+  const response = await fetch(buildApiUrl("/smartworking/me"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { balance: { used: number; quota: number }; items: SmartworkingRequestDto[] };
+}
+
+export async function createSmartworkingRequest(
+  token: string,
+  payload: { day: string; note?: string }
+): Promise<SmartworkingRequestDto> {
+  const response = await fetch(buildApiUrl("/smartworking/request"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as SmartworkingRequestDto;
+}
+
+export async function fetchSmartworkingPending(token: string): Promise<SmartworkingRequestDto[]> {
+  const response = await fetch(buildApiUrl("/smartworking/pending"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const body = (await response.json()) as { items: SmartworkingRequestDto[] };
+  return body.items;
+}
+
+export async function approveSmartworkingRequest(token: string, id: string): Promise<SmartworkingRequestDto> {
+  const response = await fetch(buildApiUrl(`/smartworking/${encodeURIComponent(id)}/approve`), {
     method: "PATCH",
     headers: getAuthHeaders(token)
   });
   if (!response.ok) {
     await parseError(response);
   }
-  return (await response.json()) as ApprovalItem;
+  return (await response.json()) as SmartworkingRequestDto;
+}
+
+export async function rejectSmartworkingRequest(
+  token: string,
+  id: string,
+  reason?: string
+): Promise<SmartworkingRequestDto> {
+  const response = await fetch(buildApiUrl(`/smartworking/${encodeURIComponent(id)}/reject`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ reason })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as SmartworkingRequestDto;
 }
 
 export async function generatePayslip(
@@ -1098,4 +1208,82 @@ export async function fetchQrClockToken(token: string): Promise<{ token: string;
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as { token: string; expiresInSec: number };
+}
+
+export async function clockNfcPublic(payload: {
+  token: string;
+  type: "clock_in" | "clock_out";
+  at?: string;
+}): Promise<unknown> {
+  const response = await fetch(buildApiUrl("/clock/nfc"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json();
+}
+
+export async function fetchPeopleInsights(
+  token: string
+): Promise<{ items: Array<{ userId: string; fullName: string; score: number; reasons: string[] }> }> {
+  const response = await fetch(buildApiUrl("/analytics/people-insights"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: Array<{ userId: string; fullName: string; score: number; reasons: string[] }>;
+  };
+}
+
+export async function fetchPayrollForecast(
+  token: string,
+  months?: number
+): Promise<{ series: Array<{ month: string; costChf: number }> }> {
+  const q = months != null ? `?months=${months}` : "";
+  const response = await fetch(buildApiUrl(`/analytics/forecast-payroll${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { series: Array<{ month: string; costChf: number }> };
+}
+
+export async function fetchAttendanceReport(
+  token: string,
+  from: string,
+  to: string
+): Promise<{
+  rows: Array<{ userId: string; fullName: string; date: string; type: string; at: string }>;
+}> {
+  const response = await fetch(
+    buildApiUrl(`/reports/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    rows: Array<{ userId: string; fullName: string; date: string; type: string; at: string }>;
+  };
+}
+
+export async function fetchShiftProposals(token: string, weekStart: string): Promise<{ items: unknown[] }> {
+  const response = await fetch(
+    buildApiUrl(`/scheduling/proposals?weekStart=${encodeURIComponent(weekStart)}`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: unknown[] };
+}
+
+export async function submitLifecycleOffboard(
+  token: string,
+  targetUserId: string,
+  checklist: Record<string, boolean>
+): Promise<unknown> {
+  const response = await fetch(buildApiUrl(`/lifecycle/offboard/${encodeURIComponent(targetUserId)}`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ checklist })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json();
 }

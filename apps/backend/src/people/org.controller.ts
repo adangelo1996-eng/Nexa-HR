@@ -25,8 +25,16 @@ export class OrgController {
 
   @Get("chart")
   @RequireNexaPermissions("nexa.org:read")
-  async chart(): Promise<unknown> {
-    return this.store.getOrgChart();
+  async chart(
+    @Query("costCenterId") costCenterId?: string,
+    @Query("role") role?: string
+  ): Promise<unknown> {
+    const r =
+      role === "admin" || role === "manager_controllo_gestione" || role === "employee" ? role : undefined;
+    return this.store.getOrgChart({
+      costCenterId: costCenterId?.trim() || undefined,
+      role: r
+    });
   }
 
   @Get("approver-chain")

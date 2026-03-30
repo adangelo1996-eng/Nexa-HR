@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Patch, Query, UseGuards } from "@nestjs/common";
-import { IsBoolean, IsString } from "class-validator";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { IsBoolean, IsObject, IsString } from "class-validator";
 import type { OnboardingStatus } from "@payday/domain";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
@@ -11,6 +11,11 @@ class PatchChecklistDto {
 
   @IsBoolean()
   done!: boolean;
+}
+
+class OffboardDto {
+  @IsObject()
+  checklist!: Record<string, boolean>;
 }
 
 @Controller("lifecycle")
@@ -37,5 +42,15 @@ export class LifecycleController {
   ): Promise<OnboardingStatus> {
     const uid = userId ?? auth.userId;
     return this.store.patchOnboardingItem(uid, dto.itemId, dto.done, auth.userId, auth.role);
+  }
+
+  @Post("offboard/:targetUserId")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async offboard(
+    @CurrentAuth() auth: AuthContext,
+    @Param("targetUserId") targetUserId: string,
+    @Body() dto: OffboardDto
+  ): Promise<unknown> {
+    return this.store.completeOffboard(auth.userId, targetUserId, dto.checklist);
   }
 }

@@ -34,7 +34,22 @@ interface ApprovalRecord {
   approverId?: string;
   status: "pending" | "approved" | "rejected";
   at: string;
+  rejectReason?: string | null;
 }
+
+export interface SmartworkingRequestRow {
+  id: string;
+  userId: string;
+  day: string;
+  note?: string | null;
+  status: "pending" | "approved" | "rejected";
+  approverId?: string | null;
+  decisionAt?: string | null;
+  rejectReason?: string | null;
+  createdAt: string;
+}
+
+const SMARTWORKING_MONTHLY_QUOTA = 8;
 
 interface UserCreateInput {
   firstName: string;
@@ -201,6 +216,8 @@ export class HrDataStore {
   private readonly leavePlans: LeavePlan[] = [];
   private readonly sicknessEvents: SicknessEvent[] = [];
   private readonly approvals: ApprovalRecord[] = [];
+  private readonly smartworkingRequests: SmartworkingRequestRow[] = [];
+  private readonly nfcTokenMap: Map<string, string> = new Map();
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
   /** Fallback in-memory quando Supabase non è configurato. */
@@ -894,6 +911,18 @@ export class HrDataStore {
     };
   }
 
+  async getUserIdByNfcToken(token: string): Promise<string | null> {
+    if (token.length !== 16) {
+      return null;
+    }
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("nfc_badge_tokens").select("userId").eq("token", token).maybeSingle();
+      const row = data as { userId?: string } | null;
+      return row?.userId ?? null;
+    }
+    return this.nfcTokenMap.get(token) ?? null;
+  }
+
   async addTimeEntry(
     userId: string,
     type: "clock_in" | "clock_out",
@@ -1341,17 +1370,18 @@ export class HrDataStore {
     return leave;
   }
 
-  async rejectLeave(leaveId: string, approverId: string, approvalRowId?: string): Promise<LeavePlan> {
+  async rejectLeave(leaveId: string, approverId: string, approvalRowId?: string, rejectReason?: string): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     leave.status = "rejected";
     const at = new Date().toISOString();
+    const reasonPayload = { status: "rejected" as const, approverId, at, rejectReason: rejectReason?.trim() || null };
     if (this.useDb) {
       await this.supabase!.from("leave_plans").update({ status: "rejected" }).eq("id", leaveId);
       const { error } = approvalRowId
-        ? await this.supabase!.from("approvals").update({ status: "rejected", approverId, at }).eq("id", approvalRowId)
+        ? await this.supabase!.from("approvals").update(reasonPayload).eq("id", approvalRowId)
         : await this.supabase!
             .from("approvals")
-            .update({ status: "rejected", approverId, at })
+            .update(reasonPayload)
             .eq("entityId", leaveId)
             .eq("type", "leave")
             .eq("status", "pending");
@@ -1370,13 +1400,14 @@ export class HrDataStore {
         row.status = "rejected";
         row.approverId = approverId;
         row.at = at;
+        row.rejectReason = rejectReason?.trim() || null;
       }
     }
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId: leave.userId,
       title: "Ferie rifiutate",
-      body: `Periodo ${leave.startDate} – ${leave.endDate}`,
+      body: `Periodo ${leave.startDate} – ${leave.endDate}${rejectReason?.trim() ? ` — ${rejectReason.trim()}` : ""}`,
       read: false,
       createdAt: new Date().toISOString(),
       kind: "leave_rejected"
@@ -1471,17 +1502,18 @@ export class HrDataStore {
     return sickness;
   }
 
-  async rejectSickness(id: string, approverId: string, approvalRowId?: string): Promise<SicknessEvent> {
+  async rejectSickness(id: string, approverId: string, approvalRowId?: string, rejectReason?: string): Promise<SicknessEvent> {
     const sickness = await this.getSickness(id);
     sickness.status = "rejected";
     const at = new Date().toISOString();
+    const reasonPayload = { status: "rejected" as const, approverId, at, rejectReason: rejectReason?.trim() || null };
     if (this.useDb) {
       await this.supabase!.from("sickness_events").update({ status: "rejected" }).eq("id", id);
       const { error } = approvalRowId
-        ? await this.supabase!.from("approvals").update({ status: "rejected", approverId, at }).eq("id", approvalRowId)
+        ? await this.supabase!.from("approvals").update(reasonPayload).eq("id", approvalRowId)
         : await this.supabase!
             .from("approvals")
-            .update({ status: "rejected", approverId, at })
+            .update(reasonPayload)
             .eq("entityId", id)
             .eq("type", "sickness")
             .eq("status", "pending");
@@ -1500,13 +1532,14 @@ export class HrDataStore {
         row.status = "rejected";
         row.approverId = approverId;
         row.at = at;
+        row.rejectReason = rejectReason?.trim() || null;
       }
     }
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId: sickness.userId,
       title: "Certificato malattia rifiutato",
-      body: `${sickness.fromDate} – ${sickness.toDate}`,
+      body: `${sickness.fromDate} – ${sickness.toDate}${rejectReason?.trim() ? ` — ${rejectReason.trim()}` : ""}`,
       read: false,
       createdAt: new Date().toISOString(),
       kind: "sickness_rejected"
@@ -1534,17 +1567,25 @@ export class HrDataStore {
     return sickness;
   }
 
-  async getOrgChart(): Promise<unknown> {
-    const users = await this.listUsers();
+  async getOrgChart(filters?: { costCenterId?: string; role?: string }): Promise<unknown> {
+    let users = await this.listUsers();
+    if (filters?.costCenterId) {
+      users = users.filter((u) => u.costCenterId === filters.costCenterId);
+    }
+    if (filters?.role) {
+      users = users.filter((u) => u.role === filters.role);
+    }
+    const idSet = new Set(users.map((u) => u.id));
     return {
       nodes: users.map((user) => ({
         id: user.id,
         label: user.fullName,
-        role: user.role
+        role: user.role,
+        costCenterId: user.costCenterId
       })),
       edges: users
-        .filter((user) => user.managerId)
-        .map((user) => ({ from: user.managerId, to: user.id }))
+        .filter((user) => user.managerId && idSet.has(user.managerId!))
+        .map((user) => ({ from: user.managerId!, to: user.id }))
     };
   }
 
@@ -1715,6 +1756,31 @@ export class HrDataStore {
     return this.payslips.filter((item) => item.userId === target);
   }
 
+  async listPayslipsWithNewFlag(requesterId: string, targetUserId?: string): Promise<Array<Payslip & { isNew: boolean }>> {
+    const rows = await this.listPayslips(requesterId, targetUserId);
+    const target = targetUserId ?? requesterId;
+    if (!this.useDb) {
+      return rows.map((p) => ({ ...p, isNew: false }));
+    }
+    const { data: reads } = await this.supabase!
+      .from("payslip_reads")
+      .select("payslipId")
+      .eq("userId", target);
+    const readSet = new Set((reads ?? []).map((r: { payslipId: string }) => r.payslipId));
+    return rows.map((p) => ({ ...p, isNew: !readSet.has(p.id) }));
+  }
+
+  async markPayslipRead(userId: string, payslipId: string): Promise<void> {
+    if (!this.useDb) {
+      return;
+    }
+    const now = new Date().toISOString();
+    const { error } = await this.supabase!.from("payslip_reads").insert({ userId, payslipId, readAt: now });
+    if (error && !/duplicate|unique/i.test(error.message)) {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
   async listApprovalsForUser(
     requesterId: string,
     status?: "pending" | "approved" | "rejected"
@@ -1812,16 +1878,16 @@ export class HrDataStore {
     };
   }
 
-  async rejectByApprovalId(approvalId: string, approverId: string): Promise<ApprovalView> {
+  async rejectByApprovalId(approvalId: string, approverId: string, rejectReason?: string): Promise<ApprovalView> {
     const approvals = await this.listApprovalsForUser(approverId);
     const approval = approvals.find((item) => item.id === approvalId);
     if (!approval) {
       throw new NotFoundException("Autorizzazione non trovata");
     }
     if (approval.type === "leave") {
-      await this.rejectLeave(approval.entityId, approverId, approval.id);
+      await this.rejectLeave(approval.entityId, approverId, approval.id, rejectReason);
     } else {
-      await this.rejectSickness(approval.entityId, approverId, approval.id);
+      await this.rejectSickness(approval.entityId, approverId, approval.id, rejectReason);
     }
     return {
       ...approval,
@@ -2653,6 +2719,245 @@ export class HrDataStore {
       this.innovationJobs.unshift(job);
     }
     return job;
+  }
+
+  async createSmartworkingRequest(userId: string, day: string, note?: string): Promise<SmartworkingRequestRow> {
+    const user = await this.getUser(userId);
+    const monthPrefix = day.slice(0, 7);
+    const used = await this.countApprovedSmartworkingDaysInMonth(userId, monthPrefix);
+    if (used >= SMARTWORKING_MONTHLY_QUOTA) {
+      throw new BadRequestException("Quota smartworking mensile esaurita");
+    }
+    const id = `sw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const createdAt = new Date().toISOString();
+    const row: SmartworkingRequestRow = {
+      id,
+      userId,
+      day,
+      note: note?.trim() || null,
+      status: "pending",
+      approverId: user.managerId ?? null,
+      createdAt
+    };
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("smartworking_requests").insert({
+        id: row.id,
+        userId: row.userId,
+        day: row.day,
+        note: row.note,
+        status: row.status,
+        approverId: row.approverId,
+        createdAt: row.createdAt
+      });
+      if (error) {
+        throw new InternalServerErrorException(`Richiesta SW fallita: ${error.message}`);
+      }
+    } else {
+      this.smartworkingRequests.push(row);
+    }
+    return row;
+  }
+
+  async listMySmartworking(userId: string): Promise<SmartworkingRequestRow[]> {
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("smartworking_requests")
+        .select("*")
+        .eq("userId", userId)
+        .order("day", { ascending: false });
+      return (data as SmartworkingRequestRow[]) ?? [];
+    }
+    return this.smartworkingRequests.filter((r) => r.userId === userId).sort((a, b) => b.day.localeCompare(a.day));
+  }
+
+  async listPendingSmartworkingForManager(managerId: string): Promise<SmartworkingRequestRow[]> {
+    const subs = await this.listUsersByManager(managerId);
+    const ids = new Set(subs.map((u) => u.id));
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("status", "pending");
+      const rows = (data as SmartworkingRequestRow[]) ?? [];
+      return rows.filter((r) => ids.has(r.userId) || r.approverId === managerId);
+    }
+    return this.smartworkingRequests.filter(
+      (r) => r.status === "pending" && (ids.has(r.userId) || r.approverId === managerId)
+    );
+  }
+
+  async decideSmartworkingRequest(
+    requestId: string,
+    managerId: string,
+    approve: boolean,
+    rejectReason?: string
+  ): Promise<SmartworkingRequestRow> {
+    let row: SmartworkingRequestRow | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).single();
+      row = data as SmartworkingRequestRow | undefined;
+    } else {
+      row = this.smartworkingRequests.find((r) => r.id === requestId);
+    }
+    if (!row || row.status !== "pending") {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    const subs = await this.listUsersByManager(managerId);
+    if (!subs.some((u) => u.id === row.userId) && row.approverId !== managerId) {
+      throw new BadRequestException("Non autorizzato su questa richiesta");
+    }
+    const decisionAt = new Date().toISOString();
+    const status = approve ? "approved" : "rejected";
+    const reason = rejectReason?.trim() || null;
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("smartworking_requests")
+        .update({
+          status,
+          approverId: managerId,
+          decisionAt,
+          rejectReason: approve ? null : reason
+        })
+        .eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento SW fallito: ${error.message}`);
+      }
+    } else {
+      row.status = status;
+      row.approverId = managerId;
+      row.decisionAt = decisionAt;
+      row.rejectReason = approve ? null : reason;
+    }
+    await this.insertUserNotification({
+      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      userId: row.userId,
+      title: approve ? "Smartworking approvato" : "Smartworking rifiutato",
+      body: `${row.day}${!approve && reason ? ` — ${reason}` : ""}`,
+      read: false,
+      createdAt: decisionAt,
+      kind: "smartworking"
+    });
+    return { ...row, status, approverId: managerId, decisionAt, rejectReason: approve ? null : reason };
+  }
+
+  async getSmartworkingMonthlyBalance(userId: string, month?: string): Promise<{ used: number; quota: number }> {
+    const m = month ?? new Date().toISOString().slice(0, 7);
+    const used = await this.countApprovedSmartworkingDaysInMonth(userId, m);
+    return { used, quota: SMARTWORKING_MONTHLY_QUOTA };
+  }
+
+  private async countApprovedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
+    const list = await this.listMySmartworking(userId);
+    return list.filter((r) => r.status === "approved" && r.day.startsWith(monthPrefix)).length;
+  }
+
+  async getPeopleInsightsRisk(): Promise<Array<{ userId: string; fullName: string; score: number; reasons: string[] }>> {
+    const users = await this.listUsers();
+    const rows: Array<{ userId: string; fullName: string; score: number; reasons: string[] }> = [];
+    for (const u of users) {
+      if (u.role === "admin") {
+        continue;
+      }
+      let score = 15;
+      const reasons: string[] = [];
+      const allowance = u.vacationAllowanceDays ?? 22;
+      if (allowance < 20) {
+        score += 25;
+        reasons.push("Ferie contrattuali contenute");
+      }
+      const contractH = u.weeklyContractHours ?? 40;
+      if (contractH >= 42) {
+        score += 20;
+        reasons.push("Contratto a ore elevate");
+      }
+      const y = new Date().getFullYear();
+      const bal = await this.getLeaveBalance(u.id, y);
+      if (bal.residualDays < 3) {
+        score += 25;
+        reasons.push("Saldo ferie basso");
+      }
+      if (reasons.length === 0) {
+        reasons.push("Profilo da monitorare");
+      }
+      rows.push({ userId: u.id, fullName: u.fullName, score: Math.min(100, score), reasons });
+    }
+    return rows.sort((a, b) => b.score - a.score);
+  }
+
+  async exportAttendanceReportRows(
+    from: string,
+    to: string
+  ): Promise<Array<{ userId: string; fullName: string; date: string; type: string; at: string }>> {
+    const users = await this.listUsers();
+    const userMap = new Map(users.map((u) => [u.id, u.fullName]));
+    let entries: TimeEntry[] = [];
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("time_entries")
+        .select("*")
+        .gte("at", `${from}T00:00:00.000Z`)
+        .lte("at", `${to}T23:59:59.999Z`);
+      entries = (data as TimeEntry[]) ?? [];
+    } else {
+      entries = this.timeEntries.filter((e) => e.at.slice(0, 10) >= from && e.at.slice(0, 10) <= to);
+    }
+    return entries
+      .map((e) => ({
+        userId: e.userId,
+        fullName: userMap.get(e.userId) ?? e.userId,
+        date: e.at.slice(0, 10),
+        type: e.type,
+        at: e.at
+      }))
+      .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  async proposeShiftsPreview(weekStart: string): Promise<Shift[]> {
+    const users = (await this.listUsers()).filter((u) => u.role === "employee").slice(0, 12);
+    const proposals: Shift[] = [];
+    let i = 0;
+    for (const u of users) {
+      const dayOff = (i % 7) + 1;
+      const d = new Date(`${weekStart}T12:00:00.000Z`);
+      d.setUTCDate(d.getUTCDate() + dayOff);
+      const y = d.toISOString().slice(0, 10);
+      proposals.push({
+        id: `prop-${u.id}-${y}`,
+        userId: u.id,
+        startAt: `${y}T08:00:00.000Z`,
+        endAt: `${y}T17:00:00.000Z`,
+        premiumCode: undefined,
+        status: "scheduled"
+      });
+      i += 1;
+    }
+    return proposals;
+  }
+
+  async completeOffboard(
+    actorId: string,
+    targetUserId: string,
+    checklist: Record<string, boolean>
+  ): Promise<{ userId: string; checklist: Record<string, boolean>; accessDisabled: boolean }> {
+    await this.getUser(targetUserId);
+    const allDone = Object.values(checklist).every(Boolean);
+    if (this.useDb) {
+      if (allDone) {
+        await this.supabase!.from("users").update({ email: `offboarded+${targetUserId}@invalid.local` }).eq("id", targetUserId);
+      }
+    }
+    return { userId: targetUserId, checklist, accessDisabled: allDone };
+  }
+
+  async payrollForecastNextMonths(months = 3): Promise<Array<{ month: string; costChf: number }>> {
+    const users = await this.listUsers();
+    const base = users.reduce((acc, u) => acc + (Number(u.baseSalaryMonthly) || 5800), 0);
+    const out: Array<{ month: string; costChf: number }> = [];
+    const d = new Date();
+    for (let m = 0; m < months; m += 1) {
+      const x = new Date(d.getFullYear(), d.getMonth() + m, 1);
+      const label = x.toISOString().slice(0, 7);
+      const growth = 1 + m * 0.02;
+      out.push({ month: label, costChf: Math.round(base * growth) });
+    }
+    return out;
   }
 
   private async fetchImportEventsFromDb(cap: number): Promise<NexaImportEventRow[]> {

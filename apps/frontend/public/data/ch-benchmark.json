@@ -1,0 +1,9 @@
+{
+  "byRoleCanton": [
+    { "role": "Sviluppatore", "canton": "TI", "medianMonthlyChf": 9500 },
+    { "role": "Sviluppatore", "canton": "ZH", "medianMonthlyChf": 10200 },
+    { "role": "HR Generalista", "canton": "TI", "medianMonthlyChf": 7800 },
+    { "role": "HR Generalista", "canton": "GE", "medianMonthlyChf": 8200 },
+    { "role": "Contabile", "canton": "TI", "medianMonthlyChf": 8000 }
+  ]
+}

@@ -1,26 +1,40 @@
 "use client";
 
-import { useMemo } from "react";
-import { Background, Controls, MarkerType, MiniMap, ReactFlow, type Edge as FlowEdge, type Node as FlowNode } from "@xyflow/react";
+import { useCallback, useMemo } from "react";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  MiniMap,
+  ReactFlow,
+  type Edge as FlowEdge,
+  type Node as FlowNode,
+  type NodeMouseHandler
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-interface Node {
+export interface OrgChartNode {
   id: string;
   label: string;
   role: string;
+  costCenterId?: string;
 }
 
-interface Edge {
+interface OrgChartEdge {
   from: string;
   to: string;
 }
 
 interface Props {
-  nodes: Node[];
-  edges: Edge[];
+  nodes: OrgChartNode[];
+  edges: OrgChartEdge[];
+  /** Se true, mostra titolo e card container (dashboard legacy). */
+  framed?: boolean;
+  onNodeSelect?: (node: OrgChartNode) => void;
+  heightClass?: string;
 }
 
-function buildLevels(nodes: Node[], edges: Edge[]): Map<string, number> {
+function buildLevels(nodes: OrgChartNode[], edges: OrgChartEdge[]): Map<string, number> {
   const incoming = new Map<string, number>();
   const children = new Map<string, string[]>();
   nodes.forEach((node) => {
@@ -59,10 +73,18 @@ function buildLevels(nodes: Node[], edges: Edge[]): Map<string, number> {
   return levels;
 }
 
-export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
+export function OrgChart({
+  nodes,
+  edges,
+  framed = true,
+  onNodeSelect,
+  heightClass = "h-[460px]"
+}: Props): React.JSX.Element {
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
   const { flowNodes, flowEdges } = useMemo(() => {
     const levels = buildLevels(nodes, edges);
-    const grouped = new Map<number, Node[]>();
+    const grouped = new Map<number, OrgChartNode[]>();
 
     nodes.forEach((node) => {
       const level = levels.get(node.id) ?? 0;
@@ -81,10 +103,17 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
           position: { x: index * 260, y: level * 140 },
           data: {
             label: (
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{node.label}</p>
-                <p className="text-xs text-synapse-gold dark:text-synapse-gold-bright">{node.role}</p>
-              </div>
+              <button
+                type="button"
+                className="w-full cursor-pointer rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_95%,transparent)] px-3 py-2 text-left transition-opacity hover:opacity-90"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNodeSelect?.(node);
+                }}
+              >
+                <p className="text-sm font-medium text-[var(--prom-text)]">{node.label}</p>
+                <p className="text-xs text-[var(--prom-gold)]">{node.role}</p>
+              </button>
             )
           },
           draggable: false
@@ -102,23 +131,47 @@ export function OrgChart({ nodes, edges }: Props): React.JSX.Element {
     return { flowNodes: flowNodesResult, flowEdges: flowEdgesResult };
   }, [nodes, edges]);
 
+  const onNodeClick: NodeMouseHandler = useCallback(
+    (_, node) => {
+      const n = nodeById.get(node.id);
+      if (n) {
+        onNodeSelect?.(n);
+      }
+    },
+    [nodeById, onNodeSelect]
+  );
+
+  const flow = (
+    <div className={`nexa-orgchart-flow ${heightClass} rounded-lg border border-[var(--prom-line)]`}>
+      <ReactFlow
+        nodes={flowNodes}
+        edges={flowEdges}
+        fitView
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={onNodeSelect ? onNodeClick : undefined}
+      >
+        <MiniMap
+          pannable
+          zoomable
+          maskColor="rgba(15, 23, 42, 0.45)"
+          nodeStrokeWidth={2}
+          className="nexa-flow-minimap"
+        />
+        <Controls className="nexa-flow-controls" showInteractive={false} />
+        <Background />
+      </ReactFlow>
+    </div>
+  );
+
+  if (!framed) {
+    return flow;
+  }
+
   return (
     <section className="card mt-6">
-      <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Organigramma dinamico</h2>
-      <div className="nexa-orgchart-flow mt-4 h-[460px] rounded-lg border border-slate-200 dark:border-slate-700">
-        <ReactFlow nodes={flowNodes} edges={flowEdges} fitView proOptions={{ hideAttribution: true }}>
-          <MiniMap
-            pannable
-            zoomable
-            maskColor="rgba(15, 23, 42, 0.45)"
-            nodeStrokeWidth={2}
-            className="nexa-flow-minimap"
-          />
-          <Controls className="nexa-flow-controls" showInteractive={false} />
-          <Background />
-        </ReactFlow>
-      </div>
-      <p className="mt-4 text-xs text-slate-500">Dipendenze gerarchiche: {edges.length}</p>
+      <h2 className="text-xl font-semibold text-[var(--prom-text)]">Organigramma</h2>
+      {flow}
+      <p className="mt-4 text-xs text-[var(--prom-muted)]">Collegamenti: {edges.length}</p>
     </section>
   );
 }

@@ -2,7 +2,6 @@ import "./globals.css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Montserrat } from "next/font/google";
-import { ConditionalBrandBar } from "@/components/conditional-brand-bar";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const synapseWordmark = localFont({
@@ -45,10 +44,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className={`${synapseWordmark.variable} ${montserrat.variable} antialiased`}>
-        <ThemeProvider>
-          <ConditionalBrandBar />
-          {children}
-        </ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

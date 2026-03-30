@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   StreamableFile,
@@ -117,7 +118,8 @@ export class PayrollController {
   @RequireNexaPermissions("nexa.payslips:read")
   async list(
     @CurrentAuth() auth: { userId: string; role: string },
-    @Query("userId") userId?: string
+    @Query("userId") userId?: string,
+    @Query("months") months?: string
   ): Promise<unknown> {
     const canReadOthers = auth.role === "admin" || auth.role === "manager_controllo_gestione";
     if (userId && !canReadOthers && userId !== auth.userId) {
@@ -130,7 +132,28 @@ export class PayrollController {
     ) {
       throw new ForbiddenException("Manager può leggere solo cedolini dei sottoposti");
     }
-    return this.store.listPayslips(auth.userId, canReadOthers ? userId : auth.userId);
+    const target = canReadOthers ? userId : auth.userId;
+    let items = await this.store.listPayslipsWithNewFlag(auth.userId, target);
+    const cap = months ? Math.min(24, Math.max(1, Number(months) || 12)) : 12;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - cap);
+    const min = cutoff.toISOString().slice(0, 7);
+    items = items.filter((p) => p.period >= min).sort((a, b) => b.period.localeCompare(a.period));
+    return { items };
+  }
+
+  @Patch("payslips/:payslipId/read")
+  @RequireNexaPermissions("nexa.payslips:read")
+  async markRead(
+    @CurrentAuth() auth: { userId: string },
+    @Param("payslipId") payslipId: string
+  ): Promise<unknown> {
+    const rows = await this.store.listPayslips(auth.userId, auth.userId);
+    if (!rows.some((p) => p.id === payslipId)) {
+      throw new ForbiddenException("Cedolino non trovato");
+    }
+    await this.store.markPayslipRead(auth.userId, payslipId);
+    return { ok: true };
   }
 
   @Get(":userId/:period/pdf")

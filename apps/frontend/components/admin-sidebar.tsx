@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname } from "next/navigation";
-import { adminStrings } from "@/app/(hr)/admin/strings";
+import { adminStrings } from "@/app/(app)/(hr)/admin/strings";
 
 interface AdminNavItem {
   href: Route;

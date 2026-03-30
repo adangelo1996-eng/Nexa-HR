@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 
 type LoginPhase = "idle" | "submitting" | "redirecting";
@@ -76,6 +77,10 @@ export default function LoginForm(): React.JSX.Element {
     try {
       const session = await login(email, password);
       saveSession(session.token, session.user);
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        await supabase.auth.signInWithPassword({ email: email.trim(), password }).catch(() => undefined);
+      }
       setPhase("redirecting");
       window.location.assign("/");
     } catch (submissionError) {

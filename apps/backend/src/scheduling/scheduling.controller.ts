@@ -25,6 +25,13 @@ class CreateShiftDto {
 export class SchedulingController {
   constructor(private readonly store: HrDataStore) {}
 
+  @Get("proposals")
+  @RequireNexaPermissions("nexa.shifts:read")
+  async proposals(@Query("weekStart") weekStart?: string): Promise<{ items: Awaited<ReturnType<HrDataStore["proposeShiftsPreview"]>> }> {
+    const ws = weekStart?.trim() || new Date().toISOString().slice(0, 10);
+    return { items: await this.store.proposeShiftsPreview(ws) };
+  }
+
   @Get("shifts")
   @RequireNexaPermissions("nexa.shifts:read")
   async listShifts(
