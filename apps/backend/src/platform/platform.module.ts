@@ -9,10 +9,11 @@ import { ImportController } from "./import.controller";
 import { ImportService } from "./import.service";
 import { NexaPermissionGuard } from "./nexa-permission.guard";
 import { PermissionsService } from "./permissions.service";
+import { SearchController } from "./search.controller";
 
 @Global()
 @Module({
-  controllers: [AuthController, AdminController, ImportController],
+  controllers: [AuthController, AdminController, ImportController, SearchController],
   providers: [
     HrDataStore,
     ImportService,
