@@ -1,0 +1,759 @@
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '6cf802ea-332f-4720-88bf-bfa3ba43c49b'::uuid, 'authenticated', 'authenticated', 'giulia.ferrari@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Giulia Ferrari"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('giulia.ferrari@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '6cf802ea-332f-4720-88bf-bfa3ba43c49b', '6cf802ea-332f-4720-88bf-bfa3ba43c49b'::uuid, jsonb_build_object('sub', '6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'email', 'giulia.ferrari@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '6cf802ea-332f-4720-88bf-bfa3ba43c49b'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '6cf802ea-332f-4720-88bf-bfa3ba43c49b'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'giulia.ferrari@synapse.com', 'Giulia Ferrari', 'admin', NULL, 'comp-1', 'Giulia', 'Ferrari', 28800, 25, '1982-04-12', '+41 91 500 1101', 'Via Borghetto 4, 6900 Lugano', 'nexa-r-01', 'nexa-cc-3', 'indeterminato', 40, '756.1234.5678.91', 'CH93 0076 2011 6238 5295 7', 'UBS Switzerland AG', 'UBSWCHZH80A', 'Giulia Ferrari', 9800, 'TI', 'Lugano', '2018-01-15')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'f4042513-0aaa-47b1-a15b-c89ba455a9d8'::uuid, 'authenticated', 'authenticated', 'marco.bernasconi@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Marco Bernasconi"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('marco.bernasconi@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8'::uuid, jsonb_build_object('sub', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'email', 'marco.bernasconi@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'f4042513-0aaa-47b1-a15b-c89ba455a9d8'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'f4042513-0aaa-47b1-a15b-c89ba455a9d8'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'marco.bernasconi@synapse.com', 'Marco Bernasconi', 'manager_controllo_gestione', '6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'comp-1', 'Marco', 'Bernasconi', 28800, 25, '1985-09-03', '+41 91 500 1102', 'Via Pretorio 12, 6900 Lugano', 'nexa-r-09', 'nexa-cc-2', 'indeterminato', 40, '756.2234.5678.12', 'CH12 0483 5012 3456 7890 0', 'Credit Suisse', 'CRESCHZZ80A', 'Marco Bernasconi', 8900, 'TI', 'Lugano', '2019-03-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '9a0b7f7f-0073-4eef-a68c-e78bf78bb260'::uuid, 'authenticated', 'authenticated', 'elena.rossi@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Elena Rossi"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('elena.rossi@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260'::uuid, jsonb_build_object('sub', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'email', 'elena.rossi@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '9a0b7f7f-0073-4eef-a68c-e78bf78bb260'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '9a0b7f7f-0073-4eef-a68c-e78bf78bb260'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'elena.rossi@synapse.com', 'Elena Rossi', 'manager_controllo_gestione', '6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'comp-1', 'Elena', 'Rossi', 28800, 25, '1987-11-21', '+41 91 500 1103', 'Riva Paradiso 3, Paradiso', 'nexa-r-02', 'nexa-cc-5', 'indeterminato', 40, '756.3234.5678.23', 'CH45 0900 0000 1234 5678 1', 'PostFinance', 'POFICHBEXXX', 'Elena Rossi', 8600, 'TI', 'Paradiso', '2019-06-10')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '3ca0a2c4-fb07-436d-9046-2b52e262fa6d'::uuid, 'authenticated', 'authenticated', 'luca.colombo@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Luca Colombo"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('luca.colombo@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '3ca0a2c4-fb07-436d-9046-2b52e262fa6d', '3ca0a2c4-fb07-436d-9046-2b52e262fa6d'::uuid, jsonb_build_object('sub', '3ca0a2c4-fb07-436d-9046-2b52e262fa6d', 'email', 'luca.colombo@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '3ca0a2c4-fb07-436d-9046-2b52e262fa6d'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '3ca0a2c4-fb07-436d-9046-2b52e262fa6d'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('3ca0a2c4-fb07-436d-9046-2b52e262fa6d', 'luca.colombo@synapse.com', 'Luca Colombo', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Luca', 'Colombo', 30240, 22, '1991-02-18', '+41 78 200 3301', 'Via Industria 2, Mendrisio', 'nexa-r-10', 'nexa-cc-2', 'indeterminato', 42, '756.4234.5678.34', 'CH56 0070 0110 1234 5678 9', 'Raiffeisen', 'RAIFCH22', 'Luca Colombo', 7200, 'TI', 'Mendrisio', '2020-01-20')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15'::uuid, 'authenticated', 'authenticated', 'sofia.marini@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Sofia Marini"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('sofia.marini@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15', 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15'::uuid, jsonb_build_object('sub', 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15', 'email', 'sofia.marini@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('b5ff43f8-bb4e-4ec9-b1bf-cf9e06098b15', 'sofia.marini@synapse.com', 'Sofia Marini', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Sofia', 'Marini', 28800, 22, '1992-07-30', '+41 78 200 3302', 'Corso Elvezia 8, Lugano', 'nexa-r-11', 'nexa-cc-2', 'indeterminato', 40, '756.5234.5678.45', 'CH67 0020 2200 1234 5678 0', 'UBS', 'UBSWCHZH80A', 'Sofia Marini', 7100, 'TI', 'Lugano', '2020-09-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '1df40524-999f-497e-b073-01ffe6b3c814'::uuid, 'authenticated', 'authenticated', 'andrea.greco@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Andrea Greco"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('andrea.greco@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '1df40524-999f-497e-b073-01ffe6b3c814', '1df40524-999f-497e-b073-01ffe6b3c814'::uuid, jsonb_build_object('sub', '1df40524-999f-497e-b073-01ffe6b3c814', 'email', 'andrea.greco@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '1df40524-999f-497e-b073-01ffe6b3c814'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '1df40524-999f-497e-b073-01ffe6b3c814'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('1df40524-999f-497e-b073-01ffe6b3c814', 'andrea.greco@synapse.com', 'Andrea Greco', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Andrea', 'Greco', 28800, 22, '1993-01-05', '+41 78 200 3303', 'Via Gaggiolo 14, Chiasso', 'nexa-r-12', 'nexa-cc-1', 'indeterminato', 40, '756.6234.5678.56', 'CH78 0483 5030 9876 5432 1', 'Credit Suisse', 'CRESCHZZ80A', 'Andrea Greco', 6800, 'TI', 'Chiasso', '2021-02-15')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3'::uuid, 'authenticated', 'authenticated', 'chiara.fontana@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Chiara Fontana"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('chiara.fontana@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3', 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3'::uuid, jsonb_build_object('sub', 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3', 'email', 'chiara.fontana@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('ee6289f5-bff6-45a1-b9e9-a5c9fa3714d3', 'chiara.fontana@synapse.com', 'Chiara Fontana', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Chiara', 'Fontana', 28800, 22, '1994-10-11', '+41 78 200 3304', 'Via Campagna 9, Massagno', 'nexa-r-13', 'nexa-cc-2', 'indeterminato', 40, '756.7234.5678.67', 'CH89 0900 0000 9876 5432 0', 'PostFinance', 'POFICHBEXXX', 'Chiara Fontana', 6500, 'TI', 'Massagno', '2021-11-08')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '62dd240f-1241-47e3-82f1-4a09ec025823'::uuid, 'authenticated', 'authenticated', 'davide.serra@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Davide Serra"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('davide.serra@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '62dd240f-1241-47e3-82f1-4a09ec025823', '62dd240f-1241-47e3-82f1-4a09ec025823'::uuid, jsonb_build_object('sub', '62dd240f-1241-47e3-82f1-4a09ec025823', 'email', 'davide.serra@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '62dd240f-1241-47e3-82f1-4a09ec025823'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '62dd240f-1241-47e3-82f1-4a09ec025823'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('62dd240f-1241-47e3-82f1-4a09ec025823', 'davide.serra@synapse.com', 'Davide Serra', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Davide', 'Serra', 28800, 24, '1989-05-22', '+41 78 200 3305', 'Piazza Dante 1, Bellinzona', 'nexa-r-14', 'nexa-cc-1', 'indeterminato', 40, '756.8234.5678.78', 'CH90 0076 2000 1122 3344 5', 'UBS', 'UBSWCHZH80A', 'Davide Serra', 7500, 'TI', 'Bellinzona', '2019-11-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '01584f70-6744-427d-9caf-11d17bb235fe'::uuid, 'authenticated', 'authenticated', 'francesca.vitale@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Francesca Vitale"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('francesca.vitale@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '01584f70-6744-427d-9caf-11d17bb235fe', '01584f70-6744-427d-9caf-11d17bb235fe'::uuid, jsonb_build_object('sub', '01584f70-6744-427d-9caf-11d17bb235fe', 'email', 'francesca.vitale@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '01584f70-6744-427d-9caf-11d17bb235fe'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '01584f70-6744-427d-9caf-11d17bb235fe'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('01584f70-6744-427d-9caf-11d17bb235fe', 'francesca.vitale@synapse.com', 'Francesca Vitale', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Francesca', 'Vitale', 28800, 22, '1995-03-17', '+41 78 200 4401', 'Via Pretorio 30, Locarno', 'nexa-r-03', 'nexa-cc-3', 'indeterminato', 40, '756.9234.5678.89', 'CH01 0020 2200 9988 7766 5', 'UBS', 'UBSWCHZH80A', 'Francesca Vitale', 6200, 'TI', 'Locarno', '2022-01-10')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'ffa6c271-67a9-4612-8f52-3730c1bd141a'::uuid, 'authenticated', 'authenticated', 'matteo.caruso@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Matteo Caruso"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('matteo.caruso@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'ffa6c271-67a9-4612-8f52-3730c1bd141a', 'ffa6c271-67a9-4612-8f52-3730c1bd141a'::uuid, jsonb_build_object('sub', 'ffa6c271-67a9-4612-8f52-3730c1bd141a', 'email', 'matteo.caruso@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'ffa6c271-67a9-4612-8f52-3730c1bd141a'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'ffa6c271-67a9-4612-8f52-3730c1bd141a'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('ffa6c271-67a9-4612-8f52-3730c1bd141a', 'matteo.caruso@synapse.com', 'Matteo Caruso', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Matteo', 'Caruso', 28800, 22, '1990-08-08', '+41 78 200 4402', 'Viale Stefano 6, Lugano', 'nexa-r-04', 'nexa-cc-4', 'indeterminato', 40, '756.1334.5678.90', 'CH02 0483 5040 5566 7788 0', 'Credit Suisse', 'CRESCHZZ80A', 'Matteo Caruso', 7000, 'TI', 'Lugano', '2020-04-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae'::uuid, 'authenticated', 'authenticated', 'valentina.pellegrini@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Valentina Pellegrini"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('valentina.pellegrini@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae', '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae'::uuid, jsonb_build_object('sub', '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae', 'email', 'valentina.pellegrini@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('2ec3d5d6-74dd-47b6-af9b-88fcb1c819ae', 'valentina.pellegrini@synapse.com', 'Valentina Pellegrini', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Valentina', 'Pellegrini', 28800, 22, '1993-12-01', '+41 78 200 4403', 'Strada Regina 44, Melide', 'nexa-r-05', 'nexa-cc-3', 'indeterminato', 40, '756.2334.5678.01', 'CH03 0900 0000 4433 2211 0', 'PostFinance', 'POFICHBEXXX', 'Valentina Pellegrini', 6400, 'TI', 'Melide', '2021-07-19')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '950438cd-cbfd-419d-a203-48a85c795606'::uuid, 'authenticated', 'authenticated', 'alessandro.deluca@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Alessandro De Luca"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('alessandro.deluca@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '950438cd-cbfd-419d-a203-48a85c795606', '950438cd-cbfd-419d-a203-48a85c795606'::uuid, jsonb_build_object('sub', '950438cd-cbfd-419d-a203-48a85c795606', 'email', 'alessandro.deluca@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '950438cd-cbfd-419d-a203-48a85c795606'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '950438cd-cbfd-419d-a203-48a85c795606'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('950438cd-cbfd-419d-a203-48a85c795606', 'alessandro.deluca@synapse.com', 'Alessandro De Luca', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Alessandro', 'De Luca', 28800, 23, '1988-06-14', '+41 78 200 4404', 'Via Zurigo 22, Rivera', 'nexa-r-18', 'nexa-cc-5', 'indeterminato', 40, '756.3334.5678.12', 'CH04 0076 2000 6677 8899 0', 'UBS', 'UBSWCHZH80A', 'Alessandro De Luca', 6900, 'TI', 'Rivera', '2019-09-15')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '19514edf-4a98-4722-a28e-20fca4ebca7c'::uuid, 'authenticated', 'authenticated', 'ilaria.romano@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Ilaria Romano"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('ilaria.romano@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '19514edf-4a98-4722-a28e-20fca4ebca7c', '19514edf-4a98-4722-a28e-20fca4ebca7c'::uuid, jsonb_build_object('sub', '19514edf-4a98-4722-a28e-20fca4ebca7c', 'email', 'ilaria.romano@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '19514edf-4a98-4722-a28e-20fca4ebca7c'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '19514edf-4a98-4722-a28e-20fca4ebca7c'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('19514edf-4a98-4722-a28e-20fca4ebca7c', 'ilaria.romano@synapse.com', 'Ilaria Romano', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Ilaria', 'Romano', 28800, 22, '1992-04-25', '+41 78 200 4405', 'Via Medici 7, Castel San Pietro', 'nexa-r-19', 'nexa-cc-5', 'indeterminato', 40, '756.4334.5678.23', 'CH05 0020 2200 3344 5566 7', 'UBS', 'UBSWCHZH80A', 'Ilaria Romano', 6600, 'TI', 'Castel San Pietro', '2020-11-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'cd7edf88-7d58-42a6-8190-742524680c30'::uuid, 'authenticated', 'authenticated', 'paolo.bianco@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Paolo Bianco"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('paolo.bianco@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'cd7edf88-7d58-42a6-8190-742524680c30', 'cd7edf88-7d58-42a6-8190-742524680c30'::uuid, jsonb_build_object('sub', 'cd7edf88-7d58-42a6-8190-742524680c30', 'email', 'paolo.bianco@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'cd7edf88-7d58-42a6-8190-742524680c30'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'cd7edf88-7d58-42a6-8190-742524680c30'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('cd7edf88-7d58-42a6-8190-742524680c30', 'paolo.bianco@synapse.com', 'Paolo Bianco', 'employee', '6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'comp-1', 'Paolo', 'Bianco', 28800, 25, '1984-01-29', '+41 91 500 2201', 'Via Maggio 15, Lugano', 'nexa-r-17', 'nexa-cc-4', 'indeterminato', 40, '756.5334.5678.34', 'CH06 0483 5050 7788 9900 1', 'Credit Suisse', 'CRESCHZZ80A', 'Paolo Bianco', 9100, 'TI', 'Lugano', '2018-06-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '82925417-7cc7-4a90-a648-ff57004891d4'::uuid, 'authenticated', 'authenticated', 'nadia.costa@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Nadia Costa"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('nadia.costa@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '82925417-7cc7-4a90-a648-ff57004891d4', '82925417-7cc7-4a90-a648-ff57004891d4'::uuid, jsonb_build_object('sub', '82925417-7cc7-4a90-a648-ff57004891d4', 'email', 'nadia.costa@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '82925417-7cc7-4a90-a648-ff57004891d4'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '82925417-7cc7-4a90-a648-ff57004891d4'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('82925417-7cc7-4a90-a648-ff57004891d4', 'nadia.costa@synapse.com', 'Nadia Costa', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Nadia', 'Costa', 28800, 22, '1991-09-09', '+41 78 200 5501', 'Corso Pestalozzi 48, Lugano', 'nexa-r-15', 'nexa-cc-2', 'indeterminato', 40, '756.6334.5678.45', 'CH07 0900 0000 5566 4433 2', 'PostFinance', 'POFICHBEXXX', 'Nadia Costa', 6700, 'TI', 'Lugano', '2021-04-12')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742'::uuid, 'authenticated', 'authenticated', 'giorgio.leone@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Giorgio Leone"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('giorgio.leone@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742', 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742'::uuid, jsonb_build_object('sub', 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742', 'email', 'giorgio.leone@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'd5feb4e5-dde6-48e5-b9e4-04b5b4879742'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('d5feb4e5-dde6-48e5-b9e4-04b5b4879742', 'giorgio.leone@synapse.com', 'Giorgio Leone', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Giorgio', 'Leone', 28800, 24, '1986-12-19', '+41 78 200 5502', 'Via Borromini 3, Mendrisio', 'nexa-r-16', 'nexa-cc-1', 'indeterminato', 40, '756.7334.5678.56', 'CH08 0076 2000 8899 0011 2', 'UBS', 'UBSWCHZH80A', 'Giorgio Leone', 7300, 'TI', 'Mendrisio', '2019-02-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '7db4dfc3-795d-45d7-96d9-0a361e679044'::uuid, 'authenticated', 'authenticated', 'beatrice.galliani@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Beatrice Galliani"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('beatrice.galliani@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '7db4dfc3-795d-45d7-96d9-0a361e679044', '7db4dfc3-795d-45d7-96d9-0a361e679044'::uuid, jsonb_build_object('sub', '7db4dfc3-795d-45d7-96d9-0a361e679044', 'email', 'beatrice.galliani@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '7db4dfc3-795d-45d7-96d9-0a361e679044'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '7db4dfc3-795d-45d7-96d9-0a361e679044'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('7db4dfc3-795d-45d7-96d9-0a361e679044', 'beatrice.galliani@synapse.com', 'Beatrice Galliani', 'employee', '6cf802ea-332f-4720-88bf-bfa3ba43c49b', 'comp-1', 'Beatrice', 'Galliani', 28800, 25, '1983-07-07', '+41 91 500 2202', 'Via Cattedrale 2, Lugano', 'nexa-r-06', 'nexa-cc-3', 'indeterminato', 40, '756.8334.5678.67', 'CH09 0483 5020 2233 4455 6', 'Credit Suisse', 'CRESCHZZ80A', 'Beatrice Galliani', 7800, 'TI', 'Lugano', '2018-09-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'd793b713-1bfe-4ddb-961f-d3357505be4e'::uuid, 'authenticated', 'authenticated', 'simone.parisi@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Simone Parisi"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('simone.parisi@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'd793b713-1bfe-4ddb-961f-d3357505be4e', 'd793b713-1bfe-4ddb-961f-d3357505be4e'::uuid, jsonb_build_object('sub', 'd793b713-1bfe-4ddb-961f-d3357505be4e', 'email', 'simone.parisi@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'd793b713-1bfe-4ddb-961f-d3357505be4e'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'd793b713-1bfe-4ddb-961f-d3357505be4e'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('d793b713-1bfe-4ddb-961f-d3357505be4e', 'simone.parisi@synapse.com', 'Simone Parisi', 'employee', '9a0b7f7f-0073-4eef-a68c-e78bf78bb260', 'comp-1', 'Simone', 'Parisi', 28800, 22, '1996-05-05', '+41 78 200 5503', 'Via Franco Zorzi 11, Giubiasco', 'nexa-r-07', 'nexa-cc-4', 'indeterminato', 40, '756.9334.5678.78', 'CH10 0020 2200 6677 8899 3', 'UBS', 'UBSWCHZH80A', 'Simone Parisi', 6000, 'TI', 'Giubiasco', '2022-09-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, '7aa48d40-c7b3-4432-bcaa-17a0de5229c5'::uuid, 'authenticated', 'authenticated', 'teresa.mancini@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Teresa Mancini"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('teresa.mancini@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), '7aa48d40-c7b3-4432-bcaa-17a0de5229c5', '7aa48d40-c7b3-4432-bcaa-17a0de5229c5'::uuid, jsonb_build_object('sub', '7aa48d40-c7b3-4432-bcaa-17a0de5229c5', 'email', 'teresa.mancini@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = '7aa48d40-c7b3-4432-bcaa-17a0de5229c5'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = '7aa48d40-c7b3-4432-bcaa-17a0de5229c5'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('7aa48d40-c7b3-4432-bcaa-17a0de5229c5', 'teresa.mancini@synapse.com', 'Teresa Mancini', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Teresa', 'Mancini', 28800, 22, '1993-02-28', '+41 78 200 5504', 'Piazza Indipendenza 5, Chiasso', 'nexa-r-08', 'nexa-cc-1', 'indeterminato', 40, '756.0434.5678.89', 'CH11 0900 0000 7788 5566 4', 'PostFinance', 'POFICHBEXXX', 'Teresa Mancini', 6550, 'TI', 'Chiasso', '2021-01-11')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
+
+
+INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, email_change_confirm_status, created_at, updated_at)
+SELECT '00000000-0000-0000-0000-000000000000'::uuid, 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a'::uuid, 'authenticated', 'authenticated', 'riccardo.fabbri@synapse.com', crypt('Synapse2026', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name": "Riccardo Fabbri"}'::jsonb, false, false, 0, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE lower(u.email) = lower('riccardo.fabbri@synapse.com'));
+
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+SELECT gen_random_uuid(), 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a', 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a'::uuid, jsonb_build_object('sub', 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a', 'email', 'riccardo.fabbri@synapse.com', 'email_verified', true, 'phone_verified', false), 'email', now(), now()
+WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a'::uuid)
+  AND NOT EXISTS (SELECT 1 FROM auth.identities i WHERE i.user_id = 'a64efbf5-621c-4dd6-bb76-e4ffd7418c6a'::uuid AND i.provider = 'email');
+
+INSERT INTO public.users (id, email, "fullName", role, "managerId", "companyId", "firstName", "lastName", "dailyTargetSeconds", "vacationAllowanceDays", "birthDate", phone, address, "roleId", "costCenterId", "contractType", "weeklyContractHours", "avsNumber", iban, "bankName", "bicSwift", "accountHolder", "baseSalaryMonthly", "taxCanton", "taxMunicipality", "hireDate")
+VALUES ('a64efbf5-621c-4dd6-bb76-e4ffd7418c6a', 'riccardo.fabbri@synapse.com', 'Riccardo Fabbri', 'employee', 'f4042513-0aaa-47b1-a15b-c89ba455a9d8', 'comp-1', 'Riccardo', 'Fabbri', 28800, 22, '1997-11-13', '+41 78 200 5505', 'Via Dogana 9, Stabio', 'nexa-r-20', 'nexa-cc-2', 'indeterminato', 40, '756.1434.5678.90', 'CH12 0076 2000 3344 5566 8', 'UBS', 'UBSWCHZH80A', 'Riccardo Fabbri', 5900, 'TI', 'Stabio', '2023-03-01')
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  "fullName" = EXCLUDED."fullName",
+  role = EXCLUDED.role,
+  "managerId" = EXCLUDED."managerId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dailyTargetSeconds" = EXCLUDED."dailyTargetSeconds",
+  "vacationAllowanceDays" = EXCLUDED."vacationAllowanceDays",
+  "birthDate" = EXCLUDED."birthDate",
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  "roleId" = EXCLUDED."roleId",
+  "costCenterId" = EXCLUDED."costCenterId",
+  "contractType" = EXCLUDED."contractType",
+  "weeklyContractHours" = EXCLUDED."weeklyContractHours",
+  "avsNumber" = EXCLUDED."avsNumber",
+  iban = EXCLUDED.iban,
+  "bankName" = EXCLUDED."bankName",
+  "bicSwift" = EXCLUDED."bicSwift",
+  "accountHolder" = EXCLUDED."accountHolder",
+  "baseSalaryMonthly" = EXCLUDED."baseSalaryMonthly",
+  "taxCanton" = EXCLUDED."taxCanton",
+  "taxMunicipality" = EXCLUDED."taxMunicipality",
+  "hireDate" = EXCLUDED."hireDate";
