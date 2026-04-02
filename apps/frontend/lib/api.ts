@@ -105,6 +105,11 @@ export interface OrgNode {
   label: string;
   role: UserRole;
   costCenterId?: string;
+  /** Da catalogo ruoli */
+  roleName?: string;
+  costCenterName?: string;
+  email?: string;
+  managerId?: string;
 }
 
 export interface OrgEdge {
@@ -1286,4 +1291,89 @@ export async function submitLifecycleOffboard(
   });
   if (!response.ok) await parseError(response);
   return response.json();
+}
+
+export interface PersonnelBudgetMoney {
+  ral: number;
+  overtime: number;
+  travel: number;
+  inps: number;
+  inail: number;
+  tfr: number;
+  totalCompanyCost: number;
+}
+
+export interface PersonnelBudgetRow {
+  userId: string;
+  fullName: string;
+  costCenterId: string | null;
+  costCenterName?: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+  actual: PersonnelBudgetMoney;
+}
+
+export interface PersonnelBudgetDepartment {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetRow[];
+}
+
+export interface PersonnelBudgetSnapshot {
+  year: number;
+  month: number;
+  period: string;
+  departments: PersonnelBudgetDepartment[];
+}
+
+export async function fetchPersonnelBudget(
+  token: string,
+  year?: number,
+  month?: number
+): Promise<PersonnelBudgetSnapshot> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  if (month != null) q.set("month", String(month));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetSnapshot>;
+}
+
+export async function patchPersonnelBudgetCostCenterOrder(
+  token: string,
+  payload: { year: number; order: Array<{ costCenterId: string; sortOrder: number }> }
+): Promise<void> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/cost-center-order"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export async function patchPersonnelBudgetCells(
+  token: string,
+  payload: {
+    year: number;
+    month: number;
+    cells: Array<{
+      userId: string;
+      budgetRal?: number | null;
+      budgetOvertime?: number | null;
+      budgetTravel?: number | null;
+      budgetInps?: number | null;
+      budgetInail?: number | null;
+      budgetTfr?: number | null;
+    }>;
+  }
+): Promise<void> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/cells"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
 }

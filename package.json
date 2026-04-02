@@ -26,6 +26,7 @@
     "vercel:prod": "corepack pnpm dlx vercel --prod --cwd apps/frontend"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.49.4",
     "tsx": "^4.19.2"
   },
   "pnpm": {

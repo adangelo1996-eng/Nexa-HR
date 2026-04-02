@@ -150,10 +150,20 @@ export default function OrgChartPage(): React.JSX.Element {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <p className="mt-1 text-sm text-[var(--prom-muted)]">{selected.role}</p>
+            <p className="mt-1 text-sm text-[var(--prom-muted)]">{selected.roleName ?? selected.role}</p>
             <p className="mt-3 text-sm text-[var(--prom-text)]">
-              Sede: <span className="text-[var(--prom-muted)]">{centerLabel(selected.costCenterId)}</span>
+              Sede:{" "}
+              <span className="text-[var(--prom-muted)]">
+                {selected.costCenterName ?? centerLabel(selected.costCenterId)}
+              </span>
             </p>
+            {selected.email ? (
+              <p className="mt-2 text-xs text-[var(--prom-muted)]">
+                <a href={`mailto:${selected.email}`} className="text-[var(--prom-gold)] hover:underline">
+                  {selected.email}
+                </a>
+              </p>
+            ) : null}
             {user?.id === selected.id ? (
               <Link
                 href={"/settings" as Route}

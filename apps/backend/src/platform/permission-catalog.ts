@@ -150,6 +150,13 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
   ),
   ...cat(
     "nexa_hr",
+    "personnel_budget",
+    "Budget personale",
+    "Consultare budget/ consuntivo personale per reparto e mese.",
+    "Modificare pianificazione budget e ordinamento reparti."
+  ),
+  ...cat(
+    "nexa_hr",
     "innovation",
     "Innovation (AI/ATS/ML)",
     "Consultare capacità e job innovation.",
@@ -272,6 +279,8 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
   "approve:sickness": ["nexa.approvals:write"],
   "read:team": [
     "nexa.org:read",
+    "nexa.personnel_budget:read",
+    "nexa.personnel_budget:write",
     "nexa.admin_users:read",
     "nexa.reports_hr:read",
     "nexa.shifts:read",

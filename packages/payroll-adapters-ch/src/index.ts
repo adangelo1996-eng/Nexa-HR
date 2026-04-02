@@ -1,6 +1,7 @@
 import type { JurisdictionCode, PayrollExportArtifact, PayrollRunContext, PayrollExportGenerator } from "../../payroll-core/dist/index";
 import {
   calculateSwissPayroll as calcRules,
+  employerBudgetBucketsFromGrossChf as employerBuckets,
   type PayrollInput,
   type PayrollResult,
   defaultRuleSet2026,
@@ -8,6 +9,14 @@ import {
 } from "../../payroll-ch-rules/dist/index";
 
 export type { PayrollInput, PayrollResult } from "../../payroll-ch-rules/dist/index";
+
+export function employerBudgetBucketsFromGrossChf(
+  grossAdjusted: number,
+  age: number,
+  ruleSet?: SwissRuleSet
+): ReturnType<typeof employerBuckets> {
+  return employerBuckets(grossAdjusted, age, ruleSet ?? defaultRuleSet2026);
+}
 
 /** Calcolo busta CH tramite `@payday/payroll-ch-rules` (Svizzera). */
 export function calculateSwissPayroll(

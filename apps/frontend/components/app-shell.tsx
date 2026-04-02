@@ -18,6 +18,7 @@ import {
   Sun,
   User,
   UserCog,
+  Wallet2,
   Workflow,
   X
 } from "lucide-react";
@@ -60,7 +61,8 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/scheduling", label: "Turni" },
   { href: "/compensation/bench", label: "Benchmark retribuzione" },
   { href: "/lifecycle/offboard", label: "Offboarding" },
-  { href: "/forecast", label: "Forecast costi" }
+  { href: "/forecast", label: "Forecast costi" },
+  { href: "/personnel-budget", label: "Budget personale" }
 ];
 
 function getEmployeeViewOnly(): boolean {
@@ -168,6 +170,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           >
             <Calculator className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
             Payroll
+          </Link>
+          <Link
+            href="/personnel-budget"
+            onClick={() => setMobileOpen(false)}
+            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+              pathname.startsWith("/personnel-budget")
+                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+            }`}
+          >
+            <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            Budget personale
           </Link>
           {isAdminUi ? (
             <Link

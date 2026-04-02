@@ -113,3 +113,37 @@ export function calculateSwissPayroll(
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
+/**
+ * Oneri datore stimati (CH) su lordo rettificato, ripartiti in bucket con etichette budget tipo IT.
+ * Modello: stesse aliquote del lato dipendente AVS/AI/IPG/AD/LPP come versamento datore (semplificazione).
+ */
+export function employerBudgetBucketsFromGrossChf(
+  grossAdjusted: number,
+  age: number,
+  ruleSet: SwissRuleSet = defaultRuleSet2026
+): {
+  employerInpsLike: number;
+  employerInailLike: number;
+  employerTfrLike: number;
+  totalEmployerContributions: number;
+  totalCompanyCost: number;
+} {
+  const g = Math.max(0, grossAdjusted);
+  const avs = g * ruleSet.avsRateEmployee;
+  const ai = g * ruleSet.aiRateEmployee;
+  const ipg = g * ruleSet.ipgRateEmployee;
+  const ad = g * ruleSet.adRateEmployee;
+  const lpp = g * getLppRate(age, ruleSet);
+  const total = avs + ai + ipg + ad + lpp;
+  const inpsLike = avs + ipg + lpp * 0.65;
+  const inailLike = ai;
+  const tfrLike = ad + lpp * 0.35;
+  return {
+    employerInpsLike: round(inpsLike),
+    employerInailLike: round(inailLike),
+    employerTfrLike: round(tfrLike),
+    totalEmployerContributions: round(total),
+    totalCompanyCost: round(g + total)
+  };
+}

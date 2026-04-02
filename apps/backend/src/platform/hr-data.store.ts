@@ -24,7 +24,7 @@ import type {
   ClockChannel,
   GeoFix
 } from "@payday/domain";
-import { calculateSwissPayroll } from "@payday/payroll-adapters-ch";
+import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
 
 interface ApprovalRecord {
   id: string;
@@ -48,6 +48,39 @@ export interface SmartworkingRequestRow {
   rejectReason?: string | null;
   createdAt: string;
 }
+
+export type PersonnelBudgetMoney = {
+  ral: number;
+  overtime: number;
+  travel: number;
+  inps: number;
+  inail: number;
+  tfr: number;
+  totalCompanyCost: number;
+};
+
+export type PersonnelBudgetRow = {
+  userId: string;
+  fullName: string;
+  costCenterId: string | null;
+  costCenterName?: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+  actual: PersonnelBudgetMoney;
+};
+
+export type PersonnelBudgetDepartment = {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetRow[];
+};
+
+export type PersonnelBudgetSnapshot = {
+  year: number;
+  month: number;
+  period: string;
+  departments: PersonnelBudgetDepartment[];
+};
 
 const SMARTWORKING_MONTHLY_QUOTA = 8;
 
@@ -228,6 +261,20 @@ export class HrDataStore {
   private readonly onboardingByUser = new Map<string, OnboardingStatus>();
   private readonly innovationJobs: InnovationJob[] = [];
   private readonly userNotifications: UserNotification[] = [];
+  /** Memoria dev: ordine budget CDC key `${year}|${costCenterId}` → sortOrder */
+  private readonly personnelBudgetCcOrderMem = new Map<string, number>();
+  /** Memoria dev: celle budget key `${year}|${month}|${userId}` */
+  private readonly personnelBudgetCellsMem = new Map<
+    string,
+    {
+      budgetRal: number | null;
+      budgetOvertime: number | null;
+      budgetTravel: number | null;
+      budgetInps: number | null;
+      budgetInail: number | null;
+      budgetTfr: number | null;
+    }
+  >();
   private costCenters: CostCenter[] = [
     {
       id: "cc-1",
@@ -1576,12 +1623,19 @@ export class HrDataStore {
       users = users.filter((u) => u.role === filters.role);
     }
     const idSet = new Set(users.map((u) => u.id));
+    const [roles, centers] = await Promise.all([this.listRoles(), this.listCostCenters()]);
+    const roleById = new Map(roles.map((r) => [r.id, r]));
+    const ccById = new Map(centers.map((c) => [c.id, c]));
     return {
       nodes: users.map((user) => ({
         id: user.id,
         label: user.fullName,
         role: user.role,
-        costCenterId: user.costCenterId
+        roleName: user.roleId ? (roleById.get(user.roleId)?.name ?? user.role) : user.role,
+        costCenterId: user.costCenterId,
+        costCenterName: user.costCenterId ? ccById.get(user.costCenterId)?.name : undefined,
+        email: user.email,
+        managerId: user.managerId ?? undefined
       })),
       edges: users
         .filter((user) => user.managerId && idSet.has(user.managerId!))
@@ -1745,6 +1799,19 @@ export class HrDataStore {
   async getPayslipForPeriod(userId: string, period: string): Promise<Payslip | undefined> {
     const all = await this.listPayslips(userId, userId);
     return all.find((item) => item.period === period);
+  }
+
+  /** Lettura cedolino lato service (es. budget HR) senza vincolo requester. */
+  private async getPayslipForUserPeriodInternal(
+    userId: string,
+    period: string
+  ): Promise<Payslip | undefined> {
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("payslips").select("*").eq("userId", userId);
+      const rows = (data as Payslip[]) ?? [];
+      return rows.find((item) => item.period === period);
+    }
+    return this.payslips.find((item) => item.userId === userId && item.period === period);
   }
 
   async listPayslips(requesterId: string, targetUserId?: string): Promise<Payslip[]> {
@@ -2970,6 +3037,312 @@ export class HrDataStore {
       throw new BadRequestException(`Lettura storico import fallita: ${error.message}`);
     }
     return this.mapImportEventRows(data ?? []);
+  }
+
+  private pbMemOrderKey(year: number, costCenterId: string): string {
+    return `${year}|${costCenterId}`;
+  }
+
+  private pbMemCellKey(year: number, month: number, userId: string): string {
+    return `${year}|${month}|${userId}`;
+  }
+
+  private payslipGrossAmount(p: Payslip | undefined): number | null {
+    if (!p) {
+      return null;
+    }
+    const g = p.lines.find((l) => l.code === "GROSS");
+    return g != null ? g.amount : null;
+  }
+
+  private async travelReimbursementActualChf(userId: string, period: string): Promise<number> {
+    const month = period.slice(0, 7);
+    const all = await this.fetchAllExpenseClaimsForUser(userId);
+    let sum = 0;
+    for (const c of all) {
+      if (c.status === "paid" && (c.payslipPeriod === period || c.payslipPeriod === month)) {
+        sum += c.amountCents / 100;
+      } else if (c.status === "approved" && !c.appliedPayslipId && c.createdAt.slice(0, 7) === month) {
+        sum += c.amountCents / 100;
+      }
+    }
+    return Math.round(sum * 100) / 100;
+  }
+
+  private async fetchPersonnelBudgetOrderFromDb(
+    year: number
+  ): Promise<Array<{ costCenterId: string; sortOrder: number }>> {
+    if (!this.useDb) {
+      const out: Array<{ costCenterId: string; sortOrder: number }> = [];
+      for (const [k, sortOrder] of this.personnelBudgetCcOrderMem) {
+        const [y, cc] = k.split("|");
+        if (Number(y) === year) {
+          out.push({ costCenterId: cc, sortOrder });
+        }
+      }
+      return out.sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_cost_center_order")
+      .select("cost_center_id, sort_order")
+      .eq("year", year)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(`Budget order: ${error.message}`);
+    }
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      costCenterId: String(r.cost_center_id),
+      sortOrder: Number(r.sort_order)
+    }));
+  }
+
+  private async fetchPersonnelBudgetCellsFromDb(
+    year: number,
+    month: number
+  ): Promise<
+    Map<
+      string,
+      {
+        budgetRal: number | null;
+        budgetOvertime: number | null;
+        budgetTravel: number | null;
+        budgetInps: number | null;
+        budgetInail: number | null;
+        budgetTfr: number | null;
+      }
+    >
+  > {
+    const map = new Map<
+      string,
+      {
+        budgetRal: number | null;
+        budgetOvertime: number | null;
+        budgetTravel: number | null;
+        budgetInps: number | null;
+        budgetInail: number | null;
+        budgetTfr: number | null;
+      }
+    >();
+    if (!this.useDb) {
+      for (const [k, v] of this.personnelBudgetCellsMem) {
+        const [y, m, uid] = k.split("|");
+        if (Number(y) === year && Number(m) === month) {
+          map.set(uid, v);
+        }
+      }
+      return map;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_cells")
+      .select(
+        "user_id, budget_ral, budget_overtime, budget_travel, budget_social_inps, budget_social_inail, budget_tfr"
+      )
+      .eq("year", year)
+      .eq("month", month);
+    if (error) {
+      throw new InternalServerErrorException(`Budget cells: ${error.message}`);
+    }
+    for (const r of data ?? []) {
+      const row = r as Record<string, unknown>;
+      map.set(String(row.user_id), {
+        budgetRal: row.budget_ral != null ? Number(row.budget_ral) : null,
+        budgetOvertime: row.budget_overtime != null ? Number(row.budget_overtime) : null,
+        budgetTravel: row.budget_travel != null ? Number(row.budget_travel) : null,
+        budgetInps: row.budget_social_inps != null ? Number(row.budget_social_inps) : null,
+        budgetInail: row.budget_social_inail != null ? Number(row.budget_social_inail) : null,
+        budgetTfr: row.budget_tfr != null ? Number(row.budget_tfr) : null
+      });
+    }
+    return map;
+  }
+
+  private budgetTotal(b: Partial<PersonnelBudgetMoney>): number {
+    return (
+      (b.ral ?? 0) +
+      (b.overtime ?? 0) +
+      (b.travel ?? 0) +
+      (b.inps ?? 0) +
+      (b.inail ?? 0) +
+      (b.tfr ?? 0)
+    );
+  }
+
+  async getPersonnelBudgetSnapshot(year: number, month: number): Promise<PersonnelBudgetSnapshot> {
+    if (month < 1 || month > 12) {
+      throw new BadRequestException("Mese non valido");
+    }
+    const period = `${year}-${String(month).padStart(2, "0")}`;
+    const users = await this.listUsers();
+    const centers = await this.listCostCenters();
+    const ccById = new Map(centers.map((c) => [c.id, c]));
+    const orderList = await this.fetchPersonnelBudgetOrderFromDb(year);
+    const orderIdx = new Map(orderList.map((o, i) => [o.costCenterId, o.sortOrder]));
+    const cells = await this.fetchPersonnelBudgetCellsFromDb(year, month);
+
+    const deptMap = new Map<string | null, PersonnelBudgetRow[]>();
+    for (const u of users) {
+      const ccId = u.costCenterId ?? null;
+      if (!deptMap.has(ccId)) {
+        deptMap.set(ccId, []);
+      }
+      const payslip = await this.getPayslipForUserPeriodInternal(u.id, period);
+      const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
+      const overtime = await this.countMonthlyOvertimeAmount(u.id, period, base);
+      const travel = await this.travelReimbursementActualChf(u.id, period);
+      const grossFromPayslip = this.payslipGrossAmount(payslip);
+      const grossAdjusted = grossFromPayslip ?? base + overtime;
+      const buckets = employerBudgetBucketsFromGrossChf(grossAdjusted, this.ageFromBirthDate(u.birthDate));
+      const actual: PersonnelBudgetMoney = {
+        ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
+        overtime: Math.round(overtime * 100) / 100,
+        travel,
+        inps: buckets.employerInpsLike,
+        inail: buckets.employerInailLike,
+        tfr: buckets.employerTfrLike,
+        totalCompanyCost: buckets.totalCompanyCost + travel
+      };
+      const bc = cells.get(u.id);
+      const budgetPartial: Partial<PersonnelBudgetMoney> = {
+        ral: bc?.budgetRal ?? undefined,
+        overtime: bc?.budgetOvertime ?? undefined,
+        travel: bc?.budgetTravel ?? undefined,
+        inps: bc?.budgetInps ?? undefined,
+        inail: bc?.budgetInail ?? undefined,
+        tfr: bc?.budgetTfr ?? undefined
+      };
+      const bKeys = Object.keys(budgetPartial).length;
+      const budget: PersonnelBudgetRow["budget"] =
+        bKeys > 0
+          ? {
+              ...budgetPartial,
+              totalCompanyCost: this.budgetTotal(budgetPartial)
+            }
+          : {};
+      deptMap.get(ccId)!.push({
+        userId: u.id,
+        fullName: u.fullName,
+        costCenterId: ccId,
+        costCenterName: ccId ? ccById.get(ccId)?.name : undefined,
+        budget,
+        actual
+      });
+    }
+
+    const deptKeys = [...deptMap.keys()];
+    const sortedDeptKeys = deptKeys.sort((a, b) => {
+      const ida = a ?? "__none__";
+      const idb = b ?? "__none__";
+      const oa = a != null ? orderIdx.get(a) ?? 1_000_000 : 999_999;
+      const ob = b != null ? orderIdx.get(b) ?? 1_000_000 : 999_999;
+      if (oa !== ob) {
+        return oa - ob;
+      }
+      const na = a != null ? ccById.get(a)?.name ?? ida : "— senza CDC —";
+      const nb = b != null ? ccById.get(b)?.name ?? idb : "— senza CDC —";
+      return na.localeCompare(nb);
+    });
+
+    const departments: PersonnelBudgetDepartment[] = sortedDeptKeys.map((ccId) => ({
+      costCenterId: ccId,
+      costCenterName:
+        ccId != null ? ccById.get(ccId)?.name ?? ccId : "— senza centro di costo —",
+      sortOrder: ccId != null ? orderIdx.get(ccId) ?? 1_000_000 : 999_999,
+      rows: (deptMap.get(ccId) ?? []).sort((r1, r2) => r1.fullName.localeCompare(r2.fullName))
+    }));
+
+    return { year, month, period, departments };
+  }
+
+  async setPersonnelBudgetCostCenterOrder(
+    year: number,
+    items: Array<{ costCenterId: string; sortOrder: number }>
+  ): Promise<void> {
+    if (!this.useDb) {
+      for (const it of items) {
+        this.personnelBudgetCcOrderMem.set(this.pbMemOrderKey(year, it.costCenterId), it.sortOrder);
+      }
+      return;
+    }
+    for (const it of items) {
+      const { error } = await this.supabase!.from("personnel_budget_cost_center_order").upsert(
+        {
+          year,
+          cost_center_id: it.costCenterId,
+          sort_order: it.sortOrder
+        },
+        { onConflict: "year,cost_center_id" }
+      );
+      if (error) {
+        throw new InternalServerErrorException(`Salvataggio ordine CDC: ${error.message}`);
+      }
+    }
+  }
+
+  async upsertPersonnelBudgetCells(
+    year: number,
+    month: number,
+    cells: Array<{
+      userId: string;
+      budgetRal?: number | null;
+      budgetOvertime?: number | null;
+      budgetTravel?: number | null;
+      budgetInps?: number | null;
+      budgetInail?: number | null;
+      budgetTfr?: number | null;
+    }>
+  ): Promise<void> {
+    if (month < 1 || month > 12) {
+      throw new BadRequestException("Mese non valido");
+    }
+    const users = await this.listUsers();
+    const idOk = new Set(users.map((u) => u.id));
+    for (const c of cells) {
+      if (!idOk.has(c.userId)) {
+        throw new BadRequestException(`Utente sconosciuto: ${c.userId}`);
+      }
+    }
+    if (!this.useDb) {
+      for (const c of cells) {
+        const prev = this.personnelBudgetCellsMem.get(this.pbMemCellKey(year, month, c.userId)) ?? {
+          budgetRal: null,
+          budgetOvertime: null,
+          budgetTravel: null,
+          budgetInps: null,
+          budgetInail: null,
+          budgetTfr: null
+        };
+        this.personnelBudgetCellsMem.set(this.pbMemCellKey(year, month, c.userId), {
+          budgetRal: c.budgetRal !== undefined ? c.budgetRal : prev.budgetRal,
+          budgetOvertime: c.budgetOvertime !== undefined ? c.budgetOvertime : prev.budgetOvertime,
+          budgetTravel: c.budgetTravel !== undefined ? c.budgetTravel : prev.budgetTravel,
+          budgetInps: c.budgetInps !== undefined ? c.budgetInps : prev.budgetInps,
+          budgetInail: c.budgetInail !== undefined ? c.budgetInail : prev.budgetInail,
+          budgetTfr: c.budgetTfr !== undefined ? c.budgetTfr : prev.budgetTfr
+        });
+      }
+      return;
+    }
+    const now = new Date().toISOString();
+    for (const c of cells) {
+      const { error } = await this.supabase!.from("personnel_budget_cells").upsert(
+        {
+          year,
+          month,
+          user_id: c.userId,
+          budget_ral: c.budgetRal ?? null,
+          budget_overtime: c.budgetOvertime ?? null,
+          budget_travel: c.budgetTravel ?? null,
+          budget_social_inps: c.budgetInps ?? null,
+          budget_social_inail: c.budgetInail ?? null,
+          budget_tfr: c.budgetTfr ?? null,
+          updated_at: now
+        },
+        { onConflict: "year,month,user_id" }
+      );
+      if (error) {
+        throw new InternalServerErrorException(`Salvataggio budget: ${error.message}`);
+      }
+    }
   }
 
   private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {

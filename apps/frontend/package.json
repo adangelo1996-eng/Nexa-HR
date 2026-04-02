@@ -10,8 +10,12 @@
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.49.1",
     "@xyflow/react": "^12.8.5",
+    "dagre": "^0.8.5",
     "framer-motion": "^11.11.17",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
@@ -22,6 +26,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/dagre": "^0.7.54",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",

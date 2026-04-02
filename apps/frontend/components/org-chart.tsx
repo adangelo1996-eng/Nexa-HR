@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import dagre from "dagre";
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   MiniMap,
+  Position,
   ReactFlow,
   type Edge as FlowEdge,
   type Node as FlowNode,
-  type NodeMouseHandler
+  type NodeMouseHandler,
+  type NodeProps
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -18,6 +22,10 @@ export interface OrgChartNode {
   label: string;
   role: string;
   costCenterId?: string;
+  roleName?: string;
+  costCenterName?: string;
+  email?: string;
+  managerId?: string;
 }
 
 interface OrgChartEdge {
@@ -34,43 +42,54 @@ interface Props {
   heightClass?: string;
 }
 
-function buildLevels(nodes: OrgChartNode[], edges: OrgChartEdge[]): Map<string, number> {
-  const incoming = new Map<string, number>();
-  const children = new Map<string, string[]>();
-  nodes.forEach((node) => {
-    incoming.set(node.id, 0);
-    children.set(node.id, []);
-  });
-  edges.forEach((edge) => {
-    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
-    children.get(edge.from)?.push(edge.to);
-  });
+const CARD_W = 240;
+const CARD_H = 104;
 
-  const queue: string[] = nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0).map((node) => node.id);
-  const levels = new Map<string, number>();
-  queue.forEach((id) => levels.set(id, 0));
+function initials(name: string): string {
+  const p = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  return p.map((x) => x[0]?.toUpperCase() ?? "").join("") || "?";
+}
 
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    const currentLevel = levels.get(currentId) ?? 0;
-    for (const childId of children.get(currentId) ?? []) {
-      const next = currentLevel + 1;
-      if (!levels.has(childId) || (levels.get(childId) ?? 0) < next) {
-        levels.set(childId, next);
-      }
-      incoming.set(childId, (incoming.get(childId) ?? 1) - 1);
-      if ((incoming.get(childId) ?? 0) <= 0) {
-        queue.push(childId);
-      }
-    }
-  }
-
-  nodes.forEach((node) => {
-    if (!levels.has(node.id)) {
-      levels.set(node.id, 0);
-    }
-  });
-  return levels;
+function EmployeeCardNode({ data, selected }: NodeProps): React.JSX.Element {
+  const payload = data as { node: OrgChartNode; onSelect?: (n: OrgChartNode) => void };
+  const n = payload.node;
+  const title = n.roleName ?? n.role;
+  const sub = [n.costCenterName, n.email].filter(Boolean).join(" · ");
+  return (
+    <>
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-[var(--prom-gold)]" />
+      <button
+        type="button"
+        className={`flex w-full min-w-[220px] max-w-[260px] cursor-pointer gap-3 rounded-xl border-2 px-3 py-2.5 text-left shadow-sm transition-[box-shadow,opacity,border-color] duration-200 ${
+          selected
+            ? "border-[color-mix(in_srgb,var(--prom-gold)_70%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--prom-gold)_22%,transparent)]"
+            : "border-[var(--prom-line)] hover:border-[color-mix(in_srgb,var(--prom-gold)_45%,var(--prom-line))]"
+        } bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)]`}
+        onClick={(e) => {
+          e.stopPropagation();
+          payload.onSelect?.(n);
+        }}
+      >
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-[var(--prom-text)]"
+          style={{ background: "color-mix(in_srgb, var(--prom-gold) 22%, transparent)" }}
+          aria-hidden
+        >
+          {initials(n.label)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--prom-text)]">{n.label}</p>
+          <p className="truncate text-xs font-medium text-[var(--prom-gold)]">{title}</p>
+          {sub ? <p className="mt-0.5 truncate text-[10px] leading-tight text-[var(--prom-muted)]">{sub}</p> : null}
+        </div>
+      </button>
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-[var(--prom-gold)]" />
+    </>
+  );
 }
 
 export function OrgChart({
@@ -78,62 +97,71 @@ export function OrgChart({
   edges,
   framed = true,
   onNodeSelect,
-  heightClass = "h-[460px]"
+  heightClass = "h-[min(70vh,560px)]"
 }: Props): React.JSX.Element {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
+  const onSelectCb = useCallback(
+    (n: OrgChartNode) => {
+      onNodeSelect?.(n);
+    },
+    [onNodeSelect]
+  );
+
+  const nodeTypes = useMemo(() => ({ employeeCard: EmployeeCardNode }), []);
+
   const { flowNodes, flowEdges } = useMemo(() => {
-    const levels = buildLevels(nodes, edges);
-    const grouped = new Map<number, OrgChartNode[]>();
-
-    nodes.forEach((node) => {
-      const level = levels.get(node.id) ?? 0;
-      const levelNodes = grouped.get(level) ?? [];
-      levelNodes.push(node);
-      grouped.set(level, levelNodes);
-    });
-
-    const sortedLevels = [...grouped.keys()].sort((a, b) => a - b);
-    const flowNodesResult: FlowNode[] = [];
-    for (const level of sortedLevels) {
-      const levelNodes = grouped.get(level) ?? [];
-      levelNodes.forEach((node, index) => {
-        flowNodesResult.push({
-          id: node.id,
-          position: { x: index * 260, y: level * 140 },
-          data: {
-            label: (
-              <button
-                type="button"
-                className="w-full cursor-pointer rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_95%,transparent)] px-3 py-2 text-left transition-opacity hover:opacity-90"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNodeSelect?.(node);
-                }}
-              >
-                <p className="text-sm font-medium text-[var(--prom-text)]">{node.label}</p>
-                <p className="text-xs text-[var(--prom-gold)]">{node.role}</p>
-              </button>
-            )
-          },
-          draggable: false
-        });
-      });
+    if (nodes.length === 0) {
+      return { flowNodes: [] as FlowNode[], flowEdges: [] as FlowEdge[] };
     }
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({
+      rankdir: "TB",
+      nodesep: 48,
+      ranksep: 72,
+      marginx: 24,
+      marginy: 24
+    });
+    for (const n of nodes) {
+      g.setNode(n.id, { width: CARD_W, height: CARD_H });
+    }
+    for (const e of edges) {
+      if (nodes.some((n) => n.id === e.from) && nodes.some((n) => n.id === e.to)) {
+        g.setEdge(e.from, e.to);
+      }
+    }
+    dagre.layout(g);
+
+    const flowNodesResult: FlowNode[] = nodes.map((node) => {
+      const pos = g.node(node.id);
+      const x = pos?.x != null ? pos.x - CARD_W / 2 : 0;
+      const y = pos?.y != null ? pos.y - CARD_H / 2 : 0;
+      return {
+        id: node.id,
+        type: "employeeCard",
+        position: { x, y },
+        data: { node, onSelect: onSelectCb },
+        draggable: false
+      };
+    });
 
     const flowEdgesResult: FlowEdge[] = edges.map((edge) => ({
       id: `${edge.from}-${edge.to}`,
       source: edge.from,
       target: edge.to,
-      markerEnd: { type: MarkerType.ArrowClosed }
+      type: "smoothstep",
+      style: { strokeWidth: 2, stroke: "var(--prom-line-strong)" },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "var(--prom-muted)" }
     }));
 
     return { flowNodes: flowNodesResult, flowEdges: flowEdgesResult };
-  }, [nodes, edges]);
+  }, [nodes, edges, onSelectCb]);
 
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_, node) => {
-      const n = nodeById.get(node.id);
+    (_, fn) => {
+      const raw = fn.data as { node?: OrgChartNode } | undefined;
+      const n = raw?.node ?? nodeById.get(fn.id);
       if (n) {
         onNodeSelect?.(n);
       }
@@ -146,9 +174,14 @@ export function OrgChart({
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
+        nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
         proOptions={{ hideAttribution: true }}
         onNodeClick={onNodeSelect ? onNodeClick : undefined}
+        minZoom={0.2}
+        maxZoom={1.4}
+        defaultEdgeOptions={{ type: "smoothstep" }}
       >
         <MiniMap
           pannable
@@ -171,7 +204,9 @@ export function OrgChart({
     <section className="card mt-6">
       <h2 className="text-xl font-semibold text-[var(--prom-text)]">Organigramma</h2>
       {flow}
-      <p className="mt-4 text-xs text-[var(--prom-muted)]">Collegamenti: {edges.length}</p>
+      <p className="mt-4 text-xs text-[var(--prom-muted)]">
+        {edges.length} collegamenti verso il responsabile diretto
+      </p>
     </section>
   );
 }

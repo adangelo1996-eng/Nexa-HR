@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { calculateSwissPayroll } from "./index";
+import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "./index";
 
 describe("calculateSwissPayroll", () => {
   it("calcola netto e linee principali", () => {
@@ -25,5 +25,14 @@ describe("calculateSwissPayroll", () => {
     assert.ok(result.netSalary > 0);
     assert.ok(result.lines.some((line) => line.code === "AVS"));
     assert.ok(result.lines.some((line) => line.code === "NET"));
+  });
+});
+
+describe("employerBudgetBucketsFromGrossChf", () => {
+  it("somma oneri e costo azienda sopra il lordo", () => {
+    const b = employerBudgetBucketsFromGrossChf(6000, 36);
+    assert.ok(b.totalEmployerContributions > 0);
+    assert.ok(b.totalCompanyCost > 6000);
+    assert.ok(Math.abs(b.totalCompanyCost - 6000 - b.totalEmployerContributions) < 0.02);
   });
 });
