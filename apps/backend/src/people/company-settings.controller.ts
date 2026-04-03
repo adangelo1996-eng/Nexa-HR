@@ -55,6 +55,12 @@ export class CompanySettingsController {
   @RequireNexaPermissions("nexa.org:read")
   async getSettings(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
+    const can = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
+    if (!can) {
+      throw new ForbiddenException(
+        "Solo chi può accedere alla console admin può consultare le variabili aziendali"
+      );
+    }
     return this.store.getCompanySettings(user.companyId);
   }
 
@@ -67,7 +73,9 @@ export class CompanySettingsController {
     const user = await this.store.getUser(auth.userId);
     const can = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
     if (!can) {
-      throw new ForbiddenException("Solo chi può accedere alla console admin può modificare le variabili aziendali");
+      throw new ForbiddenException(
+        "Solo chi può accedere alla console admin può modificare le variabili aziendali"
+      );
     }
     return this.store.patchCompanySettings(user.companyId, body);
   }
