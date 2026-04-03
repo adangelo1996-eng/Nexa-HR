@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PersonnelBudgetAccessGate } from "@/components/personnel-budget-access-gate";
 
 const TABS: { href: Route; label: string }[] = [
   { href: "/personnel-budget", label: "Mensile" },
@@ -18,7 +19,8 @@ export default function PersonnelBudgetSectionLayout({
 }): React.JSX.Element {
   const pathname = usePathname();
   return (
-    <div className="space-y-6">
+    <PersonnelBudgetAccessGate>
+      <div className="space-y-6">
       <nav
         className="flex flex-wrap gap-2 border-b border-[var(--prom-line)] pb-3"
         aria-label="Sezioni budget personale"
@@ -45,5 +47,6 @@ export default function PersonnelBudgetSectionLayout({
       </nav>
       {children}
     </div>
+    </PersonnelBudgetAccessGate>
   );
 }

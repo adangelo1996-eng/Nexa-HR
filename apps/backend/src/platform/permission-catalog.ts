@@ -284,11 +284,11 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
   "request:sickness": ["nexa.sickness:write"],
   "approve:leave": ["nexa.approvals:write"],
   "approve:sickness": ["nexa.approvals:write"],
+  // Non mappare `nexa.admin_users:read` qui: `read:team` è per visibilità team/org, non console admin.
   "read:team": [
     "nexa.org:read",
     "nexa.personnel_budget:read",
     "nexa.personnel_budget:write",
-    "nexa.admin_users:read",
     "nexa.reports_hr:read",
     "nexa.shifts:read",
     "nexa.shifts:write",

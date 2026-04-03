@@ -6,7 +6,7 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
   "request:sickness": ["nexa.sickness:write"],
   "approve:leave": ["nexa.approvals:write"],
   "approve:sickness": ["nexa.approvals:write"],
-  "read:team": ["nexa.org:read", "nexa.admin_users:read"],
+  "read:team": ["nexa.org:read"],
   "read:self": [
     "nexa.attendance:read",
     "nexa.attendance:write",
