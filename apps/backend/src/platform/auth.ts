@@ -11,7 +11,7 @@ import {
 import { verify } from "jsonwebtoken";
 import type { Request } from "express";
 
-export type AuthRole = "admin" | "manager_controllo_gestione" | "employee";
+export type AuthRole = "admin" | "team_lead" | "employee";
 
 export interface AuthContext {
   userId: string;
@@ -28,7 +28,7 @@ interface TokenPayload {
   tenantId?: string;
 }
 
-const VALID_ROLES = ["admin", "manager_controllo_gestione", "employee"] as const;
+const VALID_ROLES = ["admin", "team_lead", "employee"] as const;
 
 function isValidRole(role: string): role is AuthRole {
   return VALID_ROLES.includes(role as AuthRole);

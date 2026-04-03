@@ -72,7 +72,7 @@ export class PayrollController {
     @CurrentAuth() auth: { role: string },
     @Body() dto: SimulateHireDto
   ): unknown {
-    if (auth.role !== "admin" && auth.role !== "manager_controllo_gestione") {
+    if (auth.role !== "admin" && auth.role !== "team_lead") {
       throw new ForbiddenException("Solo manager/admin possono simulare costi assunzione");
     }
     return this.store.simulateHirePayroll({
@@ -95,7 +95,7 @@ export class PayrollController {
     @Query("jurisdiction") jurisdiction: string,
     @Query("period") period?: string
   ): Promise<unknown> {
-    if (auth.role !== "admin" && auth.role !== "manager_controllo_gestione") {
+    if (auth.role !== "admin" && auth.role !== "team_lead") {
       throw new ForbiddenException("Solo manager/admin possono anteprima export paghe");
     }
     const j: JurisdictionCode = jurisdiction === "IT" ? "IT" : "CH";
@@ -111,11 +111,11 @@ export class PayrollController {
     @Param("userId") userId: string,
     @Param("period") period: string
   ): Promise<unknown> {
-    if (auth.role !== "admin" && auth.role !== "manager_controllo_gestione") {
+    if (auth.role !== "admin" && auth.role !== "team_lead") {
       throw new ForbiddenException("Solo manager/admin possono generare cedolini di altri utenti");
     }
     if (
-      auth.role === "manager_controllo_gestione" &&
+      auth.role === "team_lead" &&
       userId !== auth.userId &&
       !(await this.store.isManagerOf(auth.userId, userId))
     ) {
@@ -143,13 +143,13 @@ export class PayrollController {
     @Query("userId") userId?: string,
     @Query("months") months?: string
   ): Promise<unknown> {
-    const canReadOthers = auth.role === "admin" || auth.role === "manager_controllo_gestione";
+    const canReadOthers = auth.role === "admin" || auth.role === "team_lead";
     if (userId && !canReadOthers && userId !== auth.userId) {
       throw new ForbiddenException("Accesso non autorizzato al cedolino");
     }
     if (
       userId &&
-      auth.role === "manager_controllo_gestione" &&
+      auth.role === "team_lead" &&
       !(await this.store.isManagerOf(auth.userId, userId))
     ) {
       throw new ForbiddenException("Manager può leggere solo cedolini dei sottoposti");
@@ -189,7 +189,7 @@ export class PayrollController {
     if (!canRead) {
       throw new ForbiddenException("Accesso PDF cedolino non autorizzato");
     }
-    if (auth.role === "manager_controllo_gestione" && !(await this.store.isManagerOf(auth.userId, userId))) {
+    if (auth.role === "team_lead" && !(await this.store.isManagerOf(auth.userId, userId))) {
       throw new ForbiddenException("Manager può esportare solo PDF dei sottoposti");
     }
     let payslip = await this.store.getPayslipForPeriod(userId, period);

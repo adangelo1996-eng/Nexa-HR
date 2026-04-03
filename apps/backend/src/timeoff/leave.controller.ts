@@ -50,7 +50,7 @@ export class LeaveController {
 
   @Patch("approve/:leaveId")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async approve(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
@@ -62,7 +62,7 @@ export class LeaveController {
 
   @Patch("reject/:leaveId")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
@@ -81,7 +81,7 @@ export class LeaveController {
   @Get("balance")
   @RequireNexaPermissions("nexa.leaves:read")
   async balance(
-    @CurrentAuth() auth: { userId: string; role: "admin" | "manager_controllo_gestione" | "employee" },
+    @CurrentAuth() auth: { userId: string; role: "admin" | "team_lead" | "employee" },
     @Query("userId") userId?: string,
     @Query("year") year?: string
   ): Promise<unknown> {

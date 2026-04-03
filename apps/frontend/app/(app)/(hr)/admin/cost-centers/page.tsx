@@ -6,11 +6,21 @@ import { GlassCard } from "@/components/glass-card";
 import { Button } from "@/components/ui/button";
 import {
   createAdminCostCenter,
+  createAdminWorkTeam,
   deleteAdminCostCenter,
   fetchAdminCostCenters,
+  fetchAdminRoles,
+  fetchAdminWorkTeams,
   fetchCurrentUser,
+  fetchUsers,
+  patchAdminWorkTeam,
+  setAdminWorkTeamLead,
+  setAdminWorkTeamMembers,
   updateAdminCostCenter,
-  type CostCenter
+  type CostCenter,
+  type Role,
+  type User,
+  type WorkTeamDto
 } from "@/lib/api";
 import {
   clearSession,
@@ -38,8 +48,20 @@ export default function AdminCostCentersPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [rolesCatalog, setRolesCatalog] = useState<Role[]>([]);
+  const [teams, setTeams] = useState<WorkTeamDto[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [teamNameDraft, setTeamNameDraft] = useState<Record<string, string>>({});
+  const [memberPick, setMemberPick] = useState<Record<string, string[]>>({});
+  const [leadPick, setLeadPick] = useState<Record<string, { userId: string; roleId: string }>>({});
 
   const selected = costCenters.find((item) => item.id === selectedId) ?? null;
+
+  const usersInSelectedCc = selected
+    ? allUsers.filter((u) => u.costCenterId === selected.id).sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))
+    : [];
 
   useEffect(() => {
     const sessionToken = getToken();
@@ -57,8 +79,14 @@ export default function AdminCostCentersPage(): React.JSX.Element {
           router.replace("/");
           return;
         }
-        const list = await fetchAdminCostCenters(tokenValue);
+        const [list, users, roleList] = await Promise.all([
+          fetchAdminCostCenters(tokenValue),
+          fetchUsers(tokenValue),
+          fetchAdminRoles(tokenValue)
+        ]);
         setCostCenters(list);
+        setAllUsers(users);
+        setRolesCatalog(roleList);
         setSelectedId(list[0]?.id ?? "");
       } catch (loadError) {
         if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
@@ -74,12 +102,161 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     void load();
   }, [router]);
 
+  useEffect(() => {
+    if (!token || !selectedId) {
+      setTeams([]);
+      return;
+    }
+    let cancelled = false;
+    setTeamsLoading(true);
+    void fetchAdminWorkTeams(token, selectedId)
+      .then((list) => {
+        if (!cancelled) {
+          setTeams(list);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Errore caricamento team");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTeamsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedId]);
+
+  useEffect(() => {
+    const names: Record<string, string> = {};
+    for (const t of teams) {
+      names[t.id] = t.name;
+    }
+    setTeamNameDraft(names);
+  }, [teams]);
+
+  useEffect(() => {
+    const next: Record<string, string[]> = {};
+    for (const t of teams) {
+      next[t.id] = allUsers.filter((u) => u.teamId === t.id).map((u) => u.id);
+    }
+    setMemberPick(next);
+  }, [teams, allUsers]);
+
+  useEffect(() => {
+    const next: Record<string, { userId: string; roleId: string }> = {};
+    for (const t of teams) {
+      const defaultRole = rolesCatalog.find((r) => r.name === "team_lead");
+      next[t.id] = {
+        userId: t.leadUserId ?? "",
+        roleId: defaultRole?.id ?? rolesCatalog[0]?.id ?? ""
+      };
+    }
+    setLeadPick(next);
+  }, [teams, rolesCatalog]);
+
   async function refresh(): Promise<void> {
     if (!token) return;
-    const list = await fetchAdminCostCenters(token);
+    const [list, users] = await Promise.all([fetchAdminCostCenters(token), fetchUsers(token)]);
     setCostCenters(list);
+    setAllUsers(users);
     if (!selectedId && list[0]) {
       setSelectedId(list[0].id);
+    }
+  }
+
+  async function refreshTeamsAndUsers(): Promise<void> {
+    if (!token || !selectedId) return;
+    const [list, users] = await Promise.all([fetchAdminWorkTeams(token, selectedId), fetchUsers(token)]);
+    setTeams(list);
+    setAllUsers(users);
+  }
+
+  function toggleTeamMember(teamId: string, userId: string): void {
+    setMemberPick((prev) => {
+      const cur = new Set(prev[teamId] ?? []);
+      if (cur.has(userId)) {
+        cur.delete(userId);
+      } else {
+        cur.add(userId);
+      }
+      return { ...prev, [teamId]: [...cur] };
+    });
+  }
+
+  async function onCreateTeam(): Promise<void> {
+    if (!token || !selectedId) return;
+    const name = newTeamName.trim();
+    if (!name) {
+      setError("Nome team obbligatorio.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createAdminWorkTeam(token, selectedId, name);
+      setNewTeamName("");
+      await refreshTeamsAndUsers();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore creazione team");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onSaveTeamName(teamId: string): Promise<void> {
+    if (!token) return;
+    const name = (teamNameDraft[teamId] ?? "").trim();
+    if (!name) {
+      setError("Nome team non valido.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await patchAdminWorkTeam(token, teamId, { name });
+      await refreshTeamsAndUsers();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore aggiornamento team");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onSaveTeamMembers(teamId: string): Promise<void> {
+    if (!token) return;
+    const ids = memberPick[teamId] ?? [];
+    setSubmitting(true);
+    setError(null);
+    try {
+      await setAdminWorkTeamMembers(token, teamId, ids);
+      await refreshTeamsAndUsers();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore aggiornamento membri");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onNominateLead(teamId: string): Promise<void> {
+    if (!token) return;
+    const pick = leadPick[teamId];
+    if (!pick?.userId || !pick?.roleId) {
+      setError("Seleziona dipendente e ruolo catalogo per il responsabile.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await setAdminWorkTeamLead(token, teamId, pick.userId, pick.roleId);
+      await refreshTeamsAndUsers();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore nomina responsabile");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -310,6 +487,168 @@ export default function AdminCostCentersPage(): React.JSX.Element {
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>
       </div>
+
+      {selected ? (
+        <GlassCard
+          title="Team di lavoro"
+          description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri. Il responsabile ottiene il ruolo piattaforma team_lead e dirige gli altri membri in approvazione."
+        >
+          <div className="flex flex-wrap items-end gap-2 text-xs">
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Nuovo team</span>
+              <input
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="Nome team"
+                className={inputOptionalClass}
+              />
+            </label>
+            <Button type="button" variant="secondary" disabled={submitting || teamsLoading} onClick={() => void onCreateTeam()}>
+              Crea team
+            </Button>
+          </div>
+
+          {teamsLoading ? (
+            <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Caricamento team…</p>
+          ) : teams.length === 0 ? (
+            <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Nessun team per questo centro di costo.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {teams.map((team) => {
+                const nameVal = teamNameDraft[team.id] ?? team.name;
+                const leadName = team.leadUserId
+                  ? allUsers.find((u) => u.id === team.leadUserId)?.fullName ?? team.leadUserId
+                  : "—";
+                const membersSelected = new Set(memberPick[team.id] ?? []);
+                const leadState = leadPick[team.id] ?? { userId: "", roleId: rolesCatalog[0]?.id ?? "" };
+
+                return (
+                  <div
+                    key={team.id}
+                    className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40"
+                  >
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs">
+                        <span className="text-slate-700 dark:text-slate-300">Nome team</span>
+                        <input
+                          value={nameVal}
+                          onChange={(e) =>
+                            setTeamNameDraft((prev) => ({
+                              ...prev,
+                              [team.id]: e.target.value
+                            }))
+                          }
+                          className={inputRequiredClass}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={submitting}
+                        onClick={() => void onSaveTeamName(team.id)}
+                      >
+                        Salva nome
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Responsabile attuale: <span className="font-medium text-slate-800 dark:text-slate-200">{leadName}</span>
+                    </p>
+
+                    <div>
+                      <p className="mb-1 text-[11px] font-medium text-slate-700 dark:text-slate-300">Membri (stesso CDC)</p>
+                      <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 bg-white/60 p-2 dark:border-slate-600 dark:bg-slate-950/30">
+                        {usersInSelectedCc.length === 0 ? (
+                          <p className="text-[11px] text-slate-500">Nessun utente su questo centro di costo.</p>
+                        ) : (
+                          usersInSelectedCc.map((u) => (
+                            <label key={u.id} className="flex cursor-pointer items-center gap-2 text-[11px]">
+                              <input
+                                type="checkbox"
+                                checked={membersSelected.has(u.id)}
+                                onChange={() => toggleTeamMember(team.id, u.id)}
+                              />
+                              <span>
+                                {u.fullName}
+                                {u.id === team.leadUserId ? (
+                                  <span className="ml-1 text-slate-500">(lead)</span>
+                                ) : null}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        disabled={submitting}
+                        onClick={() => void onSaveTeamMembers(team.id)}
+                      >
+                        Salva membri
+                      </Button>
+                    </div>
+
+                    <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+                      <p className="text-[11px] font-medium text-slate-700 dark:text-slate-300">Nomina responsabile</p>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="flex flex-col gap-1 text-xs">
+                          <span>Dipendente</span>
+                          <select
+                            value={leadState.userId}
+                            onChange={(e) =>
+                              setLeadPick((prev) => ({
+                                ...prev,
+                                [team.id]: { ...leadState, userId: e.target.value }
+                              }))
+                            }
+                            className={inputRequiredClass}
+                          >
+                            <option value="">—</option>
+                            {usersInSelectedCc.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex min-w-[200px] flex-col gap-1 text-xs">
+                          <span>Ruolo (catalogo)</span>
+                          <select
+                            value={leadState.roleId}
+                            onChange={(e) =>
+                              setLeadPick((prev) => ({
+                                ...prev,
+                                [team.id]: { ...leadState, roleId: e.target.value }
+                              }))
+                            }
+                            className={inputRequiredClass}
+                          >
+                            {rolesCatalog.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={submitting}
+                        onClick={() => void onNominateLead(team.id)}
+                      >
+                        Nomina lead
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassCard>
+      ) : null}
     </div>
   );
 }

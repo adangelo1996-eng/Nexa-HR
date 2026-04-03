@@ -11,7 +11,7 @@ interface Payslip {
 }
 
 interface Props {
-  role: "admin" | "manager_controllo_gestione" | "employee";
+  role: "admin" | "team_lead" | "employee";
   currentUserId: string;
   currentUserName: string;
   payslips: Payslip[];

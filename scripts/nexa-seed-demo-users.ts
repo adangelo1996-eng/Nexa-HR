@@ -11,7 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const PASSWORD = "Synapse2026";
 
-type RoleName = "admin" | "manager_controllo_gestione" | "employee";
+type RoleName = "admin" | "team_lead" | "employee";
 
 interface SeedPerson {
   firstName: string;
@@ -79,7 +79,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Marco",
     lastName: "Bernasconi",
-    role: "manager_controllo_gestione",
+    role: "team_lead",
     managerIndex: 0,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-09",
@@ -102,7 +102,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Elena",
     lastName: "Rossi",
-    role: "manager_controllo_gestione",
+    role: "team_lead",
     managerIndex: 0,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-02",

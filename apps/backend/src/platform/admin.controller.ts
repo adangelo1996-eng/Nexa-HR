@@ -69,6 +69,31 @@ class CreateCostCenterDto {
   companyId?: string;
 }
 
+class CreateWorkTeamDto {
+  @IsString()
+  name!: string;
+}
+
+class PatchWorkTeamDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+}
+
+class SetWorkTeamMembersDto {
+  @IsArray()
+  @IsString({ each: true })
+  userIds!: string[];
+}
+
+class SetWorkTeamLeadDto {
+  @IsString()
+  userId!: string;
+
+  @IsString()
+  roleId!: string;
+}
+
 class UpdateCostCenterDto {
   @IsOptional()
   @Transform(({ value }) => optionalCostCenterCodeTransform(value))
@@ -153,5 +178,35 @@ export class AdminController {
   @RequireNexaPermissions("nexa.admin_cost_centers:write")
   deleteCostCenter(@Param("costCenterId") costCenterId: string): unknown {
     return this.store.deleteCostCenter(costCenterId);
+  }
+
+  @Get("cost-centers/:costCenterId/teams")
+  @RequireNexaPermissions("nexa.admin_cost_centers:read")
+  listWorkTeams(@Param("costCenterId") costCenterId: string): unknown {
+    return this.store.listWorkTeamsByCostCenter(costCenterId);
+  }
+
+  @Post("cost-centers/:costCenterId/teams")
+  @RequireNexaPermissions("nexa.admin_cost_centers:write")
+  createWorkTeam(@Param("costCenterId") costCenterId: string, @Body() dto: CreateWorkTeamDto): unknown {
+    return this.store.createWorkTeam(costCenterId, dto.name);
+  }
+
+  @Patch("work-teams/:teamId")
+  @RequireNexaPermissions("nexa.admin_cost_centers:write")
+  patchWorkTeam(@Param("teamId") teamId: string, @Body() dto: PatchWorkTeamDto): unknown {
+    return this.store.updateWorkTeam(teamId, dto);
+  }
+
+  @Patch("work-teams/:teamId/members")
+  @RequireNexaPermissions("nexa.admin_cost_centers:write")
+  setWorkTeamMembers(@Param("teamId") teamId: string, @Body() dto: SetWorkTeamMembersDto): unknown {
+    return this.store.setWorkTeamMembers(teamId, dto.userIds);
+  }
+
+  @Patch("work-teams/:teamId/lead")
+  @RequireNexaPermissions("nexa.admin_cost_centers:write")
+  setWorkTeamLead(@Param("teamId") teamId: string, @Body() dto: SetWorkTeamLeadDto): unknown {
+    return this.store.setTeamLead(teamId, dto.userId, dto.roleId);
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Patch, Param, Post, UseGuards } from "@nestjs/common";
 import { IsOptional, IsString, Matches } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
@@ -36,9 +36,18 @@ export class SmartworkingController {
     return this.store.createSmartworkingRequest(auth.userId, dto.day, dto.note);
   }
 
+  @Delete("request/:id")
+  @UseGuards(RoleGuard)
+  @RequireRole("employee")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async cancelRequest(@CurrentAuth() auth: { userId: string }, @Param("id") id: string): Promise<{ ok: true }> {
+    await this.store.cancelSmartworkingRequest(auth.userId, id);
+    return { ok: true };
+  }
+
   @Get("pending")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:read")
   async pending(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
     return { items: await this.store.listPendingSmartworkingForManager(auth.userId) };
@@ -46,7 +55,7 @@ export class SmartworkingController {
 
   @Patch(":id/approve")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async approve(@CurrentAuth() auth: { userId: string }, @Param("id") id: string): Promise<unknown> {
     return this.store.decideSmartworkingRequest(id, auth.userId, true);
@@ -54,7 +63,7 @@ export class SmartworkingController {
 
   @Patch(":id/reject")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(
     @CurrentAuth() auth: { userId: string },

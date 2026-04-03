@@ -18,7 +18,7 @@ class RejectApprovalBody {
 
 @Controller("approvals")
 @UseGuards(RoleGuard, NexaPermissionGuard)
-@RequireRole("manager_controllo_gestione")
+@RequireRole("team_lead")
 export class ApprovalsController {
   constructor(private readonly store: HrDataStore) {}
 

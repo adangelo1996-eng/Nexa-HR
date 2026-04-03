@@ -302,7 +302,7 @@ export class ImportService {
         { header: "Data assunzione YYYY-MM-DD (opz.)", key: "hireDate", width: 28 }
       ];
       sheet.addRow({});
-      help.addRow(["Ruolo piattaforma: admin | manager_controllo_gestione | employee"]);
+      help.addRow(["Ruolo piattaforma: admin | employee (team_lead solo dopo nomina team da UI CDC)"]);
       help.addRow(["Email: se vuota viene generata automaticamente (nome.cognome@dominio)."]);
       help.addRow(["Manager: deve essere un utente già presente; colonna opzionale."]);
     } else if (category === "cost_centers") {
@@ -402,12 +402,20 @@ export class ImportService {
       if (!lastName) {
         errors.push({ row: baseRow, field: "Cognome", message: "Obbligatorio" });
       }
-      const role =
-        roleRaw === "admin" || roleRaw === "manager_controllo_gestione" || roleRaw === "employee"
-          ? (roleRaw as AuthRole)
-          : ("" as AuthRole);
-      if (!roleRaw || !role) {
-        errors.push({ row: baseRow, field: "Ruolo piattaforma", message: "Valore non valido (admin | manager_controllo_gestione | employee)" });
+      let role: AuthRole | "" = "";
+      if (!roleRaw) {
+        errors.push({ row: baseRow, field: "Ruolo piattaforma", message: "Obbligatorio" });
+      } else if (roleRaw === "team_lead") {
+        errors.push({
+          row: baseRow,
+          field: "Ruolo piattaforma",
+          message:
+            "team_lead non è importabile: usare admin o employee e nominare il responsabile da Gestione centri di costo → Team"
+        });
+      } else if (roleRaw === "admin" || roleRaw === "employee") {
+        role = roleRaw;
+      } else {
+        errors.push({ row: baseRow, field: "Ruolo piattaforma", message: "Valore non valido (admin | employee)" });
       }
       if (!roleId) {
         errors.push({ row: baseRow, field: "ID ruolo organizzativo", message: "Obbligatorio" });

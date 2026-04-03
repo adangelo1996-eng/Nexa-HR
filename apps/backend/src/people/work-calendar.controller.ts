@@ -5,7 +5,7 @@ import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-pe
 
 @Controller("hr/work-calendar")
 @UseGuards(RoleGuard, NexaPermissionGuard)
-@RequireRole("manager_controllo_gestione")
+@RequireRole("team_lead")
 export class WorkCalendarController {
   constructor(private readonly store: HrDataStore) {}
 

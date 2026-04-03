@@ -23,6 +23,7 @@ export interface User {
   companyId: string;
   roleId?: string;
   costCenterId?: string;
+  teamId?: string | null;
   contractType?: string;
   weeklyContractHours?: number;
   avsNumber?: string;
@@ -102,6 +103,13 @@ export interface CostCenter {
   name: string;
   description?: string;
   companyId?: string;
+}
+
+export interface WorkTeamDto {
+  id: string;
+  costCenterId: string;
+  name: string;
+  leadUserId?: string | null;
 }
 
 export interface OrgNode {
@@ -818,6 +826,72 @@ export async function deleteAdminCostCenter(token: string, costCenterId: string)
   return (await response.json()) as CostCenter;
 }
 
+export async function fetchAdminWorkTeams(token: string, costCenterId: string): Promise<WorkTeamDto[]> {
+  const response = await fetch(buildApiUrl(`/admin/cost-centers/${encodeURIComponent(costCenterId)}/teams`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as WorkTeamDto[];
+}
+
+export async function createAdminWorkTeam(
+  token: string,
+  costCenterId: string,
+  name: string
+): Promise<WorkTeamDto> {
+  const response = await fetch(buildApiUrl(`/admin/cost-centers/${encodeURIComponent(costCenterId)}/teams`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ name })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as WorkTeamDto;
+}
+
+export async function patchAdminWorkTeam(
+  token: string,
+  teamId: string,
+  payload: { name?: string }
+): Promise<WorkTeamDto> {
+  const response = await fetch(buildApiUrl(`/admin/work-teams/${encodeURIComponent(teamId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as WorkTeamDto;
+}
+
+export async function setAdminWorkTeamMembers(
+  token: string,
+  teamId: string,
+  userIds: string[]
+): Promise<User[]> {
+  const response = await fetch(buildApiUrl(`/admin/work-teams/${encodeURIComponent(teamId)}/members`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ userIds })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as User[];
+}
+
+export async function setAdminWorkTeamLead(
+  token: string,
+  teamId: string,
+  userId: string,
+  roleId: string
+): Promise<{ team: WorkTeamDto; lead: User }> {
+  const response = await fetch(buildApiUrl(`/admin/work-teams/${encodeURIComponent(teamId)}/lead`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ userId, roleId })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { team: WorkTeamDto; lead: User };
+}
+
 export async function fetchPermissionCatalog(token: string): Promise<PermissionCatalogResponse> {
   const response = await fetch(buildApiUrl("/admin/permission-catalog"), {
     method: "GET",
@@ -1025,6 +1099,14 @@ export async function createSmartworkingRequest(
     await parseError(response);
   }
   return (await response.json()) as SmartworkingRequestDto;
+}
+
+export async function cancelSmartworkingRequest(token: string, requestId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/smartworking/request/${encodeURIComponent(requestId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export async function reportSickness(

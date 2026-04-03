@@ -17,7 +17,7 @@ import { getToken, getSessionUser, type SessionUser, type UserRole } from "@/lib
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "employee", label: "Dipendente" },
-  { value: "manager_controllo_gestione", label: "Manager" },
+  { value: "team_lead", label: "Team lead" },
   { value: "admin", label: "Admin" }
 ];
 

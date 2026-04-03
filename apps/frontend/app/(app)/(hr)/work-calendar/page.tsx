@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  cancelSmartworkingRequest,
   createLeavePlan,
   createSmartworkingRequest,
   fetchCurrentUser,
@@ -46,6 +47,39 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
       return "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]";
   }
 }
+
+function isCalendarPending(ev: CalendarEventDto): boolean {
+  return ev.meta?.status === "pending";
+}
+
+function eventStyle(ev: CalendarEventDto): string {
+  if (isCalendarPending(ev) && (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking")) {
+    return "border-yellow-500/55 bg-yellow-500/15 text-yellow-950 dark:text-yellow-100";
+  }
+  return kindStyle(ev.kind);
+}
+
+type SwDayState = { on: boolean; requestId?: string; status?: string };
+
+function deriveSwDayState(events: CalendarEventDto[]): SwDayState {
+  const sws = events.filter((e) => e.kind === "smartworking");
+  if (sws.length === 0) return { on: false };
+  const fromReq = sws.find(
+    (e) => typeof e.meta?.swRequestId === "string" && (e.meta.swRequestId as string).length > 0
+  );
+  if (fromReq) {
+    const st = String(fromReq.meta?.status ?? "");
+    if (st === "rejected") return { on: false };
+    return {
+      on: st === "pending" || st === "approved",
+      requestId: String(fromReq.meta?.swRequestId),
+      status: st
+    };
+  }
+  return { on: true, status: "approved" };
+}
+
+type ModalStep = "menu" | "smartworking" | "leave" | "sickness";
 
 function eventTouchesDay(ev: CalendarEventDto, dayIso: string): boolean {
   const d = dayIso.slice(0, 10);
@@ -97,6 +131,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<string>("");
   const [modal, setModal] = useState<{ day: string; row: RowUser } | null>(null);
+  const [modalStep, setModalStep] = useState<ModalStep>("menu");
+  const [swOptimistic, setSwOptimistic] = useState<boolean | null>(null);
   const [leaveStart, setLeaveStart] = useState("");
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveKind, setLeaveKind] = useState<"annual" | "rol">("annual");
@@ -171,6 +207,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const openModal = (day: string, row: RowUser): void => {
     setModal({ day, row });
+    setModalStep("menu");
+    setSwOptimistic(null);
     setLeaveStart(day);
     setLeaveEnd(day);
     setLeaveKind("annual");
@@ -182,6 +220,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const closeModal = (): void => {
     setModal(null);
+    setModalStep("menu");
+    setSwOptimistic(null);
     setSubmitting(null);
   };
 
@@ -205,6 +245,46 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const isOwnRow = modal && me && modal.row.id === me.id;
   const cellEventsModal = modal ? eventsForCell(events, modal.row.id, modal.day) : [];
+  const serverSw = useMemo(() => deriveSwDayState(cellEventsModal), [cellEventsModal]);
+  const swDisplayOn = swOptimistic !== null ? swOptimistic : serverSw.on;
+
+  useEffect(() => {
+    if (!modal) {
+      setSwOptimistic(null);
+      return;
+    }
+    setSwOptimistic(null);
+  }, [modal?.day, modal?.row.id, serverSw.on, serverSw.requestId, serverSw.status]);
+
+  const onSmartworkingSwitch = (next: boolean): void => {
+    const t = getToken();
+    if (!t || !modal) return;
+    setError(null);
+    if (next) {
+      if (serverSw.on) return;
+      setSwOptimistic(true);
+      void createSmartworkingRequest(t, { day: modal.day, note: swNote.trim() || undefined })
+        .then(() => void load())
+        .catch((e) => {
+          setSwOptimistic(null);
+          setError(e instanceof Error ? e.message : "Errore smart working");
+        });
+      return;
+    }
+    if (serverSw.status === "approved" || (serverSw.on && !serverSw.requestId)) {
+      setError("La richiesta è già approvata o confermata in presenze. Contatta il responsabile per modifiche.");
+      return;
+    }
+    if (serverSw.status === "pending" && serverSw.requestId) {
+      setSwOptimistic(false);
+      void cancelSmartworkingRequest(t, serverSw.requestId)
+        .then(() => void load())
+        .catch((e) => {
+          setSwOptimistic(null);
+          setError(e instanceof Error ? e.message : "Errore annullo smart working");
+        });
+    }
+  };
 
   const submitLeave = async (): Promise<void> => {
     const t = getToken();
@@ -221,22 +301,6 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore invio ferie");
-    } finally {
-      setSubmitting(null);
-    }
-  };
-
-  const submitSw = async (): Promise<void> => {
-    const t = getToken();
-    if (!t || !modal) return;
-    setSubmitting("sw");
-    setError(null);
-    try {
-      await createSmartworkingRequest(t, { day: modal.day, note: swNote.trim() || undefined });
-      closeModal();
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore smart working");
     } finally {
       setSubmitting(null);
     }
@@ -330,6 +394,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
       <div className="flex flex-wrap gap-3 text-[11px]">
         <span className="rounded border border-blue-500/40 bg-blue-500/10 px-2 py-0.5">Turno</span>
         <span className="rounded border border-violet-500/40 bg-violet-500/10 px-2 py-0.5">Smart working</span>
+        <span className="rounded border border-yellow-500/45 bg-yellow-500/12 px-2 py-0.5 text-yellow-950 dark:text-yellow-100">
+          In attesa approvazione
+        </span>
         <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5">Ferie</span>
         <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">ROL</span>
         <span className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5">Festività</span>
@@ -412,7 +479,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         {list.map((ev) => (
                           <div
                             key={`${ev.id}-${ev.kind}-${ev.start}`}
-                            className={["truncate rounded border px-1 py-0.5 leading-tight", kindStyle(ev.kind)].join(" ")}
+                            className={["truncate rounded border px-1 py-0.5 leading-tight", eventStyle(ev)].join(" ")}
                             title={ev.title}
                           >
                             {ev.kind === "shift" && ev.end ? (
@@ -456,9 +523,34 @@ export default function WorkCalendarPage(): React.JSX.Element {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="cal-modal-title" className="text-base font-semibold text-[var(--prom-text)]">
-              {modal.day} · {modal.row.fullName}
-            </h2>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                {isOwnRow && modalStep !== "menu" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mb-1 -ml-2 h-8 px-2 text-[11px]"
+                    onClick={() => setModalStep("menu")}
+                  >
+                    ← Indietro
+                  </Button>
+                ) : null}
+                <h2 id="cal-modal-title" className="text-base font-semibold text-[var(--prom-text)]">
+                  {modal.day} · {modal.row.fullName}
+                </h2>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-lg leading-none"
+                aria-label="Chiudi"
+                onClick={closeModal}
+              >
+                ×
+              </Button>
+            </div>
 
             <div className="mt-3 max-h-[40vh] space-y-2 overflow-y-auto rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_70%,transparent)] p-3">
               <p className="text-[11px] font-medium text-[var(--prom-muted)]">Eventi in questo giorno</p>
@@ -469,7 +561,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   {cellEventsModal.map((ev) => (
                     <li
                       key={`${ev.id}-${ev.kind}-${ev.userId ?? ""}`}
-                      className={["rounded-lg border px-3 py-2 text-xs", kindStyle(ev.kind)].join(" ")}
+                      className={["rounded-lg border px-3 py-2 text-xs", eventStyle(ev)].join(" ")}
                     >
                       <span className="font-medium">{ev.title}</span>
                       {ev.kind === "shift" && ev.end ? (
@@ -485,115 +577,151 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
             {isOwnRow ? (
               <div className="mt-4 space-y-4 border-t border-[var(--prom-line)] pt-4">
-                <div>
-                  <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Richiesta ferie / ROL</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Inizio
-                      <input
-                        type="date"
-                        value={leaveStart}
-                        onChange={(e) => setLeaveStart(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Fine
-                      <input
-                        type="date"
-                        value={leaveEnd}
-                        onChange={(e) => setLeaveEnd(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
-                  </div>
-                  <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--prom-muted)]">
-                    Tipo
-                    <select
-                      value={leaveKind}
-                      onChange={(e) => setLeaveKind(e.target.value === "rol" ? "rol" : "annual")}
-                      className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1 text-[var(--prom-text)]"
+                {modalStep === "menu" ? (
+                  <div className="grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setModalStep("smartworking")}
+                      className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
                     >
-                      <option value="annual">Ferie</option>
-                      <option value="rol">ROL</option>
-                    </select>
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="mt-2"
-                    disabled={submitting !== null}
-                    onClick={() => void submitLeave()}
-                  >
-                    {submitting === "leave" ? "Invio…" : "Invia richiesta ferie/ROL"}
-                  </Button>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Smart working (giorno selezionato)</p>
-                  <label className="block text-[11px] text-[var(--prom-muted)]">
-                    Nota (opzionale)
-                    <input
-                      type="text"
-                      value={swNote}
-                      onChange={(e) => setSwNote(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="mt-2"
-                    disabled={submitting !== null}
-                    onClick={() => void submitSw()}
-                  >
-                    {submitting === "sw" ? "Invio…" : "Richiedi smart working"}
-                  </Button>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Comunicazione malattia</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Da
-                      <input
-                        type="date"
-                        value={sickFrom}
-                        onChange={(e) => setSickFrom(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      A
-                      <input
-                        type="date"
-                        value={sickTo}
-                        onChange={(e) => setSickTo(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
+                      Smart working
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalStep("leave")}
+                      className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-left text-sm font-medium text-emerald-950 transition hover:bg-emerald-500/15 dark:text-emerald-100"
+                    >
+                      Richiesta ferie / ROL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalStep("sickness")}
+                      className="rounded-xl border border-orange-500/35 bg-orange-500/10 px-4 py-3 text-left text-sm font-medium text-orange-950 transition hover:bg-orange-500/15 dark:text-orange-100"
+                    >
+                      Comunicazione malattia
+                    </button>
                   </div>
-                  <label className="mt-2 block text-[11px] text-[var(--prom-muted)]">
-                    Certificato (opzionale, pdf/jpg)
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg"
-                      className="mt-1 block w-full text-xs text-[var(--prom-muted)]"
-                      onChange={(e) => setSickFile(e.target.files?.[0] ?? null)}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="mt-2"
-                    disabled={submitting !== null}
-                    onClick={() => void submitSick()}
-                  >
-                    {submitting === "sick" ? "Invio…" : "Invia comunicazione"}
-                  </Button>
-                </div>
+                ) : null}
+
+                {modalStep === "leave" ? (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Richiesta ferie / ROL</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block text-[11px] text-[var(--prom-muted)]">
+                        Inizio
+                        <input
+                          type="date"
+                          value={leaveStart}
+                          onChange={(e) => setLeaveStart(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                        />
+                      </label>
+                      <label className="block text-[11px] text-[var(--prom-muted)]">
+                        Fine
+                        <input
+                          type="date"
+                          value={leaveEnd}
+                          onChange={(e) => setLeaveEnd(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--prom-muted)]">
+                      Tipo
+                      <select
+                        value={leaveKind}
+                        onChange={(e) => setLeaveKind(e.target.value === "rol" ? "rol" : "annual")}
+                        className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1 text-[var(--prom-text)]"
+                      >
+                        <option value="annual">Ferie</option>
+                        <option value="rol">ROL</option>
+                      </select>
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-2"
+                      disabled={submitting !== null}
+                      onClick={() => void submitLeave()}
+                    >
+                      {submitting === "leave" ? "Invio…" : "Invia richiesta ferie/ROL"}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {modalStep === "smartworking" ? (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-[var(--prom-text)]">Smart working</p>
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
+                      <span className="text-[11px] text-[var(--prom-text)]">Richiedi smart working per questo giorno</span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        aria-checked={swDisplayOn}
+                        checked={swDisplayOn}
+                        onChange={(e) => onSmartworkingSwitch(e.target.checked)}
+                        className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
+                      />
+                    </label>
+                    <label className="block text-[11px] text-[var(--prom-muted)]">
+                      Nota (opzionale)
+                      <input
+                        type="text"
+                        value={swNote}
+                        onChange={(e) => setSwNote(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                      />
+                    </label>
+                    <p className="text-[10px] text-[var(--prom-muted)]">
+                      La richiesta viene inviata in background; puoi chiudere il riquadro o scegliere un’altra opzione dal menu.
+                    </p>
+                  </div>
+                ) : null}
+
+                {modalStep === "sickness" ? (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Comunicazione malattia</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block text-[11px] text-[var(--prom-muted)]">
+                        Da
+                        <input
+                          type="date"
+                          value={sickFrom}
+                          onChange={(e) => setSickFrom(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                        />
+                      </label>
+                      <label className="block text-[11px] text-[var(--prom-muted)]">
+                        A
+                        <input
+                          type="date"
+                          value={sickTo}
+                          onChange={(e) => setSickTo(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-2 block text-[11px] text-[var(--prom-muted)]">
+                      Certificato (opzionale, pdf/jpg)
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg"
+                        className="mt-1 block w-full text-xs text-[var(--prom-muted)]"
+                        onChange={(e) => setSickFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2"
+                      disabled={submitting !== null}
+                      onClick={() => void submitSick()}
+                    >
+                      {submitting === "sick" ? "Invio…" : "Invia comunicazione"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="mt-4 text-xs text-[var(--prom-muted)]">

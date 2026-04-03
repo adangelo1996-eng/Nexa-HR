@@ -1,6 +1,6 @@
 "use client";
 
-export type UserRole = "admin" | "manager_controllo_gestione" | "employee";
+export type UserRole = "admin" | "team_lead" | "employee";
 
 export interface SessionUser {
   id: string;

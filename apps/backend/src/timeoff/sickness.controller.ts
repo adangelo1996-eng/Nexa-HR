@@ -51,7 +51,7 @@ export class SicknessController {
 
   @Patch("approve/:id")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async approve(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
@@ -63,7 +63,7 @@ export class SicknessController {
 
   @Patch("reject/:id")
   @UseGuards(RoleGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
     const sickness = await this.store.getSickness(id);

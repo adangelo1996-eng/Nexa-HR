@@ -30,7 +30,7 @@ export class OrgController {
     @Query("role") role?: string
   ): Promise<unknown> {
     const r =
-      role === "admin" || role === "manager_controllo_gestione" || role === "employee" ? role : undefined;
+      role === "admin" || role === "team_lead" || role === "employee" ? role : undefined;
     return this.store.getOrgChart({
       costCenterId: costCenterId?.trim() || undefined,
       role: r

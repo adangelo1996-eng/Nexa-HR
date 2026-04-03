@@ -24,8 +24,8 @@ class AssignRoleDto {
   @IsString()
   userId!: string;
 
-  @IsIn(["admin", "manager_controllo_gestione", "employee"])
-  role!: "admin" | "manager_controllo_gestione" | "employee";
+  @IsIn(["admin", "team_lead", "employee"])
+  role!: "admin" | "team_lead" | "employee";
 }
 
 class CreateUserDto {
@@ -40,8 +40,8 @@ class CreateUserDto {
   @MaxLength(320)
   email?: string;
 
-  @IsIn(["admin", "manager_controllo_gestione", "employee"])
-  role!: "admin" | "manager_controllo_gestione" | "employee";
+  @IsIn(["admin", "team_lead", "employee"])
+  role!: "admin" | "team_lead" | "employee";
 
   @IsOptional()
   @IsString()
@@ -150,8 +150,8 @@ class UpdateUserDto {
   fullName?: string;
 
   @IsOptional()
-  @IsIn(["admin", "manager_controllo_gestione", "employee"])
-  role?: "admin" | "manager_controllo_gestione" | "employee";
+  @IsIn(["admin", "team_lead", "employee"])
+  role?: "admin" | "team_lead" | "employee";
 
   @IsOptional()
   @IsString()
@@ -267,7 +267,7 @@ export class UserController {
 
   @Get()
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("manager_controllo_gestione")
+  @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.admin_users:read")
   async list(): Promise<unknown> {
     return this.store.listUsers();

@@ -161,7 +161,7 @@ async function resolveTargetUserId(
   if (auth.role === "admin") {
     return requested;
   }
-  if (auth.role === "manager_controllo_gestione") {
+  if (auth.role === "team_lead") {
     const { data } = await service.from("users").select("managerId").eq("id", requested).maybeSingle();
     if (data?.managerId === auth.userId) {
       return requested;

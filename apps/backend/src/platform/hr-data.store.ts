@@ -29,6 +29,7 @@ import type {
   WorkdaySummary,
   Role,
   CostCenter,
+  WorkTeam,
   ClockChannel,
   GeoFix
 } from "@payday/domain";
@@ -151,6 +152,7 @@ interface UserUpdateInput {
   taxRegion?: string;
   taxMunicipalityIt?: string;
   profilePhotoPath?: string | null;
+  teamId?: string | null;
 }
 
 type EmployeeDocumentRow = EmployeeDocument & { bodyBase64?: string | null };
@@ -208,10 +210,11 @@ export class HrDataStore {
       fullName: "Manager Controllo",
       firstName: "Manager",
       lastName: "Controllo",
-      role: "manager_controllo_gestione",
+      role: "team_lead",
       companyId: "comp-1",
       roleId: "r2",
       costCenterId: "cc-1",
+      teamId: "wt-demo-hr",
       weeklyContractHours: 40,
       dailyTargetSeconds: 28800,
       vacationAllowanceDays: 24
@@ -243,7 +246,7 @@ export class HrDataStore {
     },
     {
       id: "r2",
-      name: "manager_controllo_gestione",
+      name: "team_lead",
       permissions: ["approve:leave", "approve:sickness", "read:team", "read:payslip:team"]
     },
     {
@@ -288,6 +291,14 @@ export class HrDataStore {
   private readonly userNotifications: UserNotification[] = [];
   /** Memoria dev: ordine budget CDC key `${year}|${costCenterId}` → sortOrder */
   private readonly personnelBudgetCcOrderMem = new Map<string, number>();
+  private readonly workTeamsMem: WorkTeam[] = [
+    {
+      id: "wt-demo-hr",
+      costCenterId: "cc-1",
+      name: "Team HR demo",
+      leadUserId: "u-manager"
+    }
+  ];
   /** Memoria dev: celle budget key `${year}|${month}|${userId}` */
   private readonly personnelBudgetCellsMem = new Map<
     string,
@@ -504,6 +515,207 @@ export class HrDataStore {
       .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
   }
 
+  async listUsersByTeam(teamId: string): Promise<User[]> {
+    const users = await this.listUsers();
+    return users
+      .filter((u) => u.teamId === teamId)
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+  }
+
+  async listWorkTeamsByCostCenter(costCenterId: string): Promise<WorkTeam[]> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!
+        .from("work_teams")
+        .select("*")
+        .eq("costCenterId", costCenterId)
+        .order("name", { ascending: true });
+      if (error) {
+        throw new BadRequestException(`Lettura team fallita: ${error.message}`);
+      }
+      return ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapWorkTeamRow(r));
+    }
+    return this.workTeamsMem.filter((t) => t.costCenterId === costCenterId);
+  }
+
+  private mapWorkTeamRow(r: Record<string, unknown>): WorkTeam {
+    return {
+      id: String(r.id),
+      costCenterId: String(r.costCenterId),
+      name: String(r.name),
+      leadUserId: r.leadUserId ? String(r.leadUserId) : null
+    };
+  }
+
+  async createWorkTeam(costCenterId: string, name: string): Promise<WorkTeam> {
+    const center = await this.getCostCenterById(costCenterId);
+    if (!center) {
+      throw new BadRequestException("Centro di costo non trovato");
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new BadRequestException("Nome team obbligatorio");
+    }
+    const team: WorkTeam = {
+      id: `wt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      costCenterId,
+      name: trimmed,
+      leadUserId: null
+    };
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("work_teams").insert({
+        id: team.id,
+        costCenterId: team.costCenterId,
+        name: team.name,
+        leadUserId: null
+      });
+      if (error) {
+        throw new InternalServerErrorException(`Creazione team fallita: ${error.message}`);
+      }
+    } else {
+      this.workTeamsMem.push(team);
+    }
+   
+    return team;
+  }
+
+  async updateWorkTeam(teamId: string, input: { name?: string }): Promise<WorkTeam> {
+    const team = await this.getWorkTeam(teamId);
+    if (input.name !== undefined) {
+      const trimmed = input.name.trim();
+      if (!trimmed) {
+        throw new BadRequestException("Nome team non valido");
+      }
+      team.name = trimmed;
+    }
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("work_teams")
+        .update({ name: team.name })
+        .eq("id", teamId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento team fallito: ${error.message}`);
+      }
+    } else {
+      const ix = this.workTeamsMem.findIndex((x) => x.id === teamId);
+      if (ix >= 0) {
+        this.workTeamsMem[ix] = { ...this.workTeamsMem[ix]!, name: team.name };
+      }
+    }
+    return team;
+  }
+
+  async getWorkTeam(teamId: string): Promise<WorkTeam> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!.from("work_teams").select("*").eq("id", teamId).maybeSingle();
+      if (error || !data) {
+        throw new NotFoundException("Team non trovato");
+      }
+      return this.mapWorkTeamRow(data as Record<string, unknown>);
+    }
+    const t = this.workTeamsMem.find((x) => x.id === teamId);
+    if (!t) {
+      throw new NotFoundException("Team non trovato");
+    }
+    return { ...t };
+  }
+
+  /** Team di cui l'utente è il responsabile nominato (`work_teams.leadUserId`). */
+  private async findWorkTeamByLeadUserId(userId: string): Promise<WorkTeam | null> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!
+        .from("work_teams")
+        .select("*")
+        .eq("leadUserId", userId)
+        .maybeSingle();
+      if (error) {
+        throw new BadRequestException(`Lettura team fallita: ${error.message}`);
+      }
+      if (!data) {
+        return null;
+      }
+      return this.mapWorkTeamRow(data as Record<string, unknown>);
+    }
+    return this.workTeamsMem.find((t) => t.leadUserId === userId) ?? null;
+  }
+
+  private async clearWorkTeamLeadPositions(userId: string): Promise<void> {
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("work_teams").update({ leadUserId: null }).eq("leadUserId", userId);
+      if (error) {
+        throw new InternalServerErrorException(`Rimozione responsabile team fallita: ${error.message}`);
+      }
+      return;
+    }
+    for (const t of this.workTeamsMem) {
+      if (t.leadUserId === userId) {
+        t.leadUserId = null;
+      }
+    }
+  }
+
+  async setWorkTeamMembers(teamId: string, memberUserIds: string[]): Promise<User[]> {
+    const team = await this.getWorkTeam(teamId);
+    const idSet = new Set(memberUserIds.map((id) => id.trim()).filter(Boolean));
+    const previously = await this.listUsersByTeam(teamId);
+    for (const u of previously) {
+      if (!idSet.has(u.id)) {
+        await this.updateUser(u.id, { teamId: null });
+      }
+    }
+    for (const uid of idSet) {
+      const u = await this.getUser(uid);
+      if (u.costCenterId !== team.costCenterId) {
+        throw new BadRequestException(`L'utente ${u.fullName} non appartiene al centro di costo del team`);
+      }
+      await this.updateUser(uid, { teamId });
+    }
+    return this.listUsersByTeam(teamId);
+  }
+
+  async setTeamLead(teamId: string, userId: string, roleId: string): Promise<{ team: WorkTeam; lead: User }> {
+    const team = await this.getWorkTeam(teamId);
+    const lead = await this.getUser(userId);
+    if (lead.costCenterId !== team.costCenterId) {
+      throw new BadRequestException("Il responsabile deve essere nello stesso centro di costo del team");
+    }
+    const role = await this.getRoleById(roleId);
+    if (!role) {
+      throw new BadRequestException("Ruolo catalogo non trovato");
+    }
+    const employeeRole = (await this.listRoles()).find((r) => r.name.toLowerCase() === "employee");
+    const employeeRoleId = employeeRole?.id ?? "r3";
+    const prevLeadId = team.leadUserId ?? undefined;
+    /** Prima il nuovo `leadUserId`, poi la retrocessione del vecchio lead (coerente con invarianti su `team_lead`). */
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("work_teams")
+        .update({ leadUserId: userId })
+        .eq("id", teamId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento lead team fallito: ${error.message}`);
+      }
+    } else {
+      const t = this.workTeamsMem.find((x) => x.id === teamId);
+      if (t) t.leadUserId = userId;
+      team.leadUserId = userId;
+    }
+    if (prevLeadId && prevLeadId !== userId) {
+      await this.updateUser(prevLeadId, { role: "employee", roleId: employeeRoleId });
+    }
+    if (lead.teamId !== teamId) {
+      await this.updateUser(userId, { teamId });
+    }
+    const promoted = await this.updateUser(userId, { role: "team_lead", roleId });
+    const peers = await this.listUsersByTeam(teamId);
+    for (const m of peers) {
+      if (m.id !== userId) {
+        await this.updateUser(m.id, { managerId: userId });
+      }
+    }
+    const updatedTeam = await this.getWorkTeam(teamId);
+    return { team: updatedTeam, lead: promoted };
+  }
+
   private normalizePart(value: string): string {
     return value
       .trim()
@@ -592,6 +804,11 @@ export class HrDataStore {
       throw new BadRequestException("Nome e cognome sono obbligatori");
     }
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (input.role === "team_lead") {
+      throw new BadRequestException(
+        "Il ruolo team_lead è legato al team di cui si è responsabili: crea l'utente come dipendente o admin, poi nomina il responsabile da Gestione centri di costo → Team."
+      );
+    }
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
     const email = await this.resolveCreateEmail(firstName, lastName, input.email);
@@ -637,6 +854,10 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    const nextRole = input.role !== undefined ? input.role : user.role;
+    if (user.role === "team_lead" && nextRole !== "team_lead") {
+      await this.clearWorkTeamLeadPositions(userId);
+    }
     if (input.email !== undefined) {
       const trimmed = input.email.trim();
       if (!this.simpleEmailRegex().test(trimmed)) {
@@ -666,6 +887,20 @@ export class HrDataStore {
       fullName,
       email: nextEmail
     };
+    if (nextRole === "team_lead") {
+      const teamAsLead = await this.findWorkTeamByLeadUserId(userId);
+      if (!teamAsLead) {
+        throw new BadRequestException(
+          "Il ruolo team_lead è consentito solo se sei il responsabile nominato di un work team (Gestione centri di costo → Team → Nomina lead)."
+        );
+      }
+      const effectiveTeamId = payload.teamId ?? null;
+      if (effectiveTeamId !== teamAsLead.id) {
+        throw new BadRequestException(
+          `Un team lead deve avere «team» anagrafico uguale al team di cui è responsabile (${teamAsLead.name}).`
+        );
+      }
+    }
     if (this.useDb) {
       const { data } = await this.supabase!
         .from("users")
@@ -2419,13 +2654,24 @@ export class HrDataStore {
     return all;
   }
 
-  /** Calendario aggregato per il team CDC del richiedente (o solo sé senza CDC). */
+  /** Calendario aggregato per il team operativo (work_team) o, in assenza, tutto il CDC. */
   async getCostCenterWorkCalendarForRequester(
     requesterId: string,
     from?: string,
     to?: string
   ): Promise<{ users: Array<{ id: string; fullName: string }>; events: CalendarEvent[] }> {
     const me = await this.getUser(requesterId);
+    const tid = me.teamId?.trim();
+    if (tid) {
+      const peers = await this.listUsersByTeam(tid);
+      const ids = peers.length > 0 ? peers.map((u) => u.id) : [me.id];
+      const events = await this.getTeamWorkCalendar(ids, from, to);
+      const users =
+        peers.length > 0
+          ? peers.map((u) => ({ id: u.id, fullName: u.fullName }))
+          : [{ id: me.id, fullName: me.fullName }];
+      return { users, events };
+    }
     const cc = me.costCenterId?.trim();
     if (!cc) {
       const events = await this.getTeamWorkCalendar([me.id], from, to);
@@ -2492,8 +2738,28 @@ export class HrDataStore {
       });
     }
     const summaries = await this.listWorkdaySummariesInRange(userId, from, to);
+    const summarySwDays = new Set(
+      summaries.filter((ws) => ws.mode === "smartworking").map((ws) => ws.date)
+    );
+    const swRequests = await this.listMySmartworking(userId);
+    const pendingSwDays = new Set(swRequests.filter((r) => r.status === "pending").map((r) => r.day));
+    for (const r of swRequests) {
+      if (r.status === "rejected") continue;
+      if (!this.inCalendarRange(r.day, from, to)) continue;
+      if (r.status === "approved" && summarySwDays.has(r.day)) continue;
+      const pending = r.status === "pending";
+      events.push({
+        id: `cal-swr-${r.id}`,
+        kind: "smartworking",
+        title: pending ? "Smart working (in attesa)" : "Smart working",
+        start: r.day,
+        end: r.day,
+        meta: { swRequestId: r.id, status: r.status }
+      });
+    }
     for (const ws of summaries) {
       if (ws.mode !== "smartworking") continue;
+      if (pendingSwDays.has(ws.date)) continue;
       if (!this.inCalendarRange(ws.date, from, to)) continue;
       events.push({
         id: `cal-sw-${userId}-${ws.date}`,
@@ -2560,7 +2826,7 @@ export class HrDataStore {
     const isSelf = requesterId === targetUserId;
     const isAdmin = requesterRole === "admin";
     const isManagerWithHierarchy =
-      requesterRole === "manager_controllo_gestione" && (await this.isManagerOf(requesterId, targetUserId));
+      requesterRole === "team_lead" && (await this.isManagerOf(requesterId, targetUserId));
     if (!isSelf && !isAdmin && !isManagerWithHierarchy) {
       throw new ForbiddenException("Accesso negato alla foto profilo");
     }
@@ -3174,6 +3440,31 @@ export class HrDataStore {
       "smartworking_request"
     );
     return row;
+  }
+
+  async cancelSmartworkingRequest(requesterId: string, requestId: string): Promise<void> {
+    let row: SmartworkingRequestRow | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).maybeSingle();
+      row = data as SmartworkingRequestRow | undefined;
+    } else {
+      row = this.smartworkingRequests.find((r) => r.id === requestId);
+    }
+    if (!row || row.userId !== requesterId) {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    if (row.status !== "pending") {
+      throw new BadRequestException("Solo una richiesta in attesa può essere annullata");
+    }
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("smartworking_requests").delete().eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Annullamento SW fallito: ${error.message}`);
+      }
+    } else {
+      const idx = this.smartworkingRequests.findIndex((r) => r.id === requestId);
+      if (idx >= 0) this.smartworkingRequests.splice(idx, 1);
+    }
   }
 
   async listMySmartworking(userId: string): Promise<SmartworkingRequestRow[]> {

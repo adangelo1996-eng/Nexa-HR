@@ -1,6 +1,6 @@
 /** Tipi dominio Nexa HR (canonici per backend e client). */
 
-export type RoleName = "admin" | "manager_controllo_gestione" | "employee";
+export type RoleName = "admin" | "team_lead" | "employee";
 
 export type JurisdictionCode = "CH" | "IT";
 
@@ -28,11 +28,17 @@ export interface User {
   fullName: string;
   firstName?: string;
   lastName?: string;
+  /**
+   * Ruolo accesso piattaforma. `team_lead` è valido solo se l’utente è il `leadUserId`
+   * di un `work_team` e il proprio `teamId` coincide con quel team (nomina da CDC → Team).
+   */
   role: RoleName;
   managerId?: string;
   companyId: string;
   roleId?: string;
   costCenterId?: string;
+  /** Team di lavoro (sotto il centro di costo); per i team lead deve coincidere con il team di cui sono responsabili. */
+  teamId?: string | null;
   contractType?: string;
   weeklyContractHours?: number;
   avsNumber?: string;
@@ -67,6 +73,13 @@ export interface CostCenter {
   name: string;
   description?: string;
   companyId?: string;
+}
+
+export interface WorkTeam {
+  id: string;
+  costCenterId: string;
+  name: string;
+  leadUserId?: string | null;
 }
 
 export interface TimeEntry {
