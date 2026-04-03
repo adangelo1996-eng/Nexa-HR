@@ -3,6 +3,7 @@ import { IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
 
 class LeaveDto {
   @IsDateString()
@@ -26,7 +27,10 @@ class LeaveAllowanceDto {
 @Controller("leave")
 @UseGuards(NexaPermissionGuard)
 export class LeaveController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Post("plan")
   @RequireNexaPermissions("nexa.leaves:write")
@@ -40,13 +44,28 @@ export class LeaveController {
   }
 
   @Patch("plan/:leaveId")
-  @RequireNexaPermissions("nexa.leaves:write")
   async update(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Param("leaveId") leaveId: string,
     @Body() dto: LeaveDto
   ): Promise<unknown> {
-    return this.store.updateLeavePlan(leaveId, dto.startDate, dto.endDate, auth.userId, dto.kind);
+    if (auth.role !== "admin") {
+      const leavesW = await this.permissions.userHasAll(auth.userId, ["nexa.leaves:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      const leave = await this.store.getLeave(leaveId);
+      if (leave.userId === auth.userId) {
+        if (!leavesW) {
+          throw new ForbiddenException("Permessi insufficienti per modificare le proprie ferie");
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, leave.userId))) {
+          throw new ForbiddenException(
+            "Puoi modificare solo le richieste dei dipendenti di cui sei responsabile (e solo in attesa)"
+          );
+        }
+      }
+    }
+    return this.store.updateLeavePlan(leaveId, dto.startDate, dto.endDate, auth.userId, dto.kind, auth.role);
   }
 
   @Patch("approve/:leaveId")

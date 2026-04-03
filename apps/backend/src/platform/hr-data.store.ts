@@ -35,6 +35,7 @@ import type {
 } from "@payday/domain";
 import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
 import { calculateItalianPayroll, employerBudgetBucketsFromGrossIt } from "@payday/payroll-adapters-it";
+import type { AuthRole } from "./auth";
 
 interface ApprovalRecord {
   id: string;
@@ -1170,6 +1171,32 @@ export class HrDataStore {
     return this.updateUser(userId, { role }, { skipTeamLeadLinkValidation: true });
   }
 
+  /** Admin (stessa company) o team_lead con managerId diretto sul dipendente. */
+  private async assertCanActOnBehalfOfUser(
+    actorUserId: string,
+    actorRole: AuthRole,
+    targetUserId: string
+  ): Promise<void> {
+    if (targetUserId === actorUserId) {
+      return;
+    }
+    if (actorRole === "admin") {
+      const a = await this.getUser(actorUserId);
+      const t = await this.getUser(targetUserId);
+      if (a.companyId !== t.companyId) {
+        throw new ForbiddenException("Azienda diversa");
+      }
+      return;
+    }
+    if (actorRole === "team_lead") {
+      if (!(await this.isManagerOf(actorUserId, targetUserId))) {
+        throw new ForbiddenException("Non sei il responsabile di questo dipendente");
+      }
+      return;
+    }
+    throw new ForbiddenException("Operazione non consentita");
+  }
+
   async isManagerOf(managerId: string, employeeId: string): Promise<boolean> {
     const employee = (await this.listUsers()).find((item) => item.id === employeeId);
     return employee?.managerId === managerId;
@@ -1677,13 +1704,13 @@ export class HrDataStore {
     startDate: string,
     endDate: string,
     actorUserId: string,
-    kindInput?: LeavePlanKind
+    kindInput?: LeavePlanKind,
+    actorRole?: AuthRole
   ): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
-    if (leave.userId !== actorUserId) {
-      throw new ForbiddenException("Puoi modificare solo le tue richieste");
-    }
+    const role = actorRole ?? "employee";
+    await this.assertCanActOnBehalfOfUser(actorUserId, role, leave.userId);
     if (leave.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
     }
@@ -1881,12 +1908,12 @@ export class HrDataStore {
     sicknessId: string,
     actorUserId: string,
     fromDate: string,
-    toDate: string
+    toDate: string,
+    actorRole?: AuthRole
   ): Promise<SicknessEvent> {
     const sickness = await this.getSickness(sicknessId);
-    if (sickness.userId !== actorUserId) {
-      throw new ForbiddenException("Puoi modificare solo le tue comunicazioni");
-    }
+    const role = actorRole ?? "employee";
+    await this.assertCanActOnBehalfOfUser(actorUserId, role, sickness.userId);
     if (sickness.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
     }
@@ -3525,22 +3552,26 @@ export class HrDataStore {
     return row;
   }
 
+  async findSmartworkingRequestById(requestId: string): Promise<SmartworkingRequestRow | null> {
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).maybeSingle();
+      return (data as SmartworkingRequestRow) ?? null;
+    }
+    return this.smartworkingRequests.find((r) => r.id === requestId) ?? null;
+  }
+
   async updateSmartworkingRequest(
     requesterId: string,
     requestId: string,
     day: string,
-    note?: string | null
+    note: string | null | undefined,
+    actorRole: AuthRole
   ): Promise<SmartworkingRequestRow> {
-    let row: SmartworkingRequestRow | undefined;
-    if (this.useDb) {
-      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).maybeSingle();
-      row = data as SmartworkingRequestRow | undefined;
-    } else {
-      row = this.smartworkingRequests.find((r) => r.id === requestId);
-    }
-    if (!row || row.userId !== requesterId) {
+    const row = await this.findSmartworkingRequestById(requestId);
+    if (!row) {
       throw new NotFoundException("Richiesta non trovata");
     }
+    await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
     if (row.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
     }
@@ -3584,17 +3615,12 @@ export class HrDataStore {
     return { ...row, day: nextDay, note: nextNote };
   }
 
-  async cancelSmartworkingRequest(requesterId: string, requestId: string): Promise<void> {
-    let row: SmartworkingRequestRow | undefined;
-    if (this.useDb) {
-      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).maybeSingle();
-      row = data as SmartworkingRequestRow | undefined;
-    } else {
-      row = this.smartworkingRequests.find((r) => r.id === requestId);
-    }
-    if (!row || row.userId !== requesterId) {
+  async cancelSmartworkingRequest(requesterId: string, requestId: string, actorRole: AuthRole): Promise<void> {
+    const row = await this.findSmartworkingRequestById(requestId);
+    if (!row) {
       throw new NotFoundException("Richiesta non trovata");
     }
+    await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
     if (row.status !== "pending") {
       throw new BadRequestException("Solo una richiesta in attesa può essere annullata");
     }

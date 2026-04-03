@@ -17,7 +17,12 @@ import {
   type ImportCellError,
   type ImportHistoryItem
 } from "@/lib/api";
-import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanNexaAdmin,
+  shouldClearSessionOnUnauthorizedApiError
+} from "@/lib/auth-session";
 import {
   readNexaHrPrefs,
   readSynapsePrefs,
@@ -60,7 +65,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [synapsePrefs, setSynapsePrefs] = useState<SynapsePrefsV1>(() => readSynapsePrefs());
   const [nexaPrefs, setNexaPrefs] = useState<NexaHrPrefsV1>(() => readNexaHrPrefs());
   const [isSuperuser, setIsSuperuser] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [canCompanySettings, setCanCompanySettings] = useState(false);
   const [companyDraft, setCompanyDraft] = useState<CompanySettingsDto | null>(null);
   const [customVarRows, setCustomVarRows] = useState<Array<{ key: string; value: string }>>([]);
   const [companyBusy, setCompanyBusy] = useState(false);
@@ -84,8 +89,9 @@ export default function SettingsPage(): React.JSX.Element {
       try {
         const me = await fetchCurrentUser(tokenValue);
         setIsSuperuser(Boolean(me.isSynapseSuperuser));
-        setIsAdmin(me.role === "admin");
-        if (me.role === "admin") {
+        const canCo = sessionCanNexaAdmin(me);
+        setCanCompanySettings(canCo);
+        if (canCo) {
           try {
             const cs = await fetchCompanySettings(tokenValue);
             setCompanyDraft(cs);
@@ -320,7 +326,7 @@ export default function SettingsPage(): React.JSX.Element {
         </div>
       </GlassCard>
 
-      {isAdmin && companyLoadFailed && !companyDraft ? (
+      {canCompanySettings && companyLoadFailed && !companyDraft ? (
         <GlassCard
           title="Variabili aziendali (solo admin)"
           description="Impossibile caricare le impostazioni dal server."
@@ -351,7 +357,7 @@ export default function SettingsPage(): React.JSX.Element {
         </GlassCard>
       ) : null}
 
-      {isAdmin && companyDraft ? (
+      {canCompanySettings && companyDraft ? (
         <GlassCard
           title="Variabili aziendali (solo admin)"
           description={`Tenant ${companyDraft.companyId}. Anno di riferimento, dati anagrafici leggeri e coppie nome/valore per parametri interni.`}

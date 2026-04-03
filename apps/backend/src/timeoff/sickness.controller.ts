@@ -15,6 +15,7 @@ import { IsDateString } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
 
 class SicknessDto {
   @IsDateString()
@@ -27,16 +28,34 @@ class SicknessDto {
 @Controller("sickness")
 @UseGuards(NexaPermissionGuard)
 export class SicknessController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Patch("events/:id")
-  @RequireNexaPermissions("nexa.sickness:write")
   async updateEvent(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Param("id") id: string,
     @Body() dto: SicknessDto
   ): Promise<unknown> {
-    return this.store.updateSicknessEvent(id, auth.userId, dto.fromDate, dto.toDate);
+    if (auth.role !== "admin") {
+      const sickW = await this.permissions.userHasAll(auth.userId, ["nexa.sickness:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      const ev = await this.store.getSickness(id);
+      if (ev.userId === auth.userId) {
+        if (!sickW) {
+          throw new ForbiddenException("Permessi insufficienti per modificare le proprie comunicazioni");
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, ev.userId))) {
+          throw new ForbiddenException(
+            "Puoi modificare solo le richieste dei dipendenti di cui sei responsabile (e solo in attesa)"
+          );
+        }
+      }
+    }
+    return this.store.updateSicknessEvent(id, auth.userId, dto.fromDate, dto.toDate, auth.role);
   }
 
   @Post("report")

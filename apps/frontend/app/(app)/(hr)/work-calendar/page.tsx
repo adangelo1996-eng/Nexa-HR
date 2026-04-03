@@ -300,10 +300,27 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
   };
 
-  const isOwnRow = modal && me && modal.row.id === me.id;
+  const isOwnRow = Boolean(modal && me && modal.row.id === me.id);
+  const canHrEditOtherCalendarRow = Boolean(
+    modal && me && modal.row.id !== me.id && (me.role === "admin" || me.role === "team_lead")
+  );
   const cellEventsModal = modal ? eventsForCell(events, modal.row.id, modal.day) : [];
   const serverSw = useMemo(() => deriveSwDayState(cellEventsModal), [cellEventsModal]);
   const swDisplayOn = swOptimistic !== null ? swOptimistic : serverSw.on;
+
+  const pendingLeaveInModal = cellEventsModal.find(
+    (e) =>
+      (e.kind === "leave" || e.kind === "rol") &&
+      String(e.meta?.status) === "pending" &&
+      typeof e.meta?.leaveId === "string"
+  );
+  const pendingSicknessInModal = cellEventsModal.find(
+    (e) =>
+      e.kind === "sickness" &&
+      String(e.meta?.status) === "pending" &&
+      typeof e.meta?.sicknessId === "string"
+  );
+  const pendingSwInModal = serverSw.status === "pending" && Boolean(serverSw.requestId);
 
   useEffect(() => {
     if (!modal) {
@@ -317,6 +334,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
     const t = getToken();
     if (!t || !modal) return;
     setError(null);
+    if (!isOwnRow && next) {
+      setError("Solo il dipendente può richiedere un nuovo smart working da qui.");
+      return;
+    }
     if (next) {
       if (serverSw.on) return;
       setSwOptimistic(true);
@@ -345,7 +366,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const submitLeave = async (): Promise<void> => {
     const t = getToken();
-    if (!t || !modal) return;
+    if (!t || !modal || !me) return;
+    if (!isOwnRow && !editingLeaveId) {
+      setError("Non puoi creare una nuova richiesta ferie per un altro utente da questo riquadro.");
+      return;
+    }
     setSubmitting("leave");
     setError(null);
     try {
@@ -373,7 +398,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const submitSick = async (): Promise<void> => {
     const t = getToken();
-    if (!t || !modal) return;
+    if (!t || !modal || !me) return;
+    if (!isOwnRow && !editingSicknessId) {
+      setError("Non puoi creare una nuova comunicazione malattia per un altro utente da qui.");
+      return;
+    }
     setSubmitting("sick");
     setError(null);
     try {
@@ -670,7 +699,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                {isOwnRow && modalStep !== "menu" ? (
+                {(isOwnRow || canHrEditOtherCalendarRow) && modalStep !== "menu" ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -720,9 +749,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
               )}
             </div>
 
-            {isOwnRow ? (
+            {isOwnRow || canHrEditOtherCalendarRow ? (
               <div className="mt-4 space-y-4 border-t border-[var(--prom-line)] pt-4">
-                {modalStep === "menu" ? (
+                {modalStep === "menu" && isOwnRow ? (
                   <div className="grid gap-2">
                     <button
                       type="button"
@@ -785,6 +814,63 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   </div>
                 ) : null}
 
+                {modalStep === "menu" && canHrEditOtherCalendarRow ? (
+                  <div className="grid gap-2">
+                    <p className="text-[11px] text-[var(--prom-muted)]">
+                      Responsabile / admin: puoi modificare solo richieste ancora in attesa di approvazione per
+                      questo giorno.
+                    </p>
+                    {pendingLeaveInModal ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingLeaveId(String(pendingLeaveInModal.meta?.leaveId));
+                          setLeaveStart(pendingLeaveInModal.start.slice(0, 10));
+                          setLeaveEnd((pendingLeaveInModal.end ?? pendingLeaveInModal.start).slice(0, 10));
+                          setLeaveKind(pendingLeaveInModal.kind === "rol" ? "rol" : "annual");
+                          setModalStep("leave");
+                        }}
+                        className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-left text-sm font-medium text-emerald-950 transition hover:bg-emerald-500/15 dark:text-emerald-100"
+                      >
+                        Modifica ferie / ROL in attesa
+                      </button>
+                    ) : null}
+                    {pendingSicknessInModal ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSicknessId(String(pendingSicknessInModal.meta?.sicknessId));
+                          setSickFrom(pendingSicknessInModal.start.slice(0, 10));
+                          setSickTo((pendingSicknessInModal.end ?? pendingSicknessInModal.start).slice(0, 10));
+                          setSickFile(null);
+                          setModalStep("sickness");
+                        }}
+                        className="rounded-xl border border-orange-500/35 bg-orange-500/10 px-4 py-3 text-left text-sm font-medium text-orange-950 transition hover:bg-orange-500/15 dark:text-orange-100"
+                      >
+                        Modifica malattia in attesa
+                      </button>
+                    ) : null}
+                    {pendingSwInModal ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSwNote("");
+                          setModalStep("smartworking");
+                        }}
+                        className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
+                      >
+                        Modifica smart working in attesa
+                      </button>
+                    ) : null}
+                    {!pendingLeaveInModal && !pendingSicknessInModal && !pendingSwInModal ? (
+                      <p className="text-xs text-[var(--prom-muted)]">
+                        Nessuna richiesta in attesa per questa data (solo le richieste approvate non sono
+                        modificabili da qui).
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {modalStep === "leave" ? (
                   <div>
                     <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
@@ -840,17 +926,34 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 {modalStep === "smartworking" ? (
                   <div className="space-y-3">
                     <p className="text-xs font-medium text-[var(--prom-text)]">Smart working</p>
-                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
-                      <span className="text-[11px] text-[var(--prom-text)]">Richiedi smart working per questo giorno</span>
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        aria-checked={swDisplayOn}
-                        checked={swDisplayOn}
-                        onChange={(e) => onSmartworkingSwitch(e.target.checked)}
-                        className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
-                      />
-                    </label>
+                    {isOwnRow ? (
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
+                        <span className="text-[11px] text-[var(--prom-text)]">Richiedi smart working per questo giorno</span>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-checked={swDisplayOn}
+                          checked={swDisplayOn}
+                          onChange={(e) => onSmartworkingSwitch(e.target.checked)}
+                          className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
+                        />
+                      </label>
+                    ) : (
+                      <p className="text-[11px] text-[var(--prom-muted)]">
+                        Per il dipendente: modifica solo richieste già in attesa (giorno e nota). Per annullare usa
+                        l&apos;interruttore sotto se la richiesta è ancora in sospeso.
+                      </p>
+                    )}
+                    {!isOwnRow && serverSw.status === "pending" && serverSw.requestId ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onSmartworkingSwitch(false)}
+                      >
+                        Annulla richiesta smart working in attesa
+                      </Button>
+                    ) : null}
                     {swDisplayOn && serverSw.status !== "pending" ? (
                       <p className="text-[10px] text-[var(--prom-muted)]">
                         Per questa data risulta già uno smart working (approvato o da presenze). Non è possibile inserirne un altro.

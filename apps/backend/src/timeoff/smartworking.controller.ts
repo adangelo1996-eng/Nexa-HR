@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Patch, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Patch, Param, Post, UseGuards } from "@nestjs/common";
 import { IsOptional, IsString, Matches } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
 
 class CreateSwDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
@@ -16,7 +17,10 @@ class CreateSwDto {
 @Controller("smartworking")
 @UseGuards(NexaPermissionGuard)
 export class SmartworkingController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Get("me")
   @RequireNexaPermissions("nexa.attendance:read")
@@ -37,24 +41,52 @@ export class SmartworkingController {
   }
 
   @Delete("request/:id")
-  @UseGuards(RoleGuard)
-  @RequireRole("employee")
-  @RequireNexaPermissions("nexa.attendance:write")
-  async cancelRequest(@CurrentAuth() auth: { userId: string }, @Param("id") id: string): Promise<{ ok: true }> {
-    await this.store.cancelSmartworkingRequest(auth.userId, id);
+  async cancelRequest(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
+    if (auth.role !== "admin") {
+      const row = await this.store.findSmartworkingRequestById(id);
+      if (!row) {
+        throw new NotFoundException();
+      }
+      const attendW = await this.permissions.userHasAll(auth.userId, ["nexa.attendance:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      if (row.userId === auth.userId) {
+        if (!attendW) {
+          throw new ForbiddenException();
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, row.userId))) {
+          throw new ForbiddenException();
+        }
+      }
+    }
+    await this.store.cancelSmartworkingRequest(auth.userId, id, auth.role);
     return { ok: true };
   }
 
   @Patch("request/:id")
-  @UseGuards(RoleGuard)
-  @RequireRole("employee")
-  @RequireNexaPermissions("nexa.attendance:write")
   async updateRequest(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Param("id") id: string,
     @Body() dto: CreateSwDto
   ): Promise<unknown> {
-    return this.store.updateSmartworkingRequest(auth.userId, id, dto.day, dto.note);
+    if (auth.role !== "admin") {
+      const row = await this.store.findSmartworkingRequestById(id);
+      if (!row) {
+        throw new NotFoundException();
+      }
+      const attendW = await this.permissions.userHasAll(auth.userId, ["nexa.attendance:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      if (row.userId === auth.userId) {
+        if (!attendW) {
+          throw new ForbiddenException();
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, row.userId))) {
+          throw new ForbiddenException();
+        }
+      }
+    }
+    return this.store.updateSmartworkingRequest(auth.userId, id, dto.day, dto.note, auth.role);
   }
 
   @Get("pending")
