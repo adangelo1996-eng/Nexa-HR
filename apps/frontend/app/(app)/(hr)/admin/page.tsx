@@ -30,6 +30,7 @@ import {
 } from "@/lib/auth-session";
 import { inputOptionalClass, inputRequiredClass, selectOptionalClass, selectRequiredClass } from "@/lib/form-field-styles";
 import { previewAutoSynapseEmail, synapseEmailDomain } from "@/lib/email-preview";
+import { displayUserCatalogRole } from "@/lib/role-display";
 
 const WIZARD_STEPS = 4 as const;
 
@@ -152,9 +153,7 @@ export default function AdminPage(): React.JSX.Element {
     }
   }
 
-  const selectedRoleName = selectedUser
-    ? roles.find((role) => role.id === selectedUser.roleId)?.name ?? selectedUser.role
-    : "";
+  const selectedRoleName = selectedUser ? displayUserCatalogRole(selectedUser, roles) : "";
 
   /** Il ruolo piattaforma `team_lead` non si deriva dal catalogo: solo la nomina team (CDC → Team). */
   function mapOrgRoleToAccess(roleName: string | undefined): CreateUserPayload["role"] | undefined {
@@ -384,8 +383,8 @@ export default function AdminPage(): React.JSX.Element {
                   <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-50">{item.fullName}</p>
                   <p className="truncate text-[11px] text-slate-600 dark:text-slate-400">{item.email}</p>
                 </div>
-                <span className="ml-2 rounded-full bg-slate-300/90 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-800 dark:bg-slate-800/80 dark:text-slate-200">
-                  {item.role}
+                <span className="ml-2 max-w-[11rem] shrink-0 truncate rounded-full bg-slate-300/90 px-2 py-0.5 text-[10px] font-medium tracking-tight text-slate-800 dark:bg-slate-800/80 dark:text-slate-200">
+                  {displayUserCatalogRole(item, roles)}
                 </span>
               </button>
             ))}
