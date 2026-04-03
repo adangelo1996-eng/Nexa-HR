@@ -496,6 +496,14 @@ export class HrDataStore {
     return users.filter((item) => item.managerId === managerId);
   }
 
+  /** Colleghi con stesso centro di costo e stessa company (ordinati per nome). */
+  async listUsersByCostCenter(companyId: string, costCenterId: string): Promise<User[]> {
+    const users = await this.listUsers();
+    return users
+      .filter((u) => u.companyId === companyId && u.costCenterId === costCenterId)
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+  }
+
   private normalizePart(value: string): string {
     return value
       .trim()
@@ -1409,6 +1417,14 @@ export class HrDataStore {
     } else {
       this.approvals.push(approval);
     }
+    const requester = await this.getUser(leave.userId);
+    const kindLabel = kind === "rol" ? "ROL" : "ferie";
+    await this.notifyEffectiveManagerOfRequest(
+      requester,
+      `Nuova richiesta ${kindLabel}`,
+      `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
+      "leave_request"
+    );
     return leave;
   }
 
@@ -1455,6 +1471,14 @@ export class HrDataStore {
     } else {
       this.approvals.push(approval);
     }
+    const requester = await this.getUser(leave.userId);
+    const kindLabel = (leave.kind ?? "annual") === "rol" ? "ROL" : "ferie";
+    await this.notifyEffectiveManagerOfRequest(
+      requester,
+      `Richiesta ${kindLabel} aggiornata`,
+      `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
+      "leave_request"
+    );
     return leave;
   }
 
@@ -1587,6 +1611,13 @@ export class HrDataStore {
     } else {
       this.approvals.push(approval);
     }
+    const requester = await this.getUser(sickness.userId);
+    await this.notifyEffectiveManagerOfRequest(
+      requester,
+      "Nuova comunicazione malattia",
+      `${requester.fullName}: ${sickness.fromDate} – ${sickness.toDate}`,
+      "sickness_request"
+    );
     return sickness;
   }
 
@@ -1765,6 +1796,25 @@ export class HrDataStore {
       (item) => item.managerId === managerId && now >= item.from && now <= item.to
     );
     return delegation?.delegateManagerId ?? managerId;
+  }
+
+  private async notifyEffectiveManagerOfRequest(
+    requester: User,
+    title: string,
+    body: string,
+    kind: string
+  ): Promise<void> {
+    if (!requester.managerId?.trim()) return;
+    const managerUserId = await this.getEffectiveManager(requester.managerId);
+    await this.insertUserNotification({
+      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      userId: managerUserId,
+      title,
+      body,
+      read: false,
+      createdAt: new Date().toISOString(),
+      kind
+    });
   }
 
   private ageFromBirthDate(birthDate?: string): number {
@@ -2367,6 +2417,28 @@ export class HrDataStore {
     }
     all.sort((a, b) => a.start.localeCompare(b.start));
     return all;
+  }
+
+  /** Calendario aggregato per il team CDC del richiedente (o solo sé senza CDC). */
+  async getCostCenterWorkCalendarForRequester(
+    requesterId: string,
+    from?: string,
+    to?: string
+  ): Promise<{ users: Array<{ id: string; fullName: string }>; events: CalendarEvent[] }> {
+    const me = await this.getUser(requesterId);
+    const cc = me.costCenterId?.trim();
+    if (!cc) {
+      const events = await this.getTeamWorkCalendar([me.id], from, to);
+      return { users: [{ id: me.id, fullName: me.fullName }], events };
+    }
+    const peers = await this.listUsersByCostCenter(me.companyId, cc);
+    const ids = peers.length > 0 ? peers.map((u) => u.id) : [me.id];
+    const events = await this.getTeamWorkCalendar(ids, from, to);
+    const users =
+      peers.length > 0
+        ? peers.map((u) => ({ id: u.id, fullName: u.fullName }))
+        : [{ id: me.id, fullName: me.fullName }];
+    return { users, events };
   }
 
   private async buildCalendarEventsForUser(
@@ -3095,6 +3167,12 @@ export class HrDataStore {
     } else {
       this.smartworkingRequests.push(row);
     }
+    await this.notifyEffectiveManagerOfRequest(
+      user,
+      "Richiesta smart working",
+      `${user.fullName}: ${day}${note?.trim() ? ` — ${note.trim()}` : ""}`,
+      "smartworking_request"
+    );
     return row;
   }
 

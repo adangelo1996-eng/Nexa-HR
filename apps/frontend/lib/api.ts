@@ -897,7 +897,7 @@ export async function fetchImportHistory(token: string): Promise<ImportHistoryIt
 
 export async function createLeavePlan(
   token: string,
-  payload: Pick<LeavePlan, "startDate" | "endDate">
+  payload: Pick<LeavePlan, "startDate" | "endDate"> & { kind?: "annual" | "rol" }
 ): Promise<LeavePlan> {
   const response = await fetch(buildApiUrl("/leave/plan"), {
     method: "POST",
@@ -1027,6 +1027,26 @@ export async function createSmartworkingRequest(
   return (await response.json()) as SmartworkingRequestDto;
 }
 
+export async function reportSickness(
+  token: string,
+  payload: { fromDate: string; toDate: string },
+  document?: File | null
+): Promise<unknown> {
+  const fd = new FormData();
+  fd.append("fromDate", payload.fromDate);
+  fd.append("toDate", payload.toDate);
+  if (document) fd.append("document", document);
+  const response = await fetch(buildApiUrl("/sickness/report"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.json();
+}
+
 export async function fetchSmartworkingPending(token: string): Promise<SmartworkingRequestDto[]> {
   const response = await fetch(buildApiUrl("/smartworking/pending"), {
     method: "GET",
@@ -1147,6 +1167,26 @@ export async function fetchUserCalendar(
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { events: CalendarEventDto[] };
   return body.events;
+}
+
+export interface TeamWorkCalendarRowUser {
+  id: string;
+  fullName: string;
+}
+
+export async function fetchMeTeamWorkCalendar(
+  token: string,
+  from?: string,
+  to?: string
+): Promise<{ users: TeamWorkCalendarRowUser[]; events: CalendarEventDto[] }> {
+  const q =
+    from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}` : "";
+  const response = await fetch(buildApiUrl(`/users/me/team-work-calendar${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { users: TeamWorkCalendarRowUser[]; events: CalendarEventDto[] };
 }
 
 export async function fetchHrWorkCalendar(

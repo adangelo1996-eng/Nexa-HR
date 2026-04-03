@@ -32,10 +32,10 @@ export function Dashboard({
         >
           <div className="mb-3 flex items-center justify-between">
             <card.icon className="h-5 w-5 text-synapse-gold dark:text-synapse-gold-bright" />
-            <span className="text-xs uppercase text-slate-500 dark:text-slate-400">Live</span>
+            <span className="text-xs uppercase text-[var(--prom-muted)]">Live</span>
           </div>
-          <h3 className="text-sm text-slate-700 dark:text-slate-300">{card.title}</h3>
-          <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">{card.value}</p>
+          <h3 className="text-sm text-[var(--prom-muted)]">{card.title}</h3>
+          <p className="mt-2 text-3xl font-semibold text-[var(--prom-text)]">{card.value}</p>
         </motion.article>
       ))}
     </section>

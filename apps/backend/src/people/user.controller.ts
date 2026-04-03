@@ -295,6 +295,15 @@ export class UserController {
     return { events: await this.store.getUserCalendar(auth.userId, from, to) };
   }
 
+  @Get("me/team-work-calendar")
+  async teamWorkCalendar(
+    @CurrentAuth() auth: AuthContext,
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ): Promise<Awaited<ReturnType<HrDataStore["getCostCenterWorkCalendarForRequester"]>>> {
+    return this.store.getCostCenterWorkCalendarForRequester(auth.userId, from, to);
+  }
+
   @Get("me/profile-photo-url")
   async myProfilePhotoUrl(
     @CurrentAuth() auth: AuthContext

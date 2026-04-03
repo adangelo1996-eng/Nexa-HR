@@ -40,6 +40,7 @@ const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 const NAV_MAIN: { href: Route; label: string; icon: typeof LayoutDashboard }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Presenze", icon: Clock3 },
+  { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
   { href: "/workflow", label: "Workflow", icon: Workflow },
   { href: "/expenses", label: "Spese", icon: Receipt },
   { href: "/settings", label: "Impostazioni", icon: Settings }
@@ -184,18 +185,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           >
             <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
             Budget personale
-          </Link>
-          <Link
-            href="/work-calendar"
-            onClick={() => setMobileOpen(false)}
-            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-              pathname.startsWith("/work-calendar")
-                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-            }`}
-          >
-            <Calendar className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-            Calendario lavoro
           </Link>
           {isAdminUi ? (
             <Link

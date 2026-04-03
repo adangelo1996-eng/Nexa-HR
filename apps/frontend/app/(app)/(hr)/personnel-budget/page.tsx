@@ -93,7 +93,7 @@ function SortableDeptSection({
     <section
       ref={setNodeRef}
       style={style}
-      className="mb-8 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)]"
+      className="mb-8 rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] shadow-[var(--card-shadow)] backdrop-blur-md"
     >
       <div className="flex items-center gap-2 border-b border-[var(--prom-line)] px-3 py-2">
         <button
