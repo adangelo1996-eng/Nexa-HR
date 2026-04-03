@@ -798,6 +798,40 @@ export default function WorkCalendarPage(): React.JSX.Element {
     );
   }, [me, hrYtdAnalyticsEvents, analyticsFilteredUserIds]);
 
+  const analyticsAggregateSampleExplanation = useMemo(() => {
+    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
+      return "";
+    }
+    if (!analyticsHasAnyDimensionFilter) {
+      return "Nessun filtro attivo: il campione aggregato include tutti i dipendenti presenti nel dataset HR caricato (dal 1° gennaio alla fine del mese selezionato).";
+    }
+    const parts: string[] = [];
+    if (analyticsFilterCc.length > 0) {
+      parts.push(`${analyticsFilterCc.length} centro/i di costo`);
+    }
+    if (analyticsFilterTeam.length > 0) {
+      parts.push(`${analyticsFilterTeam.length} team`);
+    }
+    if (analyticsFilterUserIds.length > 0) {
+      parts.push(`${analyticsFilterUserIds.length} dipendente/i per nome`);
+    }
+    if (analyticsFilterRoles.length > 0) {
+      parts.push(`${analyticsFilterRoles.length} ruolo/i Nexa`);
+    }
+    if (analyticsFilterManagerIds.length > 0) {
+      parts.push(`${analyticsFilterManagerIds.length} responsabile/i`);
+    }
+    return `Filtri attivi: ${parts.join(", ")}. I criteri tra colonne diverse si combinano in AND (una persona deve soddisfarli tutti).`;
+  }, [
+    me,
+    analyticsHasAnyDimensionFilter,
+    analyticsFilterCc.length,
+    analyticsFilterTeam.length,
+    analyticsFilterUserIds.length,
+    analyticsFilterRoles.length,
+    analyticsFilterManagerIds.length
+  ]);
+
   const statsAggMese = useMemo(() => {
     if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
       return null;
@@ -1390,7 +1424,20 @@ export default function WorkCalendarPage(): React.JSX.Element {
         <div>
           <h1 className="text-xl font-semibold text-[var(--prom-text)]">Calendario lavoro</h1>
           <p className="mt-1 text-xs text-[var(--prom-muted)]">
-            Griglia mensile — team per centro di costo (dipendenti) o team diretto (manager). Festività sulle colonne.
+            {!me ? (
+              "Calendario mensile, assenze e festività aziendali."
+            ) : sessionCanSeeApprovalsAndHrExtras(me) ? (
+              <>
+                Griglia mensile — team per centro di costo (dipendenti) o team diretto (manager). Festività sulle
+                colonne.
+              </>
+            ) : (
+              <>
+                Visualizzi te e i colleghi del tuo gruppo: stesso work team se impostato; se nel team sei da solo si
+                includono i riporti diretti del tuo responsabile; senza team si parte dai colleghi con lo stesso
+                manager e, se insufficienti, dal centro di costo. Le festività aziendali compaiono per tutti.
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1656,17 +1703,27 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   Aggregato (vista calendario)
                 </h3>
                 <p className="text-xs text-[var(--prom-muted)]">
-                  Conteggi giorni-persona sul campione filtrato dal 1° gennaio {year} al {ytdEndLabel}. Le richieste
-                  rifiutate non contano. Nei menu a tendina: tenere premuto Ctrl o Cmd e cliccare per selezioni multiple;
-                  se non selezioni nulla in un menu, quel criterio non applica alcun vincolo.
+                  Conteggi giorni-persona sul campione scelto sotto, dal 1° gennaio {year} al {ytdEndLabel}. Le richieste
+                  rifiutate non contano. In ogni elenco: tenere premuto Ctrl (Windows) o Cmd (Mac) e cliccare le voci per
+                  selezioni multiple; deseleziona tutte le righe di un elenco per non applicare quel criterio.
+                </p>
+                <p className="mt-2 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_55%,transparent)] px-3 py-2 text-xs text-[var(--prom-text)]">
+                  {analyticsAggregateSampleExplanation}
                 </p>
                 {hrYtdAnalyticsLoading ? (
                   <p className="mt-2 text-xs text-[var(--prom-muted)]">Caricamento dati aggregati…</p>
                 ) : null}
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <fieldset className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_35%,transparent)] p-4">
+                <legend className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                  Campione per l&apos;aggregato — ogni lista è opzionale
+                </legend>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <label className="block text-[11px] text-[var(--prom-muted)]">
                   Centro di costo
+                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
+                    Filtra per anagrafica CDC. Elenco vuoto = non restringere per centro di costo.
+                  </span>
                   <select
                     multiple
                     size={5}
@@ -1682,7 +1739,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   </select>
                 </label>
                 <label className="block text-[11px] text-[var(--prom-muted)]">
-                  Team
+                  Team (work team)
+                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
+                    Filtra per team operativo. Elenco vuoto = non restringere per team.
+                  </span>
                   <select
                     multiple
                     size={5}
@@ -1699,6 +1759,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 </label>
                 <label className="block text-[11px] text-[var(--prom-muted)]">
                   Dipendente (nome)
+                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
+                    Solo utenti già visibili nella vista calendario HR. Elenco vuoto = non restringere per persona.
+                  </span>
                   <select
                     multiple
                     size={5}
@@ -1717,6 +1780,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 </label>
                 <label className="block text-[11px] text-[var(--prom-muted)]">
                   Ruolo (Nexa)
+                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
+                    Filtra per ruolo applicativo. Elenco vuoto = non restringere per ruolo.
+                  </span>
                   <select
                     multiple
                     size={3}
@@ -1732,7 +1798,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   </select>
                 </label>
                 <label className="block text-[11px] text-[var(--prom-muted)] sm:col-span-2 xl:col-span-1">
-                  Responsabile (manager)
+                  Responsabile (manager diretto)
+                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
+                    Filtra per manager assegnato in anagrafica. Elenco vuoto = non restringere per responsabile.
+                  </span>
                   <select
                     multiple
                     size={5}
@@ -1747,7 +1816,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     ))}
                   </select>
                 </label>
-              </div>
+                </div>
+              </fieldset>
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -1760,11 +1830,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     setAnalyticsFilterManagerIds([]);
                   }}
                 >
-                  Azzera filtri aggregato
+                  Azzera tutti i filtri del campione
                 </button>
                 <span className="text-[11px] text-[var(--prom-muted)]">
-                  {analyticsFilteredUserIds.length} dipendenti nel campione
-                  {analyticsHasAnyDimensionFilter ? " · filtri attivi" : ""}
+                  {analyticsFilteredUserIds.length} dipendenti nel campione dopo i criteri
+                  {analyticsHasAnyDimensionFilter ? " (filtri applicati)" : " (nessun filtro)"}
                 </span>
               </div>
               {baseUsersForAnalytics.length === 0 ? (
@@ -1816,8 +1886,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
             </div>
           ) : (
             <p className="mb-4 text-xs text-[var(--prom-muted)]">
-              Riepilogo giorni (calendario) per il tuo utente: mese attuale e cumulativo dall&apos;inizio
-              dell&apos;anno fino alla fine del mese selezionato. Le richieste rifiutate non contano nei giorni.
+              Solo i tuoi dati: nessun filtro e nessun confronto con colleghi. Riepilogo giorni dal calendario per il
+              tuo utente — mese selezionato e cumulativo dal 1° gennaio alla fine del mese mostrato in testata. Le
+              richieste rifiutate non contano nei giorni.
             </p>
           )}
           <div className="grid gap-6 md:grid-cols-2">

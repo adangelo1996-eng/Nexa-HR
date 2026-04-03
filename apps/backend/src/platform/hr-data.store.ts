@@ -670,6 +670,62 @@ export class HrDataStore {
   }
 
   /**
+   * Colleghi mostrati nel calendario "vista dipendente": work team se valorizzato;
+   * se il team ha al massimo una persona si arricchisce con chi ha lo stesso responsabile diretto.
+   * Senza team: prima i riporti diretti dello stesso manager (se almeno due persone), altrimenti tutto il centro di costo.
+   */
+  private async mergeUsersWithSameManager(me: User, existing: User[]): Promise<User[]> {
+    const mid = me.managerId?.trim();
+    const base = existing.length > 0 ? existing : [me];
+    if (!mid) {
+      return base;
+    }
+    const all = await this.listUsers();
+    const idSet = new Set(base.map((p) => p.id));
+    const out = [...base];
+    for (const u of all) {
+      if (u.companyId !== me.companyId) continue;
+      if ((u.managerId?.trim() || "") !== mid) continue;
+      if (!idSet.has(u.id)) {
+        out.push(u);
+        idSet.add(u.id);
+      }
+    }
+    return out.sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+  }
+
+  private async resolveWorkCalendarPeerUsers(me: User): Promise<User[]> {
+    const companyId = me.companyId;
+    const teamId = me.teamId?.trim();
+    if (teamId) {
+      let peers = await this.listUsersByTeam(teamId);
+      if (peers.length <= 1) {
+        peers = await this.mergeUsersWithSameManager(me, peers);
+      }
+      return peers.length > 0 ? peers : [me];
+    }
+    const mid = me.managerId?.trim();
+    let peers: User[] = [];
+    if (mid) {
+      const all = await this.listUsers();
+      peers = all.filter(
+        (u) => u.companyId === companyId && (u.managerId?.trim() || "") === mid
+      );
+      peers.sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+    }
+    if (peers.length <= 1) {
+      const cc = me.costCenterId?.trim();
+      if (cc) {
+        peers = await this.listUsersByCostCenter(companyId, cc);
+      }
+    }
+    if (peers.length === 0) {
+      return [me];
+    }
+    return peers;
+  }
+
+  /**
    * Tabella `work_teams` assente o non esposta a PostgREST (es. migrazioni 016+ non applicate sul DB).
    * In quel caso si evita di bloccare il calendario HR: si tratta come elenco team vuoto.
    */
@@ -3387,36 +3443,17 @@ export class HrDataStore {
     return all;
   }
 
-  /** Calendario aggregato per il team operativo (work_team) o, in assenza, tutto il CDC. */
+  /** Calendario aggregato per la vista dipendente: peer da work team, estensione per manager o CDC (vedi resolver). */
   async getCostCenterWorkCalendarForRequester(
     requesterId: string,
     from?: string,
     to?: string
   ): Promise<{ users: Array<{ id: string; fullName: string }>; events: CalendarEvent[] }> {
     const me = await this.getUser(requesterId);
-    const tid = me.teamId?.trim();
-    if (tid) {
-      const peers = await this.listUsersByTeam(tid);
-      const ids = peers.length > 0 ? peers.map((u) => u.id) : [me.id];
-      const events = await this.getTeamWorkCalendar(ids, from, to);
-      const users =
-        peers.length > 0
-          ? peers.map((u) => ({ id: u.id, fullName: u.fullName }))
-          : [{ id: me.id, fullName: me.fullName }];
-      return { users, events };
-    }
-    const cc = me.costCenterId?.trim();
-    if (!cc) {
-      const events = await this.getTeamWorkCalendar([me.id], from, to);
-      return { users: [{ id: me.id, fullName: me.fullName }], events };
-    }
-    const peers = await this.listUsersByCostCenter(me.companyId, cc);
-    const ids = peers.length > 0 ? peers.map((u) => u.id) : [me.id];
+    const peers = await this.resolveWorkCalendarPeerUsers(me);
+    const ids = peers.map((u) => u.id);
     const events = await this.getTeamWorkCalendar(ids, from, to);
-    const users =
-      peers.length > 0
-        ? peers.map((u) => ({ id: u.id, fullName: u.fullName }))
-        : [{ id: me.id, fullName: me.fullName }];
+    const users = peers.map((u) => ({ id: u.id, fullName: u.fullName }));
     return { users, events };
   }
 
