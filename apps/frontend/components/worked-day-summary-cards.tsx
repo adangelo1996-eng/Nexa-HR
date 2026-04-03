@@ -24,6 +24,12 @@ function weekdayShortIt(isoDate: string): string {
   return WEEKDAY_SHORT_IT[d.getDay()] ?? "";
 }
 
+/** Mese abbreviato (es. «gen», «feb») coerente con la lingua UI. */
+function monthShortIt(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  return d.toLocaleDateString("it-IT", { month: "short" }).replace(/\.$/, "");
+}
+
 function modeLabel(row: WorkdaySummary, travelDates: Set<string>): string {
   const d = row.date.slice(0, 10);
   if (travelDates.has(d)) {
@@ -55,11 +61,18 @@ export function WorkedDaySummaryCards(props: {
         .sort((a, b) => b.date.localeCompare(a.date))
         .map((row) => {
           const worked = workedSecondsFromSummary(row);
-          const ot = Math.max(0, row.overtimeSeconds ?? 0);
-          const regular = Math.max(0, worked - ot);
-          const denom = regular + ot;
-          const regPct = denom > 0 ? (regular / denom) * 100 : 0;
-          const otPct = denom > 0 ? (ot / denom) * 100 : 0;
+          const otReported = Math.max(0, row.overtimeSeconds ?? 0);
+          /** Secondi fino all’obiettivo e oltre (allineati al backend: OT = max(0, worked − target)). */
+          const ordinarySec = Math.min(worked, targetSec);
+          const otSec = Math.max(0, worked - targetSec);
+          /**
+           * Barra: larghezza totale = max(obiettivo, lavorato) così sotto l’obiettivo la % è
+           * lavorato/obiettivo (es. 2h/8h = 25%); oltre obiettivo, parte chiara = fino al target, scura = OT.
+           */
+          const scaleSec = Math.max(targetSec, worked, 1);
+          const ordinaryPct = (ordinarySec / scaleSec) * 100;
+          const otPct = (otSec / scaleSec) * 100;
+          const pctVsTarget = targetSec > 0 ? Math.min(100, (worked / targetSec) * 100) : 0;
           const mode = modeLabel(row, props.travelDates);
           const dayNum = row.date.slice(8, 10);
           return (
@@ -77,6 +90,9 @@ export function WorkedDaySummaryCards(props: {
                 <span className="mt-0.5 text-xl font-bold tabular-nums leading-none text-slate-900 dark:text-slate-50">
                   {dayNum}
                 </span>
+                <span className="mt-0.5 text-[9px] font-medium capitalize leading-none text-slate-500 dark:text-slate-400">
+                  {monthShortIt(row.date)}
+                </span>
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -87,17 +103,17 @@ export function WorkedDaySummaryCards(props: {
                 </div>
                 <div
                   className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/90 dark:bg-slate-700/90"
-                  title={`${formatSecondsHm(regular)} lavoro entro obiettivo · ${ot > 0 ? formatSecondsHm(ot) : "0"} straordinario`}
+                  title={`${pctVsTarget.toFixed(0)}% dell’obiettivo giornaliero · ${formatSecondsHm(ordinarySec)} fino al target · ${otSec > 0 ? `${formatSecondsHm(otSec)} straord.` : "nessuno straord."}`}
                 >
-                  {regular > 0 ? (
+                  {ordinarySec > 0 ? (
                     <div
-                      className="h-full bg-[color-mix(in_srgb,var(--prom-gold)_82%,white)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] dark:bg-[color-mix(in_srgb,var(--prom-gold)_58%,#1a1a1a)]"
-                      style={{ width: `${regPct}%` }}
+                      className="h-full shrink-0 bg-[color-mix(in_srgb,var(--prom-gold)_82%,white)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] dark:bg-[color-mix(in_srgb,var(--prom-gold)_58%,#1a1a1a)]"
+                      style={{ width: `${ordinaryPct}%` }}
                     />
                   ) : null}
-                  {ot > 0 ? (
+                  {otSec > 0 ? (
                     <div
-                      className="h-full bg-[color-mix(in_srgb,var(--prom-gold)_38%,#0f172a)] dark:bg-[color-mix(in_srgb,var(--prom-gold)_32%,#000)]"
+                      className="h-full shrink-0 bg-[color-mix(in_srgb,var(--prom-gold)_38%,#0f172a)] dark:bg-[color-mix(in_srgb,var(--prom-gold)_32%,#000)]"
                       style={{ width: `${otPct}%` }}
                     />
                   ) : null}
@@ -109,7 +125,7 @@ export function WorkedDaySummaryCards(props: {
                   <span>
                     Straord.{" "}
                     <strong className="text-slate-800 dark:text-slate-200">
-                      {ot > 0 ? formatSecondsHm(ot) : "—"}
+                      {otReported > 0 ? formatSecondsHm(otReported) : "—"}
                     </strong>
                   </span>
                 </div>

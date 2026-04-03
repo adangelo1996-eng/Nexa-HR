@@ -21,6 +21,7 @@ import {
   fetchUserCalendar,
   fetchUsers,
   reportSickness,
+  setAttendanceWorkMode,
   updateLeavePlan,
   updateSicknessEvent,
   updateSmartworkingRequest,
@@ -1030,6 +1031,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
   );
   const pendingSwInModal = serverSwCell.status === "pending" && Boolean(serverSwCell.requestId);
   const menuDayHasTravel = hasActiveNonRejectedTravel(cellEventsModal);
+  const menuDayHasOffice = cellEventsModal.some((e) => e.kind === "office");
   const serverTravelCell = useMemo(() => deriveTravelDayState(cellEventsModal), [cellEventsModal]);
   const serverTravelForm = useMemo(
     () => (modal ? deriveTravelFormState(events, modal.row.id, travelPendingDay || modal.day) : { on: false }),
@@ -1408,6 +1410,23 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore creazione smart working");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const applyOfficeForSelectedDay = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal || !isOwnRow) return;
+    if (menuDayHasOffice || menuDayHasLeave || menuDayHasSickness || menuDayHasTravel) return;
+    setSubmitting("office");
+    setError(null);
+    try {
+      await setAttendanceWorkMode(t, modal.day.slice(0, 10), "office");
+      closeModal();
+      await load({ silent: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Impossibile impostare sede");
     } finally {
       setSubmitting(null);
     }
@@ -2006,6 +2025,16 @@ export default function WorkCalendarPage(): React.JSX.Element {
               <div className="mt-4 space-y-4 border-t border-[var(--prom-line)] pt-4">
                 {modalStep === "menu" && isOwnRow ? (
                   <div className="grid gap-2">
+                    {!menuDayHasOffice && !menuDayHasLeave && !menuDayHasSickness && !menuDayHasTravel ? (
+                      <button
+                        type="button"
+                        onClick={() => void applyOfficeForSelectedDay()}
+                        disabled={submitting === "office"}
+                        className="rounded-xl border border-[color-mix(in_srgb,var(--prom-gold)_45%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] px-4 py-3 text-left text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] disabled:opacity-60"
+                      >
+                        {submitting === "office" ? "Salvataggio…" : "Sede"}
+                      </button>
+                    ) : null}
                     {!menuDayHasSw ? (
                       <button
                         type="button"

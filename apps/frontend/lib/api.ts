@@ -628,6 +628,23 @@ export async function clock(token: string, type: "clock_in" | "clock_out", extra
   return (await response.json()) as TimeEntry;
 }
 
+/** Imposta modalità giornata (sede / smart working) sui riepiloghi presenza — senza flusso di approvazione. */
+export async function setAttendanceWorkMode(
+  token: string,
+  date: string,
+  mode: "office" | "smartworking"
+): Promise<unknown> {
+  const response = await fetch(buildApiUrl("/attendance/mode"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ date: date.slice(0, 10), mode })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.json();
+}
+
 export type FetchAttendanceEntriesOpts = { date?: string; userId?: string; month?: string };
 
 export async function fetchAttendanceEntries(

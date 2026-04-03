@@ -21,7 +21,6 @@ import { HrDataStore } from "../platform/hr-data.store";
 import { isSwissPayrollFeatureEnabled } from "../platform/nexa-swiss-payroll-flag";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
-import { AttendanceTeamService } from "../workforce/attendance-team.service";
 
 class SimulateHireDto {
   @IsNumber()
@@ -70,11 +69,10 @@ class SimulateHireDto {
 export class PayrollController {
   constructor(
     private readonly store: HrDataStore,
-    private readonly permissions: PermissionsService,
-    private readonly attendanceTeam: AttendanceTeamService
+    private readonly permissions: PermissionsService
   ) {}
 
-  /** Calcolo/simulazione cedolino: solo superuser, console admin o centro HR (stesso criterio di `canAccessPayrollArea`). */
+  /** Calcolo/simulazione cedolino: solo superuser o console admin (allineato a `canAccessPayrollArea` su `/users/me`). */
   private async assertPayrollCalcAccess(auth: { userId: string; role: AuthRole }): Promise<void> {
     if (auth.role === "superuser") {
       return;
@@ -84,10 +82,7 @@ export class PayrollController {
     if (canAdmin) {
       return;
     }
-    if (await this.attendanceTeam.canManageTeamAttendance(auth.userId)) {
-      return;
-    }
-    throw new ForbiddenException("Calcolo cedolino riservato ad amministratori o HR");
+    throw new ForbiddenException("Calcolo cedolino riservato agli amministratori");
   }
 
   private async assertSameCompanyUnlessSuperuser(

@@ -65,6 +65,22 @@ function formatNum(n: number): string {
   return Number.isFinite(n) ? n.toFixed(2) : "—";
 }
 
+function pickBudgetInputStr(
+  b: Partial<PersonnelBudgetMoney>,
+  sug: Partial<PersonnelBudgetMoney> | undefined,
+  key: keyof PersonnelBudgetMoney
+): string {
+  const v = b[key];
+  if (v != null && Number.isFinite(Number(v))) {
+    return String(v);
+  }
+  const sv = sug?.[key];
+  if (sv != null && Number.isFinite(Number(sv))) {
+    return String(sv);
+  }
+  return "";
+}
+
 function budgetRowTotal(b: Partial<PersonnelBudgetMoney> | undefined): number {
   if (!b) return 0;
   return (
@@ -161,13 +177,14 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       for (const d of sorted) {
         for (const r of d.rows) {
           const b = r.budget;
+          const sug = r.suggestedBudget;
           drafts[r.userId] = {
-            ral: b.ral != null ? String(b.ral) : "",
-            overtime: b.overtime != null ? String(b.overtime) : "",
-            travel: b.travel != null ? String(b.travel) : "",
-            inps: b.inps != null ? String(b.inps) : "",
-            inail: b.inail != null ? String(b.inail) : "",
-            tfr: b.tfr != null ? String(b.tfr) : ""
+            ral: pickBudgetInputStr(b, sug, "ral"),
+            overtime: pickBudgetInputStr(b, sug, "overtime"),
+            travel: pickBudgetInputStr(b, sug, "travel"),
+            inps: pickBudgetInputStr(b, sug, "inps"),
+            inail: pickBudgetInputStr(b, sug, "inail"),
+            tfr: pickBudgetInputStr(b, sug, "tfr")
           };
         }
       }
@@ -329,8 +346,8 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
             ? "importi in EUR per profilo IT, CHF per profilo CH dove applicabile."
             : "importi in EUR (payroll Svizzera disattivato: consuntivo e stime da motore IT). "}
           Colonne: <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo da cedolino /
-          competenze. Per dipendenti <strong>IT</strong>, la riga «Suggerito» sotto il nome propone INPS datore, INAIL
-          (permille) e TFR da RAL base e da settore/rischio in anagrafica (verificare sempre con il consulente).
+          competenze. Per dipendenti <strong>IT</strong>, le celle budget INPS, INAIL e TFR si precompilano con le
+          stime da anagrafica quando il budget non è ancora valorizzato (verificare sempre con il consulente).
         </p>
       ) : null}
 
@@ -398,13 +415,6 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
                       <tr key={row.userId}>
                         <td className={td}>
                           <span className="font-medium">{row.fullName}</span>
-                          {row.suggestedBudget ? (
-                            <p className="mt-0.5 max-w-[220px] text-[10px] leading-tight text-[var(--prom-muted)]">
-                              Suggerito IT: INPS {formatNum(row.suggestedBudget.inps ?? 0)} · INAIL{" "}
-                              {formatNum(row.suggestedBudget.inail ?? 0)} · TFR{" "}
-                              {formatNum(row.suggestedBudget.tfr ?? 0)}
-                            </p>
-                          ) : null}
                         </td>
                         <td className={td}>
                           <input

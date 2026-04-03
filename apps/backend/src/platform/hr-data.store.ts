@@ -662,6 +662,33 @@ export class HrDataStore {
   }
 
   async listUsersByTeam(teamId: string): Promise<User[]> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!
+        .from("users")
+        .select("*")
+        .eq("teamId", teamId)
+        .order("fullName", { ascending: true });
+      if (error) {
+        throw new BadRequestException(`Lettura team utenti fallita: ${error.message}`);
+      }
+      let rows = ((data as User[]) ?? []).map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
+      try {
+        const team = await this.getWorkTeam(teamId);
+        const lid = team.leadUserId?.trim();
+        if (lid && !rows.some((u) => u.id === lid)) {
+          const lead = await this.getUser(lid);
+          const sameCc = (lead.costCenterId?.trim() ?? "") === (team.costCenterId?.trim() ?? "");
+          if (sameCc && (rows.length === 0 || lead.companyId === rows[0]?.companyId)) {
+            rows = [...rows, { ...lead, role: coercePlatformRole(lead.role) }].sort((a, b) =>
+              a.fullName.localeCompare(b.fullName, "it")
+            );
+          }
+        }
+      } catch {
+        // team row assente: resta solo l’elenco per teamId
+      }
+      return rows;
+    }
     const users = await this.listUsers();
     return users
       .filter((u) => u.teamId === teamId)
@@ -695,7 +722,14 @@ export class HrDataStore {
 
   private async resolveWorkCalendarPeerUsers(me: User): Promise<User[]> {
     const companyId = me.companyId;
-    const teamId = me.teamId?.trim();
+    let teamId = me.teamId?.trim();
+    if (!teamId && me.costCenterId) {
+      const teams = await this.listWorkTeamsByCostCenter(me.costCenterId);
+      const asLead = teams.find((t) => (t.leadUserId?.trim() ?? "") === me.id);
+      if (asLead) {
+        teamId = asLead.id;
+      }
+    }
     if (teamId) {
       let peers = await this.listUsersByTeam(teamId);
       if (peers.length <= 1) {
@@ -1932,11 +1966,38 @@ export class HrDataStore {
     this.workdaySummaries.push(summary);
   }
 
+  /**
+   * Passando a sede, si allineano le richieste SW sullo stesso giorno (in attesa o approvate future),
+   * così il calendario non mostra SW e sede in conflitto.
+   */
+  private async removeSmartworkingRequestsWhenSwitchingToOffice(userId: string, date: string): Promise<void> {
+    const d = date.slice(0, 10);
+    const today = this.calendarDateTodayIsoRome();
+    const actor = await this.getUser(userId);
+    const actorRole = actor.role as AuthRole;
+    const reqs = await this.listMySmartworking(userId);
+    for (const r of reqs) {
+      const day = r.day.slice(0, 10);
+      if (day !== d) continue;
+      if (r.status === "rejected") continue;
+      if (r.status === "pending") {
+        await this.cancelSmartworkingRequest(userId, r.id, actorRole);
+        continue;
+      }
+      if (r.status === "approved" && day > today) {
+        await this.cancelSmartworkingRequest(userId, r.id, actorRole);
+      }
+    }
+  }
+
   async upsertWorkMode(
     userId: string,
     date: string,
     mode: "office" | "smartworking"
   ): Promise<WorkdaySummary> {
+    if (mode === "office") {
+      await this.removeSmartworkingRequestsWhenSwitchingToOffice(userId, date);
+    }
     if (this.useDb) {
       const list = await this.listWorkdaySummary(userId);
       const summary = list.find((item) => item.date === date);
@@ -3585,6 +3646,9 @@ export class HrDataStore {
     const summarySwDays = new Set(
       summaries.filter((ws) => ws.mode === "smartworking").map((ws) => ws.date)
     );
+    const officeDaysFromSummary = new Set(
+      summaries.filter((ws) => ws.mode === "office").map((ws) => ws.date)
+    );
     const swRequests = await this.listMySmartworking(userId);
     const pendingSwDays = new Set(swRequests.filter((r) => r.status === "pending").map((r) => r.day));
     for (const r of swRequests) {
@@ -3605,6 +3669,7 @@ export class HrDataStore {
         continue;
       }
       if (r.status === "approved" && summarySwDays.has(r.day)) continue;
+      if (r.status === "approved" && officeDaysFromSummary.has(r.day.slice(0, 10))) continue;
       const pending = r.status === "pending";
       events.push({
         id: `cal-swr-${r.id}`,

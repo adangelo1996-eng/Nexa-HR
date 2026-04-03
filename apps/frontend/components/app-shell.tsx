@@ -9,6 +9,7 @@ import {
   Calendar,
   Clock3,
   ChevronDown,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -48,6 +49,7 @@ const NAV_MAIN: { href: Route; label: string; icon: typeof LayoutDashboard }[] =
   { href: "/organigramma", label: "Organigramma", icon: Network },
   { href: "/workflow", label: "Workflow", icon: Workflow },
   { href: "/expenses", label: "Spese", icon: Receipt },
+  { href: "/payslips", label: "Cedolini", icon: FileText },
   { href: "/settings", label: "Impostazioni", icon: Settings }
 ];
 

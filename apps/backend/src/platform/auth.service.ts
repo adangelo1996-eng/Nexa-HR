@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { sign } from "jsonwebtoken";
 import type { AuthRole } from "./auth";
-import { AttendanceTeamService } from "../workforce/attendance-team.service";
 import { HrDataStore } from "./hr-data.store";
 import { PermissionsService } from "./permissions.service";
 import crypto from "node:crypto";
@@ -30,8 +29,7 @@ interface SynapseSsoPayload {
 export class AuthService {
   constructor(
     private readonly store: HrDataStore,
-    private readonly permissions: PermissionsService,
-    private readonly attendanceTeam: AttendanceTeamService
+    private readonly permissions: PermissionsService
   ) {}
 
   async login(email: string, password: string): Promise<{ token: string; user: LoginUser }> {
@@ -58,9 +56,7 @@ export class AuthService {
     const tenantId = user.companyId || "synapse-default";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
-    const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(user.id);
-    const canAccessPayrollArea =
-      user.role === "superuser" || canNexaAdmin || canManageTeamAttendance;
+    const canAccessPayrollArea = user.role === "superuser" || canNexaAdmin;
     const canAccessPersonnelBudgetArea =
       user.role === "superuser" ||
       canNexaAdmin ||
@@ -101,9 +97,7 @@ export class AuthService {
     const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
-    const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(user.id);
-    const canAccessPayrollArea =
-      user.role === "superuser" || canNexaAdmin || canManageTeamAttendance;
+    const canAccessPayrollArea = user.role === "superuser" || canNexaAdmin;
     const canAccessPersonnelBudgetArea =
       user.role === "superuser" ||
       canNexaAdmin ||
