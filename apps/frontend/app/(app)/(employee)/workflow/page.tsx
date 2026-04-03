@@ -132,7 +132,13 @@ export default function WorkflowPage(): React.JSX.Element {
             <article key={item.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {item.type === "leave" ? "Richiesta ferie" : "Richiesta malattia"}
+                  {item.type === "leave"
+                    ? item.leaveKind === "rol"
+                      ? "Richiesta ROL"
+                      : "Richiesta ferie"
+                    : item.type === "sickness"
+                      ? "Comunicazione malattia"
+                      : "Smart working"}
                 </p>
                 <span
                   className={`rounded px-2 py-1 text-xs ${
@@ -146,7 +152,15 @@ export default function WorkflowPage(): React.JSX.Element {
                   {item.status}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Richiedente: {item.requestedBy}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                Richiedente: {item.requesterName ?? item.requestedBy}
+              </p>
+              {item.startDate ? (
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Periodo: {item.startDate}
+                  {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
+                </p>
+              ) : null}
               <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</p>
               {item.status === "pending" ? (
                 <div className="mt-3 flex gap-2">

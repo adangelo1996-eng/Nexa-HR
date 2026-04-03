@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
@@ -66,6 +66,26 @@ export class LeaveController {
       }
     }
     return this.store.updateLeavePlan(leaveId, dto.startDate, dto.endDate, auth.userId, dto.kind, auth.role);
+  }
+
+  @Delete("plan/:leaveId")
+  async removePlan(@CurrentAuth() auth: AuthContext, @Param("leaveId") leaveId: string): Promise<{ ok: true }> {
+    if (auth.role !== "admin") {
+      const leavesW = await this.permissions.userHasAll(auth.userId, ["nexa.leaves:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      const leave = await this.store.getLeave(leaveId);
+      if (leave.userId === auth.userId) {
+        if (!leavesW) {
+          throw new ForbiddenException("Permessi insufficienti");
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, leave.userId))) {
+          throw new ForbiddenException("Operazione non consentita");
+        }
+      }
+    }
+    await this.store.cancelPendingLeavePlan(leaveId, auth.userId, auth.role);
+    return { ok: true };
   }
 
   @Patch("approve/:leaveId")

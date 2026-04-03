@@ -112,8 +112,24 @@ export function HeaderNotifications(): React.JSX.Element {
                     n.read ? "opacity-70" : ""
                   }`}
                 >
-                  <p className="font-medium text-[var(--prom-text)]">{n.title}</p>
-                  {n.body ? <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{n.body}</p> : null}
+                  {n.actionPath ? (
+                    <a
+                      href={n.actionPath}
+                      className="block text-left hover:opacity-90"
+                      onClick={() => {
+                        setOpen(false);
+                        if (!n.read) void onRead(n.id);
+                      }}
+                    >
+                      <p className="font-medium text-[var(--prom-text)]">{n.title}</p>
+                      {n.body ? <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{n.body}</p> : null}
+                    </a>
+                  ) : (
+                    <>
+                      <p className="font-medium text-[var(--prom-text)]">{n.title}</p>
+                      {n.body ? <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{n.body}</p> : null}
+                    </>
+                  )}
                   {!n.read ? (
                     <button
                       type="button"

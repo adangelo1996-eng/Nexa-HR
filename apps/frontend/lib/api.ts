@@ -208,7 +208,7 @@ export interface LeaveBalance {
 export interface ApprovalItem {
   id: string;
   entityId: string;
-  type: "leave" | "sickness";
+  type: "leave" | "sickness" | "smartworking";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -216,6 +216,15 @@ export interface ApprovalItem {
   startDate?: string;
   endDate?: string;
   requesterName?: string;
+  requesterPhotoUrl?: string | null;
+  leaveKind?: "annual" | "rol";
+  residualAnnualLeaveDays?: number;
+  requestedCalendarDays?: number;
+  smartworkingWeekUsed?: number;
+  smartworkingWeekQuota?: number;
+  smartworkingMonthUsed?: number;
+  smartworkingMonthQuota?: number;
+  note?: string | null;
 }
 
 export interface CreateUserPayload {
@@ -1045,6 +1054,16 @@ export async function updateLeavePlan(
   return (await response.json()) as LeavePlan;
 }
 
+export async function cancelPendingLeavePlan(token: string, leaveId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/leave/plan/${encodeURIComponent(leaveId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+}
+
 export async function fetchLeavePlans(token: string): Promise<LeavePlan[]> {
   const response = await fetch(buildApiUrl("/leave/plan"), {
     method: "GET",
@@ -1222,6 +1241,16 @@ export async function updateSicknessEvent(
   return response.json();
 }
 
+export async function cancelPendingSicknessEvent(token: string, sicknessId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/sickness/events/${encodeURIComponent(sicknessId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+}
+
 export async function fetchSmartworkingPending(token: string): Promise<SmartworkingRequestDto[]> {
   const response = await fetch(buildApiUrl("/smartworking/pending"), {
     method: "GET",
@@ -1313,6 +1342,8 @@ export interface UserNotificationDto {
   read: boolean;
   createdAt: string;
   kind?: string;
+  /** Path in-app (es. /workflow/approvals?approvalId=…). */
+  actionPath?: string;
 }
 
 export interface ExpenseClaimDto {

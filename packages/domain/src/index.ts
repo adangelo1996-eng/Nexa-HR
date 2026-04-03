@@ -154,7 +154,7 @@ export interface Payslip {
 export interface ApprovalView {
   id: string;
   entityId: string;
-  type: "leave" | "sickness";
+  type: "leave" | "sickness" | "smartworking";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -162,6 +162,20 @@ export interface ApprovalView {
   startDate?: string;
   endDate?: string;
   requesterName?: string;
+  /** URL firmata foto profilo (se consentita al richiedente lista). */
+  requesterPhotoUrl?: string | null;
+  leaveKind?: "annual" | "rol";
+  /** Saldo ferie annuali residuo al momento della consultazione (solo ferie annue). */
+  residualAnnualLeaveDays?: number;
+  /** Giorni calendario richiesti (ferie/ROL/malattia). */
+  requestedCalendarDays?: number;
+  /** Smart working: giorni già occupati nella settimana ISO del giorno richiesto. */
+  smartworkingWeekUsed?: number;
+  smartworkingWeekQuota?: number;
+  /** Smart working: quota mensile (come da policy aziendale). */
+  smartworkingMonthUsed?: number;
+  smartworkingMonthQuota?: number;
+  note?: string | null;
 }
 
 export interface SwissTaxProfile {
@@ -245,6 +259,8 @@ export interface UserNotification {
   read: boolean;
   createdAt: string;
   kind?: string;
+  /** Path in-app (es. /workflow/approvals?approvalId=...). */
+  actionPath?: string;
 }
 
 export interface CalendarEvent {

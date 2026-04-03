@@ -40,7 +40,7 @@ import type { AuthRole } from "./auth";
 interface ApprovalRecord {
   id: string;
   entityId: string;
-  type: "leave" | "sickness";
+  type: "leave" | "sickness" | "smartworking";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -94,6 +94,8 @@ export type PersonnelBudgetSnapshot = {
 };
 
 const SMARTWORKING_MONTHLY_QUOTA = 8;
+/** Massimo giorni smart working richiedibili nella stessa settimana (lun–dom UTC) per dipendente. */
+const SMARTWORKING_WEEKLY_QUOTA = 2;
 
 /** Opzioni scrittura utente: `skipTeamLeadLinkValidation` solo per chiamate admin console (API Nest). */
 interface UserWriteOptions {
@@ -1676,7 +1678,7 @@ export class HrDataStore {
       this.leavePlans.push(leave);
     }
     const approval = {
-      id: `ap-${Date.now()}`,
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       entityId: leave.id,
       type: "leave",
       requestedBy: leave.userId,
@@ -1694,7 +1696,8 @@ export class HrDataStore {
       requester,
       `Nuova richiesta ${kindLabel}`,
       `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
-      "leave_request"
+      "leave_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(approval.id)}`
     );
     return leave;
   }
@@ -1742,7 +1745,7 @@ export class HrDataStore {
       this.approvals.push(...keep);
     }
     const approval = {
-      id: `ap-${Date.now()}`,
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       entityId: leave.id,
       type: "leave",
       requestedBy: leave.userId,
@@ -1760,7 +1763,8 @@ export class HrDataStore {
       requester,
       `Richiesta ${kindLabel} aggiornata`,
       `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
-      "leave_request"
+      "leave_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(approval.id)}`
     );
     return leave;
   }
@@ -1862,6 +1866,50 @@ export class HrDataStore {
     return this.leavePlans.filter((item) => item.userId === userId);
   }
 
+  async cancelPendingLeavePlan(leaveId: string, actorUserId: string, actorRole: AuthRole): Promise<void> {
+    const leave = await this.getLeave(leaveId);
+    await this.assertCanActOnBehalfOfUser(actorUserId, actorRole, leave.userId);
+    if (leave.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa possono essere annullate");
+    }
+    if (this.useDb) {
+      await this.supabase!.from("approvals").delete().eq("entityId", leaveId).eq("type", "leave");
+      const { error } = await this.supabase!.from("leave_plans").delete().eq("id", leaveId);
+      if (error) {
+        throw new InternalServerErrorException(`Annullamento ferie fallito: ${error.message}`);
+      }
+    } else {
+      const li = this.leavePlans.findIndex((l) => l.id === leaveId);
+      if (li >= 0) this.leavePlans.splice(li, 1);
+      for (let i = this.approvals.length - 1; i >= 0; i--) {
+        const a = this.approvals[i];
+        if (a.entityId === leaveId && a.type === "leave") this.approvals.splice(i, 1);
+      }
+    }
+  }
+
+  async cancelPendingSicknessEvent(sicknessId: string, actorUserId: string, actorRole: AuthRole): Promise<void> {
+    const sickness = await this.getSickness(sicknessId);
+    await this.assertCanActOnBehalfOfUser(actorUserId, actorRole, sickness.userId);
+    if (sickness.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa possono essere annullate");
+    }
+    if (this.useDb) {
+      await this.supabase!.from("approvals").delete().eq("entityId", sicknessId).eq("type", "sickness");
+      const { error } = await this.supabase!.from("sickness_events").delete().eq("id", sicknessId);
+      if (error) {
+        throw new InternalServerErrorException(`Annullamento malattia fallito: ${error.message}`);
+      }
+    } else {
+      const si = this.sicknessEvents.findIndex((s) => s.id === sicknessId);
+      if (si >= 0) this.sicknessEvents.splice(si, 1);
+      for (let i = this.approvals.length - 1; i >= 0; i--) {
+        const a = this.approvals[i];
+        if (a.entityId === sicknessId && a.type === "sickness") this.approvals.splice(i, 1);
+      }
+    }
+  }
+
   async getLeave(leaveId: string): Promise<LeavePlan> {
     let leave: LeavePlan | undefined;
     if (this.useDb) {
@@ -1882,7 +1930,7 @@ export class HrDataStore {
       this.sicknessEvents.push(sickness);
     }
     const approval = {
-      id: `ap-${Date.now()}`,
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       entityId: sickness.id,
       type: "sickness",
       requestedBy: sickness.userId,
@@ -1899,7 +1947,8 @@ export class HrDataStore {
       requester,
       "Nuova comunicazione malattia",
       `${requester.fullName}: ${sickness.fromDate} – ${sickness.toDate}`,
-      "sickness_request"
+      "sickness_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(approval.id)}`
     );
     return sickness;
   }
@@ -1932,7 +1981,7 @@ export class HrDataStore {
     }
     const at = new Date().toISOString();
     const approval = {
-      id: `ap-${Date.now()}`,
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       entityId: sickness.id,
       type: "sickness",
       requestedBy: sickness.userId,
@@ -1949,7 +1998,8 @@ export class HrDataStore {
       requester,
       "Comunicazione malattia aggiornata",
       `${requester.fullName}: ${sickness.fromDate} – ${sickness.toDate}`,
-      "sickness_request"
+      "sickness_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(approval.id)}`
     );
     return sickness;
   }
@@ -2132,7 +2182,13 @@ export class HrDataStore {
   }
 
   /** Notifica il responsabile diretto (effettivo con deleghe) e tutti gli utenti con ruolo admin. */
-  private async notifyApproversOfRequest(requester: User, title: string, body: string, kind: string): Promise<void> {
+  private async notifyApproversOfRequest(
+    requester: User,
+    title: string,
+    body: string,
+    kind: string,
+    actionPath?: string
+  ): Promise<void> {
     const createdAt = new Date().toISOString();
     const recipientIds = new Set<string>();
     if (requester.managerId?.trim()) {
@@ -2153,7 +2209,8 @@ export class HrDataStore {
         body,
         read: false,
         createdAt,
-        kind
+        kind,
+        actionPath
       });
     }
   }
@@ -2387,10 +2444,12 @@ export class HrDataStore {
 
     const leavesById = new Map<string, LeavePlan>();
     const sicknessById = new Map<string, SicknessEvent>();
+    const swById = new Map<string, SmartworkingRequestRow>();
 
     if (this.useDb) {
       const leaveIds = approvals.filter((item) => item.type === "leave").map((item) => item.entityId);
       const sicknessIds = approvals.filter((item) => item.type === "sickness").map((item) => item.entityId);
+      const swIds = approvals.filter((item) => item.type === "smartworking").map((item) => item.entityId);
 
       if (leaveIds.length > 0) {
         const { data } = await this.supabase!.from("leave_plans").select("*").in("id", leaveIds);
@@ -2405,12 +2464,25 @@ export class HrDataStore {
           sicknessById.set(row.id, row);
         }
       }
+
+      if (swIds.length > 0) {
+        const { data } = await this.supabase!.from("smartworking_requests").select("*").in("id", swIds);
+        for (const row of (data ?? []) as SmartworkingRequestRow[]) {
+          swById.set(row.id, row);
+        }
+      }
     } else {
       for (const leave of this.leavePlans) {
         leavesById.set(leave.id, leave);
       }
       for (const sickness of this.sicknessEvents) {
         sicknessById.set(sickness.id, sickness);
+      }
+      const needSw = new Set(approvals.filter((a) => a.type === "smartworking").map((a) => a.entityId));
+      for (const r of this.smartworkingRequests) {
+        if (needSw.has(r.id)) {
+          swById.set(r.id, r);
+        }
       }
     }
 
@@ -2422,18 +2494,79 @@ export class HrDataStore {
         const leave = leavesById.get(item.entityId);
         return leave?.status === "pending";
       }
-      const sickness = sicknessById.get(item.entityId);
-      return sickness?.status === "pending";
+      if (item.type === "sickness") {
+        const sickness = sicknessById.get(item.entityId);
+        return sickness?.status === "pending";
+      }
+      const sw = swById.get(item.entityId);
+      return sw?.status === "pending";
     });
 
     const users = await this.listUsers();
     const usersById = new Map(users.map((user) => [user.id, user]));
+    const photoCache = new Map<string, string | null>();
+    const loadPhoto = async (uid: string): Promise<string | null> => {
+      if (photoCache.has(uid)) {
+        return photoCache.get(uid)!;
+      }
+      try {
+        const url = await this.getEmployeeProfilePhotoSignedUrl(requesterId, requester.role, uid);
+        photoCache.set(uid, url);
+        return url;
+      } catch {
+        photoCache.set(uid, null);
+        return null;
+      }
+    };
 
-    return approvals.map((item) => {
+    const out: ApprovalView[] = [];
+    for (const item of approvals) {
       const user = usersById.get(item.requestedBy);
       const leave = item.type === "leave" ? leavesById.get(item.entityId) : undefined;
       const sickness = item.type === "sickness" ? sicknessById.get(item.entityId) : undefined;
-      return {
+      const sw = item.type === "smartworking" ? swById.get(item.entityId) : undefined;
+      const requesterPhotoUrl = await loadPhoto(item.requestedBy);
+
+      let leaveKind: "annual" | "rol" | undefined;
+      let residualAnnualLeaveDays: number | undefined;
+      let requestedCalendarDays: number | undefined;
+      let smartworkingWeekUsed: number | undefined;
+      let smartworkingWeekQuota: number | undefined;
+      let smartworkingMonthUsed: number | undefined;
+      let smartworkingMonthQuota: number | undefined;
+      let note: string | null | undefined;
+
+      if (leave) {
+        leaveKind = (leave.kind ?? "annual") === "rol" ? "rol" : "annual";
+        try {
+          requestedCalendarDays = this.countCalendarDays(leave.startDate, leave.endDate);
+        } catch {
+          requestedCalendarDays = undefined;
+        }
+        if (leaveKind === "annual") {
+          const year = Number(leave.startDate.slice(0, 4));
+          const bal = await this.getLeaveBalance(leave.userId, year);
+          residualAnnualLeaveDays = bal.residualDays;
+        }
+      } else if (sickness) {
+        try {
+          requestedCalendarDays = this.countCalendarDays(sickness.fromDate, sickness.toDate);
+        } catch {
+          requestedCalendarDays = undefined;
+        }
+      } else if (sw) {
+        requestedCalendarDays = 1;
+        note = sw.note ?? null;
+        smartworkingWeekQuota = SMARTWORKING_WEEKLY_QUOTA;
+        smartworkingWeekUsed = await this.countSmartworkingBookedDaysInWeek(sw.userId, sw.day);
+        smartworkingMonthQuota = SMARTWORKING_MONTHLY_QUOTA;
+        smartworkingMonthUsed = await this.countNonRejectedSmartworkingDaysInMonth(
+          sw.userId,
+          sw.day.slice(0, 7)
+        );
+      }
+
+      out.push({
         id: item.id,
         entityId: item.entityId,
         type: item.type,
@@ -2442,10 +2575,20 @@ export class HrDataStore {
         status: item.status,
         at: item.at,
         requesterName: user?.fullName,
-        startDate: leave?.startDate ?? sickness?.fromDate,
-        endDate: leave?.endDate ?? sickness?.toDate
-      };
-    });
+        requesterPhotoUrl,
+        startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day,
+        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day,
+        leaveKind,
+        residualAnnualLeaveDays,
+        requestedCalendarDays,
+        smartworkingWeekUsed,
+        smartworkingWeekQuota,
+        smartworkingMonthUsed,
+        smartworkingMonthQuota,
+        note
+      });
+    }
+    return out;
   }
 
   async approveByApprovalId(approvalId: string, approverId: string): Promise<ApprovalView> {
@@ -2453,6 +2596,15 @@ export class HrDataStore {
     const approval = approvals.find((item) => item.id === approvalId);
     if (!approval) {
       throw new NotFoundException("Autorizzazione non trovata");
+    }
+    if (approval.type === "smartworking") {
+      await this.decideSmartworkingRequest(approval.entityId, approverId, true);
+      return {
+        ...approval,
+        status: "approved",
+        approverId,
+        at: new Date().toISOString()
+      };
     }
     if (approval.type === "leave") {
       await this.approveLeave(approval.entityId, approverId, approval.id);
@@ -2472,6 +2624,15 @@ export class HrDataStore {
     const approval = approvals.find((item) => item.id === approvalId);
     if (!approval) {
       throw new NotFoundException("Autorizzazione non trovata");
+    }
+    if (approval.type === "smartworking") {
+      await this.decideSmartworkingRequest(approval.entityId, approverId, false, rejectReason);
+      return {
+        ...approval,
+        status: "rejected",
+        approverId,
+        at: new Date().toISOString()
+      };
     }
     if (approval.type === "leave") {
       await this.rejectLeave(approval.entityId, approverId, approval.id, rejectReason);
@@ -2660,7 +2821,8 @@ export class HrDataStore {
       body: row.body ?? null,
       read: row.read,
       kind: row.kind ?? null,
-      createdAt: row.createdAt
+      createdAt: row.createdAt,
+      actionPath: row.actionPath ?? null
     });
     if (error) {
       // eslint-disable-next-line no-console
@@ -2714,7 +2876,8 @@ export class HrDataStore {
       body: r.body ? String(r.body) : undefined,
       read: Boolean(r.read),
       createdAt: String(r.createdAt),
-      kind: r.kind ? String(r.kind) : undefined
+      kind: r.kind ? String(r.kind) : undefined,
+      actionPath: r.actionPath ? String(r.actionPath) : undefined
     }));
   }
 
@@ -2860,7 +3023,11 @@ export class HrDataStore {
         title: pending ? "Smart working (in attesa)" : "Smart working",
         start: r.day,
         end: r.day,
-        meta: { swRequestId: r.id, status: r.status }
+        meta: {
+          swRequestId: r.id,
+          status: r.status,
+          ...(r.note ? { note: r.note } : {})
+        }
       });
     }
     for (const ws of summaries) {
@@ -3543,11 +3710,25 @@ export class HrDataStore {
     } else {
       this.smartworkingRequests.push(row);
     }
+    const swApproval = {
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      entityId: row.id,
+      type: "smartworking" as const,
+      requestedBy: userId,
+      status: "pending" as const,
+      at: createdAt
+    };
+    if (this.useDb) {
+      await this.supabase!.from("approvals").insert(swApproval);
+    } else {
+      this.approvals.push(swApproval);
+    }
     await this.notifyApproversOfRequest(
       user,
       "Richiesta smart working",
       `${user.fullName}: ${dayNorm}${note?.trim() ? ` — ${note.trim()}` : ""}`,
-      "smartworking_request"
+      "smartworking_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(swApproval.id)}`
     );
     return row;
   }
@@ -3577,6 +3758,11 @@ export class HrDataStore {
     }
     const nextDay = day.slice(0, 10);
     const nextNote = note?.trim() || null;
+    const prevDay = row.day.slice(0, 10);
+    const prevNote = row.note?.trim() || null;
+    if (nextDay === prevDay && nextNote === prevNote) {
+      return row;
+    }
     if (
       nextDay !== row.day.slice(0, 10) &&
       (await this.hasActiveSmartworkingRequestForDay(requesterId, nextDay, requestId))
@@ -3606,11 +3792,29 @@ export class HrDataStore {
       row.note = nextNote;
     }
     const user = await this.getUser(requesterId);
+    let linkApprovalId: string | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("approvals")
+        .select("id")
+        .eq("entityId", requestId)
+        .eq("type", "smartworking")
+        .eq("status", "pending")
+        .maybeSingle();
+      linkApprovalId = (data as { id?: string } | null)?.id;
+    } else {
+      linkApprovalId = this.approvals.find(
+        (a) => a.entityId === requestId && a.type === "smartworking" && a.status === "pending"
+      )?.id;
+    }
     await this.notifyApproversOfRequest(
       user,
-      "Richiesta smart working aggiornata",
+      "Richiesta smart working",
       `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
-      "smartworking_request"
+      "smartworking_request",
+      linkApprovalId
+        ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
+        : "/workflow/approvals"
     );
     return { ...row, day: nextDay, note: nextNote };
   }
@@ -3625,11 +3829,16 @@ export class HrDataStore {
       throw new BadRequestException("Solo una richiesta in attesa può essere annullata");
     }
     if (this.useDb) {
+      await this.supabase!.from("approvals").delete().eq("entityId", requestId).eq("type", "smartworking");
       const { error } = await this.supabase!.from("smartworking_requests").delete().eq("id", requestId);
       if (error) {
         throw new InternalServerErrorException(`Annullamento SW fallito: ${error.message}`);
       }
     } else {
+      for (let i = this.approvals.length - 1; i >= 0; i--) {
+        const a = this.approvals[i];
+        if (a.entityId === requestId && a.type === "smartworking") this.approvals.splice(i, 1);
+      }
       const idx = this.smartworkingRequests.findIndex((r) => r.id === requestId);
       if (idx >= 0) this.smartworkingRequests.splice(idx, 1);
     }
@@ -3718,6 +3927,32 @@ export class HrDataStore {
       row.decisionAt = decisionAt;
       row.rejectReason = approve ? null : reason;
     }
+    if (this.useDb) {
+      const { error: apprErr } = await this.supabase!
+        .from("approvals")
+        .update({
+          status,
+          approverId: managerId,
+          at: decisionAt,
+          rejectReason: approve ? null : reason
+        })
+        .eq("entityId", requestId)
+        .eq("type", "smartworking")
+        .eq("status", "pending");
+      if (apprErr) {
+        throw new InternalServerErrorException(`Aggiornamento workflow SW fallito: ${apprErr.message}`);
+      }
+    } else {
+      const arow = this.approvals.find(
+        (a) => a.entityId === requestId && a.type === "smartworking" && a.status === "pending"
+      );
+      if (arow) {
+        arow.status = status;
+        arow.approverId = managerId;
+        arow.at = decisionAt;
+        arow.rejectReason = approve ? null : reason;
+      }
+    }
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId: row.userId,
@@ -3734,6 +3969,39 @@ export class HrDataStore {
     const m = month ?? new Date().toISOString().slice(0, 7);
     const used = await this.countApprovedSmartworkingDaysInMonth(userId, m);
     return { used, quota: SMARTWORKING_MONTHLY_QUOTA };
+  }
+
+  private mondayOfWeekUtcContaining(dayIso: string): string {
+    const d = new Date(`${dayIso.slice(0, 10)}T12:00:00.000Z`);
+    const dow = d.getUTCDay();
+    const diffFromMon = (dow + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - diffFromMon);
+    return d.toISOString().slice(0, 10);
+  }
+
+  private addCalendarDaysUtcIso(iso: string, delta: number): string {
+    const d = new Date(`${iso.slice(0, 10)}T12:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + delta);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /** Giorni con richiesta SW attiva (pending o approved) nella settimana UTC che contiene dayIso. */
+  private async countSmartworkingBookedDaysInWeek(
+    userId: string,
+    dayIso: string,
+    excludeRequestId?: string
+  ): Promise<number> {
+    const mon = this.mondayOfWeekUtcContaining(dayIso);
+    const sun = this.addCalendarDaysUtcIso(mon, 6);
+    const list = await this.listMySmartworking(userId);
+    let n = 0;
+    for (const r of list) {
+      if (excludeRequestId && r.id === excludeRequestId) continue;
+      if (r.status === "rejected") continue;
+      const day = r.day.slice(0, 10);
+      if (day >= mon && day <= sun) n += 1;
+    }
+    return n;
   }
 
   /** Richiesta pending o approvata per quel giorno (rejected escluso). Opzionale: ignora una riga (es. update stesso id). */
@@ -3755,6 +4023,11 @@ export class HrDataStore {
   private async countApprovedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
     const list = await this.listMySmartworking(userId);
     return list.filter((r) => r.status === "approved" && r.day.startsWith(monthPrefix)).length;
+  }
+
+  private async countNonRejectedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
+    const list = await this.listMySmartworking(userId);
+    return list.filter((r) => r.status !== "rejected" && r.day.startsWith(monthPrefix)).length;
   }
 
   async getPeopleInsightsRisk(): Promise<Array<{ userId: string; fullName: string; score: number; reasons: string[] }>> {

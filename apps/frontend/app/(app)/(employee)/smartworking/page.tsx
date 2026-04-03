@@ -40,8 +40,14 @@ export default function SmartworkingPage(): React.JSX.Element {
     }
     const day = edits[r.id]?.day ?? r.day;
     const note = edits[r.id]?.note ?? r.note ?? "";
+    const dayNorm = day.slice(0, 10);
+    const noteNorm = note.trim() || null;
+    const prevNote = (r.note ?? "").trim() || null;
+    if (dayNorm === r.day.slice(0, 10) && noteNorm === prevNote) {
+      return;
+    }
     try {
-      await updateSmartworkingRequest(token, r.id, { day, note: note || undefined });
+      await updateSmartworkingRequest(token, r.id, { day: dayNorm, note: noteNorm ?? undefined });
       void load();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Errore aggiornamento");

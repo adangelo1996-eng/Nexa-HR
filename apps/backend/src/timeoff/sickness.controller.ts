@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -56,6 +57,26 @@ export class SicknessController {
       }
     }
     return this.store.updateSicknessEvent(id, auth.userId, dto.fromDate, dto.toDate, auth.role);
+  }
+
+  @Delete("events/:id")
+  async removeEvent(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
+    if (auth.role !== "admin") {
+      const sickW = await this.permissions.userHasAll(auth.userId, ["nexa.sickness:write"]);
+      const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
+      const ev = await this.store.getSickness(id);
+      if (ev.userId === auth.userId) {
+        if (!sickW) {
+          throw new ForbiddenException("Permessi insufficienti");
+        }
+      } else {
+        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, ev.userId))) {
+          throw new ForbiddenException("Operazione non consentita");
+        }
+      }
+    }
+    await this.store.cancelPendingSicknessEvent(id, auth.userId, auth.role);
+    return { ok: true };
   }
 
   @Post("report")
