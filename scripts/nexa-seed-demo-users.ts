@@ -627,6 +627,137 @@ async function main(): Promise<void> {
   }
   // eslint-disable-next-line no-console
   console.log(`Completato: ${ids.length} utenti (password: ${PASSWORD}).`);
+  await seedCalendarMockRows(supabase, ids, people);
+}
+
+/** Turni demo aprile 2026, smart working, ferie e ROL — idempotente per id seed-* */
+async function seedCalendarMockRows(
+  supabase: ReturnType<typeof createClient>,
+  personIds: string[],
+  seededPeople: SeedPerson[]
+): Promise<void> {
+  const monthDays: string[] = [];
+  for (let d = 1; d <= 28; d += 1) {
+    monthDays.push(`2026-04-${String(d).padStart(2, "0")}`);
+  }
+
+  await supabase.from("shifts").delete().like("id", "nexa-seed-sh%");
+  await supabase.from("leave_plans").delete().like("id", "nexa-seed-%");
+
+  const shifts: Array<Record<string, unknown>> = [];
+  let sh = 0;
+  const pushShift = (
+    userId: string,
+    day: string,
+    shH: number,
+    enH: number,
+    premium?: string | null
+  ): void => {
+    sh += 1;
+    shifts.push({
+      id: `nexa-seed-sh${String(sh).padStart(4, "0")}`,
+      userId,
+      startAt: `${day}T${String(shH).padStart(2, "0")}:00:00.000Z`,
+      endAt: `${day}T${String(enH).padStart(2, "0")}:00:00.000Z`,
+      premiumCode: premium ?? null,
+      status: "scheduled"
+    });
+  };
+
+  for (let i = 0; i < personIds.length; i += 1) {
+    const uid = personIds[i]!;
+    const rc = seededPeople[i]!.roleCatalogId;
+    for (const day of monthDays) {
+      const wd = new Date(`${day}T12:00:00.000Z`).getUTCDay();
+      if (wd === 0 || wd === 6) {
+        if (rc === "nexa-r-10" || rc === "nexa-r-11") {
+          if (Number(day.slice(8)) % 6 === 0) {
+            pushShift(uid, day, 10, 18, "weekend");
+          }
+        }
+        continue;
+      }
+      if (rc === "nexa-r-20") {
+        const rot = i % 2 === Number(day.slice(8)) % 2;
+        pushShift(uid, day, rot ? 8 : 9, rot ? 16 : 17);
+      } else if (rc === "nexa-r-10" || rc === "nexa-r-11") {
+        pushShift(uid, day, 14, 22, Number(day.slice(8)) % 5 === 0 ? "evening" : null);
+      } else {
+        pushShift(uid, day, 9, 18);
+      }
+    }
+  }
+
+  const { error: shErr } = await supabase.from("shifts").insert(shifts);
+  if (shErr) {
+    // eslint-disable-next-line no-console
+    console.warn("seed shifts:", shErr.message);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`Inseriti ${shifts.length} turni demo (aprile 2026).`);
+  }
+
+  const swRows = personIds.slice(0, 4).flatMap((uid, idx) => {
+    const d1 = `2026-04-${String(7 + idx).padStart(2, "0")}`;
+    const d2 = `2026-04-${String(15 + idx).padStart(2, "0")}`;
+    return [
+      {
+        userId: uid,
+        date: d1,
+        minutesWorked: 420,
+        mode: "smartworking",
+        workedSeconds: 420 * 60,
+        overtimeSeconds: 0
+      },
+      {
+        userId: uid,
+        date: d2,
+        minutesWorked: 360,
+        mode: "smartworking",
+        workedSeconds: 360 * 60,
+        overtimeSeconds: 0
+      }
+    ];
+  });
+
+  const { error: swErr } = await supabase.from("workday_summaries").upsert(swRows, {
+    onConflict: "userId,date"
+  });
+  if (swErr) {
+    // eslint-disable-next-line no-console
+    console.warn("seed smartworking summaries:", swErr.message);
+  }
+
+  if (personIds.length >= 10) {
+    const leaveRows = [
+      {
+        id: "nexa-seed-leave-annual-1",
+        userId: personIds[5]!,
+        startDate: "2026-04-21",
+        endDate: "2026-04-23",
+        status: "approved",
+        version: 1,
+        kind: "annual"
+      },
+      {
+        id: "nexa-seed-leave-rol-1",
+        userId: personIds[8]!,
+        startDate: "2026-04-10",
+        endDate: "2026-04-10",
+        status: "approved",
+        version: 1,
+        kind: "rol"
+      }
+    ];
+    const { error: lvErr } = await supabase.from("leave_plans").upsert(leaveRows, { onConflict: "id" });
+    if (lvErr) {
+      // eslint-disable-next-line no-console
+      console.warn("seed leave_plans:", lvErr.message);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log("Inseriti piani ferie/ROL demo.");
+    }
+  }
 }
 
 void main().catch((e) => {

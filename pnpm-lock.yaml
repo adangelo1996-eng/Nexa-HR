@@ -194,6 +194,9 @@ importers:
       '@payday/payroll-core':
         specifier: workspace:*
         version: link:../payroll-core
+      '@payday/payroll-it-rules':
+        specifier: workspace:*
+        version: link:../payroll-it-rules
     devDependencies:
       '@types/node':
         specifier: ^22.10.1
@@ -212,6 +215,15 @@ importers:
         version: 5.9.3
 
   packages/payroll-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/payroll-it-rules:
     devDependencies:
       '@types/node':
         specifier: ^22.10.1

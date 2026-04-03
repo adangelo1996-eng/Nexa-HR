@@ -53,6 +53,12 @@ export interface User {
   /** Cantone fiscale dichiarativo (calcolo CH). */
   taxCanton?: string;
   taxMunicipality?: string;
+  /** Regione IT (addizionale regionale). */
+  taxRegion?: string;
+  /** Comune residenza IT (addizionale comunale). */
+  taxMunicipalityIt?: string;
+  /** Path oggetto in bucket Storage (foto profilo). */
+  profilePhotoPath?: string | null;
 }
 
 export interface CostCenter {
@@ -86,6 +92,9 @@ export interface WorkdaySummary {
 
 export type LeaveStatus = "draft" | "pending" | "approved" | "rejected";
 
+/** Piano assenza: ferie annuali o permesso ROL (non scala saldo ferie). */
+export type LeavePlanKind = "annual" | "rol";
+
 export interface LeavePlan {
   id: string;
   userId: string;
@@ -93,6 +102,7 @@ export interface LeavePlan {
   endDate: string;
   status: LeaveStatus;
   version: number;
+  kind?: LeavePlanKind;
 }
 
 export interface LeaveBalance {
@@ -226,9 +236,18 @@ export interface UserNotification {
 
 export interface CalendarEvent {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline";
+  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol";
   title: string;
   start: string;
   end?: string;
+  /** Per viste team (calendario HR aggregato). */
+  userId?: string;
   meta?: Record<string, unknown>;
+}
+
+export interface CompanyHoliday {
+  id: string;
+  companyId: string;
+  day: string;
+  name: string;
 }

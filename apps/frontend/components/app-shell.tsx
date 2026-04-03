@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Calculator,
+  Calendar,
   Clock3,
   ChevronDown,
   LayoutDashboard,
@@ -59,6 +60,7 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/admin", label: "Admin" },
   { href: "/insights", label: "People insights" },
   { href: "/scheduling", label: "Turni" },
+  { href: "/work-calendar", label: "Calendario lavoro" },
   { href: "/compensation/bench", label: "Benchmark retribuzione" },
   { href: "/lifecycle/offboard", label: "Offboarding" },
   { href: "/forecast", label: "Forecast costi" },
@@ -182,6 +184,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           >
             <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
             Budget personale
+          </Link>
+          <Link
+            href="/work-calendar"
+            onClick={() => setMobileOpen(false)}
+            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+              pathname.startsWith("/work-calendar")
+                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+            }`}
+          >
+            <Calendar className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            Calendario lavoro
           </Link>
           {isAdminUi ? (
             <Link

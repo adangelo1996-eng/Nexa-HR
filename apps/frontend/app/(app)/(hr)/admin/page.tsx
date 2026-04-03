@@ -11,9 +11,11 @@ import {
   fetchAdminCostCenters,
   fetchAdminRoles,
   fetchCurrentUser,
+  fetchUserProfilePhotoUrl,
   fetchUsers,
   setLeaveAllowance,
   updateUser,
+  uploadUserProfilePhoto,
   type CostCenter,
   type CreateUserPayload,
   type Role,
@@ -73,8 +75,31 @@ export default function AdminPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
 
   const selectedUser = users.find((item) => item.id === selectedUserId) ?? null;
+
+  useEffect(() => {
+    if (!token || !selectedUser?.profilePhotoPath) {
+      setProfilePhotoUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchUserProfilePhotoUrl(token, selectedUser.id)
+      .then((url) => {
+        if (!cancelled) {
+          setProfilePhotoUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProfilePhotoUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedUser?.id, selectedUser?.profilePhotoPath]);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -205,7 +230,13 @@ export default function AdminPage(): React.JSX.Element {
         birthDate: selectedUser.birthDate,
         hireDate: selectedUser.hireDate,
         phone: selectedUser.phone,
-        address: selectedUser.address
+        address: selectedUser.address,
+        baseSalaryMonthly: selectedUser.baseSalaryMonthly,
+        taxCanton: selectedUser.taxCanton,
+        taxMunicipality: selectedUser.taxMunicipality,
+        jurisdiction: selectedUser.jurisdiction,
+        taxRegion: selectedUser.taxRegion,
+        taxMunicipalityIt: selectedUser.taxMunicipalityIt
       });
       await setLeaveAllowance(token, selectedUser.id, selectedUser.vacationAllowanceDays ?? 22);
       await refreshUsers();
@@ -733,6 +764,50 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputRequiredClass}
                   />
                 </label>
+                <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-200 text-lg font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                    {profilePhotoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={profilePhotoUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{selectedUser?.firstName?.[0] ?? "?"}{selectedUser?.lastName?.[0] ?? ""}</span>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">Foto profilo</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="text-[11px] text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-2 file:py-1 dark:text-slate-400 dark:file:bg-slate-700"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file || !selectedUser || !token) {
+                          return;
+                        }
+                        setError(null);
+                        setSubmitting(true);
+                        void uploadUserProfilePhoto(token, selectedUser.id, file)
+                          .then((u) => {
+                            updateSelectedUser({
+                              profilePhotoPath: u.profilePhotoPath
+                            });
+                            return fetchUserProfilePhotoUrl(token, selectedUser.id);
+                          })
+                          .then((url) => setProfilePhotoUrl(url))
+                          .catch((photoError) =>
+                            setError(
+                              photoError instanceof Error
+                                ? photoError.message
+                                : "Errore caricamento foto"
+                            )
+                          )
+                          .finally(() => setSubmitting(false));
+                        event.target.value = "";
+                      }}
+                    />
+                    <p className="text-[10px] text-slate-500">JPEG, PNG o WebP — max ~2,5 MB (richiede Supabase Storage).</p>
+                  </div>
+                </div>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ruolo accesso *</span>
                   <select
@@ -833,6 +908,86 @@ export default function AdminPage(): React.JSX.Element {
                       if (selectedUser) updateSelectedUser({ contractType: value });
                     }}
                     className={inputRequiredClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Giurisdizione payroll</span>
+                  <select
+                    value={selectedUser?.jurisdiction ?? "CH"}
+                    onChange={(event) => {
+                      if (selectedUser) {
+                        updateSelectedUser({ jurisdiction: event.target.value as "CH" | "IT" });
+                      }
+                    }}
+                    className={selectOptionalClass}
+                  >
+                    <option value="CH">Svizzera (CH)</option>
+                    <option value="IT">Italia (IT)</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">RAL lorda mensile</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={selectedUser?.baseSalaryMonthly ?? ""}
+                    onChange={(event) => {
+                      const v = event.target.value;
+                      if (selectedUser) {
+                        updateSelectedUser({
+                          baseSalaryMonthly: v === "" ? undefined : Number(v)
+                        });
+                      }
+                    }}
+                    placeholder="es. 3500"
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Cantone (CH)</span>
+                  <input
+                    value={selectedUser?.taxCanton ?? ""}
+                    onChange={(event) => {
+                      if (selectedUser) updateSelectedUser({ taxCanton: event.target.value || undefined });
+                    }}
+                    placeholder="es. TI"
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Comune fiscale (CH)</span>
+                  <input
+                    value={selectedUser?.taxMunicipality ?? ""}
+                    onChange={(event) => {
+                      if (selectedUser) {
+                        updateSelectedUser({ taxMunicipality: event.target.value || undefined });
+                      }
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Regione (IT)</span>
+                  <input
+                    value={selectedUser?.taxRegion ?? ""}
+                    onChange={(event) => {
+                      if (selectedUser) updateSelectedUser({ taxRegion: event.target.value || undefined });
+                    }}
+                    placeholder="es. LAZ"
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Comune residenza (IT)</span>
+                  <input
+                    value={selectedUser?.taxMunicipalityIt ?? ""}
+                    onChange={(event) => {
+                      if (selectedUser) {
+                        updateSelectedUser({ taxMunicipalityIt: event.target.value || undefined });
+                      }
+                    }}
+                    className={inputOptionalClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">

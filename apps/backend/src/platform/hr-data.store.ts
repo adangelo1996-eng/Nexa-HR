@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException
+} from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   ApprovalView,
   CalendarEvent,
+  CompanyHoliday,
   EmployeeDocument,
   EmployeeDocumentKind,
   ExpenseClaim,
@@ -10,6 +17,7 @@ import type {
   InnovationJobStatus,
   LeaveBalance,
   LeavePlan,
+  LeavePlanKind,
   OnboardingChecklistItem,
   OnboardingStatus,
   Payslip,
@@ -25,6 +33,7 @@ import type {
   GeoFix
 } from "@payday/domain";
 import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
+import { calculateItalianPayroll, employerBudgetBucketsFromGrossIt } from "@payday/payroll-adapters-it";
 
 interface ApprovalRecord {
   id: string;
@@ -109,6 +118,9 @@ interface UserCreateInput {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
+  jurisdiction?: User["jurisdiction"];
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
 }
 
 interface UserUpdateInput {
@@ -135,6 +147,10 @@ interface UserUpdateInput {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
+  jurisdiction?: User["jurisdiction"];
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
+  profilePhotoPath?: string | null;
 }
 
 type EmployeeDocumentRow = EmployeeDocument & { bodyBase64?: string | null };
@@ -257,6 +273,15 @@ export class HrDataStore {
   private readonly importEventsMemory: NexaImportEventRow[] = [];
   private readonly expenseClaims: ExpenseClaim[] = [];
   private readonly shifts: Shift[] = [];
+  private readonly demoCompanyHolidays: CompanyHoliday[] = [
+    { id: "dh-26-01-01", companyId: "comp-1", day: "2026-01-01", name: "Capodanno" },
+    { id: "dh-26-01-06", companyId: "comp-1", day: "2026-01-06", name: "Epifania" },
+    { id: "dh-26-04-25", companyId: "comp-1", day: "2026-04-25", name: "Festa della Liberazione" },
+    { id: "dh-26-05-01", companyId: "comp-1", day: "2026-05-01", name: "Festa del Lavoro" },
+    { id: "dh-26-06-02", companyId: "comp-1", day: "2026-06-02", name: "Festa della Repubblica" },
+    { id: "dh-26-08-15", companyId: "comp-1", day: "2026-08-15", name: "Ferragosto" },
+    { id: "dh-26-12-25", companyId: "comp-1", day: "2026-12-25", name: "Natale" }
+  ];
   private readonly employeeDocuments: EmployeeDocumentRow[] = [];
   private readonly onboardingByUser = new Map<string, OnboardingStatus>();
   private readonly innovationJobs: InnovationJob[] = [];
@@ -588,7 +613,10 @@ export class HrDataStore {
       address: input.address,
       baseSalaryMonthly: input.baseSalaryMonthly,
       taxCanton: input.taxCanton,
-      taxMunicipality: input.taxMunicipality
+      taxMunicipality: input.taxMunicipality,
+      jurisdiction: input.jurisdiction ?? "CH",
+      taxRegion: input.taxRegion,
+      taxMunicipalityIt: input.taxMunicipalityIt
     };
     if (this.useDb) {
       await this.supabase!.from("users").insert(user);
@@ -1164,6 +1192,56 @@ export class HrDataStore {
       .sort((a, b) => b.date.localeCompare(a.date));
   }
 
+  async listWorkdaySummariesInRange(userId: string, from?: string, to?: string): Promise<WorkdaySummary[]> {
+    const f = from?.slice(0, 10);
+    const t = to?.slice(0, 10);
+    if (this.useDb) {
+      let query = this.supabase!.from("workday_summaries").select("*").eq("userId", userId);
+      if (f) {
+        query = query.gte("date", f);
+      }
+      if (t) {
+        query = query.lte("date", t);
+      }
+      const { data } = await query;
+      return ((data as WorkdaySummary[]) ?? []).sort((a, b) => a.date.localeCompare(b.date));
+    }
+    return this.workdaySummaries
+      .filter(
+        (item) =>
+          item.userId === userId &&
+          (!f || item.date >= f) &&
+          (!t || item.date <= t)
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async listCompanyHolidays(companyId: string, from?: string, to?: string): Promise<CompanyHoliday[]> {
+    const f = from?.slice(0, 10);
+    const t = to?.slice(0, 10);
+    let rows: CompanyHoliday[];
+    if (this.useDb) {
+      let query = this.supabase!.from("company_holidays").select("*").eq("companyId", companyId);
+      if (f) {
+        query = query.gte("day", f);
+      }
+      if (t) {
+        query = query.lte("day", t);
+      }
+      const { data } = await query;
+      rows = (data as CompanyHoliday[]) ?? [];
+    } else {
+      rows = this.demoCompanyHolidays.filter((h) => h.companyId === companyId);
+      if (f) {
+        rows = rows.filter((h) => h.day >= f);
+      }
+      if (t) {
+        rows = rows.filter((h) => h.day <= t);
+      }
+    }
+    return rows.sort((a, b) => a.day.localeCompare(b.day));
+  }
+
   async getOvertimeAggregates(
     userId: string,
     referenceDate: string,
@@ -1299,15 +1377,19 @@ export class HrDataStore {
 
   async createLeavePlan(input: Omit<LeavePlan, "id" | "status" | "version">): Promise<LeavePlan> {
     const requestedDays = this.countCalendarDays(input.startDate, input.endDate);
-    const balance = await this.getLeaveBalance(input.userId, Number(input.startDate.slice(0, 4)));
-    if (requestedDays > balance.residualDays) {
-      throw new BadRequestException("Ferie insufficienti: riduci i giorni richiesti");
+    const kind: LeavePlanKind = input.kind ?? "annual";
+    if (kind === "annual") {
+      const balance = await this.getLeaveBalance(input.userId, Number(input.startDate.slice(0, 4)));
+      if (requestedDays > balance.residualDays) {
+        throw new BadRequestException("Ferie insufficienti: riduci i giorni richiesti");
+      }
     }
     const leave: LeavePlan = {
       id: `lv-${Date.now()}`,
       status: "pending",
       version: 1,
-      ...input
+      ...input,
+      kind
     };
     if (this.useDb) {
       await this.supabase!.from("leave_plans").insert(leave);
@@ -1335,10 +1417,13 @@ export class HrDataStore {
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
     const year = Number(startDate.slice(0, 4));
     const requestedDays = this.countCalendarDays(startDate, endDate);
-    const balance = await this.getLeaveBalance(leave.userId, year);
-    const previousDays = leave.status === "approved" ? this.countCalendarDays(leave.startDate, leave.endDate) : 0;
-    if (requestedDays > balance.residualDays + previousDays) {
-      throw new BadRequestException("Ferie insufficienti per aggiornare questa richiesta");
+    const kind: LeavePlanKind = leave.kind ?? "annual";
+    if (kind === "annual") {
+      const balance = await this.getLeaveBalance(leave.userId, year);
+      const previousDays = leave.status === "approved" ? this.countCalendarDays(leave.startDate, leave.endDate) : 0;
+      if (requestedDays > balance.residualDays + previousDays) {
+        throw new BadRequestException("Ferie insufficienti per aggiornare questa richiesta");
+      }
     }
     leave.startDate = startDate;
     leave.endDate = endDate;
@@ -1702,35 +1787,59 @@ export class HrDataStore {
         ? Number(user.baseSalaryMonthly)
         : 5800;
     const overtimeAmount = await this.countMonthlyOvertimeAmount(userId, period, grossMonthlySalary);
-    const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
-    const municipality = user.taxMunicipality?.trim() || "Lugano";
-    const taxProfile = {
-      canton,
-      municipality,
-      permitType: "B" as const,
-      companyType: "commerciale",
-      companySite: `${canton}-SITE`
-    };
-    const result = calculateSwissPayroll({
-      period,
-      grossMonthlySalary,
-      age: this.ageFromBirthDate(user.birthDate),
-      vacationDaysUsed: await this.countLeaveDays(userId, period),
-      sicknessDays: await this.countSicknessDays(userId, period),
-      smartworkingDays: await this.countSmartworkingDays(userId, period),
-      overtimeAmount,
-      taxProfile
-    });
+    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(userId, period);
+    const sicknessDays = await this.countSicknessDays(userId, period);
+    const smartworkingDays = await this.countSmartworkingDays(userId, period);
+    const year = Number(period.slice(0, 4));
+    const balance = await this.getLeaveBalance(userId, year);
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
-    const reimbursementChf =
+    const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
+    const jurisdiction = user.jurisdiction === "IT" ? "IT" : "CH";
+    let result: { lines: Payslip["lines"]; grossAdjusted: number; netSalary: number };
+    if (jurisdiction === "IT") {
+      result = calculateItalianPayroll({
+        period,
+        grossMonthlySalary,
+        weeklyContractHours: this.normalizeWeeklyContractHours(user.weeklyContractHours),
+        age: this.ageFromBirthDate(user.birthDate),
+        vacationDaysUsed,
+        sicknessDays,
+        smartworkingDays,
+        overtimeAmount,
+        taxProfile: {
+          regionCode: user.taxRegion?.trim() || "LAZ",
+          municipality: user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma"
+        },
+        vacationResidualDays: balance.residualDays
+      });
+    } else {
+      const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
+      const municipality = user.taxMunicipality?.trim() || "Lugano";
+      result = calculateSwissPayroll({
+        period,
+        grossMonthlySalary,
+        age: this.ageFromBirthDate(user.birthDate),
+        vacationDaysUsed,
+        sicknessDays,
+        smartworkingDays,
+        overtimeAmount,
+        taxProfile: {
+          canton,
+          municipality,
+          permitType: "B" as const,
+          companyType: "commerciale",
+          companySite: `${canton}-SITE`
+        }
+      });
+    }
     const extraLines = claims.map((c) => ({
       code: "RMB",
       description: `Rimborso spese: ${c.description}`.slice(0, 160),
       amount: Math.round(c.amountCents) / 100
     }));
     const lines = [...result.lines, ...extraLines];
-    const netSalary = Math.round((result.netSalary + reimbursementChf) * 100) / 100;
+    const netSalary = Math.round((result.netSalary + reimbursement) * 100) / 100;
     const payslip: Payslip = {
       id: `ps-${Date.now()}`,
       userId,
@@ -1774,8 +1883,30 @@ export class HrDataStore {
     canton?: string;
     municipality?: string;
     age?: number;
-  }): ReturnType<typeof calculateSwissPayroll> {
+    jurisdiction?: "CH" | "IT";
+    taxRegion?: string;
+    taxMunicipalityIt?: string;
+    weeklyContractHours?: number;
+  }): ReturnType<typeof calculateSwissPayroll> | ReturnType<typeof calculateItalianPayroll> {
     const period = input.period?.trim() || new Date().toISOString().slice(0, 7);
+    const j = input.jurisdiction === "IT" ? "IT" : "CH";
+    if (j === "IT") {
+      return calculateItalianPayroll({
+        period,
+        grossMonthlySalary: input.grossMonthlySalary,
+        weeklyContractHours: input.weeklyContractHours ?? 40,
+        age: input.age ?? 30,
+        vacationDaysUsed: 0,
+        sicknessDays: 0,
+        smartworkingDays: 0,
+        overtimeAmount: 0,
+        taxProfile: {
+          regionCode: input.taxRegion?.trim() || "LAZ",
+          municipality: input.taxMunicipalityIt?.trim() || input.municipality?.trim() || "Roma"
+        },
+        vacationResidualDays: undefined
+      });
+    }
     const canton = (input.canton?.trim() || "TI").toUpperCase();
     const municipality = input.municipality?.trim() || "Lugano";
     return calculateSwissPayroll({
@@ -1979,6 +2110,7 @@ export class HrDataStore {
     const leaves = await this.listLeave(userId);
     const usedDays = leaves
       .filter((item) => item.status === "approved")
+      .filter((item) => (item.kind ?? "annual") === "annual")
       .filter((item) => Number(item.startDate.slice(0, 4)) === year)
       .reduce((acc, item) => acc + this.countCalendarDays(item.startDate, item.endDate), 0);
     return {
@@ -1998,11 +2130,33 @@ export class HrDataStore {
     return this.getLeaveBalance(userId, new Date().getUTCFullYear());
   }
 
-  private async countLeaveDays(userId: string, period: string): Promise<number> {
-    const month = period.slice(0, 7);
+  private countLeaveDaysOverlappingMonth(startDate: string, endDate: string, monthPrefix: string): number {
+    const startMs = new Date(`${startDate}T12:00:00.000Z`).getTime();
+    const endMs = new Date(`${endDate}T12:00:00.000Z`).getTime();
+    let n = 0;
+    for (let t = startMs; t <= endMs; t += 86_400_000) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      if (d.startsWith(monthPrefix)) {
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  private async countAnnualLeaveDaysInPeriod(userId: string, period: string): Promise<number> {
+    const monthPrefix = period.slice(0, 7);
     const leaves = await this.listLeave(userId);
-    return leaves.filter((item) => item.status === "approved" && item.startDate.startsWith(month))
-      .length;
+    let days = 0;
+    for (const item of leaves) {
+      if (item.status !== "approved") {
+        continue;
+      }
+      if ((item.kind ?? "annual") !== "annual") {
+        continue;
+      }
+      days += this.countLeaveDaysOverlappingMonth(item.startDate, item.endDate, monthPrefix);
+    }
+    return days;
   }
 
   private async countSicknessDays(userId: string, period: string): Promise<number> {
@@ -2182,19 +2336,60 @@ export class HrDataStore {
   }
 
   async getUserCalendar(userId: string, from?: string, to?: string): Promise<CalendarEvent[]> {
+    return this.buildCalendarEventsForUser(userId, from, to, false);
+  }
+
+  /** Eventi aggregati per più utenti (calendario team HR). Festività una sola volta. */
+  async getTeamWorkCalendar(userIds: string[], from?: string, to?: string): Promise<CalendarEvent[]> {
+    if (userIds.length === 0) {
+      return [];
+    }
+    const first = await this.getUser(userIds[0]);
+    const holidayRows = await this.listCompanyHolidays(first.companyId, from, to);
+    const holidayEvents: CalendarEvent[] = [];
+    for (const h of holidayRows) {
+      if (!this.inCalendarRange(h.day, from, to)) continue;
+      holidayEvents.push({
+        id: `cal-hol-${h.id}`,
+        kind: "holiday",
+        title: h.name,
+        start: h.day,
+        end: h.day,
+        meta: { holidayId: h.id }
+      });
+    }
+    const all: CalendarEvent[] = [...holidayEvents];
+    for (const uid of userIds) {
+      const chunk = await this.buildCalendarEventsForUser(uid, from, to, true);
+      for (const ev of chunk) {
+        all.push({ ...ev, userId: uid });
+      }
+    }
+    all.sort((a, b) => a.start.localeCompare(b.start));
+    return all;
+  }
+
+  private async buildCalendarEventsForUser(
+    userId: string,
+    from?: string,
+    to?: string,
+    skipCompanyHolidays = false
+  ): Promise<CalendarEvent[]> {
     const events: CalendarEvent[] = [];
+    const user = await this.getUser(userId);
     const leaves = await this.listLeave(userId);
     for (const l of leaves) {
       if (!this.inCalendarRange(l.startDate, from, to) && !this.inCalendarRange(l.endDate, from, to)) {
         continue;
       }
+      const isRol = (l.kind ?? "annual") === "rol";
       events.push({
         id: `cal-leave-${l.id}`,
-        kind: "leave",
-        title: `Ferie (${l.status})`,
+        kind: isRol ? "rol" : "leave",
+        title: isRol ? `Permesso ROL (${l.status})` : `Ferie (${l.status})`,
         start: l.startDate,
         end: l.endDate,
-        meta: { leaveId: l.id, status: l.status }
+        meta: { leaveId: l.id, status: l.status, kind: l.kind ?? "annual" }
       });
     }
     const sickness = await this.listSickness(userId);
@@ -2224,8 +2419,86 @@ export class HrDataStore {
         meta: { shiftId: sh.id, status: sh.status }
       });
     }
+    const summaries = await this.listWorkdaySummariesInRange(userId, from, to);
+    for (const ws of summaries) {
+      if (ws.mode !== "smartworking") continue;
+      if (!this.inCalendarRange(ws.date, from, to)) continue;
+      events.push({
+        id: `cal-sw-${userId}-${ws.date}`,
+        kind: "smartworking",
+        title: "Smart working",
+        start: ws.date,
+        end: ws.date,
+        meta: { date: ws.date }
+      });
+    }
+    if (!skipCompanyHolidays) {
+      const holidays = await this.listCompanyHolidays(user.companyId, from, to);
+      for (const h of holidays) {
+        if (!this.inCalendarRange(h.day, from, to)) continue;
+        events.push({
+          id: `cal-hol-${h.id}-${userId}`,
+          kind: "holiday",
+          title: h.name,
+          start: h.day,
+          end: h.day,
+          meta: { holidayId: h.id }
+        });
+      }
+    }
     events.sort((a, b) => a.start.localeCompare(b.start));
     return events;
+  }
+
+  async uploadEmployeeProfilePhoto(userId: string, buffer: Buffer, mimeType: string): Promise<User> {
+    if (!this.supabase) {
+      throw new BadRequestException("Storage non configurato");
+    }
+    const okMime = mimeType === "image/jpeg" || mimeType === "image/png" || mimeType === "image/webp";
+    if (!okMime) {
+      throw new BadRequestException("Formato file non supportato (JPEG, PNG, WebP)");
+    }
+    if (buffer.length > 2_500_000) {
+      throw new BadRequestException("File troppo grande (max ~2,5 MB)");
+    }
+    const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+    const path = `${userId}/${Date.now()}.${ext}`;
+    const { error } = await this.supabase.storage.from("employee-photos").upload(path, buffer, {
+      contentType: mimeType,
+      upsert: true
+    });
+    if (error) {
+      throw new InternalServerErrorException(`Upload foto fallito: ${error.message}`);
+    }
+    return this.updateUser(userId, { profilePhotoPath: path });
+  }
+
+  async getEmployeeProfilePhotoSignedUrl(
+    requesterId: string,
+    requesterRole: User["role"],
+    targetUserId: string
+  ): Promise<string | null> {
+    if (!this.supabase) {
+      return null;
+    }
+    const target = await this.getUser(targetUserId);
+    if (!target.profilePhotoPath?.trim()) {
+      return null;
+    }
+    const isSelf = requesterId === targetUserId;
+    const isAdmin = requesterRole === "admin";
+    const isManagerWithHierarchy =
+      requesterRole === "manager_controllo_gestione" && (await this.isManagerOf(requesterId, targetUserId));
+    if (!isSelf && !isAdmin && !isManagerWithHierarchy) {
+      throw new ForbiddenException("Accesso negato alla foto profilo");
+    }
+    const { data, error } = await this.supabase.storage
+      .from("employee-photos")
+      .createSignedUrl(target.profilePhotoPath, 3600);
+    if (error || !data?.signedUrl) {
+      return null;
+    }
+    return data.signedUrl;
   }
 
   async getHrDashboardSummary(): Promise<{
@@ -3191,7 +3464,10 @@ export class HrDataStore {
       const travel = await this.travelReimbursementActualChf(u.id, period);
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
-      const buckets = employerBudgetBucketsFromGrossChf(grossAdjusted, this.ageFromBirthDate(u.birthDate));
+      const isIt = u.jurisdiction === "IT";
+      const buckets = isIt
+        ? employerBudgetBucketsFromGrossIt(grossAdjusted)
+        : employerBudgetBucketsFromGrossChf(grossAdjusted, this.ageFromBirthDate(u.birthDate));
       const actual: PersonnelBudgetMoney = {
         ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
         overtime: Math.round(overtime * 100) / 100,

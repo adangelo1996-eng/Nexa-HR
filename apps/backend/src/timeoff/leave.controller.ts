@@ -1,5 +1,5 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { IsDateString, IsInt, IsString, Max, Min } from "class-validator";
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { CurrentAuth, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
@@ -10,6 +10,10 @@ class LeaveDto {
 
   @IsDateString()
   endDate!: string;
+
+  @IsOptional()
+  @IsIn(["annual", "rol"])
+  kind?: "annual" | "rol";
 }
 
 class LeaveAllowanceDto {
@@ -30,7 +34,8 @@ export class LeaveController {
     return this.store.createLeavePlan({
       userId: auth.userId,
       startDate: dto.startDate,
-      endDate: dto.endDate
+      endDate: dto.endDate,
+      kind: dto.kind ?? "annual"
     });
   }
 

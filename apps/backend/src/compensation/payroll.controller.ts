@@ -10,7 +10,7 @@ import {
   StreamableFile,
   UseGuards
 } from "@nestjs/common";
-import { IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 import { createChExportGenerator } from "@payday/payroll-adapters-ch";
 import { createItExportGenerator } from "@payday/payroll-adapters-it";
 import type { JurisdictionCode } from "@payday/payroll-core";
@@ -41,6 +41,24 @@ class SimulateHireDto {
   @Min(18)
   @Max(80)
   age?: number;
+
+  @IsOptional()
+  @IsIn(["CH", "IT"])
+  jurisdiction?: "CH" | "IT";
+
+  @IsOptional()
+  @IsString()
+  taxRegion?: string;
+
+  @IsOptional()
+  @IsString()
+  taxMunicipalityIt?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(80)
+  weeklyContractHours?: number;
 }
 
 @Controller("payroll")
@@ -62,7 +80,11 @@ export class PayrollController {
       period: dto.period,
       canton: dto.canton,
       municipality: dto.municipality,
-      age: dto.age
+      age: dto.age,
+      jurisdiction: dto.jurisdiction,
+      taxRegion: dto.taxRegion,
+      taxMunicipalityIt: dto.taxMunicipalityIt,
+      weeklyContractHours: dto.weeklyContractHours
     });
   }
 
@@ -175,7 +197,12 @@ export class PayrollController {
       payslip = await this.store.generatePayslip(userId, period);
     }
     const employee = await this.store.getUser(userId);
-    const buffer = await this.buildOfficialPayslipPdf(employee.fullName, period, payslip);
+    const buffer = await this.buildOfficialPayslipPdf(
+      employee.fullName,
+      period,
+      payslip,
+      employee.jurisdiction === "IT"
+    );
     return new StreamableFile(buffer, {
       disposition: `attachment; filename="nexa-hr-cedolino-${userId}-${period}.pdf"`,
       type: "application/pdf"
@@ -185,7 +212,8 @@ export class PayrollController {
   private async buildOfficialPayslipPdf(
     employeeName: string,
     period: string,
-    payslip: { lines: Array<{ code: string; description: string; amount: number }>; netSalary: number; grossSalary: number }
+    payslip: { lines: Array<{ code: string; description: string; amount: number }>; netSalary: number; grossSalary: number },
+    isItaly: boolean
   ): Promise<Buffer> {
     return new Promise((resolve) => {
       const doc = new PDFDocument({ size: "A4", margin: 40 });
@@ -193,11 +221,19 @@ export class PayrollController {
       doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-      doc.fontSize(18).text("Nexa HR — Busta paga (Svizzera)", { align: "center" });
+      const title = isItaly
+        ? "Nexa HR — Busta paga (Italia, simulazione)"
+        : "Nexa HR — Busta paga (Svizzera)";
+      const currency = isItaly ? "EUR" : "CHF";
+      const templateNote = isItaly
+        ? "Template: simulazione IT — validare con consulenza del lavoro"
+        : "Template: formato ufficiale interno payroll CH";
+
+      doc.fontSize(18).text(title, { align: "center" });
       doc.moveDown(0.8);
       doc.fontSize(11).text(`Periodo: ${period}`);
       doc.text(`Dipendente: ${employeeName}`);
-      doc.text("Template: formato ufficiale interno payroll CH");
+      doc.text(templateNote);
       doc.moveDown();
 
       doc.fontSize(12).text("Dettaglio competenze e trattenute", { underline: true });
@@ -206,12 +242,12 @@ export class PayrollController {
         doc
           .fontSize(10)
           .text(`${line.code.padEnd(6)} ${line.description}`, { continued: true })
-          .text(` CHF ${line.amount.toFixed(2)}`, { align: "right" });
+          .text(` ${currency} ${line.amount.toFixed(2)}`, { align: "right" });
       });
 
       doc.moveDown();
-      doc.fontSize(12).text(`Lordo rettificato: CHF ${payslip.grossSalary.toFixed(2)}`);
-      doc.fontSize(14).text(`Netto da pagare: CHF ${payslip.netSalary.toFixed(2)}`, {
+      doc.fontSize(12).text(`Lordo rettificato: ${currency} ${payslip.grossSalary.toFixed(2)}`);
+      doc.fontSize(14).text(`Netto da pagare: ${currency} ${payslip.netSalary.toFixed(2)}`, {
         align: "right"
       });
       doc.moveDown(2);

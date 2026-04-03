@@ -12,6 +12,27 @@ describe("HrDataStore", () => {
     assert.equal(list.length, 1);
   });
 
+  it("genera cedolino Italia quando jurisdiction IT", async () => {
+    const store = new HrDataStore();
+    const created = await store.createUser({
+      firstName: "Paolo",
+      lastName: "Esposito",
+      role: "employee",
+      companyId: "comp-1",
+      roleId: "r3",
+      costCenterId: "cc-2",
+      contractType: "Indeterminato",
+      weeklyContractHours: 40,
+      baseSalaryMonthly: 3200,
+      jurisdiction: "IT",
+      taxRegion: "LAZ",
+      taxMunicipalityIt: "Roma"
+    });
+    const payslip = await store.generatePayslip(created.id, "2026-04");
+    assert.ok(payslip.lines.some((l) => l.code === "INPS"));
+    assert.ok(payslip.lines.some((l) => l.code === "IRPEF"));
+  });
+
   it("gestisce entrata/uscita con pausa-ripresa e calcola straordinario giornaliero", async () => {
     const store = new HrDataStore();
     const user = await store.createUser({

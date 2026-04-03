@@ -10,7 +10,8 @@
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
-    "@payday/payroll-core": "workspace:*"
+    "@payday/payroll-core": "workspace:*",
+    "@payday/payroll-it-rules": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

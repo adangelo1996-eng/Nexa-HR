@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
@@ -107,6 +120,20 @@ class CreateUserDto {
   @IsString()
   @MaxLength(120)
   taxMunicipality?: string;
+
+  @IsOptional()
+  @IsIn(["CH", "IT"])
+  jurisdiction?: "CH" | "IT";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  taxRegion?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxMunicipalityIt?: string;
 }
 
 class UpdateUserDto {
@@ -209,6 +236,25 @@ class UpdateUserDto {
   @IsString()
   @MaxLength(120)
   taxMunicipality?: string;
+
+  @IsOptional()
+  @IsIn(["CH", "IT"])
+  jurisdiction?: "CH" | "IT";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  taxRegion?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxMunicipalityIt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  profilePhotoPath?: string | null;
 }
 
 @Controller("users")
@@ -247,6 +293,14 @@ export class UserController {
     @Query("to") to?: string
   ): Promise<{ events: Awaited<ReturnType<HrDataStore["getUserCalendar"]>> }> {
     return { events: await this.store.getUserCalendar(auth.userId, from, to) };
+  }
+
+  @Get("me/profile-photo-url")
+  async myProfilePhotoUrl(
+    @CurrentAuth() auth: AuthContext
+  ): Promise<{ url: string | null }> {
+    const url = await this.store.getEmployeeProfilePhotoSignedUrl(auth.userId, auth.role, auth.userId);
+    return { url };
   }
 
   @Get("me/notifications")
@@ -288,6 +342,30 @@ export class UserController {
   @RequireNexaPermissions("nexa.admin_users:write")
   async create(@Body() dto: CreateUserDto): Promise<unknown> {
     return this.store.createUser(dto);
+  }
+
+  @Post(":userId/profile-photo")
+  @UseGuards(RoleGuard, NexaPermissionGuard)
+  @RequireRole("admin")
+  @RequireNexaPermissions("nexa.admin_users:write")
+  @UseInterceptors(FileInterceptor("file"))
+  async uploadProfilePhoto(
+    @Param("userId") userId: string,
+    @UploadedFile() file?: Express.Multer.File
+  ): Promise<unknown> {
+    if (!file?.buffer) {
+      throw new BadRequestException("File mancante");
+    }
+    return this.store.uploadEmployeeProfilePhoto(userId, file.buffer, file.mimetype || "image/jpeg");
+  }
+
+  @Get(":userId/profile-photo-url")
+  async profilePhotoUrl(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string
+  ): Promise<{ url: string | null }> {
+    const url = await this.store.getEmployeeProfilePhotoSignedUrl(auth.userId, auth.role, userId);
+    return { url };
   }
 
   @Patch(":userId")

@@ -40,6 +40,10 @@ export interface User {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
+  jurisdiction?: "CH" | "IT";
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
+  profilePhotoPath?: string;
 }
 
 export interface Role {
@@ -167,6 +171,7 @@ export interface LeavePlan {
   endDate: string;
   status: "draft" | "pending" | "approved" | "rejected";
   version: number;
+  kind?: "annual" | "rol";
 }
 
 export interface LeaveBalance {
@@ -214,6 +219,9 @@ export interface CreateUserPayload {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
+  jurisdiction?: "CH" | "IT";
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
 }
 
 export interface UpdateUserPayload {
@@ -240,6 +248,10 @@ export interface UpdateUserPayload {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
+  jurisdiction?: "CH" | "IT";
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
+  profilePhotoPath?: string | null;
 }
 
 interface ApiErrorPayload {
@@ -1090,10 +1102,11 @@ export async function downloadPayslipPdf(token: string, userId: string, period: 
 
 export interface CalendarEventDto {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline";
+  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol";
   title: string;
   start: string;
   end?: string;
+  userId?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -1134,6 +1147,46 @@ export async function fetchUserCalendar(
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { events: CalendarEventDto[] };
   return body.events;
+}
+
+export async function fetchHrWorkCalendar(
+  token: string,
+  query?: { from?: string; to?: string; userIds?: string[] }
+): Promise<CalendarEventDto[]> {
+  const q = new URLSearchParams();
+  if (query?.from) q.set("from", query.from);
+  if (query?.to) q.set("to", query.to);
+  if (query?.userIds?.length) q.set("userIds", query.userIds.join(","));
+  const qs = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/work-calendar${qs ? `?${qs}` : ""}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { events: CalendarEventDto[] };
+  return body.events;
+}
+
+export async function fetchUserProfilePhotoUrl(token: string, userId: string): Promise<string | null> {
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}/profile-photo-url`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { url: string | null };
+  return body.url;
+}
+
+export async function uploadUserProfilePhoto(token: string, userId: string, file: File): Promise<User> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}/profile-photo`), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as User;
 }
 
 export async function fetchUserNotifications(

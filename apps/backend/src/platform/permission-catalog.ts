@@ -129,6 +129,13 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
   ),
   ...cat(
     "nexa_hr",
+    "work_calendar",
+    "Calendario lavoro",
+    "Vedere calendario team: turni, smart working, ferie, ROL e festività.",
+    "Gestire viste o integrazioni calendario se previsto."
+  ),
+  ...cat(
+    "nexa_hr",
     "expenses",
     "Note spese e rimborsi",
     "Consultare note spese e stato rimborso.",
@@ -285,6 +292,8 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.reports_hr:read",
     "nexa.shifts:read",
     "nexa.shifts:write",
+    "nexa.work_calendar:read",
+    "nexa.work_calendar:write",
     "nexa.documents:read",
     "nexa.documents:write",
     "nexa.expenses:read",

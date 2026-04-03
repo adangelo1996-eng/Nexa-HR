@@ -1,4 +1,13 @@
 import type { PayrollExportArtifact, PayrollRunContext, PayrollExportGenerator, JurisdictionCode } from "../../payroll-core/dist/index";
+export {
+  calculateItalianPayroll,
+  employerBudgetBucketsFromGrossIt,
+  defaultItalianRuleSet2026,
+  type ItalianPayrollInput,
+  type ItalianTaxProfile,
+  type ItalianRuleSet,
+  type PayrollResult as ItalianPayrollEngineResult
+} from "../../payroll-it-rules/dist/index";
 
 /**
  * Adapter Italia: generatori F24 / UniEmens / SEPA — stub per cut-over architetturale.
