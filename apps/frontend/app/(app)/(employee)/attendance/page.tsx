@@ -15,6 +15,8 @@ import {
   fetchAttendanceStatus,
   fetchAttendanceSummary,
   fetchAttendanceDayBoard,
+  fetchAttendanceDayBoardCostCenters,
+  downloadAttendanceDayBoardExport,
   fetchAttendanceTeamUsers,
   fetchCurrentUser,
   nexaUsesSupabaseAttendance,
@@ -26,7 +28,13 @@ import {
   type WorkdaySummary,
   type AttendanceDayBoardResponse
 } from "@/lib/api";
-import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanAccessPayrollArea,
+  sessionCanSeeApprovalsAndHrExtras,
+  type SessionUser
+} from "@/lib/auth-session";
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");
@@ -83,6 +91,9 @@ export default function AttendancePage(): React.JSX.Element {
   const [hrBoard, setHrBoard] = useState<AttendanceDayBoardResponse | null>(null);
   const [hrBoardLoading, setHrBoardLoading] = useState(false);
   const [hrBoardError, setHrBoardError] = useState<string | null>(null);
+  const [hrBoardCcOptions, setHrBoardCcOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [hrBoardCcSelected, setHrBoardCcSelected] = useState<Set<string>>(new Set());
+  const [hrBoardExportLoading, setHrBoardExportLoading] = useState(false);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -144,13 +155,45 @@ export default function AttendancePage(): React.JSX.Element {
 
   useEffect(() => {
     if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
+      setHrBoardCcOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchAttendanceDayBoardCostCenters(token)
+      .then((list) => {
+        if (!cancelled) {
+          setHrBoardCcOptions(list);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHrBoardCcOptions([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.canManageTeamAttendance]);
+
+  const hrBoardCostCenterIds = useMemo(() => {
+    if (hrBoardCcSelected.size === 0) {
+      return undefined;
+    }
+    return [...hrBoardCcSelected];
+  }, [hrBoardCcSelected]);
+
+  useEffect(() => {
+    if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
       setHrBoard(null);
       return;
     }
     let cancelled = false;
     setHrBoardLoading(true);
     setHrBoardError(null);
-    void fetchAttendanceDayBoard(token, hrBoardDate)
+    void fetchAttendanceDayBoard(token, {
+      date: hrBoardDate,
+      costCenterIds: hrBoardCostCenterIds
+    })
       .then((b) => {
         if (!cancelled) {
           setHrBoard(b);
@@ -170,7 +213,7 @@ export default function AttendancePage(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token, user?.canManageTeamAttendance, hrBoardDate]);
+  }, [token, user?.canManageTeamAttendance, hrBoardDate, hrBoardCostCenterIds]);
 
   useEffect(() => {
     setNewEntryAtLocal(`${hrEditMonth}-01T09:00`);
@@ -218,6 +261,36 @@ export default function AttendancePage(): React.JSX.Element {
         u.email.toLowerCase().includes(q)
     );
   }, [teamUsers, hrUserSearch]);
+
+  function toggleHrBoardCc(id: string): void {
+    setHrBoardCcSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  async function onExportHrBoard(): Promise<void> {
+    if (!token) {
+      return;
+    }
+    setHrManageError(null);
+    setHrBoardExportLoading(true);
+    try {
+      await downloadAttendanceDayBoardExport(token, {
+        date: hrBoardDate,
+        costCenterIds: hrBoardCostCenterIds
+      });
+    } catch (ex) {
+      setHrManageError(ex instanceof Error ? ex.message : "Export non riuscito");
+    } finally {
+      setHrBoardExportLoading(false);
+    }
+  }
 
   function getDraft(entry: TimeEntry): EntryDraft {
     const d = entryDrafts[entry.id];
@@ -398,7 +471,7 @@ export default function AttendancePage(): React.JSX.Element {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Timbrature</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Storico giornaliero e giorni passati per {user?.fullName}.</p>
-          {user && sessionCanSeeApprovalsAndHrExtras(user) ? (
+          {user && sessionCanAccessPayrollArea(user) ? (
             <Link href="/payroll-calc" className="synapse-nav-link-compact mt-2 inline-block">
               Vai a Calcolo Cedolino
             </Link>
@@ -544,7 +617,52 @@ export default function AttendancePage(): React.JSX.Element {
                       onChange={(e) => setHrBoardDate(e.target.value)}
                     />
                   </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={!token || hrBoardExportLoading}
+                    onClick={() => void onExportHrBoard()}
+                  >
+                    {hrBoardExportLoading ? "Export…" : "Scarica Excel"}
+                  </Button>
                 </div>
+                {hrBoardCcOptions.length > 0 ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                        Filtra per centro di costo
+                      </p>
+                      <button
+                        type="button"
+                        className="text-xs text-synapse-gold underline decoration-dotted hover:opacity-90"
+                        onClick={() => setHrBoardCcSelected(new Set())}
+                      >
+                        Tutti i CDC
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
+                      Nessuna spunta = tutti i dipendenti visibili. Con una o più spunte, solo i CDC selezionati.
+                    </p>
+                    <div className="mt-2 flex max-h-40 flex-col flex-wrap gap-x-4 gap-y-1.5 overflow-y-auto sm:max-h-32">
+                      {hrBoardCcOptions.map((cc) => (
+                        <label
+                          key={cc.id}
+                          className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+                        >
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-400"
+                            checked={hrBoardCcSelected.has(cc.id)}
+                            onChange={() => toggleHrBoardCc(cc.id)}
+                          />
+                          <span>{cc.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {hrBoardLoading ? (
                   <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Caricamento…</p>
                 ) : hrBoardError ? (

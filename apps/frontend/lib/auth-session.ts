@@ -32,6 +32,10 @@ export interface SessionUser {
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
+  /** Simulazioni payroll / calcolo cedolini: permesso `nexa.payroll:read` (o write) sul ruolo, o console admin. */
+  canAccessPayrollArea?: boolean;
+  /** Griglia budget personale: permesso `nexa.personnel_budget:read` (o write), o console admin. */
+  canAccessPersonnelBudgetArea?: boolean;
 }
 
 function normalizeStoredRole(role: unknown): UserRole {
@@ -75,6 +79,38 @@ export function sessionCanSeeApprovalsAndHrExtras(
     return true;
   }
   return u.isTeamResponsible === true;
+}
+
+/** Payroll e calcolo cedolini: non legato al solo “responsabile team”; richiede permesso ruolo o admin. */
+export function sessionCanAccessPayrollArea(
+  u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPayrollArea"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return true;
+  }
+  if (u.canNexaAdmin) {
+    return true;
+  }
+  return u.canAccessPayrollArea === true;
+}
+
+/** Budget personale HR. */
+export function sessionCanAccessPersonnelBudgetArea(
+  u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPersonnelBudgetArea"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return true;
+  }
+  if (u.canNexaAdmin) {
+    return true;
+  }
+  return u.canAccessPersonnelBudgetArea === true;
 }
 
 /** Solo 401 / token: non sloggare su 403 permessi o errori di rete. */

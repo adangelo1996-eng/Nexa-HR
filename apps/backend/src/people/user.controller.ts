@@ -289,13 +289,23 @@ export class UserController {
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
     const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
     const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
+    const canAccessPayrollArea =
+      auth.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.payroll:read"]));
+    const canAccessPersonnelBudgetArea =
+      auth.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.personnel_budget:read"]));
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
       canNexaAdmin,
       canManageTeamAttendance,
       isTeamResponsible: workTeamIdsWhereLead.length > 0,
-      workTeamIdsWhereLead
+      workTeamIdsWhereLead,
+      canAccessPayrollArea,
+      canAccessPersonnelBudgetArea
     };
   }
 

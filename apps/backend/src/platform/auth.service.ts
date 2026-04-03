@@ -13,6 +13,8 @@ interface LoginUser {
   tenantId: string;
   companyId?: string;
   canNexaAdmin: boolean;
+  canAccessPayrollArea: boolean;
+  canAccessPersonnelBudgetArea: boolean;
 }
 
 interface SynapseSsoPayload {
@@ -54,6 +56,14 @@ export class AuthService {
     const tenantId = user.companyId || "synapse-default";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
+    const canAccessPayrollArea =
+      user.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(user.id, ["nexa.payroll:read"]));
+    const canAccessPersonnelBudgetArea =
+      user.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(user.id, ["nexa.personnel_budget:read"]));
     return {
       token,
       user: {
@@ -63,7 +73,9 @@ export class AuthService {
         role: user.role,
         tenantId,
         companyId: user.companyId,
-        canNexaAdmin
+        canNexaAdmin,
+        canAccessPayrollArea,
+        canAccessPersonnelBudgetArea
       }
     };
   }
@@ -88,6 +100,14 @@ export class AuthService {
     const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
+    const canAccessPayrollArea =
+      user.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(user.id, ["nexa.payroll:read"]));
+    const canAccessPersonnelBudgetArea =
+      user.role === "superuser" ||
+      canNexaAdmin ||
+      (await this.permissions.userHasAll(user.id, ["nexa.personnel_budget:read"]));
     return {
       token,
       user: {
@@ -97,7 +117,9 @@ export class AuthService {
         role: user.role,
         tenantId,
         companyId: user.companyId,
-        canNexaAdmin
+        canNexaAdmin,
+        canAccessPayrollArea,
+        canAccessPersonnelBudgetArea
       }
     };
   }

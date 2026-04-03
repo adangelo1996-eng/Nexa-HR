@@ -771,14 +771,27 @@ export interface AttendanceDayBoardResponse {
   }>;
 }
 
-export async function fetchAttendanceDayBoard(token: string, date?: string): Promise<AttendanceDayBoardResponse> {
+export type FetchAttendanceDayBoardOpts = { date?: string; costCenterIds?: string[] };
+
+export async function fetchAttendanceDayBoard(
+  token: string,
+  opts?: string | FetchAttendanceDayBoardOpts
+): Promise<AttendanceDayBoardResponse> {
   if (nexaUsesSupabaseAttendance()) {
     throw new Error(
       "La vista giornaliera team non è disponibile quando le timbrature usano Supabase Edge."
     );
   }
-  const q = date ? `?date=${encodeURIComponent(date)}` : "";
-  const response = await fetch(buildApiUrl(`/attendance/team/day-board${q}`), {
+  const o: FetchAttendanceDayBoardOpts = typeof opts === "string" ? { date: opts } : (opts ?? {});
+  const params = new URLSearchParams();
+  if (o.date) {
+    params.set("date", o.date);
+  }
+  if (o.costCenterIds?.length) {
+    params.set("costCenterIds", o.costCenterIds.join(","));
+  }
+  const qs = params.toString();
+  const response = await fetch(buildApiUrl(`/attendance/team/day-board${qs ? `?${qs}` : ""}`), {
     method: "GET",
     headers: getAuthHeaders(token)
   });
@@ -786,6 +799,56 @@ export async function fetchAttendanceDayBoard(token: string, date?: string): Pro
     await parseError(response);
   }
   return (await response.json()) as AttendanceDayBoardResponse;
+}
+
+export async function fetchAttendanceDayBoardCostCenters(
+  token: string
+): Promise<Array<{ id: string; label: string }>> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error(
+      "I filtri CDC board non sono disponibili quando le timbrature usano Supabase Edge."
+    );
+  }
+  const response = await fetch(buildApiUrl("/attendance/team/day-board/cost-centers"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const body = (await response.json()) as { costCenters: Array<{ id: string; label: string }> };
+  return body.costCenters;
+}
+
+export async function downloadAttendanceDayBoardExport(
+  token: string,
+  opts: { date: string; costCenterIds?: string[] }
+): Promise<void> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error(
+      "L'export giornaliero non è disponibile quando le timbrature usano Supabase Edge."
+    );
+  }
+  const params = new URLSearchParams();
+  params.set("date", opts.date.slice(0, 10));
+  if (opts.costCenterIds?.length) {
+    params.set("costCenterIds", opts.costCenterIds.join(","));
+  }
+  const url = buildApiUrl(`/attendance/team/day-board/export?${params.toString()}`);
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = `nexa-presenze-giorno-${opts.date.slice(0, 10)}.xlsx`;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export async function downloadAttendanceMonthExport(token: string, month: string): Promise<void> {
@@ -1255,7 +1318,7 @@ export async function fetchSmartworkingMe(token: string): Promise<{
 
 export async function createSmartworkingRequest(
   token: string,
-  payload: { day: string; note?: string }
+  payload: { day: string; note?: string; userId?: string }
 ): Promise<SmartworkingRequestDto> {
   const response = await fetch(buildApiUrl("/smartworking/request"), {
     method: "POST",
@@ -1296,7 +1359,7 @@ export type TravelRequestDto = SmartworkingRequestDto;
 
 export async function createTravelRequest(
   token: string,
-  payload: { day: string; note?: string }
+  payload: { day: string; note?: string; userId?: string }
 ): Promise<TravelRequestDto> {
   const response = await fetch(buildApiUrl("/travel/request"), {
     method: "POST",

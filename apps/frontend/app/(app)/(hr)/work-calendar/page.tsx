@@ -35,7 +35,8 @@ import {
   getToken,
   sessionCanSeeApprovalsAndHrExtras,
   shouldClearSessionOnUnauthorizedApiError,
-  type SessionUser
+  type SessionUser,
+  type UserRole
 } from "@/lib/auth-session";
 
 type RowUser = { id: string; fullName: string };
@@ -77,6 +78,10 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
 
 function isCalendarPending(ev: CalendarEventDto): boolean {
   return ev.meta?.status === "pending";
+}
+
+function isCalendarApproved(ev: CalendarEventDto): boolean {
+  return String(ev.meta?.status ?? "") === "approved";
 }
 
 function eventStyle(ev: CalendarEventDto): string {
@@ -298,6 +303,48 @@ function canShowCalendarEventActions(me: SessionUser | null, rowUserId: string):
   return me.id === rowUserId || me.role === "superuser" || me.isTeamResponsible === true;
 }
 
+/** Superuser: anche sulla propria riga; HR (team/admin): correzione su dipendenti, non sul proprio profilo salvo superuser. */
+function canEditApprovedCalendarChip(
+  me: SessionUser | null,
+  rowUserId: string,
+  ev: CalendarEventDto
+): boolean {
+  if (!me || isCalendarPending(ev) || String(ev.meta?.status ?? "") === "rejected") {
+    return false;
+  }
+  if (!isCalendarApproved(ev)) {
+    return false;
+  }
+  if (
+    ev.kind === "leave" ||
+    ev.kind === "rol" ||
+    ev.kind === "sickness" ||
+    ev.kind === "smartworking" ||
+    ev.kind === "travel"
+  ) {
+    const hasEntityId =
+      ((ev.kind === "leave" || ev.kind === "rol") && typeof ev.meta?.leaveId === "string") ||
+      (ev.kind === "sickness" && typeof ev.meta?.sicknessId === "string") ||
+      (ev.kind === "smartworking" && typeof ev.meta?.swRequestId === "string") ||
+      (ev.kind === "travel" && typeof ev.meta?.travelRequestId === "string");
+    if (!hasEntityId) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  if (me.role === "superuser") {
+    return true;
+  }
+  if (!sessionCanSeeApprovalsAndHrExtras(me)) {
+    return false;
+  }
+  if (me.id === rowUserId) {
+    return false;
+  }
+  return canShowCalendarEventActions(me, rowUserId);
+}
+
 function isPendingWithMutableRequest(ev: CalendarEventDto): boolean {
   if (!isCalendarPending(ev)) return false;
   if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
@@ -383,6 +430,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [travelNote, setTravelNote] = useState("");
   const [travelPendingDay, setTravelPendingDay] = useState("");
   const [travelOptimistic, setTravelOptimistic] = useState<boolean | null>(null);
+  const [editingTravelRequestId, setEditingTravelRequestId] = useState<string | null>(null);
+  const [editingSwRequestId, setEditingSwRequestId] = useState<string | null>(null);
+  const [chipEditIsApproved, setChipEditIsApproved] = useState(false);
+  const [hrYtdAnalyticsEvents, setHrYtdAnalyticsEvents] = useState<CalendarEventDto[]>([]);
+  const [hrYtdAnalyticsLoading, setHrYtdAnalyticsLoading] = useState(false);
+  const [costCenterLabelById, setCostCenterLabelById] = useState<Record<string, string>>({});
+  const [teamLabelById, setTeamLabelById] = useState<Record<string, string>>({});
+  const [analyticsFilterCc, setAnalyticsFilterCc] = useState<string[]>([]);
+  const [analyticsFilterTeam, setAnalyticsFilterTeam] = useState<string[]>([]);
+  const [analyticsFilterUserIds, setAnalyticsFilterUserIds] = useState<string[]>([]);
+  const [analyticsFilterRoles, setAnalyticsFilterRoles] = useState<UserRole[]>([]);
+  const [analyticsFilterManagerIds, setAnalyticsFilterManagerIds] = useState<string[]>([]);
 
   const load = useCallback(async (opts?: { silent?: boolean }): Promise<void> => {
     const t = getToken();
@@ -417,6 +476,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
       } else {
         const usersList = await fetchUsers(t);
         setAllUsersForSelect(usersList);
+        if (current.role !== "superuser") {
+          setCostCenterLabelById({});
+          setTeamLabelById({});
+        }
         let rows = filterManagerRows(current, usersList);
         const fid = userFilter.trim();
         let layout: AdminTableRow[] | null = null;
@@ -425,11 +488,25 @@ export default function WorkCalendarPage(): React.JSX.Element {
         } else if (current.role === "superuser") {
           const visibleSet = new Set(rows.map((r) => r.id));
           const ccs = await fetchAdminCostCenters(t);
+          const ccLabels: Record<string, string> = {};
+          for (const cc of ccs) {
+            ccLabels[cc.id] = [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name;
+          }
+          setCostCenterLabelById(ccLabels);
           const teamsNested = await Promise.all(
             [...ccs]
               .sort((a, b) => a.name.localeCompare(b.name, "it"))
               .map(async (cc) => ({ cc, teams: await fetchAdminWorkTeams(t, cc.id) }))
           );
+          const tlabels: Record<string, string> = {};
+          for (const { cc, teams } of teamsNested) {
+            const pref = [cc.code, cc.name].filter(Boolean).join(" · ");
+            const pfx = pref ? `${pref} — ` : "";
+            for (const tm of teams) {
+              tlabels[tm.id] = `${pfx}${tm.name}`;
+            }
+          }
+          setTeamLabelById(tlabels);
           const built: AdminTableRow[] = [];
           const assigned = new Set<string>();
           const visibleUsers = usersList.filter((u) => visibleSet.has(u.id));
@@ -513,6 +590,38 @@ export default function WorkCalendarPage(): React.JSX.Element {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const t = getToken();
+    if (!t || !me || !sessionCanSeeApprovalsAndHrExtras(me)) {
+      setHrYtdAnalyticsEvents([]);
+      setHrYtdAnalyticsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHrYtdAnalyticsLoading(true);
+    const { to } = monthRange(year, month);
+    const from = `${year}-01-01`;
+    void fetchHrWorkCalendar(t, { from, to })
+      .then((ev) => {
+        if (!cancelled) {
+          setHrYtdAnalyticsEvents(ev);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHrYtdAnalyticsEvents([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHrYtdAnalyticsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [me, year, month]);
+
   const days = useMemo(() => {
     const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
     return Array.from({ length: last }, (_, i) => {
@@ -544,6 +653,138 @@ export default function WorkCalendarPage(): React.JSX.Element {
     () => aggregateWorkCalendarStats(myAnalyticsEvents, yearStart, monthBounds.to),
     [myAnalyticsEvents, yearStart, monthBounds.to]
   );
+
+  const baseUsersForAnalytics = useMemo(() => {
+    const allowed = new Set(rowUsers.map((r) => r.id));
+    return allUsersForSelect.filter((u) => allowed.has(u.id));
+  }, [allUsersForSelect, rowUsers]);
+
+  const analyticsHasAnyDimensionFilter = useMemo(
+    () =>
+      analyticsFilterCc.length > 0 ||
+      analyticsFilterTeam.length > 0 ||
+      analyticsFilterUserIds.length > 0 ||
+      analyticsFilterRoles.length > 0 ||
+      analyticsFilterManagerIds.length > 0,
+    [
+      analyticsFilterCc,
+      analyticsFilterTeam,
+      analyticsFilterUserIds,
+      analyticsFilterRoles,
+      analyticsFilterManagerIds
+    ]
+  );
+
+  const analyticsFilteredUserIds = useMemo(() => {
+    return baseUsersForAnalytics
+      .filter((u) => {
+        if (!analyticsHasAnyDimensionFilter) {
+          return true;
+        }
+        if (analyticsFilterCc.length) {
+          const cc = u.costCenterId?.trim() || "__none__";
+          if (!analyticsFilterCc.includes(cc)) {
+            return false;
+          }
+        }
+        if (analyticsFilterTeam.length) {
+          const tid = u.teamId?.trim() || "__none__";
+          if (!analyticsFilterTeam.includes(tid)) {
+            return false;
+          }
+        }
+        if (analyticsFilterUserIds.length && !analyticsFilterUserIds.includes(u.id)) {
+          return false;
+        }
+        if (analyticsFilterRoles.length && !analyticsFilterRoles.includes(u.role)) {
+          return false;
+        }
+        if (analyticsFilterManagerIds.length) {
+          const mid = u.managerId?.trim() || "__none__";
+          if (!analyticsFilterManagerIds.includes(mid)) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((u) => u.id);
+  }, [
+    baseUsersForAnalytics,
+    analyticsHasAnyDimensionFilter,
+    analyticsFilterCc,
+    analyticsFilterTeam,
+    analyticsFilterUserIds,
+    analyticsFilterRoles,
+    analyticsFilterManagerIds
+  ]);
+
+  const analyticsCcSelectOptions = useMemo(() => {
+    const ids = new Set(baseUsersForAnalytics.map((u) => u.costCenterId?.trim() || "__none__"));
+    return [...ids]
+      .map((id) => ({
+        id,
+        label: costCenterLabelById[id] ?? (id === "__none__" ? "Senza centro di costo" : id)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "it"));
+  }, [baseUsersForAnalytics, costCenterLabelById]);
+
+  const analyticsTeamSelectOptions = useMemo(() => {
+    const ids = new Set(baseUsersForAnalytics.map((u) => u.teamId?.trim() || "__none__"));
+    return [...ids]
+      .map((id) => ({
+        id,
+        label: teamLabelById[id] ?? (id === "__none__" ? "Senza team" : `Team ${id}`)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "it"));
+  }, [baseUsersForAnalytics, teamLabelById]);
+
+  const analyticsManagerSelectOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const u of baseUsersForAnalytics) {
+      ids.add(u.managerId?.trim() || "__none__");
+    }
+    return [...ids]
+      .map((id) => ({
+        id,
+        label:
+          id === "__none__"
+            ? "Senza responsabile"
+            : allUsersForSelect.find((x) => x.id === id)?.fullName ?? id
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "it"));
+  }, [baseUsersForAnalytics, allUsersForSelect]);
+
+  const analyticsRoleSelectOptions = useMemo(() => {
+    return [...new Set(baseUsersForAnalytics.map((u) => u.role))].sort();
+  }, [baseUsersForAnalytics]);
+
+  const hrAnalyticsEventsFiltered = useMemo(() => {
+    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
+      return [];
+    }
+    if (analyticsFilteredUserIds.length === 0) {
+      return [];
+    }
+    const allowed = new Set(analyticsFilteredUserIds);
+    return hrYtdAnalyticsEvents.filter(
+      (ev) => ev.kind === "holiday" || (ev.userId && allowed.has(ev.userId))
+    );
+  }, [me, hrYtdAnalyticsEvents, analyticsFilteredUserIds]);
+
+  const statsAggMese = useMemo(() => {
+    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
+      return null;
+    }
+    return aggregateWorkCalendarStats(hrAnalyticsEventsFiltered, monthBounds.from, monthBounds.to);
+  }, [me, hrAnalyticsEventsFiltered, monthBounds.from, monthBounds.to]);
+
+  const statsAggYtd = useMemo(() => {
+    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
+      return null;
+    }
+    return aggregateWorkCalendarStats(hrAnalyticsEventsFiltered, yearStart, monthBounds.to);
+  }, [me, hrAnalyticsEventsFiltered, yearStart, monthBounds.to]);
+
   const ytdEndLabel = useMemo(() => formatItalianDateLong(monthBounds.to), [monthBounds.to]);
 
   const modalHeaderDayIso = useMemo(() => {
@@ -556,12 +797,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const openModal = (day: string, row: RowUser): void => {
     setModal({ day, row });
     setModalStep("menu");
+    setChipEditIsApproved(false);
+    setEditingTravelRequestId(null);
+    setEditingSwRequestId(null);
     setSwOptimistic(null);
     setTravelOptimistic(null);
     setSwPendingDay(day.slice(0, 10));
     setTravelPendingDay(day.slice(0, 10));
     setTravelNote("");
-    setTravelOptimistic(null);
     setLeaveStart(day);
     setLeaveEnd(day);
     setLeaveKind("annual");
@@ -576,6 +819,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const closeModal = (): void => {
     setModal(null);
     setModalStep("menu");
+    setChipEditIsApproved(false);
+    setEditingTravelRequestId(null);
+    setEditingSwRequestId(null);
     setSwOptimistic(null);
     setSwPendingDay("");
     setTravelPendingDay("");
@@ -588,7 +834,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const beginEditFromChip = (day: string, row: RowUser, ev: CalendarEventDto): void => {
     setModal({ day, row });
+    setChipEditIsApproved(isCalendarApproved(ev));
+    setEditingTravelRequestId(null);
+    setEditingSwRequestId(null);
     setSwOptimistic(null);
+    setTravelOptimistic(null);
     setError(null);
     if (ev.kind === "leave" || ev.kind === "rol") {
       setModalStep("leave");
@@ -612,6 +862,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       setModalStep("smartworking");
       setEditingLeaveId(null);
       setEditingSicknessId(null);
+      setEditingSwRequestId(typeof ev.meta?.swRequestId === "string" ? ev.meta.swRequestId : null);
       setSwPendingDay(ev.start.slice(0, 10));
       setSwNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
       return;
@@ -620,6 +871,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
       setModalStep("travel");
       setEditingLeaveId(null);
       setEditingSicknessId(null);
+      setEditingTravelRequestId(
+        typeof ev.meta?.travelRequestId === "string" ? ev.meta.travelRequestId : null
+      );
       setTravelPendingDay(ev.start.slice(0, 10));
       setTravelNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
     }
@@ -686,6 +940,13 @@ export default function WorkCalendarPage(): React.JSX.Element {
     () => (modal ? deriveSwFormState(events, modal.row.id, swPendingDay || modal.day) : { on: false }),
     [events, modal, swPendingDay]
   );
+  const swAtSelectedDay = useMemo(() => {
+    if (!modal) {
+      return { on: false } as SwDayState;
+    }
+    const dayIso = (swPendingDay || modal.day).slice(0, 10);
+    return deriveSwDayState(eventsForCell(events, modal.row.id, dayIso));
+  }, [events, modal, swPendingDay]);
   const swDisplayOn = swOptimistic !== null ? swOptimistic : serverSwForm.on;
 
   const pendingLeaveInModal = cellEventsModal.find(
@@ -707,8 +968,24 @@ export default function WorkCalendarPage(): React.JSX.Element {
     () => (modal ? deriveTravelFormState(events, modal.row.id, travelPendingDay || modal.day) : { on: false }),
     [events, modal, travelPendingDay]
   );
+  const travelAtSelectedDay = useMemo(() => {
+    if (!modal) {
+      return { on: false } as TrDayState;
+    }
+    const dayIso = (travelPendingDay || modal.day).slice(0, 10);
+    return deriveTravelDayState(eventsForCell(events, modal.row.id, dayIso));
+  }, [events, modal, travelPendingDay]);
   const trDisplayOn = travelOptimistic !== null ? travelOptimistic : serverTravelForm.on;
   const pendingTravelInModal = serverTravelCell.status === "pending" && Boolean(serverTravelCell.requestId);
+
+  const showSmartworkingModalSaveButton =
+    Boolean(serverSwForm.requestId) &&
+    (serverSwForm.status === "pending" ||
+      (chipEditIsApproved && serverSwForm.status === "approved"));
+  const showTravelModalSaveButton =
+    Boolean(serverTravelForm.requestId) &&
+    (serverTravelForm.status === "pending" ||
+      (chipEditIsApproved && serverTravelForm.status === "approved"));
 
   useEffect(() => {
     if (!modal) {
@@ -728,9 +1005,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const onSmartworkingSwitch = (next: boolean): void => {
     const t = getToken();
-    if (!t || !modal) return;
+    if (!t || !modal || !me) return;
     setError(null);
-    if (!isOwnRow && next) {
+    if (!isOwnRow && next && me.role !== "superuser") {
       setError("Solo il dipendente può richiedere un nuovo smart working da qui.");
       return;
     }
@@ -738,7 +1015,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
       if (serverSwForm.on) return;
       setSwOptimistic(true);
       const dayIso = (swPendingDay || modal.day).slice(0, 10);
-      void createSmartworkingRequest(t, { day: dayIso, note: swNote.trim() || undefined })
+      void createSmartworkingRequest(t, {
+        day: dayIso,
+        note: swNote.trim() || undefined,
+        ...(me.role === "superuser" && !isOwnRow ? { userId: modal.row.id } : {})
+      })
         .then(() => void load({ silent: true }))
         .catch((e) => {
           setSwOptimistic(null);
@@ -898,6 +1179,41 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
   };
 
+  const saveApprovedSmartworkingEdits = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal) {
+      return;
+    }
+    const rid = editingSwRequestId ?? serverSwCell.requestId;
+    if (!rid || serverSwCell.status !== "approved") {
+      return;
+    }
+    const nextNote = swNote.trim() || null;
+    const nextDay = (swPendingDay || modal.day).slice(0, 10);
+    setError(null);
+    setSubmitting("sw-save-approved");
+    try {
+      await updateSmartworkingRequest(t, rid, {
+        day: nextDay,
+        note: nextNote ?? undefined
+      });
+      closeModal();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const saveSmartworkingModalEdits = async (): Promise<void> => {
+    if (chipEditIsApproved && serverSwCell.status === "approved") {
+      await saveApprovedSmartworkingEdits();
+      return;
+    }
+    await savePendingSmartworkingEdits();
+  };
+
   const savePendingTravelEdits = async (): Promise<void> => {
     const t = getToken();
     if (!t || !modal || serverTravelForm.status !== "pending" || !serverTravelForm.requestId) return;
@@ -928,6 +1244,103 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore aggiornamento trasferta");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const saveApprovedTravelEdits = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal) {
+      return;
+    }
+    const rid = editingTravelRequestId ?? serverTravelCell.requestId ?? serverTravelForm.requestId;
+    if (!rid || serverTravelCell.status !== "approved") {
+      return;
+    }
+    const nextNote = travelNote.trim() || null;
+    const nextDay = (travelPendingDay || modal.day).slice(0, 10);
+    setError(null);
+    setSubmitting("tr-save-approved");
+    try {
+      await updateTravelRequest(t, rid, {
+        day: nextDay,
+        note: nextNote ?? undefined
+      });
+      closeModal();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore aggiornamento trasferta");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const saveTravelModalEdits = async (): Promise<void> => {
+    if (chipEditIsApproved && serverTravelCell.status === "approved") {
+      await saveApprovedTravelEdits();
+      return;
+    }
+    await savePendingTravelEdits();
+  };
+
+  const superuserTravelForOther = Boolean(modal && me && !isOwnRow && me.role === "superuser");
+
+  const submitTravelAdminForOther = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal || !me || me.role !== "superuser" || isOwnRow) {
+      return;
+    }
+    if (travelAtSelectedDay.on) {
+      setError(
+        travelAtSelectedDay.status === "pending"
+          ? "Per questa data c'è già una richiesta trasferta in attesa."
+          : "Per questa data risulta già una trasferta approvata."
+      );
+      return;
+    }
+    setSubmitting("travel-admin");
+    setError(null);
+    try {
+      await createTravelRequest(t, {
+        day: (travelPendingDay || modal.day).slice(0, 10),
+        note: travelNote.trim() || undefined,
+        userId: modal.row.id
+      });
+      closeModal();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore creazione trasferta");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const submitSmartworkingAdminForOther = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal || !me || me.role !== "superuser" || isOwnRow) {
+      return;
+    }
+    if (swAtSelectedDay.on) {
+      setError(
+        swAtSelectedDay.status === "pending"
+          ? "Per questa data c'è già una richiesta smart working in attesa."
+          : "Per questa data risulta già uno smart working attivo."
+      );
+      return;
+    }
+    setSubmitting("sw-admin");
+    setError(null);
+    try {
+      await createSmartworkingRequest(t, {
+        day: (swPendingDay || modal.day).slice(0, 10),
+        note: swNote.trim() || undefined,
+        userId: modal.row.id
+      });
+      closeModal();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore creazione smart working");
     } finally {
       setSubmitting(null);
     }
@@ -1119,7 +1532,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       >
                         <div className="flex min-h-[48px] flex-col gap-0.5">
                           {list.map((ev) => {
-                            const showEdit = showActions && isPendingWithMutableRequest(ev);
+                            const showEdit =
+                              showActions &&
+                              (isPendingWithMutableRequest(ev) ||
+                                canEditApprovedCalendarChip(me, row.id, ev));
                             const showRemove = showActions && canRemoveCalendarRequest(ev);
                             const actions =
                               showEdit || showRemove ? (
@@ -1196,15 +1612,182 @@ export default function WorkCalendarPage(): React.JSX.Element {
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium text-[var(--prom-text)] [&::-webkit-details-marker]:hidden">
           <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)] transition-transform group-open:rotate-90" />
           <span>
-            Analytics personale
+            {me && sessionCanSeeApprovalsAndHrExtras(me) ? "Analytics HR" : "Analytics personale"}
             <span className="ml-2 text-xs font-normal capitalize text-[var(--prom-muted)]">{monthLabel}</span>
           </span>
         </summary>
         <div className="border-t border-[var(--prom-line)] px-4 pb-4 pt-3">
-          <p className="mb-4 text-xs text-[var(--prom-muted)]">
-            Riepilogo giorni (calendario) per il tuo utente: mese attuale e cumulativo dall&apos;inizio
-            dell&apos;anno fino alla fine del mese selezionato. Le richieste rifiutate non contano nei giorni.
-          </p>
+          {me && sessionCanSeeApprovalsAndHrExtras(me) ? (
+            <div className="mb-8 space-y-4">
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                  Aggregato (vista calendario)
+                </h3>
+                <p className="text-xs text-[var(--prom-muted)]">
+                  Conteggi giorni-persona sul campione filtrato dal 1° gennaio {year} al {ytdEndLabel}. Le richieste
+                  rifiutate non contano. Nei menu a tendina: tenere premuto Ctrl o Cmd e cliccare per selezioni multiple;
+                  se non selezioni nulla in un menu, quel criterio non applica alcun vincolo.
+                </p>
+                {hrYtdAnalyticsLoading ? (
+                  <p className="mt-2 text-xs text-[var(--prom-muted)]">Caricamento dati aggregati…</p>
+                ) : null}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Centro di costo
+                  <select
+                    multiple
+                    size={5}
+                    value={analyticsFilterCc}
+                    onChange={(e) => setAnalyticsFilterCc(readMultiSelectValues(e))}
+                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
+                  >
+                    {analyticsCcSelectOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Team
+                  <select
+                    multiple
+                    size={5}
+                    value={analyticsFilterTeam}
+                    onChange={(e) => setAnalyticsFilterTeam(readMultiSelectValues(e))}
+                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
+                  >
+                    {analyticsTeamSelectOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Dipendente (nome)
+                  <select
+                    multiple
+                    size={5}
+                    value={analyticsFilterUserIds}
+                    onChange={(e) => setAnalyticsFilterUserIds(readMultiSelectValues(e))}
+                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
+                  >
+                    {[...baseUsersForAnalytics]
+                      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Ruolo (Nexa)
+                  <select
+                    multiple
+                    size={3}
+                    value={analyticsFilterRoles}
+                    onChange={(e) => setAnalyticsFilterRoles(readMultiSelectValues(e) as UserRole[])}
+                    className="mt-1 min-h-[4rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
+                  >
+                    {analyticsRoleSelectOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)] sm:col-span-2 xl:col-span-1">
+                  Responsabile (manager)
+                  <select
+                    multiple
+                    size={5}
+                    value={analyticsFilterManagerIds}
+                    onChange={(e) => setAnalyticsFilterManagerIds(readMultiSelectValues(e))}
+                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
+                  >
+                    {analyticsManagerSelectOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--prom-text)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                  onClick={() => {
+                    setAnalyticsFilterCc([]);
+                    setAnalyticsFilterTeam([]);
+                    setAnalyticsFilterUserIds([]);
+                    setAnalyticsFilterRoles([]);
+                    setAnalyticsFilterManagerIds([]);
+                  }}
+                >
+                  Azzera filtri aggregato
+                </button>
+                <span className="text-[11px] text-[var(--prom-muted)]">
+                  {analyticsFilteredUserIds.length} dipendenti nel campione
+                  {analyticsHasAnyDimensionFilter ? " · filtri attivi" : ""}
+                </span>
+              </div>
+              {baseUsersForAnalytics.length === 0 ? (
+                <p className="text-xs text-[var(--prom-muted)]">Nessun dipendente nella vista calendario.</p>
+              ) : analyticsFilteredUserIds.length === 0 && analyticsHasAnyDimensionFilter ? (
+                <p className="text-xs text-[var(--prom-muted)]">Nessun dipendente corrisponde ai filtri selezionati.</p>
+              ) : hrYtdAnalyticsLoading || !statsAggMese || !statsAggYtd ? null : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                      Mese selezionato (aggregato)
+                    </h4>
+                    <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
+                      <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggMese.giorniFerieAnnuali} />
+                      <AnalyticsStatRow label="ROL (giorni)" value={statsAggMese.giorniRol} />
+                      <AnalyticsStatRow label="Malattia (giorni)" value={statsAggMese.giorniMalattia} />
+                      <AnalyticsStatRow label="Smart working (giorni)" value={statsAggMese.giorniSmartWorking} />
+                      <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggMese.giorniTrasferta} />
+                      <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggMese.giorniFestivitaAziendali} />
+                      <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggMese.giorniConTurno} />
+                      <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsAggMese.richiesteInAttesa} />
+                    </dl>
+                  </div>
+                  <div>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                      Dal 1° gennaio al {ytdEndLabel} (aggregato)
+                    </h4>
+                    <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
+                      <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggYtd.giorniFerieAnnuali} />
+                      <AnalyticsStatRow label="ROL (giorni)" value={statsAggYtd.giorniRol} />
+                      <AnalyticsStatRow label="Malattia (giorni)" value={statsAggYtd.giorniMalattia} />
+                      <AnalyticsStatRow label="Smart working (giorni)" value={statsAggYtd.giorniSmartWorking} />
+                      <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggYtd.giorniTrasferta} />
+                      <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggYtd.giorniFestivitaAziendali} />
+                      <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggYtd.giorniConTurno} />
+                      <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsAggYtd.richiesteInAttesa} />
+                    </dl>
+                  </div>
+                </div>
+              )}
+              <div className="border-t border-[var(--prom-line)] pt-5">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                  Il tuo riepilogo personale
+                </h3>
+                <p className="mb-4 text-xs text-[var(--prom-muted)]">
+                  Stessi periodi del riquadro qui sotto, calcolati solo sul tuo utente collegato.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mb-4 text-xs text-[var(--prom-muted)]">
+              Riepilogo giorni (calendario) per il tuo utente: mese attuale e cumulativo dall&apos;inizio
+              dell&apos;anno fino alla fine del mese selezionato. Le richieste rifiutate non contano nei giorni.
+            </p>
+          )}
           <div className="grid gap-6 md:grid-cols-2">
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
@@ -1538,6 +2121,32 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         >
                           Nuova comunicazione malattia
                         </button>
+                        {!menuDayHasSw ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSwPendingDay(modal.day.slice(0, 10));
+                              setSwNote("");
+                              setModalStep("smartworking");
+                            }}
+                            className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
+                          >
+                            Nuovo smart working
+                          </button>
+                        ) : null}
+                        {!menuDayHasTravel ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTravelPendingDay(modal.day.slice(0, 10));
+                              setTravelNote("");
+                              setModalStep("travel");
+                            }}
+                            className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                          >
+                            Nuova trasferta
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1611,63 +2220,110 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
                       />
                     </label>
-                    {isOwnRow ? (
-                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
-                        <span className="text-[11px] text-[var(--prom-text)]">Richiedi smart working per questo giorno</span>
-                        <input
-                          type="checkbox"
-                          role="switch"
-                          aria-checked={swDisplayOn}
-                          checked={swDisplayOn}
-                          onChange={(e) => onSmartworkingSwitch(e.target.checked)}
-                          className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
-                        />
-                      </label>
+                    {superuserTravelForOther ? (
+                      <>
+                        <p className="text-[11px] text-[var(--prom-muted)]">
+                          Registra uno smart working per{" "}
+                          <span className="font-medium text-[var(--prom-text)]">{modal.row.fullName}</span>. Le quote
+                          settimanali/mensili non si applicano alle richieste registrate dal superuser.
+                        </p>
+                        {swAtSelectedDay.on ? (
+                          <p className="text-[10px] text-[var(--prom-muted)]">
+                            {swAtSelectedDay.status === "pending"
+                              ? "Per questa data c’è già una richiesta in attesa: torna al menu e usa «Modifica smart working in attesa»."
+                              : "Per questa data risulta già uno smart working attivo (approvato o da presenze)."}
+                          </p>
+                        ) : null}
+                        <label className="block text-[11px] text-[var(--prom-muted)]">
+                          Nota (opzionale)
+                          <input
+                            type="text"
+                            value={swNote}
+                            onChange={(e) => setSwNote(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                          />
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-1"
+                          disabled={submitting !== null || swAtSelectedDay.on}
+                          onClick={() => void submitSmartworkingAdminForOther()}
+                        >
+                          {submitting === "sw-admin" ? "Invio…" : "Registra smart working"}
+                        </Button>
+                      </>
                     ) : (
-                      <p className="text-[11px] text-[var(--prom-muted)]">
-                        Per il dipendente: modifica solo richieste già in attesa (giorno e nota). Per annullare usa
-                        l&apos;interruttore sotto se la richiesta è ancora in sospeso.
-                      </p>
+                      <>
+                        {isOwnRow ? (
+                          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
+                            <span className="text-[11px] text-[var(--prom-text)]">
+                              Richiedi smart working per questo giorno
+                            </span>
+                            <input
+                              type="checkbox"
+                              role="switch"
+                              aria-checked={swDisplayOn}
+                              checked={swDisplayOn}
+                              onChange={(e) => onSmartworkingSwitch(e.target.checked)}
+                              className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
+                            />
+                          </label>
+                        ) : (
+                          <p className="text-[11px] text-[var(--prom-muted)]">
+                            Per il dipendente: modifica solo richieste già in attesa (giorno e nota). Per annullare usa
+                            l&apos;interruttore sotto se la richiesta è ancora in sospeso.
+                          </p>
+                        )}
+                        {!isOwnRow && serverSwForm.status === "pending" && serverSwForm.requestId ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onSmartworkingSwitch(false)}
+                          >
+                            Annulla richiesta smart working in attesa
+                          </Button>
+                        ) : null}
+                        {swDisplayOn &&
+                        serverSwForm.status !== "pending" &&
+                        !(chipEditIsApproved && serverSwForm.status === "approved") ? (
+                          <p className="text-[10px] text-[var(--prom-muted)]">
+                            Per questa data risulta già uno smart working (approvato o da presenze). Non è possibile
+                            inserirne un altro.
+                          </p>
+                        ) : null}
+                        <label className="block text-[11px] text-[var(--prom-muted)]">
+                          Nota (opzionale)
+                          <input
+                            type="text"
+                            value={swNote}
+                            onChange={(e) => setSwNote(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                          />
+                        </label>
+                        <p className="text-[10px] text-[var(--prom-muted)]">
+                          La richiesta viene inviata in background; puoi chiudere il riquadro o scegliere un’altra
+                          opzione dal menu.
+                        </p>
+                        {showSmartworkingModalSaveButton ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="mt-1"
+                            disabled={submitting !== null}
+                            onClick={() => void saveSmartworkingModalEdits()}
+                          >
+                            {submitting === "sw-save" || submitting === "sw-save-approved"
+                              ? "Salvataggio…"
+                              : chipEditIsApproved && serverSwForm.status === "approved"
+                                ? "Salva correzione (approvato)"
+                                : "Aggiorna giorno / nota (in attesa)"}
+                          </Button>
+                        ) : null}
+                      </>
                     )}
-                    {!isOwnRow && serverSwForm.status === "pending" && serverSwForm.requestId ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => onSmartworkingSwitch(false)}
-                      >
-                        Annulla richiesta smart working in attesa
-                      </Button>
-                    ) : null}
-                    {swDisplayOn && serverSwForm.status !== "pending" ? (
-                      <p className="text-[10px] text-[var(--prom-muted)]">
-                        Per questa data risulta già uno smart working (approvato o da presenze). Non è possibile inserirne un altro.
-                      </p>
-                    ) : null}
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Nota (opzionale)
-                      <input
-                        type="text"
-                        value={swNote}
-                        onChange={(e) => setSwNote(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
-                    <p className="text-[10px] text-[var(--prom-muted)]">
-                      La richiesta viene inviata in background; puoi chiudere il riquadro o scegliere un’altra opzione dal menu.
-                    </p>
-                    {serverSwForm.status === "pending" && serverSwForm.requestId ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="mt-1"
-                        disabled={submitting !== null}
-                        onClick={() => void savePendingSmartworkingEdits()}
-                      >
-                        {submitting === "sw-save" ? "Salvataggio…" : "Aggiorna giorno / nota (in attesa)"}
-                      </Button>
-                    ) : null}
                   </div>
                 ) : null}
 
@@ -1683,54 +2339,99 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
                       />
                     </label>
-                    {isOwnRow ? (
-                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
-                        <span className="text-[11px] text-[var(--prom-text)]">Richiedi trasferta per questo giorno</span>
-                        <input
-                          type="checkbox"
-                          role="switch"
-                          aria-checked={trDisplayOn}
-                          checked={trDisplayOn}
-                          onChange={(e) => onTravelSwitch(e.target.checked)}
-                          className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-cyan-600"
-                        />
-                      </label>
+                    {superuserTravelForOther ? (
+                      <>
+                        <p className="text-[11px] text-[var(--prom-muted)]">
+                          Registra una trasferta per{" "}
+                          <span className="font-medium text-[var(--prom-text)]">{modal.row.fullName}</span>. La richiesta
+                          resta soggetta alle stesse approvazioni delle altre trasferte.
+                        </p>
+                        {travelAtSelectedDay.on ? (
+                          <p className="text-[10px] text-[var(--prom-muted)]">
+                            {travelAtSelectedDay.status === "pending"
+                              ? "Per questa data c’è già una richiesta in attesa: torna al menu e usa «Modifica trasferta in attesa»."
+                              : "Per questa data risulta già una trasferta approvata."}
+                          </p>
+                        ) : null}
+                        <label className="block text-[11px] text-[var(--prom-muted)]">
+                          Nota / destinazione (opzionale)
+                          <input
+                            type="text"
+                            value={travelNote}
+                            onChange={(e) => setTravelNote(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                          />
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-1"
+                          disabled={submitting !== null || travelAtSelectedDay.on}
+                          onClick={() => void submitTravelAdminForOther()}
+                        >
+                          {submitting === "travel-admin" ? "Invio…" : "Registra trasferta"}
+                        </Button>
+                      </>
                     ) : (
-                      <p className="text-[11px] text-[var(--prom-muted)]">
-                        Per il dipendente: modifica solo richieste ancora in attesa (giorno e nota).
-                      </p>
+                      <>
+                        {isOwnRow ? (
+                          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
+                            <span className="text-[11px] text-[var(--prom-text)]">
+                              Richiedi trasferta per questo giorno
+                            </span>
+                            <input
+                              type="checkbox"
+                              role="switch"
+                              aria-checked={trDisplayOn}
+                              checked={trDisplayOn}
+                              onChange={(e) => onTravelSwitch(e.target.checked)}
+                              className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-cyan-600"
+                            />
+                          </label>
+                        ) : (
+                          <p className="text-[11px] text-[var(--prom-muted)]">
+                            Per il dipendente: modifica solo richieste ancora in attesa (giorno e nota).
+                          </p>
+                        )}
+                        {!isOwnRow && serverTravelForm.status === "pending" && serverTravelForm.requestId ? (
+                          <Button type="button" variant="secondary" size="sm" onClick={() => onTravelSwitch(false)}>
+                            Annulla richiesta trasferta in attesa
+                          </Button>
+                        ) : null}
+                        {trDisplayOn &&
+                        serverTravelForm.status !== "pending" &&
+                        !(chipEditIsApproved && serverTravelForm.status === "approved") ? (
+                          <p className="text-[10px] text-[var(--prom-muted)]">
+                            Per questa data risulta già una trasferta approvata. Non è possibile inserirne un’altra.
+                          </p>
+                        ) : null}
+                        <label className="block text-[11px] text-[var(--prom-muted)]">
+                          Nota / destinazione (opzionale)
+                          <input
+                            type="text"
+                            value={travelNote}
+                            onChange={(e) => setTravelNote(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                          />
+                        </label>
+                        {showTravelModalSaveButton ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="mt-1"
+                            disabled={submitting !== null}
+                            onClick={() => void saveTravelModalEdits()}
+                          >
+                            {submitting === "tr-save" || submitting === "tr-save-approved"
+                              ? "Salvataggio…"
+                              : chipEditIsApproved && serverTravelForm.status === "approved"
+                                ? "Salva correzione (approvato)"
+                                : "Aggiorna giorno / nota (in attesa)"}
+                          </Button>
+                        ) : null}
+                      </>
                     )}
-                    {!isOwnRow && serverTravelForm.status === "pending" && serverTravelForm.requestId ? (
-                      <Button type="button" variant="secondary" size="sm" onClick={() => onTravelSwitch(false)}>
-                        Annulla richiesta trasferta in attesa
-                      </Button>
-                    ) : null}
-                    {trDisplayOn && serverTravelForm.status !== "pending" ? (
-                      <p className="text-[10px] text-[var(--prom-muted)]">
-                        Per questa data risulta già una trasferta approvata. Non è possibile inserirne un’altra.
-                      </p>
-                    ) : null}
-                    <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Nota / destinazione (opzionale)
-                      <input
-                        type="text"
-                        value={travelNote}
-                        onChange={(e) => setTravelNote(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
-                      />
-                    </label>
-                    {serverTravelForm.status === "pending" && serverTravelForm.requestId ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="mt-1"
-                        disabled={submitting !== null}
-                        onClick={() => void savePendingTravelEdits()}
-                      >
-                        {submitting === "tr-save" ? "Salvataggio…" : "Aggiorna giorno / nota (in attesa)"}
-                      </Button>
-                    ) : null}
                   </div>
                 ) : null}
 

@@ -1871,10 +1871,13 @@ export class HrDataStore {
     return summary;
   }
 
-  async createLeavePlan(input: Omit<LeavePlan, "id" | "status" | "version">): Promise<LeavePlan> {
+  async createLeavePlan(
+    input: Omit<LeavePlan, "id" | "status" | "version">,
+    options?: { skipAnnualBalanceCheck?: boolean }
+  ): Promise<LeavePlan> {
     const requestedDays = this.countCalendarDays(input.startDate, input.endDate);
     const kind: LeavePlanKind = input.kind ?? "annual";
-    if (kind === "annual") {
+    if (kind === "annual" && !options?.skipAnnualBalanceCheck) {
       const balance = await this.getLeaveBalance(input.userId, Number(input.startDate.slice(0, 4)));
       if (requestedDays > balance.residualDays) {
         throw new BadRequestException("Ferie insufficienti: riduci i giorni richiesti");
@@ -1929,13 +1932,21 @@ export class HrDataStore {
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
     const role = actorRole ?? "user";
     await this.assertCanActOnBehalfOfUser(actorUserId, role, leave.userId);
-    if (leave.status !== "pending") {
+    if (leave.status === "rejected") {
+      throw new BadRequestException("Questa richiesta è stata rifiutata e non è modificabile");
+    }
+    const isApprovedLeaveCorrection = leave.status === "approved";
+    if (isApprovedLeaveCorrection) {
+      if (actorUserId === leave.userId && role !== "superuser") {
+        throw new BadRequestException("Le ferie approvate non possono essere modificate dal dipendente");
+      }
+    } else if (leave.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
     }
     const year = Number(startDate.slice(0, 4));
     const requestedDays = this.countCalendarDays(startDate, endDate);
     const kind: LeavePlanKind = kindInput ?? leave.kind ?? "annual";
-    if (kind === "annual") {
+    if (kind === "annual" && role !== "superuser" && !isApprovedLeaveCorrection) {
       const balance = await this.getLeaveBalance(leave.userId, year);
       if (requestedDays > balance.residualDays) {
         throw new BadRequestException("Ferie insufficienti per aggiornare questa richiesta");
@@ -1945,6 +1956,15 @@ export class HrDataStore {
     leave.endDate = endDate;
     leave.kind = kind;
     leave.version += 1;
+    if (isApprovedLeaveCorrection) {
+      if (this.useDb) {
+        await this.supabase!
+          .from("leave_plans")
+          .update({ startDate, endDate, version: leave.version, kind: leave.kind })
+          .eq("id", leaveId);
+      }
+      return leave;
+    }
     leave.status = "pending";
     if (this.useDb) {
       await this.supabase!
@@ -2178,12 +2198,26 @@ export class HrDataStore {
     const sickness = await this.getSickness(sicknessId);
     const role = actorRole ?? "user";
     await this.assertCanActOnBehalfOfUser(actorUserId, role, sickness.userId);
-    if (sickness.status !== "pending") {
+    if (sickness.status === "rejected") {
+      throw new BadRequestException("Questa richiesta è stata rifiutata e non è modificabile");
+    }
+    const isApprovedSicknessCorrection = sickness.status === "approved";
+    if (isApprovedSicknessCorrection) {
+      if (actorUserId === sickness.userId && role !== "superuser") {
+        throw new BadRequestException("La malattia approvata non può essere modificata dal dipendente");
+      }
+    } else if (sickness.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
     }
     this.countCalendarDays(fromDate, toDate);
     sickness.fromDate = fromDate;
     sickness.toDate = toDate;
+    if (isApprovedSicknessCorrection) {
+      if (this.useDb) {
+        await this.supabase!.from("sickness_events").update({ fromDate, toDate }).eq("id", sicknessId);
+      }
+      return sickness;
+    }
     if (this.useDb) {
       await this.supabase!.from("sickness_events").update({ fromDate, toDate }).eq("id", sicknessId);
       await this.supabase!.from("approvals").delete().eq("entityId", sicknessId).eq("type", "sickness").eq("status", "pending");
@@ -4163,7 +4197,15 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
-    if (row.status !== "pending") {
+    if (row.status === "rejected") {
+      throw new BadRequestException("Questa richiesta è stata rifiutata e non è modificabile");
+    }
+    const isApprovedSwCorrection = row.status === "approved";
+    if (isApprovedSwCorrection) {
+      if (requesterId === row.userId && actorRole !== "superuser") {
+        throw new BadRequestException("Lo smart working approvato non può essere modificato dal dipendente");
+      }
+    } else if (row.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
     }
     const nextDay = day.slice(0, 10);
@@ -4173,23 +4215,28 @@ export class HrDataStore {
     if (nextDay === prevDay && nextNote === prevNote) {
       return row;
     }
+    const subjectId = row.userId;
     if (
       nextDay !== row.day.slice(0, 10) &&
-      (await this.hasActiveSmartworkingRequestForDay(requesterId, nextDay, requestId))
+      (await this.hasActiveSmartworkingRequestForDay(subjectId, nextDay, requestId))
     ) {
       throw new BadRequestException("Smart working già richiesto per questa data");
     }
-    if (nextDay !== row.day.slice(0, 10) && actorRole !== "superuser") {
+    if (
+      nextDay !== row.day.slice(0, 10) &&
+      actorRole !== "superuser" &&
+      !isApprovedSwCorrection
+    ) {
       const monthPrefix = nextDay.slice(0, 7);
       const monthBooked = (
-        await this.listMySmartworking(requesterId)
+        await this.listMySmartworking(subjectId)
       ).filter(
         (r) => r.id !== requestId && r.status !== "rejected" && r.day.startsWith(monthPrefix)
       ).length;
       if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
         throw new BadRequestException("Quota smartworking mensile esaurita per il mese selezionato");
       }
-      const weekBooked = await this.countSmartworkingBookedDaysInWeek(requesterId, nextDay, requestId);
+      const weekBooked = await this.countSmartworkingBookedDaysInWeek(subjectId, nextDay, requestId);
       if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
         throw new BadRequestException(
           `Quota smartworking settimanale esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
@@ -4208,31 +4255,33 @@ export class HrDataStore {
       row.day = nextDay;
       row.note = nextNote;
     }
-    const user = await this.getUser(requesterId);
-    let linkApprovalId: string | undefined;
-    if (this.useDb) {
-      const { data } = await this.supabase!
-        .from("approvals")
-        .select("id")
-        .eq("entityId", requestId)
-        .eq("type", "smartworking")
-        .eq("status", "pending")
-        .maybeSingle();
-      linkApprovalId = (data as { id?: string } | null)?.id;
-    } else {
-      linkApprovalId = this.approvals.find(
-        (a) => a.entityId === requestId && a.type === "smartworking" && a.status === "pending"
-      )?.id;
+    if (!isApprovedSwCorrection) {
+      const user = await this.getUser(requesterId);
+      let linkApprovalId: string | undefined;
+      if (this.useDb) {
+        const { data } = await this.supabase!
+          .from("approvals")
+          .select("id")
+          .eq("entityId", requestId)
+          .eq("type", "smartworking")
+          .eq("status", "pending")
+          .maybeSingle();
+        linkApprovalId = (data as { id?: string } | null)?.id;
+      } else {
+        linkApprovalId = this.approvals.find(
+          (a) => a.entityId === requestId && a.type === "smartworking" && a.status === "pending"
+        )?.id;
+      }
+      await this.notifyApproversOfRequest(
+        user,
+        "Richiesta smart working",
+        `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
+        "smartworking_request",
+        linkApprovalId
+          ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
+          : "/workflow/approvals"
+      );
     }
-    await this.notifyApproversOfRequest(
-      user,
-      "Richiesta smart working",
-      `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
-      "smartworking_request",
-      linkApprovalId
-        ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
-        : "/workflow/approvals"
-    );
     return { ...row, day: nextDay, note: nextNote };
   }
 
@@ -4432,6 +4481,12 @@ export class HrDataStore {
         createdAt: row.createdAt
       });
       if (error) {
+        const msg = error.message ?? "";
+        if (/travel_requests/i.test(msg) && /schema cache|Could not find the table/i.test(msg)) {
+          throw new InternalServerErrorException(
+            "Manca la tabella travel_requests nel database (migrazione non applicata). Esegui sul progetto Supabase il file infra/supabase/migrations/023_travel_requests.sql (es. supabase db push dalla cartella infra/supabase)."
+          );
+        }
         throw new InternalServerErrorException(`Richiesta trasferta fallita: ${error.message}`);
       }
     } else {
@@ -4480,7 +4535,15 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
-    if (row.status !== "pending") {
+    if (row.status === "rejected") {
+      throw new BadRequestException("Questa richiesta è stata rifiutata e non è modificabile");
+    }
+    const isApprovedCorrection = row.status === "approved";
+    if (isApprovedCorrection) {
+      if (requesterId === row.userId && actorRole !== "superuser") {
+        throw new BadRequestException("Le trasferte approvate non possono essere modificate dal dipendente");
+      }
+    } else if (row.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
     }
     const nextDay = day.slice(0, 10);
@@ -4508,31 +4571,33 @@ export class HrDataStore {
       row.day = nextDay;
       row.note = nextNote;
     }
-    const user = await this.getUser(requesterId);
-    let linkApprovalId: string | undefined;
-    if (this.useDb) {
-      const { data } = await this.supabase!
-        .from("approvals")
-        .select("id")
-        .eq("entityId", requestId)
-        .eq("type", "travel")
-        .eq("status", "pending")
-        .maybeSingle();
-      linkApprovalId = (data as { id?: string } | null)?.id;
-    } else {
-      linkApprovalId = this.approvals.find(
-        (a) => a.entityId === requestId && a.type === "travel" && a.status === "pending"
-      )?.id;
+    if (!isApprovedCorrection) {
+      const user = await this.getUser(requesterId);
+      let linkApprovalId: string | undefined;
+      if (this.useDb) {
+        const { data } = await this.supabase!
+          .from("approvals")
+          .select("id")
+          .eq("entityId", requestId)
+          .eq("type", "travel")
+          .eq("status", "pending")
+          .maybeSingle();
+        linkApprovalId = (data as { id?: string } | null)?.id;
+      } else {
+        linkApprovalId = this.approvals.find(
+          (a) => a.entityId === requestId && a.type === "travel" && a.status === "pending"
+        )?.id;
+      }
+      await this.notifyApproversOfRequest(
+        user,
+        "Richiesta trasferta",
+        `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
+        "travel_request",
+        linkApprovalId
+          ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
+          : "/workflow/approvals"
+      );
     }
-    await this.notifyApproversOfRequest(
-      user,
-      "Richiesta trasferta",
-      `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
-      "travel_request",
-      linkApprovalId
-        ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
-        : "/workflow/approvals"
-    );
     return { ...row, day: nextDay, note: nextNote };
   }
 
@@ -4822,14 +4887,23 @@ export class HrDataStore {
     };
   }
 
-  async buildAttendanceDayBoard(userIds: string[], day: string): Promise<AttendanceDayBoardResponse> {
+  async buildAttendanceDayBoard(
+    userIds: string[],
+    day: string,
+    costCenterIds?: string[] | null
+  ): Promise<AttendanceDayBoardResponse> {
     const d = day.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
       throw new BadRequestException("Parametro day atteso nel formato YYYY-MM-DD");
     }
     const idSet = new Set(userIds);
-    const allUsers = (await this.listUsers()).filter((u) => idSet.has(u.id));
-    const entries = await this.listTimeEntriesForUsersOnDay(userIds, d);
+    let allUsers = (await this.listUsers()).filter((u) => idSet.has(u.id));
+    if (costCenterIds != null && costCenterIds.length > 0) {
+      const allow = new Set(costCenterIds);
+      allUsers = allUsers.filter((u) => allow.has(u.costCenterId?.trim() || "__none__"));
+    }
+    const filteredIds = allUsers.map((u) => u.id);
+    const entries = await this.listTimeEntriesForUsersOnDay(filteredIds, d);
     const byUserEntries = new Map<string, TimeEntry[]>();
     for (const e of entries) {
       const list = byUserEntries.get(e.userId) ?? [];

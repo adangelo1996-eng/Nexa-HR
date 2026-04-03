@@ -30,8 +30,9 @@ import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 import {
   clearSession,
   getSessionUser,
+  sessionCanAccessPayrollArea,
+  sessionCanAccessPersonnelBudgetArea,
   sessionCanNexaAdmin,
-  sessionCanSeeApprovalsAndHrExtras,
   type SessionUser
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
@@ -107,15 +108,33 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, []);
 
   const isAdminUi = sessionCanNexaAdmin(user ?? undefined);
-  const showHrExtras = Boolean(user && sessionCanSeeApprovalsAndHrExtras(user) && !(employeeView && isAdminUi));
+  const hideSensitiveHrBecausePreview = Boolean(employeeView && isAdminUi);
+  const showPayrollNav = Boolean(
+    user && !hideSensitiveHrBecausePreview && sessionCanAccessPayrollArea(user)
+  );
+  const showBudgetNav = Boolean(
+    user && !hideSensitiveHrBecausePreview && sessionCanAccessPersonnelBudgetArea(user)
+  );
+  const showAdminNav = Boolean(isAdminUi && !hideSensitiveHrBecausePreview);
+  const showHrSidebarSection = showPayrollNav || showBudgetNav || showAdminNav;
 
   const filteredSearch = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
     if (!q) {
       return [];
     }
-    return SEARCH_ROUTES.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
-  }, [searchQ]);
+    let routes = SEARCH_ROUTES;
+    if (!sessionCanAccessPayrollArea(user ?? undefined)) {
+      routes = routes.filter((r) => r.href !== "/payroll-calc");
+    }
+    if (!sessionCanAccessPersonnelBudgetArea(user ?? undefined)) {
+      routes = routes.filter((r) => r.href !== "/personnel-budget");
+    }
+    if (!sessionCanNexaAdmin(user ?? undefined)) {
+      routes = routes.filter((r) => r.href !== "/admin");
+    }
+    return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
+  }, [searchQ, user]);
 
   const onLogout = useCallback((): void => {
     clearSession();
@@ -162,34 +181,38 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           </Link>
         );
       })}
-      {showHrExtras ? (
+      {showHrSidebarSection ? (
         <>
           <div className="my-2 border-t border-[var(--prom-line)]" />
-          <Link
-            href="/payroll-calc"
-            onClick={() => setMobileOpen(false)}
-            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-              pathname.startsWith("/payroll-calc")
-                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-            }`}
-          >
-            <Calculator className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-            Payroll
-          </Link>
-          <Link
-            href="/personnel-budget"
-            onClick={() => setMobileOpen(false)}
-            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-              pathname.startsWith("/personnel-budget")
-                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-            }`}
-          >
-            <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-            Budget personale
-          </Link>
-          {isAdminUi ? (
+          {showPayrollNav ? (
+            <Link
+              href="/payroll-calc"
+              onClick={() => setMobileOpen(false)}
+              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                pathname.startsWith("/payroll-calc")
+                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+              }`}
+            >
+              <Calculator className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+              Payroll
+            </Link>
+          ) : null}
+          {showBudgetNav ? (
+            <Link
+              href="/personnel-budget"
+              onClick={() => setMobileOpen(false)}
+              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                pathname.startsWith("/personnel-budget")
+                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+              }`}
+            >
+              <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+              Budget personale
+            </Link>
+          ) : null}
+          {showAdminNav ? (
             <Link
               href="/admin"
               onClick={() => setMobileOpen(false)}

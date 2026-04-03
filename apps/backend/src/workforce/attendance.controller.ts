@@ -114,6 +114,17 @@ class PatchTimeEntryDto {
   type?: "clock_in" | "clock_out";
 }
 
+function parseBoardCostCenterIds(raw?: string): string[] | undefined {
+  if (!raw?.trim()) {
+    return undefined;
+  }
+  const ids = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return ids.length > 0 ? ids : undefined;
+}
+
 @Controller("attendance")
 @UseGuards(NexaPermissionGuard)
 export class AttendanceController {
@@ -194,15 +205,45 @@ export class AttendanceController {
     return this.team.listPickerUsers(auth.userId);
   }
 
+  @Get("team/day-board/cost-centers")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async teamDayBoardCostCenters(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
+    return { costCenters: await this.team.listDayBoardCostCenterFilters(auth.userId) };
+  }
+
+  /** Export Excel della vista giornaliera (stessi filtri della GET board). */
+  @Get("team/day-board/export")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async teamDayBoardExport(
+    @CurrentAuth() auth: { userId: string },
+    @Query("date") date: string | undefined,
+    @Query("costCenterIds") costCenterIdsRaw: string | undefined,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const day = date ?? new Date().toISOString().slice(0, 10);
+    const cc = parseBoardCostCenterIds(costCenterIdsRaw);
+    const buf = await this.team.buildDayBoardExportXlsx(auth.userId, day, cc);
+    const safeDay = day.slice(0, 10);
+    const filename = `nexa-presenze-giorno-${safeDay}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return new StreamableFile(buf);
+  }
+
   /** Vista giornaliera HR: dipendenti per CDC/team, timbrature e stati da calendario. */
   @Get("team/day-board")
   @RequireNexaPermissions("nexa.attendance:read")
   async teamDayBoard(
     @CurrentAuth() auth: { userId: string },
-    @Query("date") date?: string
+    @Query("date") date: string | undefined,
+    @Query("costCenterIds") costCenterIdsRaw: string | undefined
   ): Promise<unknown> {
     const day = date ?? new Date().toISOString().slice(0, 10);
-    return this.team.getDayAttendanceBoard(auth.userId, day);
+    const cc = parseBoardCostCenterIds(costCenterIdsRaw);
+    return this.team.getDayAttendanceBoard(auth.userId, day, cc);
   }
 
   @Post("team/entries")

@@ -29,14 +29,99 @@ export class AttendanceTeamService {
     }
   }
 
-  async getDayAttendanceBoard(viewerId: string, day: string): Promise<AttendanceDayBoardResponse> {
+  async getDayAttendanceBoard(
+    viewerId: string,
+    day: string,
+    costCenterIds?: string[] | null
+  ): Promise<AttendanceDayBoardResponse> {
     await this.assertCanManageTeam(viewerId);
     AttendanceTeamService.assertValidDay(day.slice(0, 10));
     const pick = await this.listPickerUsers(viewerId);
     return this.store.buildAttendanceDayBoard(
       pick.map((p) => p.id),
-      day.slice(0, 10)
+      day.slice(0, 10),
+      costCenterIds
     );
+  }
+
+  /** Centri di costo presenti tra i dipendenti visibili al viewer (per filtri board). */
+  async listDayBoardCostCenterFilters(
+    viewerId: string
+  ): Promise<Array<{ id: string; label: string }>> {
+    await this.assertCanManageTeam(viewerId);
+    const pick = await this.listPickerUsers(viewerId);
+    const idSet = new Set(pick.map((p) => p.id));
+    const users = (await this.store.listUsers()).filter((u) => idSet.has(u.id));
+    const ccKeys = new Set<string>();
+    for (const u of users) {
+      ccKeys.add(u.costCenterId?.trim() || "__none__");
+    }
+    const out: Array<{ id: string; label: string }> = [];
+    for (const ccId of ccKeys) {
+      if (ccId === "__none__") {
+        out.push({ id: "__none__", label: "Senza centro di costo" });
+        continue;
+      }
+      const cc = await this.store.getCostCenterById(ccId);
+      const label = cc ? [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name : ccId;
+      out.push({ id: ccId, label });
+    }
+    return out.sort((a, b) => a.label.localeCompare(b.label, "it"));
+  }
+
+  async buildDayBoardExportXlsx(
+    viewerId: string,
+    day: string,
+    costCenterIds?: string[] | null
+  ): Promise<Buffer> {
+    await this.assertCanManageTeam(viewerId);
+    AttendanceTeamService.assertValidDay(day.slice(0, 10));
+    const board = await this.getDayAttendanceBoard(viewerId, day, costCenterIds);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Presenze giornaliere", {
+      views: [{ state: "frozen", ySplit: 1 }]
+    });
+    sheet.columns = [
+      { header: "Data", key: "day", width: 12 },
+      { header: "Centro di costo", key: "cc", width: 30 },
+      { header: "Team", key: "team", width: 22 },
+      { header: "Cognome e nome", key: "fullName", width: 28 },
+      { header: "Email", key: "email", width: 32 },
+      { header: "Entrata", key: "clockIn", width: 10 },
+      { header: "Uscita", key: "clockOut", width: 10 },
+      { header: "Modalità presenze", key: "mode", width: 16 },
+      { header: "Stato calendario", key: "status", width: 40 },
+      { header: "Avvisi", key: "alerts", width: 48 }
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    for (const cc of board.costCenters) {
+      for (const tm of cc.teams) {
+        for (const r of tm.rows) {
+          sheet.addRow({
+            day: board.day,
+            cc: cc.label,
+            team: tm.label,
+            fullName: r.fullName,
+            email: r.email,
+            clockIn: r.firstClockIn ?? "",
+            clockOut: r.lastClockOut ?? "",
+            mode:
+              r.workdayMode === "smartworking"
+                ? "Smart working"
+                : r.workdayMode === "office"
+                  ? "Sede"
+                  : "",
+            status: r.statusLabels.join("; "),
+            alerts: r.alerts.join("; ")
+          });
+        }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   async canManageTeamAttendance(userId: string): Promise<boolean> {

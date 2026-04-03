@@ -11,7 +11,26 @@ import {
   type Payslip,
   type User
 } from "@/lib/api";
-import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanAccessPayrollArea,
+  type SessionUser
+} from "@/lib/auth-session";
+
+function payrollUserDropdownList(me: SessionUser, fromApi: User[]): User[] {
+  if (fromApi.length > 0) {
+    return fromApi;
+  }
+  return [
+    {
+      id: me.id,
+      fullName: me.fullName,
+      role: me.role,
+      companyId: me.companyId ?? ""
+    }
+  ];
+}
 
 export default function PayrollCalcPage(): React.JSX.Element {
   const router = useRouter();
@@ -37,14 +56,20 @@ export default function PayrollCalcPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const currentUser = await fetchCurrentUser(tokenValue);
-        if (!sessionCanSeeApprovalsAndHrExtras(currentUser)) {
+        if (!sessionCanAccessPayrollArea(currentUser)) {
           router.replace("/");
           return;
         }
-        const availableUsers = await fetchUsers(tokenValue);
+        let availableUsers: User[] = [];
+        try {
+          availableUsers = await fetchUsers(tokenValue);
+        } catch {
+          availableUsers = [];
+        }
+        const list = payrollUserDropdownList(currentUser, availableUsers);
         setUser(currentUser);
-        setUsers(availableUsers);
-        setSelectedUserId(availableUsers[0]?.id ?? "");
+        setUsers(list);
+        setSelectedUserId(list[0]?.id ?? "");
       } catch (loadError) {
         clearSession();
         router.replace("/login");

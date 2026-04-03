@@ -12,6 +12,11 @@ class CreateTravelDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  /** Solo superuser: richiesta per un altro utente. */
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 @Controller("travel")
@@ -34,6 +39,14 @@ export class TravelController {
   @RequireRole("user")
   @RequireNexaPermissions("nexa.attendance:write")
   async request(@CurrentAuth() auth: AuthContext, @Body() dto: CreateTravelDto): Promise<unknown> {
+    const forOther = dto.userId?.trim();
+    if (forOther && forOther !== auth.userId) {
+      if (auth.role !== "superuser") {
+        throw new ForbiddenException("Solo il superuser può inserire trasferte per altri utenti");
+      }
+      await this.store.getUser(forOther);
+      return this.store.createTravelRequest(forOther, dto.day, dto.note, auth.role);
+    }
     return this.store.createTravelRequest(auth.userId, dto.day, dto.note, auth.role);
   }
 

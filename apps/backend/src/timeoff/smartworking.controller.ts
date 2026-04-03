@@ -12,6 +12,11 @@ class CreateSwDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  /** Solo `superuser`: registra la richiesta per un altro dipendente (calendario HR). */
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 @Controller("smartworking")
@@ -37,7 +42,15 @@ export class SmartworkingController {
   @RequireRole("user")
   @RequireNexaPermissions("nexa.attendance:write")
   async request(@CurrentAuth() auth: AuthContext, @Body() dto: CreateSwDto): Promise<unknown> {
-    return this.store.createSmartworkingRequest(auth.userId, dto.day, dto.note, auth.role);
+    let targetUserId = auth.userId;
+    const proxy = dto.userId?.trim();
+    if (proxy && proxy !== auth.userId) {
+      if (auth.role !== "superuser") {
+        throw new ForbiddenException("Solo un superuser può registrare smart working per altri utenti.");
+      }
+      targetUserId = proxy;
+    }
+    return this.store.createSmartworkingRequest(targetUserId, dto.day, dto.note, auth.role);
   }
 
   @Delete("request/:id")

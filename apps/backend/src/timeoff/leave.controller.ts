@@ -48,12 +48,15 @@ export class LeaveController {
       }
       userId = proxy;
     }
-    return this.store.createLeavePlan({
-      userId,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
-      kind: dto.kind ?? "annual"
-    });
+    return this.store.createLeavePlan(
+      {
+        userId,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        kind: dto.kind ?? "annual"
+      },
+      { skipAnnualBalanceCheck: auth.role === "superuser" }
+    );
   }
 
   @Patch("plan/:leaveId")
