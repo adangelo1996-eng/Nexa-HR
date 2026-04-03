@@ -7,9 +7,12 @@ import { Button } from "@/components/ui/button";
 import {
   applyImport,
   downloadImportTemplate,
+  fetchCompanySettings,
   fetchCurrentUser,
   fetchImportHistory,
+  patchCompanySettings,
   validateImportFile,
+  type CompanySettingsDto,
   type ImportCategory,
   type ImportCellError,
   type ImportHistoryItem
@@ -33,6 +36,21 @@ const CAT_LABEL: Record<ImportCategory, string> = {
   user_managers: "Responsabili (email)"
 };
 
+const MONTHS_IT = [
+  "Gennaio",
+  "Febbraio",
+  "Marzo",
+  "Aprile",
+  "Maggio",
+  "Giugno",
+  "Luglio",
+  "Agosto",
+  "Settembre",
+  "Ottobre",
+  "Novembre",
+  "Dicembre"
+] as const;
+
 export default function SettingsPage(): React.JSX.Element {
   const router = useRouter();
   const { theme, setTheme, mounted } = useTheme();
@@ -42,6 +60,11 @@ export default function SettingsPage(): React.JSX.Element {
   const [synapsePrefs, setSynapsePrefs] = useState<SynapsePrefsV1>(() => readSynapsePrefs());
   const [nexaPrefs, setNexaPrefs] = useState<NexaHrPrefsV1>(() => readNexaHrPrefs());
   const [isSuperuser, setIsSuperuser] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [companyDraft, setCompanyDraft] = useState<CompanySettingsDto | null>(null);
+  const [customVarRows, setCustomVarRows] = useState<Array<{ key: string; value: string }>>([]);
+  const [companyBusy, setCompanyBusy] = useState(false);
+  const [companyLoadFailed, setCompanyLoadFailed] = useState(false);
   const [importCategory, setImportCategory] = useState<ImportCategory>("users");
   const [validateErrors, setValidateErrors] = useState<ImportCellError[]>([]);
   const [validatedRows, setValidatedRows] = useState<unknown[] | null>(null);
@@ -61,6 +84,25 @@ export default function SettingsPage(): React.JSX.Element {
       try {
         const me = await fetchCurrentUser(tokenValue);
         setIsSuperuser(Boolean(me.isSynapseSuperuser));
+        setIsAdmin(me.role === "admin");
+        if (me.role === "admin") {
+          try {
+            const cs = await fetchCompanySettings(tokenValue);
+            setCompanyDraft(cs);
+            setCompanyLoadFailed(false);
+            setCustomVarRows(
+              Object.entries(cs.customVariables).map(([key, value]) => ({ key, value }))
+            );
+          } catch {
+            setCompanyDraft(null);
+            setCustomVarRows([]);
+            setCompanyLoadFailed(true);
+          }
+        } else {
+          setCompanyDraft(null);
+          setCustomVarRows([]);
+          setCompanyLoadFailed(false);
+        }
         if (Boolean(me.isSynapseSuperuser)) {
           try {
             const h = await fetchImportHistory(tokenValue);
@@ -138,6 +180,37 @@ export default function SettingsPage(): React.JSX.Element {
       setImportProgress(null);
     } finally {
       setImportBusy(false);
+    }
+  }
+
+  async function onSaveCompanySettings(): Promise<void> {
+    if (!token || !companyDraft) return;
+    setCompanyBusy(true);
+    setError(null);
+    try {
+      const customVariables: Record<string, string> = {};
+      for (const row of customVarRows) {
+        const k = row.key.trim();
+        if (!k) continue;
+        customVariables[k] = row.value.trim();
+      }
+      const updated = await patchCompanySettings(token, {
+        fiscalYearStartMonth: companyDraft.fiscalYearStartMonth,
+        companyLegalName: companyDraft.companyLegalName,
+        companyVatNumber: companyDraft.companyVatNumber,
+        companyRegistrationInfo: companyDraft.companyRegistrationInfo,
+        defaultCurrency: companyDraft.defaultCurrency,
+        weeklyFullTimeHours: companyDraft.weeklyFullTimeHours,
+        customVariables
+      });
+      setCompanyDraft(updated);
+      setCustomVarRows(
+        Object.entries(updated.customVariables).map(([key, value]) => ({ key, value }))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Salvataggio variabili aziendali fallito");
+    } finally {
+      setCompanyBusy(false);
     }
   }
 
@@ -246,6 +319,218 @@ export default function SettingsPage(): React.JSX.Element {
           </label>
         </div>
       </GlassCard>
+
+      {isAdmin && companyLoadFailed && !companyDraft ? (
+        <GlassCard
+          title="Variabili aziendali (solo admin)"
+          description="Impossibile caricare le impostazioni dal server."
+        >
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const t = getToken();
+              if (!t) return;
+              setCompanyLoadFailed(false);
+              void (async () => {
+                try {
+                  const cs = await fetchCompanySettings(t);
+                  setCompanyDraft(cs);
+                  setCustomVarRows(
+                    Object.entries(cs.customVariables).map(([key, value]) => ({ key, value }))
+                  );
+                } catch {
+                  setCompanyLoadFailed(true);
+                }
+              })();
+            }}
+          >
+            Riprova
+          </Button>
+        </GlassCard>
+      ) : null}
+
+      {isAdmin && companyDraft ? (
+        <GlassCard
+          title="Variabili aziendali (solo admin)"
+          description={`Tenant ${companyDraft.companyId}. Anno di riferimento, dati anagrafici leggeri e coppie nome/valore per parametri interni.`}
+        >
+          <div className="space-y-4 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">
+                Inizio anno di riferimento (mese)
+              </span>
+              <p className="text-xs text-slate-500 dark:text-slate-500">
+                Seleziona da quale mese parte l&apos;anno societario / di pianificazione (es. aprile per fiscal year
+                UK-style). Le altre parti dell&apos;app possono leggere questo valore in seguito.
+              </p>
+              <select
+                value={String(companyDraft.fiscalYearStartMonth)}
+                onChange={(e) =>
+                  setCompanyDraft({
+                    ...companyDraft,
+                    fiscalYearStartMonth: Number(e.target.value)
+                  })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              >
+                {MONTHS_IT.map((label, i) => (
+                  <option key={label} value={String(i + 1)}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Ragione sociale</span>
+              <input
+                type="text"
+                value={companyDraft.companyLegalName}
+                onChange={(e) =>
+                  setCompanyDraft({ ...companyDraft, companyLegalName: e.target.value })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                maxLength={240}
+                autoComplete="organization"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-700 dark:text-slate-300">Partita IVA / VAT</span>
+                <input
+                  type="text"
+                  value={companyDraft.companyVatNumber}
+                  onChange={(e) =>
+                    setCompanyDraft({ ...companyDraft, companyVatNumber: e.target.value })
+                  }
+                  className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                  maxLength={64}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-700 dark:text-slate-300">Valuta predefinita</span>
+                <input
+                  type="text"
+                  value={companyDraft.defaultCurrency}
+                  onChange={(e) =>
+                    setCompanyDraft({
+                      ...companyDraft,
+                      defaultCurrency: e.target.value.toUpperCase().slice(0, 8)
+                    })
+                  }
+                  className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                  maxLength={8}
+                  placeholder="EUR"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Dati iscrizione (REA / CCIAA / note)</span>
+              <input
+                type="text"
+                value={companyDraft.companyRegistrationInfo}
+                onChange={(e) =>
+                  setCompanyDraft({ ...companyDraft, companyRegistrationInfo: e.target.value })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                maxLength={240}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">
+                Ore settimanali contratto full-time (riferimento)
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={80}
+                value={companyDraft.weeklyFullTimeHours}
+                onChange={(e) =>
+                  setCompanyDraft({
+                    ...companyDraft,
+                    weeklyFullTimeHours: Math.min(80, Math.max(1, Number(e.target.value) || 40))
+                  })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              />
+            </label>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-slate-700 dark:text-slate-300">Variabili personalizzate</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCustomVarRows((rows) => [...rows, { key: "", value: "" }])}
+                >
+                  Aggiungi
+                </Button>
+              </div>
+              <p className="mb-2 text-xs text-slate-500">
+                Coppie nome/valore (es. codice Zucchetti, soglia straOre). Solo chiavi non vuote vengono salvate.
+              </p>
+              <ul className="space-y-2">
+                {customVarRows.map((row, idx) => (
+                  <li key={`${idx}-${row.key}`} className="flex flex-wrap items-end gap-2">
+                    <label className="min-w-[140px] flex-1 flex flex-col gap-0.5 text-xs">
+                      Nome
+                      <input
+                        type="text"
+                        value={row.key}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCustomVarRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, key: v } : r))
+                          );
+                        }}
+                        className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-2 py-1.5 text-slate-100"
+                        maxLength={120}
+                      />
+                    </label>
+                    <label className="min-w-[160px] flex-[2] flex flex-col gap-0.5 text-xs">
+                      Valore
+                      <input
+                        type="text"
+                        value={row.value}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCustomVarRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, value: v } : r))
+                          );
+                        }}
+                        className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-2 py-1.5 text-slate-100"
+                        maxLength={2000}
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-rose-400 hover:text-rose-300"
+                      onClick={() => setCustomVarRows((rows) => rows.filter((_, i) => i !== idx))}
+                    >
+                      Rimuovi
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              {customVarRows.length === 0 ? (
+                <p className="text-xs text-slate-500">Nessuna variabile: usa &quot;Aggiungi&quot;.</p>
+              ) : null}
+            </div>
+
+            <Button type="button" disabled={companyBusy} onClick={() => void onSaveCompanySettings()}>
+              {companyBusy ? "Salvataggio…" : "Salva variabili aziendali"}
+            </Button>
+          </div>
+        </GlassCard>
+      ) : null}
 
       {isSuperuser ? (
         <GlassCard

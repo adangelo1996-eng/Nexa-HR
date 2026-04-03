@@ -19,6 +19,7 @@
     "supabase:login": "corepack pnpm dlx supabase login",
     "supabase:link": "corepack pnpm dlx supabase link --workdir infra/supabase",
     "supabase:db:push": "corepack pnpm dlx supabase db push --workdir infra/supabase",
+    "supabase:db:push:remote": "node scripts/supabase-remote-push.mjs",
     "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
     "vercel:link": "corepack pnpm dlx vercel link --cwd apps/frontend",
     "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",

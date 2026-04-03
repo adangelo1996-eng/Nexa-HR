@@ -1,6 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
-import { CurrentAuth, RequireRole, RoleGuard } from "../platform/auth";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 
@@ -42,19 +42,23 @@ export class LeaveController {
   @Patch("plan/:leaveId")
   @RequireNexaPermissions("nexa.leaves:write")
   async update(
+    @CurrentAuth() auth: { userId: string },
     @Param("leaveId") leaveId: string,
     @Body() dto: LeaveDto
   ): Promise<unknown> {
-    return this.store.updateLeavePlan(leaveId, dto.startDate, dto.endDate);
+    return this.store.updateLeavePlan(leaveId, dto.startDate, dto.endDate, auth.userId, dto.kind);
   }
 
   @Patch("approve/:leaveId")
   @UseGuards(RoleGuard)
   @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
-  async approve(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async approve(@Param("leaveId") leaveId: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
-    if (!(await this.store.isManagerOf(auth.userId, leave.userId))) {
+    if (
+      auth.role !== "admin" &&
+      !(await this.store.isManagerOf(auth.userId, leave.userId))
+    ) {
       throw new ForbiddenException("Manager non autorizzato per questo dipendente");
     }
     return this.store.approveLeave(leaveId, auth.userId);
@@ -64,9 +68,12 @@ export class LeaveController {
   @UseGuards(RoleGuard)
   @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
-  async reject(@Param("leaveId") leaveId: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async reject(@Param("leaveId") leaveId: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const leave = await this.store.getLeave(leaveId);
-    if (!(await this.store.isManagerOf(auth.userId, leave.userId))) {
+    if (
+      auth.role !== "admin" &&
+      !(await this.store.isManagerOf(auth.userId, leave.userId))
+    ) {
       throw new ForbiddenException("Manager non autorizzato per questo dipendente");
     }
     return this.store.rejectLeave(leaveId, auth.userId);

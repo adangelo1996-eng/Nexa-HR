@@ -29,7 +29,7 @@ function readThemeFromDocument(): ThemeMode {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [theme, setThemeState] = React.useState<ThemeMode>("dark");
+  const [theme, setThemeState] = React.useState<ThemeMode>("light");
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {

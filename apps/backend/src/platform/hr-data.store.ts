@@ -189,6 +189,19 @@ export interface NexaImportEventRow {
   auditMeta?: Record<string, unknown>;
 }
 
+/** Payload JSON in `company_settings.settings` (senza `companyId`). */
+export interface CompanySettingsStored {
+  fiscalYearStartMonth: number;
+  companyLegalName: string;
+  companyVatNumber: string;
+  companyRegistrationInfo: string;
+  defaultCurrency: string;
+  weeklyFullTimeHours: number;
+  customVariables: Record<string, string>;
+}
+
+export type CompanySettingsDto = CompanySettingsStored & { companyId: string };
+
 @Injectable()
 export class HrDataStore {
   private readonly supabase?: SupabaseClient;
@@ -280,6 +293,8 @@ export class HrDataStore {
   private readonly delegations: Delegation[] = [];
   /** Fallback in-memory quando Supabase non è configurato. */
   private readonly importEventsMemory: NexaImportEventRow[] = [];
+  /** Fallback in-memory: impostazioni azienda per `companyId`. */
+  private readonly companySettingsMem = new Map<string, CompanySettingsStored>();
   private readonly expenseClaims: ExpenseClaim[] = [];
   private readonly shifts: Shift[] = [];
   private readonly demoCompanyHolidays: CompanyHoliday[] = [
@@ -1648,7 +1663,7 @@ export class HrDataStore {
     }
     const requester = await this.getUser(leave.userId);
     const kindLabel = kind === "rol" ? "ROL" : "ferie";
-    await this.notifyEffectiveManagerOfRequest(
+    await this.notifyApproversOfRequest(
       requester,
       `Nuova richiesta ${kindLabel}`,
       `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
@@ -1657,27 +1672,39 @@ export class HrDataStore {
     return leave;
   }
 
-  async updateLeavePlan(leaveId: string, startDate: string, endDate: string): Promise<LeavePlan> {
+  async updateLeavePlan(
+    leaveId: string,
+    startDate: string,
+    endDate: string,
+    actorUserId: string,
+    kindInput?: LeavePlanKind
+  ): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
+    if (leave.userId !== actorUserId) {
+      throw new ForbiddenException("Puoi modificare solo le tue richieste");
+    }
+    if (leave.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
+    }
     const year = Number(startDate.slice(0, 4));
     const requestedDays = this.countCalendarDays(startDate, endDate);
-    const kind: LeavePlanKind = leave.kind ?? "annual";
+    const kind: LeavePlanKind = kindInput ?? leave.kind ?? "annual";
     if (kind === "annual") {
       const balance = await this.getLeaveBalance(leave.userId, year);
-      const previousDays = leave.status === "approved" ? this.countCalendarDays(leave.startDate, leave.endDate) : 0;
-      if (requestedDays > balance.residualDays + previousDays) {
+      if (requestedDays > balance.residualDays) {
         throw new BadRequestException("Ferie insufficienti per aggiornare questa richiesta");
       }
     }
     leave.startDate = startDate;
     leave.endDate = endDate;
+    leave.kind = kind;
     leave.version += 1;
     leave.status = "pending";
     if (this.useDb) {
       await this.supabase!
         .from("leave_plans")
-        .update({ startDate, endDate, version: leave.version, status: leave.status })
+        .update({ startDate, endDate, version: leave.version, status: leave.status, kind: leave.kind })
         .eq("id", leaveId);
       await this.supabase!.from("approvals").delete().eq("entityId", leaveId).eq("type", "leave").eq("status", "pending");
     } else {
@@ -1702,7 +1729,7 @@ export class HrDataStore {
     }
     const requester = await this.getUser(leave.userId);
     const kindLabel = (leave.kind ?? "annual") === "rol" ? "ROL" : "ferie";
-    await this.notifyEffectiveManagerOfRequest(
+    await this.notifyApproversOfRequest(
       requester,
       `Richiesta ${kindLabel} aggiornata`,
       `${requester.fullName}: ${leave.startDate} – ${leave.endDate}`,
@@ -1841,9 +1868,59 @@ export class HrDataStore {
       this.approvals.push(approval);
     }
     const requester = await this.getUser(sickness.userId);
-    await this.notifyEffectiveManagerOfRequest(
+    await this.notifyApproversOfRequest(
       requester,
       "Nuova comunicazione malattia",
+      `${requester.fullName}: ${sickness.fromDate} – ${sickness.toDate}`,
+      "sickness_request"
+    );
+    return sickness;
+  }
+
+  async updateSicknessEvent(
+    sicknessId: string,
+    actorUserId: string,
+    fromDate: string,
+    toDate: string
+  ): Promise<SicknessEvent> {
+    const sickness = await this.getSickness(sicknessId);
+    if (sickness.userId !== actorUserId) {
+      throw new ForbiddenException("Puoi modificare solo le tue comunicazioni");
+    }
+    if (sickness.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
+    }
+    this.countCalendarDays(fromDate, toDate);
+    sickness.fromDate = fromDate;
+    sickness.toDate = toDate;
+    if (this.useDb) {
+      await this.supabase!.from("sickness_events").update({ fromDate, toDate }).eq("id", sicknessId);
+      await this.supabase!.from("approvals").delete().eq("entityId", sicknessId).eq("type", "sickness").eq("status", "pending");
+    } else {
+      const keep = this.approvals.filter(
+        (a) => !(a.entityId === sicknessId && a.type === "sickness" && a.status === "pending")
+      );
+      this.approvals.length = 0;
+      this.approvals.push(...keep);
+    }
+    const at = new Date().toISOString();
+    const approval = {
+      id: `ap-${Date.now()}`,
+      entityId: sickness.id,
+      type: "sickness",
+      requestedBy: sickness.userId,
+      status: "pending",
+      at
+    } as ApprovalRecord;
+    if (this.useDb) {
+      await this.supabase!.from("approvals").insert(approval);
+    } else {
+      this.approvals.push(approval);
+    }
+    const requester = await this.getUser(sickness.userId);
+    await this.notifyApproversOfRequest(
+      requester,
+      "Comunicazione malattia aggiornata",
       `${requester.fullName}: ${sickness.fromDate} – ${sickness.toDate}`,
       "sickness_request"
     );
@@ -2027,23 +2104,31 @@ export class HrDataStore {
     return delegation?.delegateManagerId ?? managerId;
   }
 
-  private async notifyEffectiveManagerOfRequest(
-    requester: User,
-    title: string,
-    body: string,
-    kind: string
-  ): Promise<void> {
-    if (!requester.managerId?.trim()) return;
-    const managerUserId = await this.getEffectiveManager(requester.managerId);
-    await this.insertUserNotification({
-      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      userId: managerUserId,
-      title,
-      body,
-      read: false,
-      createdAt: new Date().toISOString(),
-      kind
-    });
+  /** Notifica il responsabile diretto (effettivo con deleghe) e tutti gli utenti con ruolo admin. */
+  private async notifyApproversOfRequest(requester: User, title: string, body: string, kind: string): Promise<void> {
+    const createdAt = new Date().toISOString();
+    const recipientIds = new Set<string>();
+    if (requester.managerId?.trim()) {
+      const managerUserId = await this.getEffectiveManager(requester.managerId);
+      recipientIds.add(managerUserId);
+    }
+    for (const u of await this.listUsers()) {
+      if (u.role === "admin") {
+        recipientIds.add(u.id);
+      }
+    }
+    let n = 0;
+    for (const userId of recipientIds) {
+      await this.insertUserNotification({
+        id: `n-${Date.now()}-${n++}-${Math.random().toString(36).slice(2, 10)}`,
+        userId,
+        title,
+        body,
+        read: false,
+        createdAt,
+        kind
+      });
+    }
   }
 
   private ageFromBirthDate(birthDate?: string): number {
@@ -2715,7 +2800,7 @@ export class HrDataStore {
         title: `Malattia (${s.status})`,
         start: s.fromDate,
         end: s.toDate,
-        meta: { sicknessId: s.id }
+        meta: { sicknessId: s.id, status: s.status }
       });
     }
     const shifts = await this.listShiftsForUser(userId);
@@ -3395,7 +3480,11 @@ export class HrDataStore {
 
   async createSmartworkingRequest(userId: string, day: string, note?: string): Promise<SmartworkingRequestRow> {
     const user = await this.getUser(userId);
-    const monthPrefix = day.slice(0, 7);
+    const dayNorm = day.slice(0, 10);
+    if (await this.hasActiveSmartworkingRequestForDay(userId, dayNorm)) {
+      throw new BadRequestException("Smart working già richiesto per questa data");
+    }
+    const monthPrefix = dayNorm.slice(0, 7);
     const used = await this.countApprovedSmartworkingDaysInMonth(userId, monthPrefix);
     if (used >= SMARTWORKING_MONTHLY_QUOTA) {
       throw new BadRequestException("Quota smartworking mensile esaurita");
@@ -3405,7 +3494,7 @@ export class HrDataStore {
     const row: SmartworkingRequestRow = {
       id,
       userId,
-      day,
+      day: dayNorm,
       note: note?.trim() || null,
       status: "pending",
       approverId: user.managerId ?? null,
@@ -3427,13 +3516,72 @@ export class HrDataStore {
     } else {
       this.smartworkingRequests.push(row);
     }
-    await this.notifyEffectiveManagerOfRequest(
+    await this.notifyApproversOfRequest(
       user,
       "Richiesta smart working",
-      `${user.fullName}: ${day}${note?.trim() ? ` — ${note.trim()}` : ""}`,
+      `${user.fullName}: ${dayNorm}${note?.trim() ? ` — ${note.trim()}` : ""}`,
       "smartworking_request"
     );
     return row;
+  }
+
+  async updateSmartworkingRequest(
+    requesterId: string,
+    requestId: string,
+    day: string,
+    note?: string | null
+  ): Promise<SmartworkingRequestRow> {
+    let row: SmartworkingRequestRow | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("id", requestId).maybeSingle();
+      row = data as SmartworkingRequestRow | undefined;
+    } else {
+      row = this.smartworkingRequests.find((r) => r.id === requestId);
+    }
+    if (!row || row.userId !== requesterId) {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    if (row.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
+    }
+    const nextDay = day.slice(0, 10);
+    const nextNote = note?.trim() || null;
+    if (
+      nextDay !== row.day.slice(0, 10) &&
+      (await this.hasActiveSmartworkingRequestForDay(requesterId, nextDay, requestId))
+    ) {
+      throw new BadRequestException("Smart working già richiesto per questa data");
+    }
+    if (nextDay !== row.day.slice(0, 10)) {
+      const monthPrefix = nextDay.slice(0, 7);
+      const usedApproved = await this.countApprovedSmartworkingDaysInMonth(requesterId, monthPrefix);
+      const pendingOthers = (await this.listMySmartworking(requesterId)).filter(
+        (r) => r.id !== requestId && r.status === "pending" && r.day.startsWith(monthPrefix)
+      ).length;
+      if (usedApproved + pendingOthers >= SMARTWORKING_MONTHLY_QUOTA) {
+        throw new BadRequestException("Quota smartworking mensile esaurita per il mese selezionato");
+      }
+    }
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("smartworking_requests")
+        .update({ day: nextDay, note: nextNote })
+        .eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento SW fallito: ${error.message}`);
+      }
+    } else {
+      row.day = nextDay;
+      row.note = nextNote;
+    }
+    const user = await this.getUser(requesterId);
+    await this.notifyApproversOfRequest(
+      user,
+      "Richiesta smart working aggiornata",
+      `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
+      "smartworking_request"
+    );
+    return { ...row, day: nextDay, note: nextNote };
   }
 
   async cancelSmartworkingRequest(requesterId: string, requestId: string): Promise<void> {
@@ -3486,6 +3634,18 @@ export class HrDataStore {
     );
   }
 
+  async listAllPendingSmartworkingRequests(): Promise<SmartworkingRequestRow[]> {
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("smartworking_requests")
+        .select("*")
+        .eq("status", "pending")
+        .order("createdAt", { ascending: false });
+      return (data as SmartworkingRequestRow[]) ?? [];
+    }
+    return this.smartworkingRequests.filter((r) => r.status === "pending");
+  }
+
   async decideSmartworkingRequest(
     requestId: string,
     managerId: string,
@@ -3502,9 +3662,13 @@ export class HrDataStore {
     if (!row || row.status !== "pending") {
       throw new NotFoundException("Richiesta non trovata");
     }
-    const subs = await this.listUsersByManager(managerId);
-    if (!subs.some((u) => u.id === row.userId) && row.approverId !== managerId) {
-      throw new BadRequestException("Non autorizzato su questa richiesta");
+    const decidingUser = await this.getUser(managerId);
+    const isAdminApprover = decidingUser.role === "admin";
+    if (!isAdminApprover) {
+      const subs = await this.listUsersByManager(managerId);
+      if (!subs.some((u) => u.id === row.userId) && row.approverId !== managerId) {
+        throw new BadRequestException("Non autorizzato su questa richiesta");
+      }
     }
     const decisionAt = new Date().toISOString();
     const status = approve ? "approved" : "rejected";
@@ -3544,6 +3708,22 @@ export class HrDataStore {
     const m = month ?? new Date().toISOString().slice(0, 7);
     const used = await this.countApprovedSmartworkingDaysInMonth(userId, m);
     return { used, quota: SMARTWORKING_MONTHLY_QUOTA };
+  }
+
+  /** Richiesta pending o approvata per quel giorno (rejected escluso). Opzionale: ignora una riga (es. update stesso id). */
+  private async hasActiveSmartworkingRequestForDay(
+    userId: string,
+    day: string,
+    excludeRequestId?: string
+  ): Promise<boolean> {
+    const d = day.slice(0, 10);
+    const list = await this.listMySmartworking(userId);
+    return list.some(
+      (r) =>
+        r.day.slice(0, 10) === d &&
+        r.status !== "rejected" &&
+        (excludeRequestId === undefined || r.id !== excludeRequestId)
+    );
   }
 
   private async countApprovedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
@@ -3982,6 +4162,148 @@ export class HrDataStore {
         throw new InternalServerErrorException(`Salvataggio budget: ${error.message}`);
       }
     }
+  }
+
+  private defaultCompanySettingsStored(): CompanySettingsStored {
+    return {
+      fiscalYearStartMonth: 1,
+      companyLegalName: "",
+      companyVatNumber: "",
+      companyRegistrationInfo: "",
+      defaultCurrency: "EUR",
+      weeklyFullTimeHours: 40,
+      customVariables: {}
+    };
+  }
+
+  private normalizeCompanySettingsStored(raw: unknown): CompanySettingsStored {
+    const d = this.defaultCompanySettingsStored();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return d;
+    }
+    const o = raw as Record<string, unknown>;
+    const m = o.fiscalYearStartMonth;
+    if (typeof m === "number" && Number.isInteger(m) && m >= 1 && m <= 12) {
+      d.fiscalYearStartMonth = m;
+    }
+    if (typeof o.companyLegalName === "string") {
+      d.companyLegalName = o.companyLegalName.slice(0, 240);
+    }
+    if (typeof o.companyVatNumber === "string") {
+      d.companyVatNumber = o.companyVatNumber.slice(0, 64);
+    }
+    if (typeof o.companyRegistrationInfo === "string") {
+      d.companyRegistrationInfo = o.companyRegistrationInfo.slice(0, 240);
+    }
+    if (typeof o.defaultCurrency === "string" && o.defaultCurrency.trim()) {
+      d.defaultCurrency = o.defaultCurrency.trim().toUpperCase().slice(0, 8);
+    }
+    const w = o.weeklyFullTimeHours;
+    if (typeof w === "number" && Number.isFinite(w)) {
+      const n = Math.round(w);
+      if (n >= 1 && n <= 80) {
+        d.weeklyFullTimeHours = n;
+      }
+    }
+    if (o.customVariables && typeof o.customVariables === "object" && !Array.isArray(o.customVariables)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o.customVariables as Record<string, unknown>)) {
+        if (k.length > 120) continue;
+        if (typeof v !== "string") continue;
+        out[k] = v.slice(0, 2000);
+      }
+      d.customVariables = out;
+    }
+    return d;
+  }
+
+  private mergeCompanySettingsStored(
+    into: CompanySettingsStored,
+    patch: Partial<CompanySettingsStored>
+  ): CompanySettingsStored {
+    const next = { ...into };
+    if (patch.fiscalYearStartMonth !== undefined) {
+      const m = patch.fiscalYearStartMonth;
+      if (m >= 1 && m <= 12) next.fiscalYearStartMonth = m;
+    }
+    if (patch.companyLegalName !== undefined) {
+      next.companyLegalName = patch.companyLegalName.trim().slice(0, 240);
+    }
+    if (patch.companyVatNumber !== undefined) {
+      next.companyVatNumber = patch.companyVatNumber.trim().slice(0, 64);
+    }
+    if (patch.companyRegistrationInfo !== undefined) {
+      next.companyRegistrationInfo = patch.companyRegistrationInfo.trim().slice(0, 240);
+    }
+    if (patch.defaultCurrency !== undefined) {
+      const c = patch.defaultCurrency.trim().toUpperCase().slice(0, 8);
+      next.defaultCurrency = c || "EUR";
+    }
+    if (patch.weeklyFullTimeHours !== undefined) {
+      const h = patch.weeklyFullTimeHours;
+      if (h >= 1 && h <= 80) next.weeklyFullTimeHours = h;
+    }
+    if (patch.customVariables !== undefined) {
+      next.customVariables = this.normalizeCompanySettingsStored({
+        customVariables: patch.customVariables
+      }).customVariables;
+    }
+    return next;
+  }
+
+  async getCompanySettings(companyId: string): Promise<CompanySettingsDto> {
+    const id = companyId.trim();
+    if (!id) {
+      throw new BadRequestException("companyId mancante");
+    }
+    if (!this.useDb) {
+      const mem = this.companySettingsMem.get(id);
+      const stored = mem
+        ? this.normalizeCompanySettingsStored(mem)
+        : this.defaultCompanySettingsStored();
+      return { companyId: id, ...stored };
+    }
+    const { data, error } = await this.supabase!
+      .from("company_settings")
+      .select("settings")
+      .eq("companyId", id)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Lettura impostazioni azienda: ${error.message}`);
+    }
+    const stored = this.normalizeCompanySettingsStored(data?.settings ?? {});
+    return { companyId: id, ...stored };
+  }
+
+  async patchCompanySettings(
+    companyId: string,
+    patch: Partial<CompanySettingsStored>
+  ): Promise<CompanySettingsDto> {
+    const id = companyId.trim();
+    if (!id) {
+      throw new BadRequestException("companyId mancante");
+    }
+    const current = await this.getCompanySettings(id);
+    const { companyId: _cid, ...curRest } = current;
+    const nextStored = this.mergeCompanySettingsStored(curRest, patch);
+
+    if (!this.useDb) {
+      this.companySettingsMem.set(id, nextStored);
+      return { companyId: id, ...nextStored };
+    }
+    const now = new Date().toISOString();
+    const { error } = await this.supabase!.from("company_settings").upsert(
+      {
+        companyId: id,
+        settings: nextStored,
+        updatedAt: now
+      },
+      { onConflict: "companyId" }
+    );
+    if (error) {
+      throw new InternalServerErrorException(`Salvataggio impostazioni azienda: ${error.message}`);
+    }
+    return { companyId: id, ...nextStored };
   }
 
   private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {

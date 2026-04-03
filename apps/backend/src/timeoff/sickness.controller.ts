@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { IsDateString } from "class-validator";
-import { CurrentAuth, RequireRole, RoleGuard } from "../platform/auth";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 
@@ -28,6 +28,16 @@ class SicknessDto {
 @UseGuards(NexaPermissionGuard)
 export class SicknessController {
   constructor(private readonly store: HrDataStore) {}
+
+  @Patch("events/:id")
+  @RequireNexaPermissions("nexa.sickness:write")
+  async updateEvent(
+    @CurrentAuth() auth: { userId: string },
+    @Param("id") id: string,
+    @Body() dto: SicknessDto
+  ): Promise<unknown> {
+    return this.store.updateSicknessEvent(id, auth.userId, dto.fromDate, dto.toDate);
+  }
 
   @Post("report")
   @RequireNexaPermissions("nexa.sickness:write")
@@ -53,9 +63,12 @@ export class SicknessController {
   @UseGuards(RoleGuard)
   @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
-  async approve(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async approve(@Param("id") id: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
-    if (!(await this.store.isManagerOf(auth.userId, sickness.userId))) {
+    if (
+      auth.role !== "admin" &&
+      !(await this.store.isManagerOf(auth.userId, sickness.userId))
+    ) {
       throw new ForbiddenException("Manager non autorizzato per questo dipendente");
     }
     return this.store.approveSickness(id, auth.userId);
@@ -65,9 +78,12 @@ export class SicknessController {
   @UseGuards(RoleGuard)
   @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:write")
-  async reject(@Param("id") id: string, @CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async reject(@Param("id") id: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
-    if (!(await this.store.isManagerOf(auth.userId, sickness.userId))) {
+    if (
+      auth.role !== "admin" &&
+      !(await this.store.isManagerOf(auth.userId, sickness.userId))
+    ) {
       throw new ForbiddenException("Manager non autorizzato per questo dipendente");
     }
     return this.store.rejectSickness(id, auth.userId);

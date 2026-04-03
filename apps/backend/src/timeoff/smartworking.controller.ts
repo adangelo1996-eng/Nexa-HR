@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Patch, Param, Post, UseGuards } from "@nestjs/common";
 import { IsOptional, IsString, Matches } from "class-validator";
-import { CurrentAuth, RequireRole, RoleGuard } from "../platform/auth";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 
@@ -45,11 +45,26 @@ export class SmartworkingController {
     return { ok: true };
   }
 
+  @Patch("request/:id")
+  @UseGuards(RoleGuard)
+  @RequireRole("employee")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async updateRequest(
+    @CurrentAuth() auth: { userId: string },
+    @Param("id") id: string,
+    @Body() dto: CreateSwDto
+  ): Promise<unknown> {
+    return this.store.updateSmartworkingRequest(auth.userId, id, dto.day, dto.note);
+  }
+
   @Get("pending")
   @UseGuards(RoleGuard)
   @RequireRole("team_lead")
   @RequireNexaPermissions("nexa.approvals:read")
-  async pending(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
+  async pending(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    if (auth.role === "admin") {
+      return { items: await this.store.listAllPendingSmartworkingRequests() };
+    }
     return { items: await this.store.listPendingSmartworkingForManager(auth.userId) };
   }
 

@@ -19,7 +19,7 @@ const montserrat = Montserrat({
   display: "swap"
 });
 
-const themeInitScript = `(function(){try{var k="nexa-hr-theme",t=localStorage.getItem(k),r=document.documentElement;if(t==="light")r.classList.remove("dark");else r.classList.add("dark");}catch(e){document.documentElement.classList.add("dark");}})();`;
+const themeInitScript = `(function(){try{var k="nexa-hr-theme",t=localStorage.getItem(k),r=document.documentElement;if(t==="dark")r.classList.add("dark");else r.classList.remove("dark");}catch(e){document.documentElement.classList.remove("dark");}})();`;
 
 export const metadata: Metadata = {
   title: "Nexa HR — Synapse",

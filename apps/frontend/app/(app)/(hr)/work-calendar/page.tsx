@@ -10,12 +10,19 @@ import {
   createSmartworkingRequest,
   fetchCurrentUser,
   fetchHrWorkCalendar,
+  fetchLeaveBalance,
   fetchMeTeamWorkCalendar,
+  fetchUserCalendar,
   fetchUsers,
   reportSickness,
+  updateLeavePlan,
+  updateSicknessEvent,
+  updateSmartworkingRequest,
   type CalendarEventDto,
+  type LeaveBalance,
   type User
 } from "@/lib/api";
+import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
 import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError, type SessionUser } from "@/lib/auth-session";
 
 type RowUser = { id: string; fullName: string };
@@ -53,7 +60,10 @@ function isCalendarPending(ev: CalendarEventDto): boolean {
 }
 
 function eventStyle(ev: CalendarEventDto): string {
-  if (isCalendarPending(ev) && (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking")) {
+  if (
+    isCalendarPending(ev) &&
+    (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
+  ) {
     return "border-yellow-500/55 bg-yellow-500/15 text-yellow-950 dark:text-yellow-100";
   }
   return kindStyle(ev.kind);
@@ -64,17 +74,20 @@ type SwDayState = { on: boolean; requestId?: string; status?: string };
 function deriveSwDayState(events: CalendarEventDto[]): SwDayState {
   const sws = events.filter((e) => e.kind === "smartworking");
   if (sws.length === 0) return { on: false };
-  const fromReq = sws.find(
-    (e) => typeof e.meta?.swRequestId === "string" && (e.meta.swRequestId as string).length > 0
+  const fromReqs = sws.filter(
+    (e) => typeof e.meta?.swRequestId === "string" && String(e.meta.swRequestId).length > 0
   );
-  if (fromReq) {
-    const st = String(fromReq.meta?.status ?? "");
-    if (st === "rejected") return { on: false };
+  const activeReq = fromReqs.find((e) => String(e.meta?.status ?? "") !== "rejected");
+  if (activeReq) {
+    const st = String(activeReq.meta?.status ?? "");
     return {
       on: st === "pending" || st === "approved",
-      requestId: String(fromReq.meta?.swRequestId),
+      requestId: String(activeReq.meta?.swRequestId),
       status: st
     };
+  }
+  if (fromReqs.length > 0 && fromReqs.every((e) => String(e.meta?.status ?? "") === "rejected")) {
+    return { on: false };
   }
   return { on: true, status: "approved" };
 }
@@ -118,6 +131,15 @@ function filterManagerRows(me: SessionUser, allUsers: User[]): RowUser[] {
 
 const WEEKDAY_SHORT = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 
+function AnalyticsStatRow({ label, value }: { label: string; value: number }): React.JSX.Element {
+  return (
+    <div className="flex justify-between gap-4 border-b border-[var(--prom-line)] py-2 text-sm last:border-0">
+      <dt className="text-[var(--prom-muted)]">{label}</dt>
+      <dd className="tabular-nums font-medium text-[var(--prom-text)]">{value}</dd>
+    </div>
+  );
+}
+
 export default function WorkCalendarPage(): React.JSX.Element {
   const router = useRouter();
   const now = new Date();
@@ -127,6 +149,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [rowUsers, setRowUsers] = useState<RowUser[]>([]);
   const [allUsersForSelect, setAllUsersForSelect] = useState<User[]>([]);
   const [events, setEvents] = useState<CalendarEventDto[]>([]);
+  const [myAnalyticsEvents, setMyAnalyticsEvents] = useState<CalendarEventDto[]>([]);
+  const [analyticsLeaveBalance, setAnalyticsLeaveBalance] = useState<LeaveBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<string>("");
@@ -141,6 +165,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [sickTo, setSickTo] = useState("");
   const [sickFile, setSickFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  const [editingSicknessId, setEditingSicknessId] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -154,12 +180,22 @@ export default function WorkCalendarPage(): React.JSX.Element {
       const current = await fetchCurrentUser(t);
       setMe(current);
       const { from, to } = monthRange(year, month);
+      const yearFrom = `${year}-01-01`;
+      const analyticsP = Promise.all([
+        fetchUserCalendar(t, yearFrom, to).catch(() => [] as CalendarEventDto[]),
+        fetchLeaveBalance(t, year).catch(() => null as LeaveBalance | null)
+      ]);
 
       if (current.role === "employee") {
-        const { users: rows, events: ev } = await fetchMeTeamWorkCalendar(t, from, to);
+        const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
+          fetchMeTeamWorkCalendar(t, from, to),
+          analyticsP
+        ]);
         setRowUsers(rows);
         setAllUsersForSelect([]);
         setEvents(ev);
+        setMyAnalyticsEvents(myEv);
+        setAnalyticsLeaveBalance(leaveBal);
       } else {
         const usersList = await fetchUsers(t);
         setAllUsersForSelect(usersList);
@@ -170,8 +206,13 @@ export default function WorkCalendarPage(): React.JSX.Element {
         }
         setRowUsers(rows);
         const ids = fid ? [fid] : undefined;
-        const ev = await fetchHrWorkCalendar(t, { from, to, userIds: ids });
+        const [ev, [myEv, leaveBal]] = await Promise.all([
+          fetchHrWorkCalendar(t, { from, to, userIds: ids }),
+          analyticsP
+        ]);
         setEvents(ev);
+        setMyAnalyticsEvents(myEv);
+        setAnalyticsLeaveBalance(leaveBal);
       }
     } catch (e) {
       if (shouldClearSessionOnUnauthorizedApiError(e)) {
@@ -205,6 +246,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
     [year, month]
   );
 
+  const monthBounds = useMemo(() => monthRange(year, month), [year, month]);
+  const yearStart = `${year}-01-01`;
+  const statsMese = useMemo(
+    () => aggregateWorkCalendarStats(myAnalyticsEvents, monthBounds.from, monthBounds.to),
+    [myAnalyticsEvents, monthBounds.from, monthBounds.to]
+  );
+  const statsYtd = useMemo(
+    () => aggregateWorkCalendarStats(myAnalyticsEvents, yearStart, monthBounds.to),
+    [myAnalyticsEvents, yearStart, monthBounds.to]
+  );
+  const ytdEndLabel = useMemo(() => formatItalianDateLong(monthBounds.to), [monthBounds.to]);
+
   const openModal = (day: string, row: RowUser): void => {
     setModal({ day, row });
     setModalStep("menu");
@@ -216,6 +269,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setSickFrom(day);
     setSickTo(day);
     setSickFile(null);
+    setEditingLeaveId(null);
+    setEditingSicknessId(null);
   };
 
   const closeModal = (): void => {
@@ -223,6 +278,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setModalStep("menu");
     setSwOptimistic(null);
     setSubmitting(null);
+    setEditingLeaveId(null);
+    setEditingSicknessId(null);
   };
 
   const onPrevMonth = (): void => {
@@ -292,11 +349,19 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setSubmitting("leave");
     setError(null);
     try {
-      await createLeavePlan(t, {
-        startDate: leaveStart,
-        endDate: leaveEnd,
-        kind: leaveKind
-      });
+      if (editingLeaveId) {
+        await updateLeavePlan(t, editingLeaveId, {
+          startDate: leaveStart,
+          endDate: leaveEnd,
+          kind: leaveKind
+        });
+      } else {
+        await createLeavePlan(t, {
+          startDate: leaveStart,
+          endDate: leaveEnd,
+          kind: leaveKind
+        });
+      }
       closeModal();
       await load();
     } catch (e) {
@@ -312,11 +377,33 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setSubmitting("sick");
     setError(null);
     try {
-      await reportSickness(t, { fromDate: sickFrom, toDate: sickTo }, sickFile);
+      if (editingSicknessId) {
+        await updateSicknessEvent(t, editingSicknessId, { fromDate: sickFrom, toDate: sickTo });
+      } else {
+        await reportSickness(t, { fromDate: sickFrom, toDate: sickTo }, sickFile);
+      }
       closeModal();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore malattia");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const savePendingSmartworkingEdits = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal || serverSw.status !== "pending" || !serverSw.requestId) return;
+    setError(null);
+    setSubmitting("sw-save");
+    try {
+      await updateSmartworkingRequest(t, serverSw.requestId, {
+        day: modal.day,
+        note: swNote.trim() || undefined
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
     } finally {
       setSubmitting(null);
     }
@@ -501,6 +588,64 @@ export default function WorkCalendarPage(): React.JSX.Element {
         </table>
       </div>
 
+      <details
+        className="group mt-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-[var(--glass-shadow)]"
+        style={{ boxShadow: "var(--glass-shadow)" }}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium text-[var(--prom-text)] [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)] transition-transform group-open:rotate-90" />
+          <span>
+            Analytics personale
+            <span className="ml-2 text-xs font-normal capitalize text-[var(--prom-muted)]">{monthLabel}</span>
+          </span>
+        </summary>
+        <div className="border-t border-[var(--prom-line)] px-4 pb-4 pt-3">
+          <p className="mb-4 text-xs text-[var(--prom-muted)]">
+            Riepilogo giorni (calendario) per il tuo utente: mese attuale e cumulativo dall&apos;inizio
+            dell&apos;anno fino alla fine del mese selezionato. Le richieste rifiutate non contano nei giorni.
+          </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                Mese selezionato
+              </h3>
+              <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
+                <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsMese.giorniFerieAnnuali} />
+                <AnalyticsStatRow label="ROL (giorni)" value={statsMese.giorniRol} />
+                <AnalyticsStatRow label="Malattia (giorni)" value={statsMese.giorniMalattia} />
+                <AnalyticsStatRow label="Smart working (giorni)" value={statsMese.giorniSmartWorking} />
+                <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsMese.giorniFestivitaAziendali} />
+                <AnalyticsStatRow label="Turni (giorni con turno)" value={statsMese.giorniConTurno} />
+                <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsMese.richiesteInAttesa} />
+              </dl>
+            </div>
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                Dal 1° gennaio al {ytdEndLabel}
+              </h3>
+              <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
+                <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsYtd.giorniFerieAnnuali} />
+                <AnalyticsStatRow label="ROL (giorni)" value={statsYtd.giorniRol} />
+                <AnalyticsStatRow label="Malattia (giorni)" value={statsYtd.giorniMalattia} />
+                <AnalyticsStatRow label="Smart working (giorni)" value={statsYtd.giorniSmartWorking} />
+                <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsYtd.giorniFestivitaAziendali} />
+                <AnalyticsStatRow label="Turni (giorni con turno)" value={statsYtd.giorniConTurno} />
+                <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsYtd.richiesteInAttesa} />
+              </dl>
+              {analyticsLeaveBalance && analyticsLeaveBalance.year === year ? (
+                <p className="mt-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_50%,transparent)] px-3 py-2 text-xs text-[var(--prom-muted)]">
+                  Saldo ferie {year}:{" "}
+                  <span className="font-medium text-[var(--prom-text)]">{analyticsLeaveBalance.residualDays}</span>{" "}
+                  residui su{" "}
+                  <span className="font-medium text-[var(--prom-text)]">{analyticsLeaveBalance.allocatedDays}</span>{" "}
+                  assegnati ({analyticsLeaveBalance.usedDays} utilizzati).
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </details>
+
       {!loading && rowUsers.length === 0 ? (
         <p className="text-sm text-[var(--prom-muted)]">Nessun dipendente in questa vista.</p>
       ) : null}
@@ -588,14 +733,51 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setModalStep("leave")}
+                      onClick={() => {
+                        const ev = cellEventsModal.find(
+                          (e) =>
+                            (e.kind === "leave" || e.kind === "rol") &&
+                            String(e.meta?.status) === "pending" &&
+                            typeof e.meta?.leaveId === "string"
+                        );
+                        if (ev) {
+                          setEditingLeaveId(String(ev.meta?.leaveId));
+                          setLeaveStart(ev.start.slice(0, 10));
+                          setLeaveEnd((ev.end ?? ev.start).slice(0, 10));
+                          setLeaveKind(ev.kind === "rol" ? "rol" : "annual");
+                        } else {
+                          setEditingLeaveId(null);
+                          setLeaveStart(modal.day);
+                          setLeaveEnd(modal.day);
+                          setLeaveKind("annual");
+                        }
+                        setModalStep("leave");
+                      }}
                       className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-left text-sm font-medium text-emerald-950 transition hover:bg-emerald-500/15 dark:text-emerald-100"
                     >
                       Richiesta ferie / ROL
                     </button>
                     <button
                       type="button"
-                      onClick={() => setModalStep("sickness")}
+                      onClick={() => {
+                        const ev = cellEventsModal.find(
+                          (e) =>
+                            e.kind === "sickness" &&
+                            String(e.meta?.status) === "pending" &&
+                            typeof e.meta?.sicknessId === "string"
+                        );
+                        if (ev) {
+                          setEditingSicknessId(String(ev.meta?.sicknessId));
+                          setSickFrom(ev.start.slice(0, 10));
+                          setSickTo((ev.end ?? ev.start).slice(0, 10));
+                        } else {
+                          setEditingSicknessId(null);
+                          setSickFrom(modal.day);
+                          setSickTo(modal.day);
+                        }
+                        setSickFile(null);
+                        setModalStep("sickness");
+                      }}
                       className="rounded-xl border border-orange-500/35 bg-orange-500/10 px-4 py-3 text-left text-sm font-medium text-orange-950 transition hover:bg-orange-500/15 dark:text-orange-100"
                     >
                       Comunicazione malattia
@@ -605,7 +787,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
                 {modalStep === "leave" ? (
                   <div>
-                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Richiesta ferie / ROL</p>
+                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
+                      {editingLeaveId ? "Modifica richiesta (in attesa)" : "Richiesta ferie / ROL"}
+                    </p>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-[11px] text-[var(--prom-muted)]">
                         Inizio
@@ -644,7 +828,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       disabled={submitting !== null}
                       onClick={() => void submitLeave()}
                     >
-                      {submitting === "leave" ? "Invio…" : "Invia richiesta ferie/ROL"}
+                      {submitting === "leave"
+                        ? "Invio…"
+                        : editingLeaveId
+                          ? "Salva modifiche"
+                          : "Invia richiesta ferie/ROL"}
                     </Button>
                   </div>
                 ) : null}
@@ -663,6 +851,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-violet-600"
                       />
                     </label>
+                    {swDisplayOn && serverSw.status !== "pending" ? (
+                      <p className="text-[10px] text-[var(--prom-muted)]">
+                        Per questa data risulta già uno smart working (approvato o da presenze). Non è possibile inserirne un altro.
+                      </p>
+                    ) : null}
                     <label className="block text-[11px] text-[var(--prom-muted)]">
                       Nota (opzionale)
                       <input
@@ -675,12 +868,26 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     <p className="text-[10px] text-[var(--prom-muted)]">
                       La richiesta viene inviata in background; puoi chiudere il riquadro o scegliere un’altra opzione dal menu.
                     </p>
+                    {serverSw.status === "pending" && serverSw.requestId ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="mt-1"
+                        disabled={submitting !== null}
+                        onClick={() => void savePendingSmartworkingEdits()}
+                      >
+                        {submitting === "sw-save" ? "Salvataggio…" : "Aggiorna giorno / nota (in attesa)"}
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
 
                 {modalStep === "sickness" ? (
                   <div>
-                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">Comunicazione malattia</p>
+                    <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
+                      {editingSicknessId ? "Modifica comunicazione (in attesa)" : "Comunicazione malattia"}
+                    </p>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-[11px] text-[var(--prom-muted)]">
                         Da
@@ -701,15 +908,21 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         />
                       </label>
                     </div>
-                    <label className="mt-2 block text-[11px] text-[var(--prom-muted)]">
-                      Certificato (opzionale, pdf/jpg)
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg"
-                        className="mt-1 block w-full text-xs text-[var(--prom-muted)]"
-                        onChange={(e) => setSickFile(e.target.files?.[0] ?? null)}
-                      />
-                    </label>
+                    {editingSicknessId ? (
+                      <p className="mt-2 text-[10px] text-[var(--prom-muted)]">
+                        Per un nuovo certificato contatta HR; qui puoi aggiornare solo le date finché la richiesta è in attesa.
+                      </p>
+                    ) : (
+                      <label className="mt-2 block text-[11px] text-[var(--prom-muted)]">
+                        Certificato (opzionale, pdf/jpg)
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg"
+                          className="mt-1 block w-full text-xs text-[var(--prom-muted)]"
+                          onChange={(e) => setSickFile(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                    )}
                     <Button
                       type="button"
                       size="sm"
@@ -718,7 +931,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       disabled={submitting !== null}
                       onClick={() => void submitSick()}
                     >
-                      {submitting === "sick" ? "Invio…" : "Invia comunicazione"}
+                      {submitting === "sick"
+                        ? "Invio…"
+                        : editingSicknessId
+                          ? "Salva modifiche"
+                          : "Invia comunicazione"}
                     </Button>
                   </div>
                 ) : null}

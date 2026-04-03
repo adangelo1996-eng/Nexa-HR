@@ -112,6 +112,21 @@ export interface WorkTeamDto {
   leadUserId?: string | null;
 }
 
+/** Impostazioni aziendali (admin). */
+export interface CompanySettingsDto {
+  companyId: string;
+  /** 1–12: mese di inizio anno di riferimento (es. 4 = anno societario da aprile). */
+  fiscalYearStartMonth: number;
+  companyLegalName: string;
+  companyVatNumber: string;
+  companyRegistrationInfo: string;
+  defaultCurrency: string;
+  weeklyFullTimeHours: number;
+  customVariables: Record<string, string>;
+}
+
+export type CompanySettingsPatch = Partial<Omit<CompanySettingsDto, "companyId">>;
+
 export interface OrgNode {
   id: string;
   label: string;
@@ -392,6 +407,32 @@ export async function fetchCurrentUser(token: string): Promise<SessionUser> {
     saveSession(token, me);
   }
   return me;
+}
+
+export async function fetchCompanySettings(token: string): Promise<CompanySettingsDto> {
+  const response = await fetch(buildApiUrl("/company/settings"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as CompanySettingsDto;
+}
+
+export async function patchCompanySettings(
+  token: string,
+  patch: CompanySettingsPatch
+): Promise<CompanySettingsDto> {
+  const response = await fetch(buildApiUrl("/company/settings"), {
+    method: "PATCH",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as CompanySettingsDto;
 }
 
 export async function fetchPayslips(token: string, query?: { months?: number }): Promise<Payslip[]> {
@@ -988,6 +1029,22 @@ export async function createLeavePlan(
   return (await response.json()) as LeavePlan;
 }
 
+export async function updateLeavePlan(
+  token: string,
+  leaveId: string,
+  payload: Pick<LeavePlan, "startDate" | "endDate"> & { kind?: "annual" | "rol" }
+): Promise<LeavePlan> {
+  const response = await fetch(buildApiUrl(`/leave/plan/${encodeURIComponent(leaveId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as LeavePlan;
+}
+
 export async function fetchLeavePlans(token: string): Promise<LeavePlan[]> {
   const response = await fetch(buildApiUrl("/leave/plan"), {
     method: "GET",
@@ -1113,6 +1170,22 @@ export async function cancelSmartworkingRequest(token: string, requestId: string
   if (!response.ok) await parseError(response);
 }
 
+export async function updateSmartworkingRequest(
+  token: string,
+  requestId: string,
+  payload: { day: string; note?: string }
+): Promise<SmartworkingRequestDto> {
+  const response = await fetch(buildApiUrl(`/smartworking/request/${encodeURIComponent(requestId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as SmartworkingRequestDto;
+}
+
 export async function reportSickness(
   token: string,
   payload: { fromDate: string; toDate: string },
@@ -1126,6 +1199,22 @@ export async function reportSickness(
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: fd
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.json();
+}
+
+export async function updateSicknessEvent(
+  token: string,
+  sicknessId: string,
+  payload: { fromDate: string; toDate: string }
+): Promise<unknown> {
+  const response = await fetch(buildApiUrl(`/sickness/events/${encodeURIComponent(sicknessId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
   });
   if (!response.ok) {
     await parseError(response);
