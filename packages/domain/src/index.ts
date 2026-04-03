@@ -279,7 +279,16 @@ export interface UserNotification {
 
 export interface CalendarEvent {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol" | "travel";
+  kind:
+    | "leave"
+    | "sickness"
+    | "shift"
+    | "deadline"
+    | "smartworking"
+    | "office"
+    | "holiday"
+    | "rol"
+    | "travel";
   title: string;
   start: string;
   end?: string;

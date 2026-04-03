@@ -3632,6 +3632,18 @@ export class HrDataStore {
         meta: { date: ws.date }
       });
     }
+    for (const ws of summaries) {
+      if (ws.mode !== "office") continue;
+      if (!this.inCalendarRange(ws.date, from, to)) continue;
+      events.push({
+        id: `cal-office-${userId}-${ws.date}`,
+        kind: "office",
+        title: "Sede",
+        start: ws.date,
+        end: ws.date,
+        meta: { date: ws.date }
+      });
+    }
     const travelReqs = await this.listMyTravel(userId);
     for (const r of travelReqs) {
       if (!this.inCalendarRange(r.day, from, to)) continue;

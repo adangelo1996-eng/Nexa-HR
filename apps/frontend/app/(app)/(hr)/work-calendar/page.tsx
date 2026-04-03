@@ -29,6 +29,7 @@ import {
   type LeaveBalance,
   type User
 } from "@/lib/api";
+import { calendarEventAbbrev } from "@/lib/calendar-event-labels";
 import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
 import {
   clearSession,
@@ -75,6 +76,8 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
       return "border-orange-500/50 bg-orange-500/15 text-orange-900 dark:text-orange-100";
     case "travel":
       return "border-cyan-500/50 bg-cyan-500/15 text-cyan-950 dark:text-cyan-100";
+    case "office":
+      return "border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] text-[var(--prom-text)]";
     default:
       return "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]";
   }
@@ -1660,14 +1663,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
                                 ].join(" ")}
                                 title={ev.title}
                               >
-                                <div className="min-w-0 flex-1 truncate">
-                                  {ev.kind === "shift" && ev.end ? (
-                                    <span>
-                                      {ev.start.slice(11, 16)}–{ev.end.slice(11, 16)}
-                                    </span>
-                                  ) : (
-                                    <span className="truncate">{ev.title}</span>
-                                  )}
+                                <div className="min-w-0 flex-1 truncate font-semibold tracking-tight">
+                                  <span className="truncate">{calendarEventAbbrev(ev)}</span>
                                 </div>
                                 {actions}
                               </div>
@@ -1997,12 +1994,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       key={`${ev.id}-${ev.kind}-${ev.userId ?? ""}`}
                       className={["rounded-lg border px-3 py-2 text-xs", eventStyle(ev)].join(" ")}
                     >
-                      <span className="font-medium">{ev.title}</span>
-                      {ev.kind === "shift" && ev.end ? (
-                        <span className="ml-2 text-[10px] opacity-80">
-                          {ev.start.slice(11, 16)} – {ev.end.slice(11, 16)}
-                        </span>
-                      ) : null}
+                      <span className="font-semibold">{calendarEventAbbrev(ev)}</span>
+                      <span className="ml-1.5 opacity-90">{ev.title}</span>
                     </li>
                   ))}
                 </ul>

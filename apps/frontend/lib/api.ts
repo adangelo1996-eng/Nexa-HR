@@ -1553,7 +1553,16 @@ export async function downloadPayslipPdf(token: string, userId: string, period: 
 
 export interface CalendarEventDto {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol" | "travel";
+  kind:
+    | "leave"
+    | "sickness"
+    | "shift"
+    | "deadline"
+    | "smartworking"
+    | "office"
+    | "holiday"
+    | "rol"
+    | "travel";
   title: string;
   start: string;
   end?: string;

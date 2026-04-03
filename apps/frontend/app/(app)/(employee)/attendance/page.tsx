@@ -18,6 +18,7 @@ import {
   downloadAttendanceDayBoardExport,
   fetchAttendanceTeamUsers,
   fetchCurrentUser,
+  fetchUserCalendar,
   nexaUsesSupabaseAttendance,
   patchTimeEntry,
   type AttendanceOvertimeAggregates,
@@ -34,6 +35,7 @@ import {
   sessionCanNexaAdmin,
   type SessionUser
 } from "@/lib/auth-session";
+import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");
@@ -102,6 +104,7 @@ export default function AttendancePage(): React.JSX.Element {
   const [hrBoardCcOptions, setHrBoardCcOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [hrBoardCcSelected, setHrBoardCcSelected] = useState<Set<string>>(new Set());
   const [hrBoardExportLoading, setHrBoardExportLoading] = useState(false);
+  const [travelDates, setTravelDates] = useState<Set<string>>(() => new Set());
 
   const canHrExport = useMemo(
     () => Boolean(user && (sessionCanNexaAdmin(user) || user.canManageTeamAttendance)),
@@ -144,6 +147,42 @@ export default function AttendancePage(): React.JSX.Element {
 
     void load();
   }, [router]);
+
+  useEffect(() => {
+    if (!token || summary.length === 0) {
+      setTravelDates(new Set());
+      return;
+    }
+    const dates = summary.map((s) => s.date.slice(0, 10)).sort();
+    const from = dates[0]!;
+    const to = dates[dates.length - 1]!;
+    let cancelled = false;
+    void fetchUserCalendar(token, from, to)
+      .then((events) => {
+        if (cancelled) {
+          return;
+        }
+        const tr = new Set<string>();
+        for (const e of events) {
+          if (e.kind !== "travel") {
+            continue;
+          }
+          if (String(e.meta?.status ?? "") === "rejected") {
+            continue;
+          }
+          tr.add(e.start.slice(0, 10));
+        }
+        setTravelDates(tr);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTravelDates(new Set());
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, summary]);
 
   useEffect(() => {
     if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
@@ -937,48 +976,11 @@ export default function AttendancePage(): React.JSX.Element {
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Riepilogo giorni lavorati</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Ore effettive, straordinario registrato sul giorno e modalità (sede / smart working).
+          Giorno in stile calendario, barra ore (tema) e straordinario (stesso colore più scuro), modalità Sede / Smart
+          working / Trasferta (da calendario).
         </p>
-        <div className="mt-3 overflow-x-auto">
-          {summary.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Nessun riepilogo disponibile.</p>
-          ) : (
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
-                <tr>
-                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Data</th>
-                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Ore lavorate</th>
-                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Straordinario</th>
-                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Modalità</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...summary]
-                  .sort((a, b) => b.date.localeCompare(a.date))
-                  .map((item) => {
-                    const workedSec = workedSecondsFromSummary(item);
-                    const otSec = item.overtimeSeconds ?? 0;
-                    const modeLabel =
-                      item.mode === "smartworking" ? "Smart working" : "In sede";
-                    return (
-                      <tr
-                        key={`${item.userId}-${item.date}`}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="px-3 py-2 tabular-nums text-slate-900 dark:text-slate-100">{item.date}</td>
-                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
-                          {formatSecondsHm(workedSec)}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
-                          {otSec > 0 ? formatSecondsHm(otSec) : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{modeLabel}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          )}
+        <div className="mt-3">
+          <WorkedDaySummaryCards rows={summary} user={user} travelDates={travelDates} />
         </div>
       </section>
 

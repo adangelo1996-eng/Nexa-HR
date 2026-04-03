@@ -21,6 +21,7 @@ import {
   fetchCurrentUser,
   fetchLeaveBalance,
   fetchLeavePlans,
+  fetchUserCalendar,
   type ApprovalItem,
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
@@ -36,6 +37,7 @@ import {
   sessionCanSeeApprovalsAndHrExtras,
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
+import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
 
 type PeriodTab = "today" | "week" | "month";
 
@@ -99,6 +101,7 @@ export default function HomePage(): React.JSX.Element {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [liveWorkedSeconds, setLiveWorkedSeconds] = useState(0);
   const [periodTab, setPeriodTab] = useState<PeriodTab>("today");
+  const [travelDates, setTravelDates] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const currentToken = getToken();
@@ -285,6 +288,42 @@ export default function HomePage(): React.JSX.Element {
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     return summary.filter((s) => s.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
   }, [periodTab, summary, today]);
+
+  useEffect(() => {
+    if (!token || periodSummaries.length === 0) {
+      setTravelDates(new Set());
+      return;
+    }
+    const dates = periodSummaries.map((s) => s.date.slice(0, 10)).sort();
+    const from = dates[0]!;
+    const to = dates[dates.length - 1]!;
+    let cancelled = false;
+    void fetchUserCalendar(token, from, to)
+      .then((events) => {
+        if (cancelled) {
+          return;
+        }
+        const tr = new Set<string>();
+        for (const e of events) {
+          if (e.kind !== "travel") {
+            continue;
+          }
+          if (String(e.meta?.status ?? "") === "rejected") {
+            continue;
+          }
+          tr.add(e.start.slice(0, 10));
+        }
+        setTravelDates(tr);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTravelDates(new Set());
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, periodSummaries]);
 
   const formattedCountdown = useMemo(() => formatHmCountdown(remainingSeconds), [remainingSeconds]);
 
@@ -516,26 +555,11 @@ export default function HomePage(): React.JSX.Element {
           </div>
         ) : null}
 
-        <ul className={`space-y-2 text-sm ${periodTab === "today" && todayEntriesChronological.length > 0 ? "mt-6 border-t border-[var(--prom-line)] pt-5" : "mt-4"}`}>
-          {periodSummaries.length === 0 ? (
-            <li className="text-[var(--prom-muted)]">Nessun dato nel periodo.</li>
-          ) : (
-            periodSummaries.map((row) => {
-              const hm = formatWorkedHm(Math.round(row.minutesWorked * 60));
-              return (
-                <li
-                  key={row.date}
-                  className="flex items-center justify-between rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_45%,transparent)] px-4 py-3"
-                >
-                  <span className="font-medium text-[var(--prom-text)]">{row.date}</span>
-                  <span className="tabular-nums text-[var(--prom-muted)]">
-                    {hm} · {row.mode}
-                  </span>
-                </li>
-              );
-            })
-          )}
-        </ul>
+        <div
+          className={`text-sm ${periodTab === "today" && todayEntriesChronological.length > 0 ? "mt-6 border-t border-[var(--prom-line)] pt-5" : "mt-4"}`}
+        >
+          <WorkedDaySummaryCards rows={periodSummaries} user={user} travelDates={travelDates} />
+        </div>
         {aggregates ? (
           <p className="mt-4 text-xs text-[var(--prom-muted)]">
             Straord.: sett. {aggregates.week.overtimeHours.toFixed(1)}h · mese {aggregates.month.overtimeHours.toFixed(1)}h
