@@ -15,6 +15,7 @@
     "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-ch-rules build && corepack pnpm --filter @payday/payroll-it-rules build && corepack pnpm --filter @payday/payroll-adapters-ch build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend exec nest build",
     "build:frontend": "corepack pnpm --filter @payday/frontend build",
     "start:backend": "corepack pnpm --filter @payday/backend start",
+    "wallet:check:backend": "corepack pnpm --filter @payday/backend wallet:check",
     "start:frontend": "corepack pnpm --filter @payday/frontend start",
     "supabase:login": "corepack pnpm dlx supabase login",
     "supabase:link": "corepack pnpm dlx supabase link --workdir infra/supabase",

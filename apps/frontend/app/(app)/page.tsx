@@ -8,9 +8,9 @@ import {
   LogOut,
   Palmtree,
   Receipt,
-  Timer
+  Timer,
+  ArrowDown
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   clock,
   fetchApprovals,
@@ -51,6 +51,36 @@ function isoWeekRange(d: Date): { start: string; end: string } {
   return { start: f(monday), end: f(sunday) };
 }
 
+function formatHmCountdown(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds);
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
+function formatWorkedHm(seconds: number): string {
+  const sec = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m.toString().padStart(2, "0")}m`;
+}
+
+function punchTimeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("it-CH", { hour: "2-digit", minute: "2-digit" });
+}
+
+function segmentDurationLabel(prevIso: string, nextIso: string): string | null {
+  const ms = new Date(nextIso).getTime() - new Date(prevIso).getTime();
+  if (ms < 0 || ms > 48 * 3600 * 1000) return null;
+  const totalMin = Math.round(ms / 60_000);
+  if (totalMin <= 0) return "< 1 min";
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 export default function HomePage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +97,7 @@ export default function HomePage(): React.JSX.Element {
   const [clockLoading, setClockLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [clockError, setClockError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [liveWorkedSeconds, setLiveWorkedSeconds] = useState(0);
   const [periodTab, setPeriodTab] = useState<PeriodTab>("today");
 
   useEffect(() => {
@@ -200,15 +231,47 @@ export default function HomePage(): React.JSX.Element {
     return () => window.clearInterval(timer);
   }, [status]);
 
+  useEffect(() => {
+    if (!status) {
+      setLiveWorkedSeconds(0);
+      return;
+    }
+    if (!status.isRunning) {
+      setLiveWorkedSeconds(status.workedSeconds);
+      return;
+    }
+    const base = status.workedSeconds;
+    const t0 = Date.now();
+    setLiveWorkedSeconds(base);
+    const id = window.setInterval(() => {
+      setLiveWorkedSeconds(base + Math.floor((Date.now() - t0) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [status?.date, status?.isRunning, status?.workedSeconds]);
+
   const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = entries
-    .filter((item) => item.at.slice(0, 10) === today)
-    .sort((a, b) => b.at.localeCompare(a.at));
+  const todayEntriesDesc = useMemo(
+    () =>
+      entries
+        .filter((item) => item.at.slice(0, 10) === today)
+        .sort((a, b) => b.at.localeCompare(a.at)),
+    [entries, today]
+  );
+  const todayEntriesChronological = useMemo(
+    () => [...todayEntriesDesc].reverse(),
+    [todayEntriesDesc]
+  );
   const todaySummaryRow = summary.find((item) => item.date === today);
   const canClockIn = status?.nextType === "clock_in" && clockLoading === null;
   const canClockOut = status?.nextType === "clock_out" && clockLoading === null;
-  const lastPunch = todayEntries[0];
-  const hoursToday = ((todaySummaryRow?.minutesWorked ?? status?.minutesWorked ?? 0) / 60).toFixed(1);
+  const lastPunch = todayEntriesDesc[0];
+  const workedDisplaySeconds =
+    status?.isRunning === true
+      ? liveWorkedSeconds
+      : status != null
+        ? status.workedSeconds
+        : Math.round((todaySummaryRow?.minutesWorked ?? 0) * 60);
+  const hoursTodayLabel = formatWorkedHm(workedDisplaySeconds);
 
   const periodSummaries = useMemo(() => {
     const now = new Date();
@@ -223,14 +286,7 @@ export default function HomePage(): React.JSX.Element {
     return summary.filter((s) => s.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
   }, [periodTab, summary, today]);
 
-  const formattedCountdown = useMemo(() => {
-    const hours = Math.floor(remainingSeconds / 3600);
-    const minutes = Math.floor((remainingSeconds % 3600) / 60);
-    const seconds = remainingSeconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
-  }, [remainingSeconds]);
+  const formattedCountdown = useMemo(() => formatHmCountdown(remainingSeconds), [remainingSeconds]);
 
   async function onClock(type: "clock_in" | "clock_out"): Promise<void> {
     if (!token) {
@@ -239,22 +295,8 @@ export default function HomePage(): React.JSX.Element {
     setClockError(null);
     setClockLoading(type);
     try {
-      const geo =
-        typeof navigator !== "undefined" && navigator.geolocation
-          ? await new Promise<{ lat: number; lon: number; accuracyM?: number } | undefined>((resolve) => {
-              navigator.geolocation.getCurrentPosition(
-                (pos) =>
-                  resolve({
-                    lat: pos.coords.latitude,
-                    lon: pos.coords.longitude,
-                    accuracyM: pos.coords.accuracy
-                  }),
-                () => resolve(undefined),
-                { enableHighAccuracy: false, maximumAge: 60_000, timeout: 8_000 }
-              );
-            })
-          : undefined;
-      await clock(token, type, geo ? { source: "web", geo } : { source: "web" });
+      const newEntry = await clock(token, type, { source: "web" });
+      setEntries((prev) => [...prev.filter((e) => e.id !== newEntry.id), newEntry]);
       const [entriesList, summaryList, statusValue, overtimeAggregates] = await Promise.all([
         fetchAttendanceEntries(token),
         fetchAttendanceSummary(token),
@@ -312,39 +354,39 @@ export default function HomePage(): React.JSX.Element {
         <section className="card space-y-3">
           <h2 className="sr-only">Azioni rapide</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Button
+            <button
               type="button"
-              size="lg"
               disabled={!canClockIn}
               onClick={() => void onClock("clock_in")}
-              className="flex h-24 flex-col gap-1 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] font-medium text-[var(--prom-text)] hover:opacity-90 disabled:opacity-40"
+              className="dashboard-quick-action flex h-24 flex-col gap-1 font-medium text-[var(--prom-text)]"
               title="Timbra entrata"
             >
               <LogIn className="mx-auto h-6 w-6 opacity-80" />
               <span>Entrata</span>
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              size="lg"
               disabled={!canClockOut}
               onClick={() => void onClock("clock_out")}
-              className="flex h-24 flex-col gap-1 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] font-medium text-[var(--prom-text)] hover:opacity-90 disabled:opacity-40"
+              className="dashboard-quick-action flex h-24 flex-col gap-1 font-medium text-[var(--prom-text)]"
               title="Timbra uscita"
             >
               <LogOut className="mx-auto h-6 w-6 opacity-80" />
               <span>Uscita</span>
-            </Button>
-            <Link href="/workflow" className="block">
-              <span className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-sm font-medium text-[var(--prom-text)] transition-opacity hover:opacity-90">
-                <Palmtree className="h-6 w-6 opacity-80" />
-                Ferie
-              </span>
+            </button>
+            <Link
+              href="/workflow"
+              className="dashboard-quick-action flex h-24 flex-col items-center justify-center gap-1 text-sm font-medium text-[var(--prom-text)]"
+            >
+              <Palmtree className="h-6 w-6 opacity-80" />
+              Ferie
             </Link>
-            <Link href="/expenses" className="block">
-              <span className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-sm font-medium text-[var(--prom-text)] transition-opacity hover:opacity-90">
-                <Receipt className="h-6 w-6 opacity-80" />
-                Spese
-              </span>
+            <Link
+              href="/expenses"
+              className="dashboard-quick-action flex h-24 flex-col items-center justify-center gap-1 text-sm font-medium text-[var(--prom-text)]"
+            >
+              <Receipt className="h-6 w-6 opacity-80" />
+              Spese
             </Link>
           </div>
           {attendanceStatusFailed ? (
@@ -365,7 +407,9 @@ export default function HomePage(): React.JSX.Element {
         <section className="card grid grid-cols-2 gap-4">
           <div className="rounded-xl border border-[var(--prom-line)] p-4">
             <Timer className="mb-2 h-5 w-5 opacity-70" aria-hidden />
-            <p className="text-3xl font-semibold tabular-nums text-[var(--prom-text)]">{hoursToday}</p>
+            <p className="text-3xl font-semibold tabular-nums tracking-tight text-[var(--prom-text)]">
+              {hoursTodayLabel}
+            </p>
             <p className="text-xs text-[var(--prom-muted)]">Ore oggi</p>
           </div>
           <div className="rounded-xl border border-[var(--prom-line)] p-4">
@@ -383,7 +427,7 @@ export default function HomePage(): React.JSX.Element {
           <div className="rounded-xl border border-[var(--prom-line)] p-4">
             <LogIn className="mb-2 h-5 w-5 opacity-70" aria-hidden />
             <p className="text-lg font-semibold leading-tight text-[var(--prom-text)]">
-              {lastPunch ? new Date(lastPunch.at).toLocaleTimeString("it-CH", { hour: "2-digit", minute: "2-digit" }) : "—"}
+              {lastPunch ? punchTimeLabel(lastPunch.at) : "—"}
             </p>
             <p className="text-xs text-[var(--prom-muted)]">Ultima timbratura</p>
           </div>
@@ -413,21 +457,83 @@ export default function HomePage(): React.JSX.Element {
             </button>
           ))}
         </div>
-        <ul className="mt-4 space-y-2 text-sm">
+
+        {periodTab === "today" && todayEntriesChronological.length > 0 ? (
+          <div className="mt-5">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              Timbrature di oggi
+            </h3>
+            <ul className="space-y-0">
+              {todayEntriesChronological.map((entry, index) => {
+                const next = todayEntriesChronological[index + 1];
+                const gap = next ? segmentDurationLabel(entry.at, next.at) : null;
+                const isIn = entry.type === "clock_in";
+                return (
+                  <li key={entry.id}>
+                    <div
+                      className={[
+                        "flex items-center gap-3 rounded-xl border px-4 py-3 backdrop-blur-sm",
+                        "border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_55%,transparent)]",
+                        isIn
+                          ? "shadow-[0_2px_12px_-4px_rgba(58,84,102,0.2)]"
+                          : "shadow-[0_2px_12px_-4px_rgba(26,31,24,0.08)]"
+                      ].join(" ")}
+                    >
+                      <div
+                        className={[
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border",
+                          isIn
+                            ? "border-emerald-500/35 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+                            : "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-muted)_12%,transparent)] text-[var(--prom-muted)]"
+                        ].join(" ")}
+                      >
+                        {isIn ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[var(--prom-text)]">
+                          {isIn ? "Entrata" : "Uscita"}
+                        </p>
+                        <p className="text-xs text-[var(--prom-muted)]">
+                          {entry.source && entry.source !== "web"
+                            ? `Origine: ${entry.source}`
+                            : "Timbratura registrata"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-lg font-semibold tabular-nums text-[var(--prom-text)]">
+                        {punchTimeLabel(entry.at)}
+                      </span>
+                    </div>
+                    {gap ? (
+                      <div className="flex items-center justify-center gap-1 py-1.5 text-[11px] text-[var(--prom-muted)]">
+                        <ArrowDown className="h-3 w-3 opacity-70" aria-hidden />
+                        <span className="tabular-nums">{gap}</span>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+
+        <ul className={`space-y-2 text-sm ${periodTab === "today" && todayEntriesChronological.length > 0 ? "mt-6 border-t border-[var(--prom-line)] pt-5" : "mt-4"}`}>
           {periodSummaries.length === 0 ? (
             <li className="text-[var(--prom-muted)]">Nessun dato nel periodo.</li>
           ) : (
-            periodSummaries.map((row) => (
-              <li
-                key={row.date}
-                className="flex items-center justify-between rounded-lg border border-[var(--prom-line)] px-3 py-2"
-              >
-                <span className="text-[var(--prom-text)]">{row.date}</span>
-                <span className="text-[var(--prom-muted)]">
-                  {(row.minutesWorked / 60).toFixed(1)} h · {row.mode}
-                </span>
-              </li>
-            ))
+            periodSummaries.map((row) => {
+              const hm = formatWorkedHm(Math.round(row.minutesWorked * 60));
+              return (
+                <li
+                  key={row.date}
+                  className="flex items-center justify-between rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_45%,transparent)] px-4 py-3"
+                >
+                  <span className="font-medium text-[var(--prom-text)]">{row.date}</span>
+                  <span className="tabular-nums text-[var(--prom-muted)]">
+                    {hm} · {row.mode}
+                  </span>
+                </li>
+              );
+            })
           )}
         </ul>
         {aggregates ? (

@@ -7,6 +7,13 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
+        sans: [
+          "var(--font-montserrat)",
+          "Montserrat",
+          "Inter",
+          "system-ui",
+          "sans-serif"
+        ],
         synapse: [
           '"Golden Rooster"',
           "var(--font-synapse-wordmark)",

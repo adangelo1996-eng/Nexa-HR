@@ -99,6 +99,7 @@ html.dark {
 }
 
 body {
+  font-family: var(--font-montserrat), Montserrat, system-ui, sans-serif;
   background: var(--page-gradient);
   background-attachment: fixed;
   color: var(--prom-text);
@@ -131,6 +132,59 @@ html.dark .nexa-login-shell {
   border-color: var(--card-border);
   background: var(--card-bg);
   box-shadow: var(--card-shadow);
+}
+
+/* Dashboard — azioni rapide: vetro in rilievo rispetto alla card */
+.dashboard-quick-action {
+  border-radius: 0.75rem;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow:
+    var(--glass-shadow),
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 -1px 0 rgba(55, 48, 38, 0.06) inset;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.2s ease,
+    border-color 0.25s ease,
+    opacity 0.2s ease;
+}
+
+.dashboard-quick-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--prom-gold) 28%, var(--glass-border));
+  box-shadow:
+    0 18px 40px rgba(26, 31, 24, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 -1px 0 rgba(55, 48, 38, 0.05) inset;
+  transform: translateY(-1px);
+}
+
+html.dark .dashboard-quick-action {
+  box-shadow:
+    var(--glass-shadow),
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.35) inset;
+}
+
+html.dark .dashboard-quick-action:hover:not(:disabled) {
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.4) inset;
+}
+
+.dashboard-quick-action:disabled,
+.dashboard-quick-action[aria-disabled="true"] {
+  transform: none;
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dashboard-quick-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--prom-gold) 55%, transparent);
+  outline-offset: 2px;
 }
 
 @layer components {

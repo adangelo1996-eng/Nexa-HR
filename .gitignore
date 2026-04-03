@@ -20,6 +20,13 @@ build/
 .env.*
 !.env.example
 
+# Apple Wallet — materiale di firma locale (la cartella certs resta nel repo vuota via .gitkeep)
+apps/backend/certs/*.pem
+apps/backend/certs/*.p12
+apps/backend/certs/*.cer
+apps/backend/certs/*.key
+apps/backend/certs/*.der
+
 # Logs and debug
 *.log
 npm-debug.log*

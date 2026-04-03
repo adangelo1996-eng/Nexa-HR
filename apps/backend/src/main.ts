@@ -1,7 +1,12 @@
+import { config as loadDotenv } from "dotenv";
+import { resolve } from "node:path";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
+
+/** Carica `apps/backend/.env` anche se il processo è avviato con cwd diversa (es. root monorepo). */
+loadDotenv({ path: resolve(__dirname, "../.env"), quiet: true });
 
 async function bootstrap(): Promise<void> {
   const defaultOrigins = [

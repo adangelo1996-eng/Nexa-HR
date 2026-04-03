@@ -206,7 +206,18 @@ export interface WorkdaySummary {
   userId: string;
   date: string;
   minutesWorked: number;
+  /** Preferire per ore lavorate se valorizzato dal backend. */
+  workedSeconds?: number;
+  overtimeSeconds?: number;
   mode: "office" | "smartworking";
+}
+
+export interface DigitalBadgeInfo {
+  token: string;
+  createdAt: string;
+  user: { id: string; fullName: string; email: string; companyId: string };
+  organizationName: string;
+  walletPassConfigured: boolean;
 }
 
 export interface AttendanceStatus {
@@ -743,6 +754,28 @@ export async function fetchAttendanceOvertimeAggregates(
     await parseError(response);
   }
   return (await response.json()) as AttendanceOvertimeAggregates;
+}
+
+export async function fetchDigitalBadgeInfo(token: string): Promise<DigitalBadgeInfo> {
+  const response = await fetch(buildApiUrl("/attendance/digital-badge"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as DigitalBadgeInfo;
+}
+
+export async function downloadWalletPass(token: string): Promise<Blob> {
+  const response = await fetch(buildApiUrl("/attendance/wallet-pass"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.blob();
 }
 
 export interface TeamAttendanceUserPicker {

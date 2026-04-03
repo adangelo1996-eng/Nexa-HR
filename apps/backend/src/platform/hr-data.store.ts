@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   ApprovalView,
@@ -412,6 +413,8 @@ export class HrDataStore {
   private readonly smartworkingRequests: SmartworkingRequestRow[] = [];
   private readonly travelRequests: TravelRequestRow[] = [];
   private readonly nfcTokenMap: Map<string, string> = new Map();
+  /** Mem dev: userId → badge; tiene allineato anche nfcTokenMap. */
+  private readonly nfcBadgeByUserId = new Map<string, { token: string; createdAt: string }>();
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
   /** Fallback in-memory quando Supabase non è configurato. */
@@ -1590,6 +1593,55 @@ export class HrDataStore {
       return row?.userId ?? null;
     }
     return this.nfcTokenMap.get(token) ?? null;
+  }
+
+  private generateNfcBadgeToken16(): string {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = randomBytes(16);
+    let out = "";
+    for (let i = 0; i < 16; i++) {
+      out += alphabet[bytes[i]! % alphabet.length];
+    }
+    return out;
+  }
+
+  /**
+   * Token NFC stabile per badge / Apple Wallet (stesso payload usato da POST /clock/nfc).
+   */
+  async getOrCreateNfcBadgeToken(userId: string): Promise<{ token: string; createdAt: string }> {
+    if (this.useDb) {
+      const { data: existing } = await this.supabase!
+        .from("nfc_badge_tokens")
+        .select("token, createdAt")
+        .eq("userId", userId)
+        .maybeSingle();
+      const row = existing as { token?: string; createdAt?: string } | null;
+      if (row?.token && row.createdAt) {
+        return { token: row.token, createdAt: row.createdAt };
+      }
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const token = this.generateNfcBadgeToken16();
+        const createdAt = new Date().toISOString();
+        const { error } = await this.supabase!.from("nfc_badge_tokens").insert({ token, userId, createdAt });
+        if (!error) {
+          return { token, createdAt };
+        }
+        const msg = String(error.message ?? "");
+        if (!msg.toLowerCase().includes("duplicate") && !msg.includes("23505")) {
+          throw new InternalServerErrorException(`Badge NFC: ${msg}`);
+        }
+      }
+      throw new InternalServerErrorException("Impossibile generare un token badge univoco");
+    }
+    const mem = this.nfcBadgeByUserId.get(userId);
+    if (mem) {
+      return mem;
+    }
+    const token = this.generateNfcBadgeToken16();
+    const createdAt = new Date().toISOString();
+    this.nfcBadgeByUserId.set(userId, { token, createdAt });
+    this.nfcTokenMap.set(token, userId);
+    return { token, createdAt };
   }
 
   async addTimeEntry(

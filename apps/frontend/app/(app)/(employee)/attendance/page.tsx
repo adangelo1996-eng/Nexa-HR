@@ -5,11 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
-  clock,
-  clockNfcPublic,
   createTeamTimeEntry,
   deleteTimeEntry,
   downloadAttendanceMonthExport,
+  downloadWalletPass,
   fetchAttendanceEntries,
   fetchAttendanceOvertimeAggregates,
   fetchAttendanceStatus,
@@ -19,10 +18,12 @@ import {
   downloadAttendanceDayBoardExport,
   fetchAttendanceTeamUsers,
   fetchCurrentUser,
+  fetchDigitalBadgeInfo,
   nexaUsesSupabaseAttendance,
   patchTimeEntry,
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
+  type DigitalBadgeInfo,
   type TeamAttendanceUserPicker,
   type TimeEntry,
   type WorkdaySummary,
@@ -32,7 +33,6 @@ import {
   clearSession,
   getToken,
   sessionCanAccessPayrollArea,
-  sessionCanSeeApprovalsAndHrExtras,
   type SessionUser
 } from "@/lib/auth-session";
 
@@ -58,6 +58,20 @@ function defaultMonthInput(): string {
 
 type EntryDraft = { atLocal: string; type: "clock_in" | "clock_out" };
 
+function formatSecondsHm(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h}h ${m.toString().padStart(2, "0")}m`;
+}
+
+function workedSecondsFromSummary(row: WorkdaySummary): number {
+  if (row.workedSeconds != null && row.workedSeconds >= 0) {
+    return row.workedSeconds;
+  }
+  return Math.max(0, row.minutesWorked * 60);
+}
+
 export default function AttendancePage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
@@ -67,9 +81,10 @@ export default function AttendancePage(): React.JSX.Element {
   const [status, setStatus] = useState<AttendanceStatus | null>(null);
   const [aggregates, setAggregates] = useState<AttendanceOvertimeAggregates | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitLoading, setSubmitLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [digitalBadge, setDigitalBadge] = useState<DigitalBadgeInfo | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const [exportMonth, setExportMonth] = useState(defaultMonthInput);
   const [exportLoading, setExportLoading] = useState(false);
@@ -85,8 +100,6 @@ export default function AttendancePage(): React.JSX.Element {
   const [newEntryType, setNewEntryType] = useState<"clock_in" | "clock_out">("clock_in");
   const [newEntryAtLocal, setNewEntryAtLocal] = useState(`${defaultMonthInput()}-01T09:00`);
   const [addLoading, setAddLoading] = useState(false);
-  const [nfcToken, setNfcToken] = useState("");
-  const [nfcMsg, setNfcMsg] = useState<string | null>(null);
   const [hrBoardDate, setHrBoardDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [hrBoard, setHrBoard] = useState<AttendanceDayBoardResponse | null>(null);
   const [hrBoardLoading, setHrBoardLoading] = useState(false);
@@ -107,19 +120,20 @@ export default function AttendancePage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const todayDate = new Date().toISOString().slice(0, 10);
-        const [currentUser, list, daySummary, dayStatus, overtimeAggregates] = await Promise.all([
+        const [currentUser, list, daySummary, dayStatus, overtimeAggregates, badgeInfo] = await Promise.all([
           fetchCurrentUser(tokenValue),
           fetchAttendanceEntries(tokenValue),
           fetchAttendanceSummary(tokenValue),
           fetchAttendanceStatus(tokenValue, todayDate),
-          fetchAttendanceOvertimeAggregates(tokenValue, todayDate)
+          fetchAttendanceOvertimeAggregates(tokenValue, todayDate),
+          fetchDigitalBadgeInfo(tokenValue).catch(() => null as DigitalBadgeInfo | null)
         ]);
         setUser(currentUser);
         setEntries(list);
         setSummary(daySummary);
         setStatus(dayStatus);
         setAggregates(overtimeAggregates);
-        setRemainingSeconds(dayStatus.remainingSeconds);
+        setDigitalBadge(badgeInfo);
       } catch (loadError) {
         clearSession();
         router.replace("/login");
@@ -396,17 +410,6 @@ export default function AttendancePage(): React.JSX.Element {
     }
   }
 
-  useEffect(() => {
-    if (!status) {
-      return;
-    }
-    setRemainingSeconds(status.remainingSeconds);
-    const timer = window.setInterval(() => {
-      setRemainingSeconds((current) => (status.isRunning && current > 0 ? current - 1 : current));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [status]);
-
   const grouped = useMemo(() => {
     const map = new Map<string, TimeEntry[]>();
     for (const item of [...entries].sort((a, b) => b.at.localeCompare(a.at))) {
@@ -420,41 +423,64 @@ export default function AttendancePage(): React.JSX.Element {
   const today = new Date().toISOString().slice(0, 10);
   const todayEntries = grouped.find(([day]) => day === today)?.[1] ?? [];
   const olderDays = grouped.filter(([day]) => day !== today);
-  const canClockIn = status?.nextType === "clock_in" && submitLoading === null;
-  const canClockOut = status?.nextType === "clock_out" && submitLoading === null;
-  const formattedCountdown = useMemo(() => {
-    const hours = Math.floor(remainingSeconds / 3600);
-    const minutes = Math.floor((remainingSeconds % 3600) / 60);
-    const seconds = remainingSeconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
-  }, [remainingSeconds]);
 
-  async function onClock(type: "clock_in" | "clock_out"): Promise<void> {
+  const todaySortedAsc = useMemo(
+    () => [...todayEntries].sort((a, b) => a.at.localeCompare(b.at)),
+    [todayEntries]
+  );
+
+  const todayWorkPairs = useMemo(() => {
+    type Pair = { inAt: string; outAt: string | null; workedSec: number | null };
+    const pairs: Pair[] = [];
+    let pendingIn: TimeEntry | undefined;
+    for (const e of todaySortedAsc) {
+      if (e.type === "clock_in") {
+        if (pendingIn) {
+          pairs.push({ inAt: pendingIn.at, outAt: null, workedSec: null });
+        }
+        pendingIn = e;
+      } else {
+        if (pendingIn) {
+          const sec = Math.max(
+            0,
+            Math.floor((new Date(e.at).getTime() - new Date(pendingIn.at).getTime()) / 1000)
+          );
+          pairs.push({ inAt: pendingIn.at, outAt: e.at, workedSec: sec });
+          pendingIn = undefined;
+        }
+      }
+    }
+    if (pendingIn) {
+      pairs.push({ inAt: pendingIn.at, outAt: null, workedSec: null });
+    }
+    return pairs;
+  }, [todaySortedAsc]);
+
+  async function onDownloadWalletPass(): Promise<void> {
     if (!token) {
       return;
     }
-    setError(null);
-    setSubmitLoading(type);
+    setWalletError(null);
+    setWalletLoading(true);
     try {
-      await clock(token, type);
-      const [list, daySummary, dayStatus, overtimeAggregates] = await Promise.all([
-        fetchAttendanceEntries(token),
-        fetchAttendanceSummary(token),
-        fetchAttendanceStatus(token, today),
-        fetchAttendanceOvertimeAggregates(token, today)
-      ]);
-      setEntries(list);
-      setSummary(daySummary);
-      setStatus(dayStatus);
-      setAggregates(overtimeAggregates);
-      setRemainingSeconds(dayStatus.remainingSeconds);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Errore timbratura");
+      const blob = await downloadWalletPass(token);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nexa-hr-badge.pkpass";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (ex) {
+      setWalletError(ex instanceof Error ? ex.message : "Download pass non riuscito");
     } finally {
-      setSubmitLoading(null);
+      setWalletLoading(false);
     }
+  }
+
+  function hrUserSuggestLabel(u: TeamAttendanceUserPicker): string {
+    return `${u.fullName} · ${u.email}`;
   }
 
   if (loading) {
@@ -471,6 +497,12 @@ export default function AttendancePage(): React.JSX.Element {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Timbrature</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Storico giornaliero e giorni passati per {user?.fullName}.</p>
+          <p className="mt-2 text-sm font-medium text-[#3a5466] dark:text-[#8aa3b3]">
+            <Link href="/" className="underline-offset-2 hover:underline">
+              Timbratura entrata e uscita: vai alla Dashboard
+            </Link>
+            .
+          </p>
           {user && sessionCanAccessPayrollArea(user) ? (
             <Link href="/payroll-calc" className="synapse-nav-link-compact mt-2 inline-block">
               Vai a Calcolo Cedolino
@@ -483,102 +515,74 @@ export default function AttendancePage(): React.JSX.Element {
       </header>
 
       <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">NFC / QR</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Badge digitale · Apple Wallet</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Avvicina il badge NFC al telefono (se supportato) oppure simula con token 16 caratteri.
+          Aggiungi al Wallet un pass con i tuoi dati e un <strong>QR</strong> (stesso codice del badge per la timbratura
+          NFC). Su Android o desktop puoi salvare il file .pkpass; l’installazione diretta in Wallet è ottimizzata per{" "}
+          <strong>iPhone</strong> (es. Safari).
         </p>
-        <input
-          value={nfcToken}
-          onChange={(e) => setNfcToken(e.target.value)}
-          maxLength={16}
-          placeholder="Token 16 char"
-          className="mt-3 w-full max-w-xs rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-        />
-        <div className="mt-2 flex gap-2">
+        {digitalBadge ? (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-900/50">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Anteprima badge
+            </p>
+            <dl className="mt-2 grid gap-1 text-sm text-slate-800 dark:text-slate-200">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-600 dark:text-slate-400">Organizzazione</dt>
+                <dd className="font-medium">{digitalBadge.organizationName}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-600 dark:text-slate-400">Dipendente</dt>
+                <dd className="font-medium">{digitalBadge.user.fullName}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-600 dark:text-slate-400">Email</dt>
+                <dd className="max-w-[60%] truncate font-medium">{digitalBadge.user.email}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-600 dark:text-slate-400">ID utente</dt>
+                <dd className="font-mono text-xs">{digitalBadge.user.id}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-600 dark:text-slate-400">Token badge</dt>
+                <dd className="font-mono text-xs tracking-wide">
+                  {digitalBadge.token.slice(0, 4)}…{digitalBadge.token.slice(-4)}
+                </dd>
+              </div>
+            </dl>
+            {!digitalBadge.walletPassConfigured ? (
+              <p className="mt-3 text-xs text-amber-800 dark:text-amber-200">
+                Il server non ha i certificati Apple Wallet configurati: il pulsante potrebbe restituire errore finché non
+                sono impostate le variabili (<code className="rounded bg-slate-200 px-1 dark:bg-slate-800">APPLE_WALLET_*</code>
+                , vedi <code className="rounded bg-slate-200 px-1 dark:bg-slate-800">.env.example</code> nel backend).
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Caricamento dati badge…</p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button
             type="button"
-            size="sm"
-            onClick={() => {
-              void (async (): Promise<void> => {
-                setNfcMsg(null);
-                try {
-                  await clockNfcPublic({ token: nfcToken.trim(), type: "clock_in" });
-                  setNfcMsg("Entrata registrata.");
-                  router.refresh();
-                } catch (ex) {
-                  setNfcMsg(ex instanceof Error ? ex.message : "Errore NFC");
-                }
-              })();
-            }}
-          >
-            Simula entrata NFC
-          </Button>
-          <Button
-            type="button"
-            size="sm"
             variant="secondary"
-            onClick={() => {
-              void (async (): Promise<void> => {
-                setNfcMsg(null);
-                try {
-                  await clockNfcPublic({ token: nfcToken.trim(), type: "clock_out" });
-                  setNfcMsg("Uscita registrata.");
-                  router.refresh();
-                } catch (ex) {
-                  setNfcMsg(ex instanceof Error ? ex.message : "Errore NFC");
-                }
-              })();
-            }}
+            disabled={walletLoading || !token}
+            onClick={() => void onDownloadWalletPass()}
           >
-            Simula uscita NFC
+            {walletLoading ? "Preparazione…" : "Aggiungi ad Apple Wallet (.pkpass)"}
           </Button>
         </div>
-        {nfcMsg ? <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{nfcMsg}</p> : null}
+        {walletError ? <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{walletError}</p> : null}
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          Straordinario settimana / mese / anno:{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-300">
+            {aggregates
+              ? `${aggregates.week.overtimeHours.toFixed(2)}h · ${aggregates.month.overtimeHours.toFixed(2)}h · ${aggregates.year.overtimeHours.toFixed(2)}h`
+              : "—"}
+          </span>
+        </p>
       </section>
 
-      <section className="card">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Azioni rapide</h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          Tempo residuo giornata:{" "}
-          <span className="font-semibold text-synapse-gold dark:text-synapse-gold-bright">{formattedCountdown}</span>
-        </p>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Straordinario oggi:{" "}
-          <span className="font-semibold text-[#3a5466] dark:text-[#8aa3b3]">
-            {((status?.overtimeSeconds ?? 0) / 3600).toFixed(2)} h
-          </span>
-          {" · "}
-          Stato:{" "}
-          <span className="font-semibold text-slate-800 dark:text-slate-200">
-            {status?.isRunning ? "in corso" : "in pausa"}
-          </span>
-        </p>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Straordinario settimana/mese/anno:{" "}
-          <span className="font-semibold text-slate-800 dark:text-slate-200">
-            {aggregates ? `${aggregates.week.overtimeHours.toFixed(2)}h / ${aggregates.month.overtimeHours.toFixed(2)}h / ${aggregates.year.overtimeHours.toFixed(2)}h` : "-"}
-          </span>
-        </p>
-        <div className="mt-4 flex flex-wrap justify-center gap-4">
-          <Button
-            onClick={() => void onClock("clock_in")}
-            disabled={!canClockIn}
-            size="xl"
-            className="min-w-64 border-2 border-emerald-700/80 bg-emerald-600 font-semibold text-white shadow-md shadow-emerald-900/20 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-500/90 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-          >
-            {submitLoading === "clock_in" ? "Timbrando..." : "Timbratura entrata"}
-          </Button>
-          <Button
-            onClick={() => void onClock("clock_out")}
-            disabled={!canClockOut}
-            size="xl"
-            className="min-w-64 border-2 border-red-800/80 bg-red-600 font-semibold text-white shadow-md shadow-red-900/25 hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-500/90 dark:bg-red-600 dark:hover:bg-red-500"
-          >
-            {submitLoading === "clock_out" ? "Timbrando..." : "Timbratura uscita"}
-          </Button>
-        </div>
-        {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
-      </section>
+      {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
       {user?.canManageTeamAttendance ? (
         <section className="card mt-6 border-amber-200/80 dark:border-amber-900/40">
@@ -795,47 +799,62 @@ export default function AttendancePage(): React.JSX.Element {
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                   Visualizza e modifica per utente
                 </h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm text-slate-700 dark:text-slate-300">
-                    Cerca (nome o email)
-                    <input
-                      type="search"
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                      value={hrUserSearch}
-                      onChange={(e) => setHrUserSearch(e.target.value)}
-                      placeholder="Filtra elenco..."
-                    />
-                  </label>
-                  <label className="block text-sm text-slate-700 dark:text-slate-300">
-                    Utente
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                      value={hrSelectedUserId}
-                      onChange={(e) => setHrSelectedUserId(e.target.value)}
-                    >
-                      <option value="">— Seleziona —</option>
-                      {filteredTeamUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.fullName} · {u.email}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm text-slate-700 dark:text-slate-300 sm:col-span-2">
-                    Mese timbrature
-                    <input
-                      type="month"
-                      className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                      value={hrEditMonth}
-                      onChange={(e) => setHrEditMonth(e.target.value)}
-                    />
-                  </label>
-                </div>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Colonna sinistra: ricerca con suggerimenti e mese. Colonna destra: elenco timbrature e inserimento.
+                </p>
+                <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-4">
+                    <label className="block text-sm text-slate-700 dark:text-slate-300">
+                      Cerca dipendente (nome o email, suggerimenti)
+                      <input
+                        type="search"
+                        list="nexa-hr-user-datalist"
+                        autoComplete="off"
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        value={hrUserSearch}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setHrUserSearch(v);
+                          const exact = teamUsers.find((u) => hrUserSuggestLabel(u) === v.trim());
+                          setHrSelectedUserId(exact?.id ?? "");
+                        }}
+                        placeholder="Digita per filtrare, scegli dalla lista…"
+                      />
+                      <datalist id="nexa-hr-user-datalist">
+                        {filteredTeamUsers.slice(0, 80).map((u) => (
+                          <option key={u.id} value={hrUserSuggestLabel(u)} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label className="block text-sm text-slate-700 dark:text-slate-300">
+                      Mese timbrature
+                      <input
+                        type="month"
+                        className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        value={hrEditMonth}
+                        onChange={(e) => setHrEditMonth(e.target.value)}
+                      />
+                    </label>
+                    {hrSelectedUserId ? (
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Selezionato:{" "}
+                        <span className="font-medium text-slate-800 dark:text-slate-200">
+                          {teamUsers.find((u) => u.id === hrSelectedUserId)?.fullName ?? hrSelectedUserId}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-500 dark:text-slate-500">
+                        Nessun dipendente selezionato: scegli una riga dai suggerimenti che combaciano con nome ed
+                        email.
+                      </p>
+                    )}
+                  </div>
 
+                  <div className="min-w-0">
                 {hrLoading ? (
-                  <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Caricamento timbrature...</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">Caricamento timbrature...</p>
                 ) : hrSelectedUserId ? (
-                  <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
                     <table className="w-full min-w-[640px] text-left text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
                         <tr>
@@ -922,8 +941,8 @@ export default function AttendancePage(): React.JSX.Element {
                     ) : null}
                   </div>
                 ) : (
-                  <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-                    Seleziona un utente per caricare le timbrature del mese.
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Seleziona un utente nella colonna a sinistra per caricare le timbrature del mese.
                   </p>
                 )}
 
@@ -966,6 +985,8 @@ export default function AttendancePage(): React.JSX.Element {
                     </div>
                   </div>
                 ) : null}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -974,45 +995,119 @@ export default function AttendancePage(): React.JSX.Element {
 
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Riepilogo giorni lavorati</h2>
-        <div className="mt-3 space-y-2 text-sm">
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Ore effettive, straordinario registrato sul giorno e modalità (sede / smart working).
+        </p>
+        <div className="mt-3 overflow-x-auto">
           {summary.length === 0 ? (
-            <p className="text-slate-600 dark:text-slate-400">Nessun riepilogo disponibile.</p>
-          ) : null}
-          {[...summary]
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .map((item) => (
-              <div
-                key={`${item.userId}-${item.date}`}
-                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700"
-              >
-                <span>{item.date}</span>
-                <span className="text-slate-700 dark:text-slate-300">
-                  {item.minutesWorked} min - {item.mode}
-                </span>
-              </div>
-            ))}
+            <p className="text-sm text-slate-600 dark:text-slate-400">Nessun riepilogo disponibile.</p>
+          ) : (
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                <tr>
+                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Data</th>
+                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Ore lavorate</th>
+                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Straordinario</th>
+                  <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">Modalità</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...summary]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((item) => {
+                    const workedSec = workedSecondsFromSummary(item);
+                    const otSec = item.overtimeSeconds ?? 0;
+                    const modeLabel =
+                      item.mode === "smartworking" ? "Smart working" : "In sede";
+                    return (
+                      <tr
+                        key={`${item.userId}-${item.date}`}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="px-3 py-2 tabular-nums text-slate-900 dark:text-slate-100">{item.date}</td>
+                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
+                          {formatSecondsHm(workedSec)}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
+                          {otSec > 0 ? formatSecondsHm(otSec) : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{modeLabel}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
 
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico timbrature di oggi</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Coppie entrata/uscita, tempo lavorato nel segmento. Lo straordinario è riferito all’intera giornata.
+        </p>
         <div className="mt-3 space-y-4">
-          {todayEntries.length === 0 ? (
+          {todayWorkPairs.length === 0 ? (
             <p className="text-slate-600 dark:text-slate-400">Nessuna timbratura registrata oggi.</p>
-          ) : null}
-          {todayEntries.map((item) => (
-            <div
-              key={item.id}
-              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
-                item.type === "clock_in"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
-                  : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200"
-              }`}
-            >
-              <span>{item.type === "clock_in" ? "Entrata" : "Uscita"}</span>
-              <span>{new Date(item.at).toLocaleTimeString("it-CH")}</span>
-            </div>
-          ))}
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                <table className="w-full min-w-[520px] text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                    <tr>
+                      <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">
+                        Entrata
+                      </th>
+                      <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">
+                        Uscita
+                      </th>
+                      <th className="px-3 py-2 font-medium text-slate-700 dark:text-slate-300">
+                        Lavorato
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {todayWorkPairs.map((pair, idx) => (
+                      <tr
+                        key={`${pair.inAt}-${pair.outAt ?? "open"}-${idx}`}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="px-3 py-2 tabular-nums text-slate-900 dark:text-slate-100">
+                          {new Date(pair.inAt).toLocaleTimeString("it-CH", {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
+                          {pair.outAt
+                            ? new Date(pair.outAt).toLocaleTimeString("it-CH", {
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums text-slate-800 dark:text-slate-200">
+                          {pair.workedSec != null
+                            ? formatSecondsHm(pair.workedSec)
+                            : pair.outAt
+                              ? "—"
+                              : "In corso"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Straordinario oggi (giornata):{" "}
+                <span className="font-semibold tabular-nums text-[#3a5466] dark:text-[#8aa3b3]">
+                  {(status?.overtimeSeconds ?? 0) > 0
+                    ? formatSecondsHm(status?.overtimeSeconds ?? 0)
+                    : "—"}
+                </span>
+              </p>
+            </>
+          )}
           <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
             <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
               Giorni precedenti
