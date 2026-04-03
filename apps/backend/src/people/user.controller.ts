@@ -134,6 +134,11 @@ class CreateUserDto {
   @IsString()
   @MaxLength(120)
   taxMunicipalityIt?: string;
+
+  /** Team di lavoro (solo console admin; opzionale in creazione). */
+  @IsOptional()
+  @IsString()
+  teamId?: string | null;
 }
 
 class UpdateUserDto {
@@ -216,6 +221,11 @@ class UpdateUserDto {
   @IsOptional()
   @IsString()
   costCenterId?: string;
+
+  /** Assegnazione team (solo console admin). */
+  @IsOptional()
+  @IsString()
+  teamId?: string | null;
 
   @IsOptional()
   @IsEmail()
@@ -350,7 +360,7 @@ export class UserController {
   @RequireRole("admin")
   @RequireNexaPermissions("nexa.admin_users:write")
   async create(@Body() dto: CreateUserDto): Promise<unknown> {
-    return this.store.createUser(dto);
+    return this.store.createUser(dto, { skipTeamLeadLinkValidation: true });
   }
 
   @Post(":userId/profile-photo")
@@ -382,7 +392,7 @@ export class UserController {
   @RequireRole("admin")
   @RequireNexaPermissions("nexa.admin_users:write")
   async update(@Param("userId") userId: string, @Body() dto: UpdateUserDto): Promise<unknown> {
-    return this.store.updateUser(userId, dto);
+    return this.store.updateUser(userId, dto, { skipTeamLeadLinkValidation: true });
   }
 
   @Patch(":userId/manager")

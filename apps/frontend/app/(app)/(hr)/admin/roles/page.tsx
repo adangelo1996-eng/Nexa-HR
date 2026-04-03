@@ -21,6 +21,7 @@ import {
   sessionCanNexaAdmin,
   shouldClearSessionOnUnauthorizedApiError
 } from "@/lib/auth-session";
+import { inputOptionalClass, inputRequiredClass } from "@/lib/form-field-styles";
 import { expandRolePermissions } from "@/lib/permission-legacy";
 
 const CATEGORY_LABEL: Record<keyof PermissionCatalogResponse, string> = {
@@ -391,7 +392,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                         )
                       )
                     }
-                    className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -407,7 +408,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                         )
                       )
                     }
-                    className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                    className={inputOptionalClass}
                   />
                 </label>
               </div>
@@ -416,21 +417,25 @@ export default function AdminRolesPage(): React.JSX.Element {
                 const defs = catalog[catKey];
                 const groups = groupByResource(defs);
                 return (
-                  <details key={catKey} open className="rounded-lg border border-slate-700/50 bg-slate-950/30">
-                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-200">
+                  <details
+                    key={catKey}
+                    open
+                    className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_82%,transparent)] shadow-sm dark:border-slate-700 dark:bg-slate-900/30"
+                  >
+                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
                       {CATEGORY_LABEL[catKey]}
                     </summary>
-                    <div className="flex flex-wrap gap-2 border-t border-slate-800/60 px-3 py-2">
+                    <div className="flex flex-wrap gap-2 border-t border-[var(--prom-line)] px-3 py-2 dark:border-slate-700">
                       <button
                         type="button"
-                        className="text-[11px] text-synapse-gold underline"
+                        className="text-[11px] font-medium text-amber-700 underline dark:text-synapse-gold"
                         onClick={() => selectAllInCategory(catKey)}
                       >
                         Seleziona tutto
                       </button>
                       <button
                         type="button"
-                        className="text-[11px] text-slate-400 underline"
+                        className="text-[11px] text-slate-600 underline dark:text-slate-400"
                         onClick={() => clearCategory(catKey)}
                       >
                         Nessuno
@@ -445,27 +450,29 @@ export default function AdminRolesPage(): React.JSX.Element {
                         return (
                           <div
                             key={`${catKey}-${g.resourceKey}`}
-                            className="rounded-md border border-slate-800/80 bg-slate-950/40 p-3"
+                            className="rounded-lg border border-slate-200/90 bg-white/85 p-3 shadow-sm dark:border-slate-600 dark:bg-slate-950/50"
                           >
-                            <p className="text-xs font-medium text-slate-100">{g.labelIt}</p>
-                            <p className="mt-1 text-[11px] text-slate-500">
+                            <p className="text-xs font-medium text-slate-900 dark:text-slate-100">{g.labelIt}</p>
+                            <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
                               {writeOn || g.write?.descriptionWriteIt
                                 ? g.write?.descriptionWriteIt
                                 : g.read?.descriptionReadIt}
                             </p>
-                            <div className="mt-2 flex flex-wrap gap-4 text-xs">
-                              <label className="flex items-center gap-2">
+                            <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-800 dark:text-slate-200">
+                              <label className="flex cursor-pointer items-center gap-2">
                                 <input
                                   type="checkbox"
+                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
                                   data-perm-read={g.resourceKey}
                                   checked={readOn}
                                   onChange={(e) => toggleRead(g.resourceKey, readId, writeId, e.target.checked)}
                                 />
                                 <span>Può consultare</span>
                               </label>
-                              <label className="flex items-center gap-2">
+                              <label className="flex cursor-pointer items-center gap-2">
                                 <input
                                   type="checkbox"
+                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
                                   checked={writeOn}
                                   onChange={(e) =>
                                     setWriteChecked(readId, writeId, e.target.checked, readOn)
@@ -503,7 +510,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                   <input
                     value={newName}
                     onChange={(event) => setNewName(event.target.value)}
-                    className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                    className={inputRequiredClass}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -511,32 +518,36 @@ export default function AdminRolesPage(): React.JSX.Element {
                   <input
                     value={newDescription}
                     onChange={(event) => setNewDescription(event.target.value)}
-                    className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-1.5 text-xs"
+                    className={inputOptionalClass}
                   />
                 </label>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
                 Per un nuovo ruolo, seleziona i permessi nelle categorie qui sotto prima di creare.
               </p>
               {(Object.keys(CATEGORY_LABEL) as Array<keyof PermissionCatalogResponse>).map((catKey) => {
                 const defs = catalog[catKey];
                 const groups = groupByResource(defs);
                 return (
-                  <details key={`new-${catKey}`} open className="rounded-lg border border-slate-700/50 bg-slate-950/30">
-                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-200">
+                  <details
+                    key={`new-${catKey}`}
+                    open
+                    className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_82%,transparent)] shadow-sm dark:border-slate-700 dark:bg-slate-900/30"
+                  >
+                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
                       {CATEGORY_LABEL[catKey]}
                     </summary>
-                    <div className="flex flex-wrap gap-2 border-t border-slate-800/60 px-3 py-2">
+                    <div className="flex flex-wrap gap-2 border-t border-[var(--prom-line)] px-3 py-2 dark:border-slate-700">
                       <button
                         type="button"
-                        className="text-[11px] text-synapse-gold underline"
+                        className="text-[11px] font-medium text-amber-700 underline dark:text-synapse-gold"
                         onClick={() => selectAllInCategory(catKey)}
                       >
                         Seleziona tutto
                       </button>
                       <button
                         type="button"
-                        className="text-[11px] text-slate-400 underline"
+                        className="text-[11px] text-slate-600 underline dark:text-slate-400"
                         onClick={() => clearCategory(catKey)}
                       >
                         Nessuno
@@ -551,22 +562,24 @@ export default function AdminRolesPage(): React.JSX.Element {
                         return (
                           <div
                             key={`new-${catKey}-${g.resourceKey}`}
-                            className="rounded-md border border-slate-800/80 bg-slate-950/40 p-3"
+                            className="rounded-lg border border-slate-200/90 bg-white/85 p-3 shadow-sm dark:border-slate-600 dark:bg-slate-950/50"
                           >
-                            <p className="text-xs font-medium text-slate-100">{g.labelIt}</p>
-                            <div className="mt-2 flex flex-wrap gap-4 text-xs">
-                              <label className="flex items-center gap-2">
+                            <p className="text-xs font-medium text-slate-900 dark:text-slate-100">{g.labelIt}</p>
+                            <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-800 dark:text-slate-200">
+                              <label className="flex cursor-pointer items-center gap-2">
                                 <input
                                   type="checkbox"
+                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
                                   data-perm-read={g.resourceKey}
                                   checked={readOn}
                                   onChange={(e) => toggleRead(g.resourceKey, readId, writeId, e.target.checked)}
                                 />
                                 <span>Può consultare</span>
                               </label>
-                              <label className="flex items-center gap-2">
+                              <label className="flex cursor-pointer items-center gap-2">
                                 <input
                                   type="checkbox"
+                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
                                   checked={writeOn}
                                   onChange={(e) =>
                                     setWriteChecked(readId, writeId, e.target.checked, readOn)

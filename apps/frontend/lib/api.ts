@@ -230,6 +230,8 @@ export interface CreateUserPayload {
   jurisdiction?: "CH" | "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
+  /** Assegnazione team (solo admin console). */
+  teamId?: string | null;
 }
 
 export interface UpdateUserPayload {
@@ -260,6 +262,8 @@ export interface UpdateUserPayload {
   taxRegion?: string;
   taxMunicipalityIt?: string;
   profilePhotoPath?: string | null;
+  /** Assegnazione team (solo admin console). */
+  teamId?: string | null;
 }
 
 interface ApiErrorPayload {

@@ -94,6 +94,11 @@ export type PersonnelBudgetSnapshot = {
 
 const SMARTWORKING_MONTHLY_QUOTA = 8;
 
+/** Opzioni scrittura utente: `skipTeamLeadLinkValidation` solo per chiamate admin console (API Nest). */
+interface UserWriteOptions {
+  skipTeamLeadLinkValidation?: boolean;
+}
+
 interface UserCreateInput {
   firstName: string;
   lastName: string;
@@ -104,6 +109,7 @@ interface UserCreateInput {
   companyId: string;
   roleId: string;
   costCenterId: string;
+  teamId?: string | null;
   contractType: string;
   weeklyContractHours: number;
   avsNumber?: string;
@@ -797,14 +803,14 @@ export class HrDataStore {
     }
   }
 
-  async createUser(input: UserCreateInput): Promise<User> {
+  async createUser(input: UserCreateInput, options?: UserWriteOptions): Promise<User> {
     const firstName = input.firstName.trim();
     const lastName = input.lastName.trim();
     if (!firstName || !lastName) {
       throw new BadRequestException("Nome e cognome sono obbligatori");
     }
     await this.validateReferenceIds(input.roleId, input.costCenterId);
-    if (input.role === "team_lead") {
+    if (input.role === "team_lead" && !options?.skipTeamLeadLinkValidation) {
       throw new BadRequestException(
         "Il ruolo team_lead è legato al team di cui si è responsabili: crea l'utente come dipendente o admin, poi nomina il responsabile da Gestione centri di costo → Team."
       );
@@ -823,6 +829,7 @@ export class HrDataStore {
       companyId: input.companyId,
       roleId: input.roleId,
       costCenterId: input.costCenterId,
+      teamId: input.teamId,
       contractType: input.contractType,
       weeklyContractHours,
       avsNumber: input.avsNumber,
@@ -851,7 +858,7 @@ export class HrDataStore {
     return user;
   }
 
-  async updateUser(userId: string, input: UserUpdateInput): Promise<User> {
+  async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
     const nextRole = input.role !== undefined ? input.role : user.role;
@@ -887,7 +894,7 @@ export class HrDataStore {
       fullName,
       email: nextEmail
     };
-    if (nextRole === "team_lead") {
+    if (nextRole === "team_lead" && !options?.skipTeamLeadLinkValidation) {
       const teamAsLead = await this.findWorkTeamByLeadUserId(userId);
       if (!teamAsLead) {
         throw new BadRequestException(
@@ -1145,20 +1152,7 @@ export class HrDataStore {
   }
 
   async assignRole(userId: string, role: User["role"]): Promise<User> {
-    if (this.useDb) {
-      const { data } = await this.supabase!
-        .from("users")
-        .update({ role })
-        .eq("id", userId)
-        .select("*")
-        .single();
-      if (!data) throw new NotFoundException("Utente non trovato");
-      return data as User;
-    }
-    const user = this.users.find((item) => item.id === userId);
-    if (!user) throw new NotFoundException("Utente non trovato");
-    user.role = role;
-    return user;
+    return this.updateUser(userId, { role }, { skipTeamLeadLinkValidation: true });
   }
 
   async isManagerOf(managerId: string, employeeId: string): Promise<boolean> {
