@@ -20,6 +20,8 @@ import { CurrentAuth, type AuthRole } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { isSwissPayrollFeatureEnabled } from "../platform/nexa-swiss-payroll-flag";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
+import { AttendanceTeamService } from "../workforce/attendance-team.service";
 
 class SimulateHireDto {
   @IsNumber()
@@ -66,7 +68,41 @@ class SimulateHireDto {
 @Controller("payroll")
 @UseGuards(NexaPermissionGuard)
 export class PayrollController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService,
+    private readonly attendanceTeam: AttendanceTeamService
+  ) {}
+
+  /** Calcolo/simulazione cedolino: solo superuser, console admin o centro HR (stesso criterio di `canAccessPayrollArea`). */
+  private async assertPayrollCalcAccess(auth: { userId: string; role: AuthRole }): Promise<void> {
+    if (auth.role === "superuser") {
+      return;
+    }
+    const me = await this.store.getUser(auth.userId);
+    const canAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, me.email);
+    if (canAdmin) {
+      return;
+    }
+    if (await this.attendanceTeam.canManageTeamAttendance(auth.userId)) {
+      return;
+    }
+    throw new ForbiddenException("Calcolo cedolino riservato ad amministratori o HR");
+  }
+
+  private async assertSameCompanyUnlessSuperuser(
+    auth: { userId: string; role: AuthRole },
+    targetUserId: string
+  ): Promise<void> {
+    if (auth.role === "superuser") {
+      return;
+    }
+    const viewer = await this.store.getUser(auth.userId);
+    const target = await this.store.getUser(targetUserId);
+    if (viewer.companyId !== target.companyId) {
+      throw new ForbiddenException("Utente non nella stessa azienda");
+    }
+  }
 
   private async hasPayrollManagerialAccess(userId: string, role: AuthRole): Promise<boolean> {
     if (role === "superuser") {
@@ -86,9 +122,7 @@ export class PayrollController {
     @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Body() dto: SimulateHireDto
   ): Promise<unknown> {
-    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
-      throw new ForbiddenException("Solo manager/admin possono simulare costi assunzione");
-    }
+    await this.assertPayrollCalcAccess(auth);
     return this.store.simulateHirePayroll({
       grossMonthlySalary: dto.grossMonthlySalary,
       period: dto.period,
@@ -109,9 +143,7 @@ export class PayrollController {
     @Query("jurisdiction") jurisdiction: string,
     @Query("period") period?: string
   ): Promise<unknown> {
-    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
-      throw new ForbiddenException("Solo manager/admin possono anteprima export paghe");
-    }
+    await this.assertPayrollCalcAccess(auth);
     const j: JurisdictionCode = jurisdiction === "IT" ? "IT" : "CH";
     if (j === "CH" && !isSwissPayrollFeatureEnabled()) {
       throw new BadRequestException("Export payroll Svizzera temporaneamente disattivato.");
@@ -128,30 +160,9 @@ export class PayrollController {
     @Param("userId") userId: string,
     @Param("period") period: string
   ): Promise<unknown> {
-    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
-      throw new ForbiddenException("Solo manager/admin possono generare cedolini di altri utenti");
-    }
-    if (auth.role !== "superuser" && userId !== auth.userId) {
-      const ok =
-        (await this.store.isManagerOf(auth.userId, userId)) ||
-        (await this.store.isUserLeadOfTeamContaining(auth.userId, userId));
-      if (!ok) {
-        throw new ForbiddenException("Manager può generare solo cedolini dei sottoposti");
-      }
-    }
+    await this.assertPayrollCalcAccess(auth);
+    await this.assertSameCompanyUnlessSuperuser(auth, userId);
     return this.store.generatePayslip(userId, period);
-  }
-
-  @Post(":period/generate-self")
-  @RequireNexaPermissions("nexa.payroll:write")
-  async generateSelf(
-    @CurrentAuth() auth: { userId: string; role: AuthRole },
-    @Param("period") period: string
-  ): Promise<unknown> {
-    if (auth.role !== "user") {
-      throw new ForbiddenException("Solo dipendente può usare generate-self");
-    }
-    return this.store.generatePayslip(auth.userId, period);
   }
 
   @Get("payslips")

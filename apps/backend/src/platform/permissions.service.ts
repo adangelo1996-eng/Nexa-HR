@@ -67,9 +67,8 @@ export class PermissionsService {
   }
 
   /**
-   * Solo permesso `:read` letterale nel ruolo (o `*` già espanso). Non usa la regola write→read:
-   * serve per esporre in UI le viste HR (payroll calcolo, budget) senza includere i dipendenti
-   * che hanno solo azioni operative es. `nexa.payroll:write` per il cedolino self-service.
+   * Solo permesso `:read` letterale nel ruolo (o `*` già espanso). Non usa la regola write→read.
+   * Usato p.es. per `nexa.personnel_budget:read` e altri flag espliciti sul catalogo.
    */
   async userHasExplicitReadCatalogKey(userId: string, readKey: string): Promise<boolean> {
     const expanded = await this.getExpandedPermissionsForUserId(userId);

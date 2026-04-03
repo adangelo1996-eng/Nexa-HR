@@ -197,7 +197,7 @@ export interface TimeEntry {
   userId: string;
   type: "clock_in" | "clock_out";
   at: string;
-  source?: "app" | "web" | "qr" | "nfc" | "digital_badge";
+  source?: "app" | "web" | "qr";
   geo?: { lat: number; lon: number; accuracyM?: number; capturedAt?: string };
   deviceId?: string;
 }
@@ -210,14 +210,6 @@ export interface WorkdaySummary {
   workedSeconds?: number;
   overtimeSeconds?: number;
   mode: "office" | "smartworking";
-}
-
-export interface DigitalBadgeInfo {
-  token: string;
-  createdAt: string;
-  user: { id: string; fullName: string; email: string; companyId: string };
-  organizationName: string;
-  walletPassConfigured: boolean;
 }
 
 export interface AttendanceStatus {
@@ -603,7 +595,7 @@ export async function fetchOrgStructure(token: string): Promise<OrgStructureResp
 
 export type ClockPayload = {
   type: "clock_in" | "clock_out";
-  source?: "app" | "web" | "qr" | "nfc" | "digital_badge";
+  source?: "app" | "web" | "qr";
   geo?: { lat: number; lon: number; accuracyM?: number; capturedAt?: string };
   deviceId?: string;
 };
@@ -754,28 +746,6 @@ export async function fetchAttendanceOvertimeAggregates(
     await parseError(response);
   }
   return (await response.json()) as AttendanceOvertimeAggregates;
-}
-
-export async function fetchDigitalBadgeInfo(token: string): Promise<DigitalBadgeInfo> {
-  const response = await fetch(buildApiUrl("/attendance/digital-badge"), {
-    method: "GET",
-    headers: getAuthHeaders(token)
-  });
-  if (!response.ok) {
-    await parseError(response);
-  }
-  return (await response.json()) as DigitalBadgeInfo;
-}
-
-export async function downloadWalletPass(token: string): Promise<Blob> {
-  const response = await fetch(buildApiUrl("/attendance/wallet-pass"), {
-    method: "GET",
-    headers: getAuthHeaders(token)
-  });
-  if (!response.ok) {
-    await parseError(response);
-  }
-  return response.blob();
 }
 
 export interface TeamAttendanceUserPicker {
@@ -1769,20 +1739,6 @@ export async function fetchQrClockToken(token: string): Promise<{ token: string;
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as { token: string; expiresInSec: number };
-}
-
-export async function clockNfcPublic(payload: {
-  token: string;
-  type: "clock_in" | "clock_out";
-  at?: string;
-}): Promise<unknown> {
-  const response = await fetch(buildApiUrl("/clock/nfc"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) await parseError(response);
-  return response.json();
 }
 
 export async function fetchPeopleInsights(

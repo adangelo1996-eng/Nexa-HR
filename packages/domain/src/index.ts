@@ -5,7 +5,7 @@ export type RoleName = "superuser" | "user";
 
 export type JurisdictionCode = "CH" | "IT";
 
-export type ClockChannel = "app" | "web" | "qr" | "nfc" | "digital_badge";
+export type ClockChannel = "app" | "web" | "qr";
 
 export interface GeoFix {
   lat: number;

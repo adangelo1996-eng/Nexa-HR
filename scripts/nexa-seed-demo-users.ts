@@ -38,6 +38,21 @@ interface SeedPerson {
   taxMunicipality: string;
 }
 
+/** Campi payroll / fisco IT per calcolo cedolino (allineati a migrazione 024 + 026). */
+function seedPayrollAnagrafica(): Record<string, unknown> {
+  return {
+    jurisdiction: "IT",
+    taxRegion: "LAZ",
+    taxMunicipalityIt: "Roma",
+    payrollItSector: "services",
+    payrollEmployerInpsPercent: null,
+    payrollInailPermille: 3.2,
+    payrollTfrDivisor: 13.5,
+    payrollAtecoCode: "62.01",
+    payrollInailRiskDescription: "Ufficio / rischio basso (demo)"
+  };
+}
+
 function emailLocal(first: string, last: string): string {
   const f = first
     .normalize("NFD")
@@ -573,7 +588,8 @@ async function main(): Promise<void> {
             accountHolder: p.accountHolder,
             baseSalaryMonthly: p.baseSalaryMonthly,
             taxCanton: p.taxCanton,
-            taxMunicipality: p.taxMunicipality
+            taxMunicipality: p.taxMunicipality,
+            ...seedPayrollAnagrafica()
           },
           { onConflict: "id" }
         );
@@ -615,7 +631,8 @@ async function main(): Promise<void> {
       accountHolder: p.accountHolder,
       baseSalaryMonthly: p.baseSalaryMonthly,
       taxCanton: p.taxCanton,
-      taxMunicipality: p.taxMunicipality
+      taxMunicipality: p.taxMunicipality,
+      ...seedPayrollAnagrafica()
     });
     if (insErr) {
       // eslint-disable-next-line no-console

@@ -20,14 +20,8 @@ import { sign } from "jsonwebtoken";
 import { AttendanceTeamService } from "./attendance-team.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
-import {
-  assertWalletConfigured,
-  buildNexaHrEmployeeWalletPass,
-  loadWalletPassEnv,
-  getWalletOrganizationName
-} from "./nexa-wallet-pass";
 
-const CLOCK_CHANNELS = ["app", "web", "qr", "nfc", "digital_badge"] as const;
+const CLOCK_CHANNELS = ["app", "web", "qr"] as const;
 
 class GeoDto {
   @IsNumber()
@@ -328,41 +322,5 @@ export class AttendanceController {
   ): Promise<unknown> {
     const targetDate = query.date ?? new Date().toISOString().slice(0, 10);
     return this.store.getOvertimeAggregates(auth.userId, targetDate, query.scope);
-  }
-
-  /** Token badge NFC / QR stabile + metadati utente (solo il proprio). */
-  @Get("digital-badge")
-  @RequireNexaPermissions("nexa.attendance:read")
-  async digitalBadge(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
-    const user = await this.store.getUser(auth.userId);
-    const { token, createdAt } = await this.store.getOrCreateNfcBadgeToken(auth.userId);
-    return {
-      token,
-      createdAt,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        companyId: user.companyId
-      },
-      organizationName: getWalletOrganizationName(),
-      walletPassConfigured: loadWalletPassEnv() !== null
-    };
-  }
-
-  /** Scarica .pkpass (Apple Wallet); richiede certificati configurati sul server. */
-  @Get("wallet-pass")
-  @RequireNexaPermissions("nexa.attendance:read")
-  async walletPass(
-    @CurrentAuth() auth: { userId: string },
-    @Res({ passthrough: false }) res: Response
-  ): Promise<void> {
-    const cfg = assertWalletConfigured();
-    const user = await this.store.getUser(auth.userId);
-    const { token } = await this.store.getOrCreateNfcBadgeToken(auth.userId);
-    const buf = await buildNexaHrEmployeeWalletPass(user, token, cfg);
-    res.setHeader("Content-Type", "application/vnd.apple.pkpass");
-    res.setHeader("Content-Disposition", 'attachment; filename="nexa-hr-badge.pkpass"');
-    res.send(Buffer.from(buf));
   }
 }

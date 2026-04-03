@@ -8,7 +8,6 @@ import {
   createTeamTimeEntry,
   deleteTimeEntry,
   downloadAttendanceMonthExport,
-  downloadWalletPass,
   fetchAttendanceEntries,
   fetchAttendanceOvertimeAggregates,
   fetchAttendanceStatus,
@@ -18,12 +17,10 @@ import {
   downloadAttendanceDayBoardExport,
   fetchAttendanceTeamUsers,
   fetchCurrentUser,
-  fetchDigitalBadgeInfo,
   nexaUsesSupabaseAttendance,
   patchTimeEntry,
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
-  type DigitalBadgeInfo,
   type TeamAttendanceUserPicker,
   type TimeEntry,
   type WorkdaySummary,
@@ -82,10 +79,6 @@ export default function AttendancePage(): React.JSX.Element {
   const [aggregates, setAggregates] = useState<AttendanceOvertimeAggregates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [digitalBadge, setDigitalBadge] = useState<DigitalBadgeInfo | null>(null);
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [walletError, setWalletError] = useState<string | null>(null);
-
   const [exportMonth, setExportMonth] = useState(defaultMonthInput);
   const [exportLoading, setExportLoading] = useState(false);
   const [teamUsers, setTeamUsers] = useState<TeamAttendanceUserPicker[]>([]);
@@ -120,20 +113,18 @@ export default function AttendancePage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const todayDate = new Date().toISOString().slice(0, 10);
-        const [currentUser, list, daySummary, dayStatus, overtimeAggregates, badgeInfo] = await Promise.all([
+        const [currentUser, list, daySummary, dayStatus, overtimeAggregates] = await Promise.all([
           fetchCurrentUser(tokenValue),
           fetchAttendanceEntries(tokenValue),
           fetchAttendanceSummary(tokenValue),
           fetchAttendanceStatus(tokenValue, todayDate),
-          fetchAttendanceOvertimeAggregates(tokenValue, todayDate),
-          fetchDigitalBadgeInfo(tokenValue).catch(() => null as DigitalBadgeInfo | null)
+          fetchAttendanceOvertimeAggregates(tokenValue, todayDate)
         ]);
         setUser(currentUser);
         setEntries(list);
         setSummary(daySummary);
         setStatus(dayStatus);
         setAggregates(overtimeAggregates);
-        setDigitalBadge(badgeInfo);
       } catch (loadError) {
         clearSession();
         router.replace("/login");
@@ -456,29 +447,6 @@ export default function AttendancePage(): React.JSX.Element {
     return pairs;
   }, [todaySortedAsc]);
 
-  async function onDownloadWalletPass(): Promise<void> {
-    if (!token) {
-      return;
-    }
-    setWalletError(null);
-    setWalletLoading(true);
-    try {
-      const blob = await downloadWalletPass(token);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "nexa-hr-badge.pkpass";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (ex) {
-      setWalletError(ex instanceof Error ? ex.message : "Download pass non riuscito");
-    } finally {
-      setWalletLoading(false);
-    }
-  }
-
   function hrUserSuggestLabel(u: TeamAttendanceUserPicker): string {
     return `${u.fullName} · ${u.email}`;
   }
@@ -515,66 +483,13 @@ export default function AttendancePage(): React.JSX.Element {
       </header>
 
       <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Badge digitale · Apple Wallet</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Straordinario</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Aggiungi al Wallet un pass con i tuoi dati e un <strong>QR</strong> (stesso codice del badge per la timbratura
-          NFC). Su Android o desktop puoi salvare il file .pkpass; l’installazione diretta in Wallet è ottimizzata per{" "}
-          <strong>iPhone</strong> (es. Safari).
+          Riepilogo ore di straordinario sulla settimana, il mese e l&apos;anno solare (riferimento data odierna).
         </p>
-        {digitalBadge ? (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-900/50">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Anteprima badge
-            </p>
-            <dl className="mt-2 grid gap-1 text-sm text-slate-800 dark:text-slate-200">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-600 dark:text-slate-400">Organizzazione</dt>
-                <dd className="font-medium">{digitalBadge.organizationName}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-600 dark:text-slate-400">Dipendente</dt>
-                <dd className="font-medium">{digitalBadge.user.fullName}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-600 dark:text-slate-400">Email</dt>
-                <dd className="max-w-[60%] truncate font-medium">{digitalBadge.user.email}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-600 dark:text-slate-400">ID utente</dt>
-                <dd className="font-mono text-xs">{digitalBadge.user.id}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-600 dark:text-slate-400">Token badge</dt>
-                <dd className="font-mono text-xs tracking-wide">
-                  {digitalBadge.token.slice(0, 4)}…{digitalBadge.token.slice(-4)}
-                </dd>
-              </div>
-            </dl>
-            {!digitalBadge.walletPassConfigured ? (
-              <p className="mt-3 text-xs text-amber-800 dark:text-amber-200">
-                Il server non ha i certificati Apple Wallet configurati: il pulsante potrebbe restituire errore finché non
-                sono impostate le variabili (<code className="rounded bg-slate-200 px-1 dark:bg-slate-800">APPLE_WALLET_*</code>
-                , vedi <code className="rounded bg-slate-200 px-1 dark:bg-slate-800">.env.example</code> nel backend).
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Caricamento dati badge…</p>
-        )}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={walletLoading || !token}
-            onClick={() => void onDownloadWalletPass()}
-          >
-            {walletLoading ? "Preparazione…" : "Aggiungi ad Apple Wallet (.pkpass)"}
-          </Button>
-        </div>
-        {walletError ? <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{walletError}</p> : null}
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Straordinario settimana / mese / anno:{" "}
-          <span className="font-semibold text-slate-700 dark:text-slate-300">
+        <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+          Settimana / mese / anno:{" "}
+          <span className="font-semibold tabular-nums">
             {aggregates
               ? `${aggregates.week.overtimeHours.toFixed(2)}h · ${aggregates.month.overtimeHours.toFixed(2)}h · ${aggregates.year.overtimeHours.toFixed(2)}h`
               : "—"}

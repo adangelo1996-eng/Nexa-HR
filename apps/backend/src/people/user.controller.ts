@@ -374,9 +374,7 @@ export class UserController {
     const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
     const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
     const canAccessPayrollArea =
-      auth.role === "superuser" ||
-      canNexaAdmin ||
-      (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.payroll:read"));
+      auth.role === "superuser" || canNexaAdmin || canManageTeamAttendance;
     const canAccessPersonnelBudgetArea =
       auth.role === "superuser" ||
       canNexaAdmin ||

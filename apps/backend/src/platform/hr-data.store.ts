@@ -6,7 +6,6 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   ApprovalView,
@@ -412,9 +411,6 @@ export class HrDataStore {
   private readonly approvals: ApprovalRecord[] = [];
   private readonly smartworkingRequests: SmartworkingRequestRow[] = [];
   private readonly travelRequests: TravelRequestRow[] = [];
-  private readonly nfcTokenMap: Map<string, string> = new Map();
-  /** Mem dev: userId → badge; tiene allineato anche nfcTokenMap. */
-  private readonly nfcBadgeByUserId = new Map<string, { token: string; createdAt: string }>();
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
   /** Fallback in-memory quando Supabase non è configurato. */
@@ -1583,67 +1579,6 @@ export class HrDataStore {
     };
   }
 
-  async getUserIdByNfcToken(token: string): Promise<string | null> {
-    if (token.length !== 16) {
-      return null;
-    }
-    if (this.useDb) {
-      const { data } = await this.supabase!.from("nfc_badge_tokens").select("userId").eq("token", token).maybeSingle();
-      const row = data as { userId?: string } | null;
-      return row?.userId ?? null;
-    }
-    return this.nfcTokenMap.get(token) ?? null;
-  }
-
-  private generateNfcBadgeToken16(): string {
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const bytes = randomBytes(16);
-    let out = "";
-    for (let i = 0; i < 16; i++) {
-      out += alphabet[bytes[i]! % alphabet.length];
-    }
-    return out;
-  }
-
-  /**
-   * Token NFC stabile per badge / Apple Wallet (stesso payload usato da POST /clock/nfc).
-   */
-  async getOrCreateNfcBadgeToken(userId: string): Promise<{ token: string; createdAt: string }> {
-    if (this.useDb) {
-      const { data: existing } = await this.supabase!
-        .from("nfc_badge_tokens")
-        .select("token, createdAt")
-        .eq("userId", userId)
-        .maybeSingle();
-      const row = existing as { token?: string; createdAt?: string } | null;
-      if (row?.token && row.createdAt) {
-        return { token: row.token, createdAt: row.createdAt };
-      }
-      for (let attempt = 0; attempt < 12; attempt++) {
-        const token = this.generateNfcBadgeToken16();
-        const createdAt = new Date().toISOString();
-        const { error } = await this.supabase!.from("nfc_badge_tokens").insert({ token, userId, createdAt });
-        if (!error) {
-          return { token, createdAt };
-        }
-        const msg = String(error.message ?? "");
-        if (!msg.toLowerCase().includes("duplicate") && !msg.includes("23505")) {
-          throw new InternalServerErrorException(`Badge NFC: ${msg}`);
-        }
-      }
-      throw new InternalServerErrorException("Impossibile generare un token badge univoco");
-    }
-    const mem = this.nfcBadgeByUserId.get(userId);
-    if (mem) {
-      return mem;
-    }
-    const token = this.generateNfcBadgeToken16();
-    const createdAt = new Date().toISOString();
-    this.nfcBadgeByUserId.set(userId, { token, createdAt });
-    this.nfcTokenMap.set(token, userId);
-    return { token, createdAt };
-  }
-
   async addTimeEntry(
     userId: string,
     type: "clock_in" | "clock_out",
@@ -2743,6 +2678,77 @@ export class HrDataStore {
     return user.jurisdiction === "IT" ? "IT" : "CH";
   }
 
+  /** Righe informative da anagrafica dipendente (importo 0), incluse nel cedolino/PDF. */
+  private payslipAnagraficaLines(user: User): Payslip["lines"] {
+    const out: Payslip["lines"] = [];
+    const add = (code: string, description: string): void => {
+      out.push({ code, description: description.slice(0, 200), amount: 0 });
+    };
+    if (user.hireDate?.trim()) {
+      add("HIRE", `Data assunzione: ${user.hireDate.trim()}`);
+    }
+    if (user.contractType?.trim()) {
+      add("CTR", `Tipo contratto: ${user.contractType.trim()}`);
+    }
+    if (user.weeklyContractHours != null && user.weeklyContractHours > 0) {
+      add("HRS", `Ore contrattuali settimanali: ${user.weeklyContractHours}`);
+    }
+    if (user.birthDate?.trim()) {
+      add("BIRTH", `Data di nascita: ${user.birthDate.trim()}`);
+    }
+    if (user.jurisdiction) {
+      add("JUR", `Profilo payroll: ${user.jurisdiction}`);
+    }
+    if (user.taxRegion?.trim() || user.taxMunicipalityIt?.trim()) {
+      add(
+        "TAXIT",
+        `Fisco IT: regione ${user.taxRegion?.trim() ?? "—"} · comune ${user.taxMunicipalityIt?.trim() ?? user.taxMunicipality?.trim() ?? "—"}`
+      );
+    }
+    if (user.taxCanton?.trim()) {
+      add(
+        "TAXCH",
+        `Fisco CH: ${user.taxCanton.trim()} · ${user.taxMunicipality?.trim() ?? ""}`.trim()
+      );
+    }
+    if (user.payrollItSector?.trim()) {
+      add("SECT", `Settore IVS (INPS): ${user.payrollItSector.trim()}`);
+    }
+    if (user.payrollEmployerInpsPercent != null) {
+      add("INPSP", `IVS datore %: ${user.payrollEmployerInpsPercent}`);
+    }
+    if (user.payrollInailPermille != null) {
+      add("INAIL", `Premio INAIL ‰: ${user.payrollInailPermille}`);
+    }
+    if (user.payrollTfrDivisor != null) {
+      add("TFRD", `Divisore accantonamento TFR: ${user.payrollTfrDivisor}`);
+    }
+    if (user.payrollAtecoCode?.trim()) {
+      add("ATECO", `Codice ATECO: ${user.payrollAtecoCode.trim()}`);
+    }
+    if (user.payrollInailRiskDescription?.trim()) {
+      add("RISK", `Rischio / mansione INAIL: ${user.payrollInailRiskDescription.trim()}`);
+    }
+    if (user.iban?.trim()) {
+      const clean = user.iban.replace(/\s+/g, "");
+      const holder = user.accountHolder?.trim() || user.fullName;
+      add("IBAN", `IBAN: ${clean.slice(0, 4)}…${clean.slice(-4)} (${holder})`);
+    }
+    if (user.bankName?.trim()) {
+      add("BANK", `Istituto di credito: ${user.bankName.trim()}`);
+    }
+    if (user.avsNumber?.trim()) {
+      add("AVS", `Numero AVS / identificativo: ${user.avsNumber.trim()}`);
+    }
+    if (user.phone?.trim()) {
+      add("TEL", `Telefono: ${user.phone.trim()}`);
+    }
+    if (user.address?.trim()) {
+      add("ADDR", `Indirizzo: ${user.address.trim().slice(0, 120)}`);
+    }
+    return out;
+  }
+
   async generatePayslip(userId: string, period: string): Promise<Payslip> {
     const user = await this.getUser(userId);
     const grossMonthlySalary =
@@ -2812,7 +2818,7 @@ export class HrDataStore {
       description: `Rimborso spese: ${c.description}`.slice(0, 160),
       amount: Math.round(c.amountCents) / 100
     }));
-    const lines = [...result.lines, ...extraLines];
+    const lines = [...result.lines, ...this.payslipAnagraficaLines(user), ...extraLines];
     const netSalary = Math.round((result.netSalary + reimbursement) * 100) / 100;
     const payslip: Payslip = {
       id: `ps-${Date.now()}`,

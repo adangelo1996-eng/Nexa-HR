@@ -33,7 +33,7 @@ export interface SessionUser {
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
-  /** Area Payroll (nav /payroll-calc): solo `nexa.payroll:read` esplicito sul ruolo, non da solo `*:write`; oppure admin/superuser. */
+  /** Area calcolo cedolino (/payroll-calc): solo se il backend concede (admin console, superuser o centro HR). */
   canAccessPayrollArea?: boolean;
   /** Budget personale: solo `nexa.personnel_budget:read` esplicito; oppure admin/superuser. */
   canAccessPersonnelBudgetArea?: boolean;
@@ -82,20 +82,11 @@ export function sessionCanSeeApprovalsAndHrExtras(
   return u.isTeamResponsible === true;
 }
 
-/** Payroll manageriale (/payroll-calc): flag da backend (read esplicito `nexa.payroll:read`, non inferito da `:write`). */
+/** Calcolo cedolino: solo se il backend ha impostato `canAccessPayrollArea` (admin, superuser o HR). */
 export function sessionCanAccessPayrollArea(
-  u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPayrollArea"> | null | undefined
+  u: Pick<SessionUser, "canAccessPayrollArea"> | null | undefined
 ): boolean {
-  if (!u) {
-    return false;
-  }
-  if (normalizeStoredRole(u.role) === "superuser") {
-    return true;
-  }
-  if (u.canNexaAdmin) {
-    return true;
-  }
-  return u.canAccessPayrollArea === true;
+  return u?.canAccessPayrollArea === true;
 }
 
 /** Budget personale HR (read esplicito sul ruolo o admin). */
