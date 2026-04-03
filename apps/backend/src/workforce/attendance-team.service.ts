@@ -1,8 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import type { TimeEntry, User } from "@payday/domain";
+import type { AuthRole } from "../platform/auth";
 import type { AttendanceDayBoardResponse } from "../platform/hr-data.store";
 import { HrDataStore } from "../platform/hr-data.store";
+import { PermissionsService } from "../platform/permissions.service";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
@@ -15,7 +17,10 @@ function teamManageCostCenterCodes(): Set<string> {
 
 @Injectable()
 export class AttendanceTeamService {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   static assertValidMonth(month: string): void {
     if (!MONTH_RE.test(month)) {
@@ -29,28 +34,54 @@ export class AttendanceTeamService {
     }
   }
 
+  /**
+   * Lettura/export vista giornaliera e export mensile: centro HR oppure console admin Nexa.
+   * La modifica timbrature altrui resta solo su {@link assertCanManageTeam}.
+   */
+  async assertHrOrNexaAdminForAttendanceExports(
+    viewerId: string,
+    jwtRole: AuthRole
+  ): Promise<void> {
+    if (await this.canManageTeamAttendance(viewerId)) {
+      return;
+    }
+    const user = await this.store.getUser(viewerId);
+    const ok = await this.permissions.canAccessNexaAdminUi(viewerId, jwtRole, user.email);
+    if (!ok) {
+      throw new ForbiddenException(
+        "Operazione riservata agli amministratori Nexa o al centro di costo HR"
+      );
+    }
+  }
+
+  private async listUserIdsVisibleOnDayBoard(viewerId: string): Promise<string[]> {
+    const viewer = await this.store.getUser(viewerId);
+    const all = await this.store.listUsers();
+    const wide = viewer.role === "superuser" || isSynapseSuperuserEmail(viewer.email);
+    const pool = wide ? all : all.filter((u) => u.companyId === viewer.companyId);
+    return pool.map((u) => u.id);
+  }
+
   async getDayAttendanceBoard(
     viewerId: string,
     day: string,
-    costCenterIds?: string[] | null
+    costCenterIds: string[] | null | undefined,
+    jwtRole: AuthRole
   ): Promise<AttendanceDayBoardResponse> {
-    await this.assertCanManageTeam(viewerId);
+    await this.assertHrOrNexaAdminForAttendanceExports(viewerId, jwtRole);
     AttendanceTeamService.assertValidDay(day.slice(0, 10));
-    const pick = await this.listPickerUsers(viewerId);
-    return this.store.buildAttendanceDayBoard(
-      pick.map((p) => p.id),
-      day.slice(0, 10),
-      costCenterIds
-    );
+    const ids = await this.listUserIdsVisibleOnDayBoard(viewerId);
+    return this.store.buildAttendanceDayBoard(ids, day.slice(0, 10), costCenterIds);
   }
 
   /** Centri di costo presenti tra i dipendenti visibili al viewer (per filtri board). */
   async listDayBoardCostCenterFilters(
-    viewerId: string
+    viewerId: string,
+    jwtRole: AuthRole
   ): Promise<Array<{ id: string; label: string }>> {
-    await this.assertCanManageTeam(viewerId);
-    const pick = await this.listPickerUsers(viewerId);
-    const idSet = new Set(pick.map((p) => p.id));
+    await this.assertHrOrNexaAdminForAttendanceExports(viewerId, jwtRole);
+    const ids = await this.listUserIdsVisibleOnDayBoard(viewerId);
+    const idSet = new Set(ids);
     const users = (await this.store.listUsers()).filter((u) => idSet.has(u.id));
     const ccKeys = new Set<string>();
     for (const u of users) {
@@ -72,11 +103,11 @@ export class AttendanceTeamService {
   async buildDayBoardExportXlsx(
     viewerId: string,
     day: string,
-    costCenterIds?: string[] | null
+    costCenterIds: string[] | null | undefined,
+    jwtRole: AuthRole
   ): Promise<Buffer> {
-    await this.assertCanManageTeam(viewerId);
     AttendanceTeamService.assertValidDay(day.slice(0, 10));
-    const board = await this.getDayAttendanceBoard(viewerId, day, costCenterIds);
+    const board = await this.getDayAttendanceBoard(viewerId, day, costCenterIds, jwtRole);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Presenze giornaliere", {

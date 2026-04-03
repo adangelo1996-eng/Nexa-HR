@@ -166,11 +166,11 @@ export class AttendanceController {
   @Get("entries/export")
   @RequireNexaPermissions("nexa.attendance:read")
   async exportMonth(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Query("month") month: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<StreamableFile> {
-    await this.team.assertCanManageTeam(auth.userId);
+    await this.team.assertHrOrNexaAdminForAttendanceExports(auth.userId, auth.role);
     AttendanceTeamService.assertValidMonth(month);
     const buf = await this.team.buildMonthExportXlsx(month);
     const filename = `nexa-timbrature-${month}.xlsx`;
@@ -207,22 +207,22 @@ export class AttendanceController {
 
   @Get("team/day-board/cost-centers")
   @RequireNexaPermissions("nexa.attendance:read")
-  async teamDayBoardCostCenters(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
-    return { costCenters: await this.team.listDayBoardCostCenterFilters(auth.userId) };
+  async teamDayBoardCostCenters(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return { costCenters: await this.team.listDayBoardCostCenterFilters(auth.userId, auth.role) };
   }
 
   /** Export Excel della vista giornaliera (stessi filtri della GET board). */
   @Get("team/day-board/export")
   @RequireNexaPermissions("nexa.attendance:read")
   async teamDayBoardExport(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Query("date") date: string | undefined,
     @Query("costCenterIds") costCenterIdsRaw: string | undefined,
     @Res({ passthrough: true }) res: Response
   ): Promise<StreamableFile> {
     const day = date ?? new Date().toISOString().slice(0, 10);
     const cc = parseBoardCostCenterIds(costCenterIdsRaw);
-    const buf = await this.team.buildDayBoardExportXlsx(auth.userId, day, cc);
+    const buf = await this.team.buildDayBoardExportXlsx(auth.userId, day, cc, auth.role);
     const safeDay = day.slice(0, 10);
     const filename = `nexa-presenze-giorno-${safeDay}.xlsx`;
     res.setHeader(
@@ -237,13 +237,13 @@ export class AttendanceController {
   @Get("team/day-board")
   @RequireNexaPermissions("nexa.attendance:read")
   async teamDayBoard(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Query("date") date: string | undefined,
     @Query("costCenterIds") costCenterIdsRaw: string | undefined
   ): Promise<unknown> {
     const day = date ?? new Date().toISOString().slice(0, 10);
     const cc = parseBoardCostCenterIds(costCenterIdsRaw);
-    return this.team.getDayAttendanceBoard(auth.userId, day, cc);
+    return this.team.getDayAttendanceBoard(auth.userId, day, cc, auth.role);
   }
 
   @Post("team/entries")

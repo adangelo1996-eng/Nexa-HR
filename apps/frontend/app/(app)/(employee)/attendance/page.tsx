@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   createTeamTimeEntry,
@@ -30,6 +31,7 @@ import {
   clearSession,
   getToken,
   sessionCanAccessPayrollArea,
+  sessionCanNexaAdmin,
   type SessionUser
 } from "@/lib/auth-session";
 
@@ -101,6 +103,12 @@ export default function AttendancePage(): React.JSX.Element {
   const [hrBoardCcSelected, setHrBoardCcSelected] = useState<Set<string>>(new Set());
   const [hrBoardExportLoading, setHrBoardExportLoading] = useState(false);
 
+  const canHrExport = useMemo(
+    () => Boolean(user && (sessionCanNexaAdmin(user) || user.canManageTeamAttendance)),
+    [user]
+  );
+  const canHrEdit = Boolean(user?.canManageTeamAttendance);
+
   useEffect(() => {
     const currentToken = getToken();
     if (!currentToken) {
@@ -159,7 +167,7 @@ export default function AttendancePage(): React.JSX.Element {
   }, [token, user?.canManageTeamAttendance]);
 
   useEffect(() => {
-    if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
+    if (!token || !canHrExport || nexaUsesSupabaseAttendance()) {
       setHrBoardCcOptions([]);
       return;
     }
@@ -178,7 +186,7 @@ export default function AttendancePage(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token, user?.canManageTeamAttendance]);
+  }, [token, canHrExport]);
 
   const hrBoardCostCenterIds = useMemo(() => {
     if (hrBoardCcSelected.size === 0) {
@@ -188,7 +196,7 @@ export default function AttendancePage(): React.JSX.Element {
   }, [hrBoardCcSelected]);
 
   useEffect(() => {
-    if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
+    if (!token || !canHrExport || nexaUsesSupabaseAttendance()) {
       setHrBoard(null);
       return;
     }
@@ -218,14 +226,14 @@ export default function AttendancePage(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token, user?.canManageTeamAttendance, hrBoardDate, hrBoardCostCenterIds]);
+  }, [token, canHrExport, hrBoardDate, hrBoardCostCenterIds]);
 
   useEffect(() => {
     setNewEntryAtLocal(`${hrEditMonth}-01T09:00`);
   }, [hrEditMonth]);
 
   useEffect(() => {
-    if (!token || !hrSelectedUserId || !hrEditMonth) {
+    if (!token || !canHrEdit || !hrSelectedUserId || !hrEditMonth) {
       setHrEntries([]);
       return;
     }
@@ -253,7 +261,7 @@ export default function AttendancePage(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token, hrSelectedUserId, hrEditMonth]);
+  }, [token, canHrEdit, hrSelectedUserId, hrEditMonth]);
 
   const filteredTeamUsers = useMemo(() => {
     const q = hrUserSearch.trim().toLowerCase();
@@ -499,13 +507,15 @@ export default function AttendancePage(): React.JSX.Element {
 
       {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-      {user?.canManageTeamAttendance ? (
+      {canHrExport ? (
         <section className="card mt-6 border-amber-200/80 dark:border-amber-900/40">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
             Gestione timbrature (HR / amministratori)
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Export mensile di tutti gli utenti e correzione timbrature per singolo dipendente.
+            {canHrEdit
+              ? "Export mensile di tutti gli utenti e correzione timbrature per singolo dipendente."
+              : "Export Excel della vista giornaliera e del mese (solo lettura: la modifica timbrature è riservata al centro HR)."}
           </p>
           {nexaUsesSupabaseAttendance() ? (
             <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
@@ -540,11 +550,17 @@ export default function AttendancePage(): React.JSX.Element {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    className="shrink-0"
+                    className="h-9 w-9 shrink-0 p-0"
                     disabled={!token || hrBoardExportLoading}
                     onClick={() => void onExportHrBoard()}
+                    title="Esporta in Excel la vista giornaliera (intestazioni e righe)"
+                    aria-label="Esporta in Excel la vista giornaliera"
                   >
-                    {hrBoardExportLoading ? "Export…" : "Scarica Excel"}
+                    {hrBoardExportLoading ? (
+                      <span className="text-xs">…</span>
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                    )}
                   </Button>
                 </div>
                 {hrBoardCcOptions.length > 0 ? (
@@ -702,14 +718,23 @@ export default function AttendancePage(): React.JSX.Element {
                   <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
+                    className="h-9 w-9 shrink-0 p-0"
                     disabled={!token || exportLoading}
                     onClick={() => void onExportMonthXlsx()}
+                    title="Esporta in Excel tutte le timbrature del mese (intestazioni e righe)"
+                    aria-label="Esporta in Excel le timbrature del mese"
                   >
-                    {exportLoading ? "Generazione..." : "Scarica XLSX"}
+                    {exportLoading ? (
+                      <span className="text-xs">…</span>
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                    )}
                   </Button>
                 </div>
               </div>
 
+              {canHrEdit ? (
               <div className="border-t border-slate-200 pt-6 dark:border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                   Visualizza e modifica per utente
@@ -903,6 +928,7 @@ export default function AttendancePage(): React.JSX.Element {
                   </div>
                 </div>
               </div>
+              ) : null}
             </div>
           )}
         </section>
