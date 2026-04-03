@@ -376,11 +376,11 @@ export class UserController {
     const canAccessPayrollArea =
       auth.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.payroll:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.payroll:read"));
     const canAccessPersonnelBudgetArea =
       auth.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.personnel_budget:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),

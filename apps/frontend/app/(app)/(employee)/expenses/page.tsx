@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
 import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 export default function ExpensesPage(): React.JSX.Element {
   const [items, setItems] = useState<ExpenseClaimDto[]>([]);
@@ -122,8 +123,8 @@ export default function ExpensesPage(): React.JSX.Element {
             onChange={(ev) => setCurrency(ev.target.value)}
             className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
           >
-            <option value="CHF">CHF</option>
             <option value="EUR">EUR</option>
+            {isSwissPayrollFeatureEnabled() ? <option value="CHF">CHF</option> : null}
           </select>
         </div>
         <input

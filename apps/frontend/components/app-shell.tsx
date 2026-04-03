@@ -37,6 +37,7 @@ import {
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
+import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
@@ -124,6 +125,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       return [];
     }
     let routes = SEARCH_ROUTES;
+    if (!isSwissPayrollFeatureEnabled()) {
+      routes = routes.filter((r) => r.href !== "/compensation/bench" && r.href !== "/forecast");
+    }
     if (!sessionCanAccessPayrollArea(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/payroll-calc");
     }

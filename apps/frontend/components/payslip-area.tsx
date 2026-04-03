@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 import type { UserRole } from "@/lib/auth-session";
+import { payslipDisplayCurrency } from "@/lib/nexa-swiss-payroll-flag";
 
 interface Payslip {
   id: string;
@@ -15,6 +16,8 @@ interface Props {
   role: UserRole;
   currentUserId: string;
   currentUserName: string;
+  /** Da profilo utente per valuta; se assente si assume IT quando payroll CH è disattivato. */
+  payrollJurisdiction?: "CH" | "IT" | null;
   payslips: Payslip[];
   onExportPdf: (userId: string, period: string) => Promise<void>;
 }
@@ -23,11 +26,13 @@ export function PayslipArea({
   role,
   currentUserId,
   currentUserName,
+  payrollJurisdiction,
   payslips,
   onExportPdf
 }: Props): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const payslipCurrency = payslipDisplayCurrency(payrollJurisdiction);
 
   async function handleExport(userId: string, period: string, id: string): Promise<void> {
     setError(null);
@@ -62,7 +67,9 @@ export function PayslipArea({
           >
             <div>
               <p className="text-sm text-slate-600 dark:text-slate-300">{item.period}</p>
-              <p className="text-lg font-medium text-slate-900 dark:text-slate-50">CHF {item.netSalary.toFixed(2)}</p>
+              <p className="text-lg font-medium text-slate-900 dark:text-slate-50">
+                {payslipCurrency} {item.netSalary.toFixed(2)}
+              </p>
             </div>
             <button
               onClick={() => void handleExport(item.userId, item.period, item.id)}

@@ -23,6 +23,7 @@ export interface SessionUser {
   vacationAllowanceDays?: number;
   /** Data assunzione (YYYY-MM-DD), da anagrafica */
   hireDate?: string;
+  jurisdiction?: "CH" | "IT";
   /** Presente dopo GET /users/me */
   isSynapseSuperuser?: boolean;
   /** Area /admin (ruoli, centri di costo, utenti con permessi adeguati) */
@@ -32,9 +33,9 @@ export interface SessionUser {
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
-  /** Simulazioni payroll / calcolo cedolini: permesso `nexa.payroll:read` (o write) sul ruolo, o console admin. */
+  /** Area Payroll (nav /payroll-calc): solo `nexa.payroll:read` esplicito sul ruolo, non da solo `*:write`; oppure admin/superuser. */
   canAccessPayrollArea?: boolean;
-  /** Griglia budget personale: permesso `nexa.personnel_budget:read` (o write), o console admin. */
+  /** Budget personale: solo `nexa.personnel_budget:read` esplicito; oppure admin/superuser. */
   canAccessPersonnelBudgetArea?: boolean;
 }
 
@@ -81,7 +82,7 @@ export function sessionCanSeeApprovalsAndHrExtras(
   return u.isTeamResponsible === true;
 }
 
-/** Payroll e calcolo cedolini: non legato al solo “responsabile team”; richiede permesso ruolo o admin. */
+/** Payroll manageriale (/payroll-calc): flag da backend (read esplicito `nexa.payroll:read`, non inferito da `:write`). */
 export function sessionCanAccessPayrollArea(
   u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPayrollArea"> | null | undefined
 ): boolean {
@@ -97,7 +98,7 @@ export function sessionCanAccessPayrollArea(
   return u.canAccessPayrollArea === true;
 }
 
-/** Budget personale HR. */
+/** Budget personale HR (read esplicito sul ruolo o admin). */
 export function sessionCanAccessPersonnelBudgetArea(
   u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPersonnelBudgetArea"> | null | undefined
 ): boolean {

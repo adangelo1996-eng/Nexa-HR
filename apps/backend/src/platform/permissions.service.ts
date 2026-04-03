@@ -67,6 +67,16 @@ export class PermissionsService {
   }
 
   /**
+   * Solo permesso `:read` letterale nel ruolo (o `*` già espanso). Non usa la regola write→read:
+   * serve per esporre in UI le viste HR (payroll calcolo, budget) senza includere i dipendenti
+   * che hanno solo azioni operative es. `nexa.payroll:write` per il cedolino self-service.
+   */
+  async userHasExplicitReadCatalogKey(userId: string, readKey: string): Promise<boolean> {
+    const expanded = await this.getExpandedPermissionsForUserId(userId);
+    return expanded.has(readKey);
+  }
+
+  /**
    * Chi può aprire l’area /admin nel frontend: JWT admin, superuser Synapse, o almeno una lettura su moduli amministrativi.
    */
   async canAccessNexaAdminUi(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {

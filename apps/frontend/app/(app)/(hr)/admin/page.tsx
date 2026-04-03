@@ -34,6 +34,7 @@ import {
 import { inputOptionalClass, inputRequiredClass, selectOptionalClass, selectRequiredClass } from "@/lib/form-field-styles";
 import { previewAutoSynapseEmail, synapseEmailDomain } from "@/lib/email-preview";
 import { displayUserCatalogRole } from "@/lib/role-display";
+import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 type AdminUserTableRow =
   | { kind: "cc"; id: string; label: string }
@@ -1206,7 +1207,7 @@ export default function AdminPage(): React.JSX.Element {
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Giurisdizione payroll</span>
                   <select
-                    value={selectedUser?.jurisdiction ?? "CH"}
+                    value={selectedUser?.jurisdiction ?? (isSwissPayrollFeatureEnabled() ? "CH" : "IT")}
                     onChange={(event) => {
                       if (selectedUser) {
                         updateSelectedUser({ jurisdiction: event.target.value as "CH" | "IT" });
@@ -1214,9 +1215,17 @@ export default function AdminPage(): React.JSX.Element {
                     }}
                     className={selectOptionalClass}
                   >
-                    <option value="CH">Svizzera (CH)</option>
                     <option value="IT">Italia (IT)</option>
+                    <option value="CH" disabled={!isSwissPayrollFeatureEnabled()}>
+                      Svizzera (CH)
+                      {!isSwissPayrollFeatureEnabled() ? " — disattivata" : ""}
+                    </option>
                   </select>
+                  {!isSwissPayrollFeatureEnabled() && selectedUser?.jurisdiction === "CH" ? (
+                    <span className="text-[10px] text-amber-700 dark:text-amber-300">
+                      Profilo anagrafico CH conservato; calcolo cedolino e budget usano temporaneamente il motore IT.
+                    </span>
+                  ) : null}
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">RAL lorda mensile</span>
@@ -1237,29 +1246,33 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Cantone (CH)</span>
-                  <input
-                    value={selectedUser?.taxCanton ?? ""}
-                    onChange={(event) => {
-                      if (selectedUser) updateSelectedUser({ taxCanton: event.target.value || undefined });
-                    }}
-                    placeholder="es. TI"
-                    className={inputOptionalClass}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Comune fiscale (CH)</span>
-                  <input
-                    value={selectedUser?.taxMunicipality ?? ""}
-                    onChange={(event) => {
-                      if (selectedUser) {
-                        updateSelectedUser({ taxMunicipality: event.target.value || undefined });
-                      }
-                    }}
-                    className={inputOptionalClass}
-                  />
-                </label>
+                {isSwissPayrollFeatureEnabled() ? (
+                  <>
+                    <label className="flex flex-col gap-1 text-xs">
+                      <span className="text-slate-700 dark:text-slate-300">Cantone (CH)</span>
+                      <input
+                        value={selectedUser?.taxCanton ?? ""}
+                        onChange={(event) => {
+                          if (selectedUser) updateSelectedUser({ taxCanton: event.target.value || undefined });
+                        }}
+                        placeholder="es. TI"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      <span className="text-slate-700 dark:text-slate-300">Comune fiscale (CH)</span>
+                      <input
+                        value={selectedUser?.taxMunicipality ?? ""}
+                        onChange={(event) => {
+                          if (selectedUser) {
+                            updateSelectedUser({ taxMunicipality: event.target.value || undefined });
+                          }
+                        }}
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                  </>
+                ) : null}
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Regione (IT)</span>
                   <input

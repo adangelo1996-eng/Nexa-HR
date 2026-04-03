@@ -36,6 +36,7 @@ import type {
   GeoFix
 } from "@payday/domain";
 import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
+import { isSwissPayrollFeatureEnabled } from "./nexa-swiss-payroll-flag";
 import {
   calculateItalianPayroll,
   defaultItalianRuleSet2026,
@@ -988,6 +989,11 @@ export class HrDataStore {
       throw new BadRequestException("Nome e cognome sono obbligatori");
     }
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (!isSwissPayrollFeatureEnabled() && input.jurisdiction === "CH") {
+      throw new BadRequestException(
+        "La giurisdizione payroll Svizzera è temporaneamente disattivata (usa IT o imposta NEXA_SWISS_PAYROLL_ENABLED=true)."
+      );
+    }
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
     const email = await this.resolveCreateEmail(firstName, lastName, input.email);
@@ -1019,7 +1025,7 @@ export class HrDataStore {
       baseSalaryMonthly: input.baseSalaryMonthly,
       taxCanton: input.taxCanton,
       taxMunicipality: input.taxMunicipality,
-      jurisdiction: input.jurisdiction ?? "CH",
+      jurisdiction: input.jurisdiction ?? (isSwissPayrollFeatureEnabled() ? "CH" : "IT"),
       taxRegion: input.taxRegion,
       taxMunicipalityIt: input.taxMunicipalityIt,
       payrollItSector: input.payrollItSector ?? undefined,
@@ -1040,6 +1046,11 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (!isSwissPayrollFeatureEnabled() && input.jurisdiction === "CH" && user.jurisdiction !== "CH") {
+      throw new BadRequestException(
+        "Non è possibile impostare la giurisdizione Svizzera finché NEXA_SWISS_PAYROLL_ENABLED non è attivo."
+      );
+    }
     if (input.teamId !== undefined) {
       const tid = input.teamId === null || input.teamId === "" ? null : String(input.teamId).trim();
       if (tid) {
@@ -2603,6 +2614,14 @@ export class HrDataStore {
     );
   }
 
+  /** Giurisdizione effettiva per motori payroll e budget (CH ignorato se feature disattivata). */
+  private effectivePayrollJurisdiction(user: Pick<User, "jurisdiction">): "IT" | "CH" {
+    if (!isSwissPayrollFeatureEnabled()) {
+      return "IT";
+    }
+    return user.jurisdiction === "IT" ? "IT" : "CH";
+  }
+
   async generatePayslip(userId: string, period: string): Promise<Payslip> {
     const user = await this.getUser(userId);
     const grossMonthlySalary =
@@ -2618,7 +2637,7 @@ export class HrDataStore {
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
     const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
-    const jurisdiction = user.jurisdiction === "IT" ? "IT" : "CH";
+    const jurisdiction = this.effectivePayrollJurisdiction(user);
     const costCenter =
       user.costCenterId != null ? await this.getCostCenterById(user.costCenterId) : null;
     const employerIt =
@@ -2723,7 +2742,8 @@ export class HrDataStore {
     weeklyContractHours?: number;
   }): ReturnType<typeof calculateSwissPayroll> | ReturnType<typeof calculateItalianPayroll> {
     const period = input.period?.trim() || new Date().toISOString().slice(0, 7);
-    const j = input.jurisdiction === "IT" ? "IT" : "CH";
+    const j =
+      !isSwissPayrollFeatureEnabled() || input.jurisdiction === "IT" ? "IT" : "CH";
     if (j === "IT") {
       return calculateItalianPayroll({
         period,
@@ -5350,7 +5370,7 @@ export class HrDataStore {
       const travel = await this.travelReimbursementActualChf(u.id, period);
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
-      const isIt = u.jurisdiction === "IT";
+      const isIt = this.effectivePayrollJurisdiction(u) === "IT";
       const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
       const ratesIt = isIt ? this.italianEmployerRatesForUser(u, ccRow) : null;
       const buckets = isIt

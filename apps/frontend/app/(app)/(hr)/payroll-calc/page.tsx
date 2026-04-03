@@ -17,6 +17,7 @@ import {
   sessionCanAccessPayrollArea,
   type SessionUser
 } from "@/lib/auth-session";
+import { payslipDisplayCurrency } from "@/lib/nexa-swiss-payroll-flag";
 
 function payrollUserDropdownList(me: SessionUser, fromApi: User[]): User[] {
   if (fromApi.length > 0) {
@@ -87,6 +88,7 @@ export default function PayrollCalcPage(): React.JSX.Element {
     () => users.find((item) => item.id === selectedUserId),
     [users, selectedUserId]
   );
+  const payslipCurrency = payslipDisplayCurrency(selectedUser?.jurisdiction);
 
   async function onGenerate(): Promise<void> {
     if (!token || !selectedUserId || !period) {
@@ -193,12 +195,14 @@ export default function PayrollCalcPage(): React.JSX.Element {
             <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <p className="text-xs text-slate-600 dark:text-slate-400">Lordo</p>
               <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-                CHF {(result.grossSalary ?? 0).toFixed(2)}
+                {payslipCurrency} {(result.grossSalary ?? 0).toFixed(2)}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <p className="text-xs text-slate-600 dark:text-slate-400">Netto</p>
-              <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">CHF {result.netSalary.toFixed(2)}</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">
+                {payslipCurrency} {result.netSalary.toFixed(2)}
+              </p>
             </div>
           </div>
           <div className="mt-4 space-y-2 text-slate-800 dark:text-slate-200">
@@ -207,7 +211,9 @@ export default function PayrollCalcPage(): React.JSX.Element {
                 <span>
                   {line.code} - {line.description}
                 </span>
-                <span>CHF {line.amount.toFixed(2)}</span>
+                <span>
+                  {payslipCurrency} {line.amount.toFixed(2)}
+                </span>
               </div>
             ))}
           </div>

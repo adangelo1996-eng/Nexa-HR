@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { fetchUsers } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 type Row = { role: string; canton: string; medianMonthlyChf: number };
 
@@ -31,6 +32,19 @@ export default function CompensationBenchPage(): React.JSX.Element {
   }, []);
 
   const ref = bench.find((b) => b.role === role && b.canton === canton);
+
+  if (!isSwissPayrollFeatureEnabled()) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
+        <p className="text-sm text-[var(--prom-muted)]">
+          Il benchmark di mercato Svizzera (CHF) è temporaneamente disattivato. Riattivare con{" "}
+          <code className="rounded bg-[var(--prom-line)] px-1">NEXT_PUBLIC_NEXA_SWISS_PAYROLL_ENABLED=true</code> allineato
+          al backend.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

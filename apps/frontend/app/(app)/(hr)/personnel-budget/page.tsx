@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 import {
   fetchPersonnelBudget,
   fetchCurrentUser,
@@ -323,8 +324,11 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
 
       {snap ? (
         <p className="text-xs text-[var(--prom-muted)]">
-          Periodo consuntivo: <strong>{snap.period}</strong> — importi in EUR per profilo IT, CHF per profilo CH dove
-          applicabile. Colonne: <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo da cedolino /
+          Periodo consuntivo: <strong>{snap.period}</strong> —{" "}
+          {isSwissPayrollFeatureEnabled()
+            ? "importi in EUR per profilo IT, CHF per profilo CH dove applicabile."
+            : "importi in EUR (payroll Svizzera disattivato: consuntivo e stime da motore IT). "}
+          Colonne: <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo da cedolino /
           competenze. Per dipendenti <strong>IT</strong>, la riga «Suggerito» sotto il nome propone INPS datore, INAIL
           (permille) e TFR da RAL base e da settore/rischio in anagrafica (verificare sempre con il consulente).
         </p>
@@ -486,7 +490,8 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
 
       <p className="text-xs text-[var(--prom-muted)]">
         ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:
-        settore IVS, premio INAIL in permille, divisore TFR) oppure modello CH, più trasferte. Valori normativi vanno
+        settore IVS, premio INAIL in permille, divisore TFR)
+        {isSwissPayrollFeatureEnabled() ? " oppure modello CH," : ""} più trasferte. Valori normativi vanno
         allineati annualmente con consulenza del lavoro e tabella INAIL reale.
       </p>
 

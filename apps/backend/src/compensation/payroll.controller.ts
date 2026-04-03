@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -17,6 +18,7 @@ import type { JurisdictionCode } from "@payday/payroll-core";
 import PDFDocument from "pdfkit";
 import { CurrentAuth, type AuthRole } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
+import { isSwissPayrollFeatureEnabled } from "../platform/nexa-swiss-payroll-flag";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 
 class SimulateHireDto {
@@ -111,6 +113,9 @@ export class PayrollController {
       throw new ForbiddenException("Solo manager/admin possono anteprima export paghe");
     }
     const j: JurisdictionCode = jurisdiction === "IT" ? "IT" : "CH";
+    if (j === "CH" && !isSwissPayrollFeatureEnabled()) {
+      throw new BadRequestException("Export payroll Svizzera temporaneamente disattivato.");
+    }
     const gen = j === "IT" ? createItExportGenerator() : createChExportGenerator();
     const p = period?.trim() || new Date().toISOString().slice(0, 7);
     return gen.buildExports({ companyId: "comp-1", period: p, jurisdiction: j });
@@ -218,11 +223,13 @@ export class PayrollController {
       payslip = await this.store.generatePayslip(userId, period);
     }
     const employee = await this.store.getUser(userId);
+    const isItaly =
+      !isSwissPayrollFeatureEnabled() || employee.jurisdiction === "IT";
     const buffer = await this.buildOfficialPayslipPdf(
       employee.fullName,
       period,
       payslip,
-      employee.jurisdiction === "IT"
+      isItaly
     );
     return new StreamableFile(buffer, {
       disposition: `attachment; filename="nexa-hr-cedolino-${userId}-${period}.pdf"`,

@@ -5,6 +5,7 @@ import { FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { downloadPayslipPdf, fetchCurrentUser, fetchPayslips, markPayslipReadApi, type Payslip } from "@/lib/api";
 import { getToken, getSessionUser, type SessionUser } from "@/lib/auth-session";
+import { payslipDisplayCurrency } from "@/lib/nexa-swiss-payroll-flag";
 
 export default function PayslipsPage(): React.JSX.Element {
   const [items, setItems] = useState<Payslip[]>([]);
@@ -57,6 +58,8 @@ export default function PayslipsPage(): React.JSX.Element {
       setItems((prev) => prev.map((x) => (x.id === p.id ? { ...x, isNew: false } : x)));
     }
   }
+
+  const payslipCurrency = payslipDisplayCurrency(user?.jurisdiction);
 
   const years = useMemo(() => {
     const ys = new Set(items.map((p) => p.period.slice(0, 4)));
@@ -121,7 +124,9 @@ export default function PayslipsPage(): React.JSX.Element {
                     Nuovo
                   </span>
                 ) : null}
-                <p className="text-xs text-[var(--prom-muted)]">Netto: CHF {p.netSalary?.toFixed?.(2) ?? p.netSalary}</p>
+                <p className="text-xs text-[var(--prom-muted)]">
+                  Netto: {payslipCurrency} {p.netSalary?.toFixed?.(2) ?? p.netSalary}
+                </p>
               </div>
               <Button type="button" size="sm" variant="secondary" onClick={() => void onDownload(p)} className="gap-2">
                 <FileDown className="h-4 w-4" />

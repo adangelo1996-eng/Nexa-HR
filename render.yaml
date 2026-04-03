@@ -11,6 +11,11 @@
 # Dopo il primo deploy: CORS_ORIGIN sul backend = URL https del frontend Render;
 # NEXT_PUBLIC_API_BASE_URL sul frontend = URL https del backend (/api opzionale, vedi README).
 #
+# Payroll Svizzera (opzionale, default disattivato se omesso):
+#   Backend:  NEXA_SWISS_PAYROLL_ENABLED=true
+#   Frontend: NEXT_PUBLIC_NEXA_SWISS_PAYROLL_ENABLED=true
+# Catalogo: docs/catalog/payroll-svizzera.md
+#
 # Servizi creati fuori da questo blueprint: impostare a mano Health Check Path frontend = /health (vedi README).
 
 services:
@@ -40,6 +45,8 @@ services:
         sync: false
       - key: APP_SSO_SHARED_KEY
         sync: false
+      - key: NEXA_SWISS_PAYROLL_ENABLED
+        sync: false
 
   - type: web
     name: nexa-hr-frontend
@@ -62,4 +69,6 @@ services:
       - key: CENTRAL_HUB_ORIGIN
         sync: false
       - key: NEXT_PUBLIC_CENTRAL_HUB_ORIGIN
+        sync: false
+      - key: NEXT_PUBLIC_NEXA_SWISS_PAYROLL_ENABLED
         sync: false

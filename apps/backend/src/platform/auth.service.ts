@@ -59,11 +59,11 @@ export class AuthService {
     const canAccessPayrollArea =
       user.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(user.id, ["nexa.payroll:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.payroll:read"));
     const canAccessPersonnelBudgetArea =
       user.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(user.id, ["nexa.personnel_budget:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
     return {
       token,
       user: {
@@ -103,11 +103,11 @@ export class AuthService {
     const canAccessPayrollArea =
       user.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(user.id, ["nexa.payroll:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.payroll:read"));
     const canAccessPersonnelBudgetArea =
       user.role === "superuser" ||
       canNexaAdmin ||
-      (await this.permissions.userHasAll(user.id, ["nexa.personnel_budget:read"]));
+      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
     return {
       token,
       user: {
