@@ -2166,7 +2166,20 @@ export class HrDataStore {
   async cancelPendingLeavePlan(leaveId: string, actorUserId: string, actorRole: AuthRole): Promise<void> {
     const leave = await this.getLeave(leaveId);
     await this.assertCanActOnBehalfOfUser(actorUserId, actorRole, leave.userId);
-    if (leave.status !== "pending" && leave.status !== "rejected") {
+    const today = this.calendarDateTodayIsoRome();
+    const start = leave.startDate.slice(0, 10);
+    if (leave.status === "approved") {
+      if (start <= today) {
+        throw new BadRequestException(
+          "Solo assenze con data di inizio futura possono essere rimosse (ferie / ROL approvate)"
+        );
+      }
+      if (actorUserId !== leave.userId && actorRole !== "superuser") {
+        throw new ForbiddenException(
+          "Solo il dipendente interessato può annullare un’assenza approvata futura"
+        );
+      }
+    } else if (leave.status !== "pending" && leave.status !== "rejected") {
       throw new BadRequestException("Solo richieste in attesa o rifiutate possono essere rimosse dal calendario");
     }
     if (this.useDb) {
@@ -3100,6 +3113,11 @@ export class HrDataStore {
       throw new BadRequestException("Intervallo date non valido");
     }
     return Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+  }
+
+  /** Oggi come YYYY-MM-DD (Europe/Rome), coerente con il calendario lavoro in UI. */
+  private calendarDateTodayIsoRome(): string {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
   }
 
   async getLeaveBalance(userId: string, year: number): Promise<LeaveBalance> {
@@ -4395,7 +4413,20 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
-    if (row.status !== "pending" && row.status !== "rejected") {
+    const today = this.calendarDateTodayIsoRome();
+    const day = row.day.slice(0, 10);
+    if (row.status === "approved") {
+      if (day <= today) {
+        throw new BadRequestException(
+          "Solo lo smart working con data futura può essere rimosso (richiesta già approvata)"
+        );
+      }
+      if (requesterId !== row.userId && actorRole !== "superuser") {
+        throw new ForbiddenException(
+          "Solo il dipendente interessato può annullare uno smart working approvato futuro"
+        );
+      }
+    } else if (row.status !== "pending" && row.status !== "rejected") {
       throw new BadRequestException("Solo una richiesta in attesa o rifiutata può essere rimossa");
     }
     if (this.useDb) {
@@ -4711,7 +4742,20 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
-    if (row.status !== "pending" && row.status !== "rejected") {
+    const today = this.calendarDateTodayIsoRome();
+    const day = row.day.slice(0, 10);
+    if (row.status === "approved") {
+      if (day <= today) {
+        throw new BadRequestException(
+          "Solo la trasferta con data futura può essere rimossa (richiesta già approvata)"
+        );
+      }
+      if (requesterId !== row.userId && actorRole !== "superuser") {
+        throw new ForbiddenException(
+          "Solo il dipendente interessato può annullare una trasferta approvata futura"
+        );
+      }
+    } else if (row.status !== "pending" && row.status !== "rejected") {
       throw new BadRequestException("Solo una richiesta in attesa o rifiutata può essere rimossa");
     }
     if (this.useDb) {

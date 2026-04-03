@@ -358,12 +358,35 @@ function isPendingWithMutableRequest(ev: CalendarEventDto): boolean {
   return false;
 }
 
-/** Rimuovi dal calendario (annulla in attesa o elimina rifiutato). */
-function canRemoveCalendarRequest(ev: CalendarEventDto): boolean {
+function calendarEventStartDateIso(ev: CalendarEventDto): string {
+  return ev.start.slice(0, 10);
+}
+
+/** Oggi YYYY-MM-DD (Europe/Rome), allineato al backend per “futuro”. */
+function calendarDateTodayIsoRome(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+}
+
+function isCalendarEventStartInFuture(ev: CalendarEventDto): boolean {
+  return calendarEventStartDateIso(ev) > calendarDateTodayIsoRome();
+}
+
+/** Solo il dipendente della riga (o superuser) può togliere assenze approvate future; HR vede ma non il pulsante. */
+function canRemoveApprovedFutureAsEmployee(viewer: SessionUser | null, rowUserId: string): boolean {
+  if (!viewer) return false;
+  if (viewer.id === rowUserId) return true;
+  if (viewer.role === "superuser") return true;
+  return false;
+}
+
+/** Rimuovi dal calendario: in attesa/rifiutata, oppure approvata con inizio data futura (ferie, ROL, SW, trasferta). */
+function canRemoveCalendarRequest(ev: CalendarEventDto, viewer: SessionUser | null, rowUserId: string): boolean {
   const st = String(ev.meta?.status ?? "");
-  if (st !== "pending" && st !== "rejected") return false;
+  const pendingOrRejected = st === "pending" || st === "rejected";
+  const approvedFuture =
+    st === "approved" && isCalendarEventStartInFuture(ev) && canRemoveApprovedFutureAsEmployee(viewer, rowUserId);
+  if (!pendingOrRejected && !approvedFuture) return false;
   if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
-  if (ev.kind === "sickness") return typeof ev.meta?.sicknessId === "string";
   if (ev.kind === "smartworking") return typeof ev.meta?.swRequestId === "string";
   if (ev.kind === "travel") return typeof ev.meta?.travelRequestId === "string";
   return false;
@@ -886,12 +909,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const cancelPendingFromChip = async (ev: CalendarEventDto): Promise<void> => {
     const t = getToken();
     if (!t) return;
-    const rejected = String(ev.meta?.status ?? "") === "rejected";
-    if (
-      !window.confirm(
-        rejected ? "Rimuovere questa richiesta rifiutata dal calendario?" : "Annullare questa richiesta in attesa?"
-      )
-    ) {
+    const st = String(ev.meta?.status ?? "");
+    const rejected = st === "rejected";
+    const approvedFuture = st === "approved" && isCalendarEventStartInFuture(ev);
+    const confirmMsg = rejected
+      ? "Rimuovere questa richiesta rifiutata dal calendario?"
+      : approvedFuture
+        ? "Rimuovere questa richiesta approvata? (solo se la data è futura.)"
+        : "Annullare questa richiesta in attesa?";
+    if (!window.confirm(confirmMsg)) {
       return;
     }
     setError(null);
@@ -1540,7 +1566,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                               showActions &&
                               (isPendingWithMutableRequest(ev) ||
                                 canEditApprovedCalendarChip(me, row.id, ev));
-                            const showRemove = showActions && canRemoveCalendarRequest(ev);
+                            const showRemove = showActions && canRemoveCalendarRequest(ev, me, row.id);
                             const actions =
                               showEdit || showRemove ? (
                                 <span className="ml-0.5 inline-flex shrink-0 gap-0">
@@ -1564,7 +1590,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
                                       aria-label={
                                         String(ev.meta?.status ?? "") === "rejected"
                                           ? "Rimuovi richiesta rifiutata"
-                                          : "Annulla richiesta"
+                                          : String(ev.meta?.status ?? "") === "approved"
+                                            ? "Rimuovi richiesta approvata futura"
+                                            : "Annulla richiesta"
                                       }
                                       onClick={(e) => {
                                         e.stopPropagation();
