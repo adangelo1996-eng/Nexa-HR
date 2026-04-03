@@ -37,6 +37,14 @@ function generateTenDigitCostCode(): string {
   return `880${suffix}`;
 }
 
+/** Un utente è membro di un solo team alla volta; il responsabile può coprire più team (lead su più righe `work_teams`). */
+function canPickUserAsWorkTeamMember(u: User, team: WorkTeamDto): boolean {
+  const tid = u.teamId?.trim() || null;
+  if (!tid || tid === team.id) return true;
+  if (team.leadUserId && u.id === team.leadUserId) return true;
+  return false;
+}
+
 export default function AdminCostCentersPage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
@@ -175,15 +183,18 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     setAllUsers(users);
   }
 
-  function toggleTeamMember(teamId: string, userId: string): void {
+  function toggleTeamMember(team: WorkTeamDto, userId: string, user: User): void {
+    if (!canPickUserAsWorkTeamMember(user, team)) {
+      return;
+    }
     setMemberPick((prev) => {
-      const cur = new Set(prev[teamId] ?? []);
+      const cur = new Set(prev[team.id] ?? []);
       if (cur.has(userId)) {
         cur.delete(userId);
       } else {
         cur.add(userId);
       }
-      return { ...prev, [teamId]: [...cur] };
+      return { ...prev, [team.id]: [...cur] };
     });
   }
 
@@ -491,7 +502,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
       {selected ? (
         <GlassCard
           title="Team di lavoro"
-          description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri. Il responsabile ottiene il ruolo piattaforma team_lead e dirige gli altri membri in approvazione."
+          description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri; un dipendente può stare in un solo team come membro (compare disabilitato negli altri). Un responsabile può essere nominato su più team. Il responsabile ottiene il ruolo piattaforma team_lead e dirige gli altri membri in approvazione."
         >
           <div className="flex flex-wrap items-end gap-2 text-xs">
             <label className="flex min-w-[200px] flex-1 flex-col gap-1">
@@ -561,21 +572,43 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                         {usersInSelectedCc.length === 0 ? (
                           <p className="text-[11px] text-slate-500">Nessun utente su questo centro di costo.</p>
                         ) : (
-                          usersInSelectedCc.map((u) => (
-                            <label key={u.id} className="flex cursor-pointer items-center gap-2 text-[11px]">
-                              <input
-                                type="checkbox"
-                                checked={membersSelected.has(u.id)}
-                                onChange={() => toggleTeamMember(team.id, u.id)}
-                              />
-                              <span>
-                                {u.fullName}
-                                {u.id === team.leadUserId ? (
-                                  <span className="ml-1 text-slate-500">(lead)</span>
-                                ) : null}
-                              </span>
-                            </label>
-                          ))
+                          usersInSelectedCc.map((u) => {
+                            const canPick = canPickUserAsWorkTeamMember(u, team);
+                            const otherTid = u.teamId?.trim();
+                            const otherLabel =
+                              otherTid && otherTid !== team.id
+                                ? teams.find((x) => x.id === otherTid)?.name ?? otherTid
+                                : null;
+                            return (
+                              <label
+                                key={u.id}
+                                className={[
+                                  "flex items-center gap-2 text-[11px]",
+                                  canPick ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+                                ].join(" ")}
+                                title={
+                                  canPick
+                                    ? undefined
+                                    : otherLabel
+                                      ? `Già membro del team «${otherLabel}». Rimuovi l’utente da lì per aggiungerlo qui.`
+                                      : "Già assegnato a un altro team. Rimuovi l’utente da lì per aggiungerlo qui."
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={!canPick}
+                                  checked={membersSelected.has(u.id)}
+                                  onChange={() => toggleTeamMember(team, u.id, u)}
+                                />
+                                <span>
+                                  {u.fullName}
+                                  {u.id === team.leadUserId ? (
+                                    <span className="ml-1 text-slate-500">(lead)</span>
+                                  ) : null}
+                                </span>
+                              </label>
+                            );
+                          })
                         )}
                       </div>
                       <Button

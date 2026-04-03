@@ -724,6 +724,13 @@ export class HrDataStore {
       if (u.costCenterId !== team.costCenterId) {
         throw new BadRequestException(`L'utente ${u.fullName} non appartiene al centro di costo del team`);
       }
+      const tid = u.teamId?.trim() || null;
+      const isLeadOfThisTeam = (team.leadUserId ?? "").trim() === uid.trim();
+      if (tid && tid !== teamId && !isLeadOfThisTeam) {
+        throw new BadRequestException(
+          `${u.fullName} è già membro di un altro team di lavoro. Rimuovi l'utente da quello team (o riassegna da Anagrafica) prima di aggiungerlo qui.`
+        );
+      }
       await this.updateUser(uid, { teamId });
     }
     return this.listUsersByTeam(teamId);
