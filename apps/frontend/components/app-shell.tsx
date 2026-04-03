@@ -31,6 +31,7 @@ import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 import {
   clearSession,
   getSessionUser,
+  getToken,
   sessionCanAccessPayrollArea,
   sessionCanAccessPersonnelBudgetArea,
   sessionCanNexaAdmin,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
+import { fetchCurrentUser } from "@/lib/api";
 import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
@@ -98,6 +100,23 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   useEffect(() => {
     setUser(getSessionUser());
     setEmployeeViewState(getEmployeeViewOnly());
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+    let cancelled = false;
+    void fetchCurrentUser(token)
+      .then((fresh) => {
+        if (!cancelled) {
+          setUser(fresh);
+        }
+      })
+      .catch(() => {
+        /* mantieni sessione da localStorage */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [pathname]);
 
   useEffect(() => {
@@ -238,9 +257,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-[100dvh] overflow-hidden">
       <aside
-        className="hidden w-[200px] shrink-0 border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
+        className="hidden h-full w-[200px] shrink-0 overflow-y-auto border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
         aria-label="Navigazione principale"
       >
         {SidebarContent}
@@ -259,7 +278,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             aria-label="Chiudi menu"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative flex h-full w-[min(100vw,280px)] flex-col border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200">
+          <div className="relative flex h-full w-[min(100vw,280px)] flex-col overflow-y-auto border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200">
             <div className="flex justify-end p-2">
               <Button
                 type="button"
@@ -277,9 +296,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </div>
       ) : null}
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header
-          className="sticky top-0 z-30 border-b backdrop-blur-xl transition-colors duration-300"
+          className="z-30 shrink-0 border-b backdrop-blur-xl transition-colors duration-300"
           style={{
             background: "var(--bar-bg)",
             borderColor: "var(--bar-border)",
@@ -415,11 +434,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">{children}</main>
-
-        <footer className="mt-auto border-t border-[var(--prom-line)] py-4 text-center text-xs text-[var(--prom-muted)]">
-          © Nexa HR 2026
-        </footer>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <main className="mx-auto w-full max-w-[1600px] px-6 py-6">{children}</main>
+          <footer className="border-t border-[var(--prom-line)] py-4 text-center text-xs text-[var(--prom-muted)]">
+            © Nexa HR 2026
+          </footer>
+        </div>
       </div>
       <SelfServiceChat />
     </div>

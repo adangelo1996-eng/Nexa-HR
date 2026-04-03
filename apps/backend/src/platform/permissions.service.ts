@@ -76,7 +76,8 @@ export class PermissionsService {
   }
 
   /**
-   * Chi può aprire l’area /admin nel frontend: JWT admin, superuser Synapse, o almeno una lettura su moduli amministrativi.
+   * Chi può aprire l’area /admin (menu + route): superuser JWT, email Synapse superuser, oppure
+   * `nexa.admin_users:read` (tab principale «Utenti»). Ruoli/centri/import da soli non aprono la console.
    */
   async canAccessNexaAdminUi(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
     if (jwtRole === "superuser") {
@@ -86,12 +87,6 @@ export class PermissionsService {
       return true;
     }
     const expanded = await this.getExpandedPermissionsForUserId(userId);
-    const gateKeys = [
-      "nexa.admin_users:read",
-      "nexa.admin_roles:read",
-      "nexa.admin_cost_centers:read",
-      "nexa.import:read"
-    ] as const;
-    return gateKeys.some((k) => this.hasKey(expanded, k));
+    return this.hasKey(expanded, "nexa.admin_users:read");
   }
 }
