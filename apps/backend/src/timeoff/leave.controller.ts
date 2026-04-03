@@ -15,6 +15,11 @@ class LeaveDto {
   @IsOptional()
   @IsIn(["annual", "rol"])
   kind?: "annual" | "rol";
+
+  /** Solo `admin`: crea il piano ferie per un altro utente (console HR / calendario). */
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 class LeaveAllowanceDto {
@@ -34,9 +39,17 @@ export class LeaveController {
 
   @Post("plan")
   @RequireNexaPermissions("nexa.leaves:write")
-  async create(@CurrentAuth() auth: { userId: string }, @Body() dto: LeaveDto): Promise<unknown> {
+  async create(@CurrentAuth() auth: AuthContext, @Body() dto: LeaveDto): Promise<unknown> {
+    let userId = auth.userId;
+    const proxy = dto.userId?.trim();
+    if (proxy && proxy !== auth.userId) {
+      if (auth.role !== "admin") {
+        throw new ForbiddenException("Solo un amministratore può registrare ferie per altri utenti.");
+      }
+      userId = proxy;
+    }
     return this.store.createLeavePlan({
-      userId: auth.userId,
+      userId,
       startDate: dto.startDate,
       endDate: dto.endDate,
       kind: dto.kind ?? "annual"

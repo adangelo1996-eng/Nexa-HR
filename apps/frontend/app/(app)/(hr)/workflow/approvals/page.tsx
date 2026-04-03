@@ -171,18 +171,25 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                           </p>
                         ) : null}
                         {item.type === "smartworking" ? (
-                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                            Settimana (lun–dom UTC) della data richiesta:{" "}
+                          <p
+                            className="mt-1 text-xs text-[var(--prom-muted)]"
+                            title="Il conteggio settimanale usa la settimana da lunedì a domenica in UTC (può differire di un giorno rispetto al fuso locale). Contano solo richieste non rifiutate (pending o approvate), inclusa questa in valutazione."
+                          >
+                            Settimana della data richiesta (lun–dom,{" "}
+                            <abbr title="Coordinated Universal Time: il confine della settimana segue il calendario UTC, non il fuso italiano." className="cursor-help underline decoration-dotted">
+                              UTC
+                            </abbr>
+                            ):{" "}
                             <span className="font-medium text-[var(--prom-text)]">
-                              {item.smartworkingWeekUsed ?? "—"} / {item.smartworkingWeekQuota ?? "—"} giorni con SW
-                              attivo
-                            </span>
+                              {item.smartworkingWeekUsed ?? "—"} usati / {item.smartworkingWeekQuota ?? "—"} ammessi
+                            </span>{" "}
+                            nello smart working (pending o approvati; i rifiutati non contano).
                             {" · "}
-                            Mese:{" "}
+                            Mese (stesso criterio):{" "}
                             <span className="font-medium text-[var(--prom-text)]">
-                              {item.smartworkingMonthUsed ?? "—"} / {item.smartworkingMonthQuota ?? "—"} (max mensile,
-                              include richieste pendenti/approvate)
-                            </span>
+                              {item.smartworkingMonthUsed ?? "—"} / {item.smartworkingMonthQuota ?? "—"}
+                            </span>{" "}
+                            giorni con SW (max mensile).
                           </p>
                         ) : null}
                         {item.note ? (

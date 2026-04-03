@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
@@ -10,6 +11,7 @@ import {
   createUser,
   fetchAdminCostCenters,
   fetchAdminRoles,
+  fetchAdminWorkTeams,
   fetchCurrentUser,
   fetchUserProfilePhotoUrl,
   fetchUsers,
@@ -19,7 +21,8 @@ import {
   type CostCenter,
   type CreateUserPayload,
   type Role,
-  type User
+  type User,
+  type WorkTeamDto
 } from "@/lib/api";
 import {
   clearSession,
@@ -31,6 +34,101 @@ import {
 import { inputOptionalClass, inputRequiredClass, selectOptionalClass, selectRequiredClass } from "@/lib/form-field-styles";
 import { previewAutoSynapseEmail, synapseEmailDomain } from "@/lib/email-preview";
 import { displayUserCatalogRole } from "@/lib/role-display";
+
+type AdminUserTableRow =
+  | { kind: "cc"; id: string; label: string }
+  | { kind: "team"; id: string; label: string }
+  | { kind: "person"; user: User };
+
+function buildAdminUserTableRows(
+  filteredUsers: User[],
+  teamsNested: Array<{ cc: CostCenter; teams: WorkTeamDto[] }>
+): AdminUserTableRow[] {
+  const rows: AdminUserTableRow[] = [];
+  const assigned = new Set<string>();
+  for (const { cc, teams } of teamsNested) {
+    const inCc = filteredUsers.filter((u) => u.costCenterId === cc.id);
+    if (inCc.length === 0) continue;
+    rows.push({
+      kind: "cc",
+      id: cc.id,
+      label: [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name
+    });
+    const teamsSorted = [...teams].sort((a, b) => a.name.localeCompare(b.name, "it"));
+    const byTeam = new Map<string, User[]>();
+    const noneTeam: User[] = [];
+    for (const u of inCc) {
+      const tid = u.teamId?.trim();
+      if (tid) {
+        if (!byTeam.has(tid)) byTeam.set(tid, []);
+        byTeam.get(tid)!.push(u);
+      } else {
+        noneTeam.push(u);
+      }
+    }
+    for (const team of teamsSorted) {
+      const members = byTeam.get(team.id);
+      if (!members?.length) continue;
+      rows.push({ kind: "team", id: team.id, label: team.name });
+      for (const u of [...members].sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))) {
+        rows.push({ kind: "person", user: u });
+        assigned.add(u.id);
+      }
+      byTeam.delete(team.id);
+    }
+    const unassigned = [...noneTeam, ...Array.from(byTeam.values()).flat()];
+    if (unassigned.length > 0) {
+      rows.push({ kind: "team", id: `orphan-${cc.id}`, label: "Senza team" });
+      for (const u of [...unassigned].sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))) {
+        rows.push({ kind: "person", user: u });
+        assigned.add(u.id);
+      }
+    }
+  }
+  const remaining = filteredUsers.filter((u) => !assigned.has(u.id));
+  if (remaining.length > 0) {
+    rows.push({ kind: "cc", id: "__no_cc", label: "Senza centro di costo o non assegnati" });
+    rows.push({ kind: "team", id: "__no_cc_team", label: "—" });
+    for (const u of [...remaining].sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))) {
+      rows.push({ kind: "person", user: u });
+    }
+  }
+  return rows;
+}
+
+function AdminUserAvatar({ user, token }: { user: User; token: string | null }): React.JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token || !user.profilePhotoPath) {
+      setUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchUserProfilePhotoUrl(token, user.id)
+      .then((signedUrl) => {
+        if (!cancelled) setUrl(signedUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user.id, user.profilePhotoPath]);
+  const initials =
+    `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.trim() ||
+    user.fullName.slice(0, 2).toUpperCase();
+  return (
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-200 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initials
+      )}
+    </div>
+  );
+}
 
 const WIZARD_STEPS = 4 as const;
 
@@ -58,7 +156,8 @@ function emptyNewUser(): CreateUserPayload {
     birthDate: "",
     hireDate: "",
     phone: "",
-    address: ""
+    address: "",
+    teamId: ""
   };
 }
 
@@ -77,8 +176,41 @@ export default function AdminPage(): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const [teamsNested, setTeamsNested] = useState<Array<{ cc: CostCenter; teams: WorkTeamDto[] }>>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [adminModal, setAdminModal] = useState<"closed" | "edit" | "create">("closed");
 
   const selectedUser = users.find((item) => item.id === selectedUserId) ?? null;
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) => u.fullName.toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q)
+    );
+  }, [users, userSearch]);
+
+  const teamsNestedForTable = useMemo(() => {
+    if (teamsNested.length > 0) return teamsNested;
+    return [...costCenters]
+      .sort((a, b) => a.name.localeCompare(b.name, "it"))
+      .map((cc) => ({ cc, teams: [] as WorkTeamDto[] }));
+  }, [teamsNested, costCenters]);
+
+  const tableRows = useMemo(
+    () => buildAdminUserTableRows(filteredUsers, teamsNestedForTable),
+    [filteredUsers, teamsNestedForTable]
+  );
+
+  const teamsForSelectedCc = useMemo(() => {
+    if (!selectedUser?.costCenterId) return [];
+    return teamsNestedForTable.find((x) => x.cc.id === selectedUser.costCenterId)?.teams ?? [];
+  }, [teamsNestedForTable, selectedUser?.costCenterId]);
+
+  const teamsForNewUserCc = useMemo(() => {
+    if (!newUser.costCenterId) return [];
+    return teamsNestedForTable.find((x) => x.cc.id === newUser.costCenterId)?.teams ?? [];
+  }, [teamsNestedForTable, newUser.costCenterId]);
 
   useEffect(() => {
     if (!token || !selectedUser?.profilePhotoPath) {
@@ -127,6 +259,14 @@ export default function AdminPage(): React.JSX.Element {
         setUsers(allUsers);
         setRoles(allRoles);
         setCostCenters(allCostCenters);
+        const sortedCc = [...allCostCenters].sort((a, b) => a.name.localeCompare(b.name, "it"));
+        const teamsData = await Promise.all(
+          sortedCc.map(async (cc) => ({
+            cc,
+            teams: await fetchAdminWorkTeams(tokenValue, cc.id).catch(() => [] as WorkTeamDto[])
+          }))
+        );
+        setTeamsNested(teamsData);
         setSelectedUserId(allUsers[0]?.id ?? "");
       } catch (loadError) {
         if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
@@ -186,10 +326,14 @@ export default function AdminPage(): React.JSX.Element {
         phone: newUser.phone.trim(),
         address: newUser.address.trim()
       };
-      const created = await createUser(token, payload);
+      const created = await createUser(token, {
+        ...payload,
+        teamId: newUser.teamId?.trim() ? newUser.teamId.trim() : undefined
+      });
       setNewUser(emptyNewUser());
       setWizardStep(1);
       setCreatingUser(false);
+      setAdminModal("closed");
       await refreshUsers();
       setSelectedUserId(created.id);
     } catch (submitError) {
@@ -236,10 +380,12 @@ export default function AdminPage(): React.JSX.Element {
         taxMunicipality: selectedUser.taxMunicipality,
         jurisdiction: selectedUser.jurisdiction,
         taxRegion: selectedUser.taxRegion,
-        taxMunicipalityIt: selectedUser.taxMunicipalityIt
+        taxMunicipalityIt: selectedUser.taxMunicipalityIt,
+        teamId: selectedUser.teamId ?? null
       });
       await setLeaveAllowance(token, selectedUser.id, selectedUser.vacationAllowanceDays ?? 22);
       await refreshUsers();
+      setAdminModal("closed");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore aggiornamento utente");
     } finally {
@@ -299,6 +445,7 @@ export default function AdminPage(): React.JSX.Element {
     setNewUser(emptyNewUser());
     setWizardStep(1);
     setError(null);
+    setAdminModal("create");
   }
 
   function cancelCreateUser(): void {
@@ -306,6 +453,7 @@ export default function AdminPage(): React.JSX.Element {
     setSelectedUserId(users[0]?.id ?? "");
     setWizardStep(1);
     setError(null);
+    setAdminModal("closed");
   }
 
   function goNext(): void {
@@ -348,66 +496,154 @@ export default function AdminPage(): React.JSX.Element {
         </Link>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)]">
-        <GlassCard
-          title="Utenti"
-          description="Elenco utenti con ricerca rapida. La creazione si apre solo dal pulsante «Nuovo utente»."
-          className="h-full"
-        >
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <input
-              placeholder={adminStrings.users.searchPlaceholder}
-              className="h-8 min-w-[140px] flex-1 rounded-full border border-slate-700/70 bg-slate-900/70 px-3 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-400/80"
-            />
-            <Button type="button" variant="secondary" className="shrink-0 text-xs" onClick={openCreateUser}>
-              Nuovo utente
-            </Button>
-          </div>
-          <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1 text-xs">
-            {users.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setCreatingUser(false);
-                  setSelectedUserId(item.id);
-                }}
-                className={[
-                  "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition",
-                  selectedUserId === item.id
-                    ? "bg-slate-200 text-slate-900 dark:bg-slate-800/80 dark:text-slate-50"
-                    : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-slate-50"
-                ].join(" ")}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-50">{item.fullName}</p>
-                  <p className="truncate text-[11px] text-slate-600 dark:text-slate-400">{item.email}</p>
-                </div>
-                <span className="ml-2 max-w-[11rem] shrink-0 truncate rounded-full bg-slate-300/90 px-2 py-0.5 text-[10px] font-medium tracking-tight text-slate-800 dark:bg-slate-800/80 dark:text-slate-200">
-                  {displayUserCatalogRole(item, roles)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </GlassCard>
+      <GlassCard
+        title="Utenti per centro di costo e team"
+        description="Elenco gerarchico: foto, email e ruolo. Modifica con l’icona matita. Nuovo utente dal pulsante in alto a destra."
+        className="h-full"
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <input
+            placeholder={adminStrings.users.searchPlaceholder}
+            value={userSearch}
+            onChange={(e) => setUserSearch(e.target.value)}
+            className="h-8 min-w-[140px] flex-1 rounded-full border border-slate-700/70 bg-slate-900/70 px-3 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-400/80"
+          />
+          <Button type="button" variant="secondary" className="shrink-0 text-xs" onClick={openCreateUser}>
+            Nuovo utente
+          </Button>
+        </div>
+        <div className="max-h-[min(70vh,560px)] overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="sticky top-0 z-[1] bg-slate-100 dark:bg-slate-800">
+              <tr className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                <th className="px-2 py-2">Foto</th>
+                <th className="px-2 py-2">Nome</th>
+                <th className="px-2 py-2">Email</th>
+                <th className="px-2 py-2">Ruolo</th>
+                <th className="w-10 px-1 py-2" aria-label="Azioni" />
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row) => {
+                if (row.kind === "cc") {
+                  return (
+                    <tr key={`cc-${row.id}`} className="bg-slate-200/90 dark:bg-slate-800/90">
+                      <td colSpan={5} className="px-3 py-2 font-semibold text-slate-900 dark:text-slate-50">
+                        {row.label}
+                      </td>
+                    </tr>
+                  );
+                }
+                if (row.kind === "team") {
+                  return (
+                    <tr key={`team-${row.id}`} className="bg-slate-100/80 dark:bg-slate-900/50">
+                      <td colSpan={5} className="px-3 py-1.5 pl-6 text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                        {row.label}
+                      </td>
+                    </tr>
+                  );
+                }
+                const item = row.user;
+                return (
+                  <tr
+                    key={item.id}
+                    className="border-t border-slate-200/80 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+                  >
+                    <td className="px-2 py-1.5">
+                      <AdminUserAvatar user={item} token={token} />
+                    </td>
+                    <td className="px-2 py-1.5 font-medium text-slate-900 dark:text-slate-100">{item.fullName}</td>
+                    <td className="max-w-[14rem] truncate px-2 py-1.5 text-slate-600 dark:text-slate-400">
+                      {item.email}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <span className="inline-flex flex-col gap-0.5">
+                        <span className="rounded-full bg-slate-200/90 px-2 py-0.5 text-[10px] font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                          {displayUserCatalogRole(item, roles)}
+                        </span>
+                        {item.role === "team_lead" ? (
+                          <span className="text-[9px] uppercase text-amber-800 dark:text-amber-200">Team lead</span>
+                        ) : null}
+                      </span>
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        aria-label={`Modifica ${item.fullName}`}
+                        onClick={() => {
+                          setCreatingUser(false);
+                          setSelectedUserId(item.id);
+                          setAdminModal("edit");
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
+      </GlassCard>
 
-        <GlassCard
-          title={
-            creatingUser
-              ? adminStrings.users.detailTitleNew
-              : selectedUser
-                ? adminStrings.users.detailTitleExisting
-                : "Nessun utente selezionato"
-          }
-          description={
-            creatingUser
-              ? `Passo ${wizardStep} di ${WIZARD_STEPS}: tutti i campi sono obbligatori.`
-              : selectedUser
-                ? adminStrings.users.detailSubtitleExisting
-                : "Scegli un utente dall’elenco oppure creane uno nuovo."
-          }
+      {adminModal !== "closed" ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+          role="presentation"
+          onClick={() => {
+            setAdminModal("closed");
+            setCreatingUser(false);
+          }}
         >
-          {creatingUser ? (
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-user-modal-title"
+            className="relative z-10 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--glass-border)] p-5 shadow-[var(--glass-shadow)]"
+            style={{
+              background: "var(--glass-bg)",
+              boxShadow: "var(--glass-shadow)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2 border-b border-[var(--prom-line)] pb-3">
+              <div>
+                <h2 id="admin-user-modal-title" className="text-base font-semibold text-[var(--prom-text)]">
+                  {adminModal === "create"
+                    ? adminStrings.users.detailTitleNew
+                    : selectedUser
+                      ? adminStrings.users.detailTitleExisting
+                      : "Utente"}
+                </h2>
+                <p className="mt-1 text-[11px] text-[var(--prom-muted)]">
+                  {adminModal === "create"
+                    ? `Passo ${wizardStep} di ${WIZARD_STEPS}: tutti i campi sono obbligatori.`
+                    : selectedUser
+                      ? adminStrings.users.detailSubtitleExisting
+                      : ""}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  setAdminModal("closed");
+                  setCreatingUser(false);
+                }}
+              >
+                Chiudi
+              </Button>
+            </div>
+
+          {adminModal === "create" ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant="ghost" className="text-xs" onClick={cancelCreateUser}>
@@ -517,15 +753,40 @@ export default function AdminPage(): React.JSX.Element {
                     <span className="text-slate-700 dark:text-slate-300">Centro di costo *</span>
                     <select
                       value={newUser.costCenterId}
-                      onChange={(event) =>
-                        setNewUser((c) => ({ ...c, costCenterId: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        const costCenterId = event.target.value;
+                        setNewUser((c) => {
+                          const teamsInCc = teamsNestedForTable.find((x) => x.cc.id === costCenterId)?.teams ?? [];
+                          const stillOk = Boolean(c.teamId?.trim() && teamsInCc.some((t) => t.id === c.teamId));
+                          return {
+                            ...c,
+                            costCenterId,
+                            teamId: stillOk ? c.teamId : ""
+                          };
+                        });
+                      }}
                       className={selectRequiredClass}
                     >
                       <option value="">Seleziona…</option>
                       {costCenters.map((center) => (
                         <option key={center.id} value={center.id}>
                           {center.code} - {center.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs">
+                    <span className="text-slate-700 dark:text-slate-300">Team (macro-area)</span>
+                    <select
+                      value={newUser.teamId ?? ""}
+                      onChange={(event) => setNewUser((c) => ({ ...c, teamId: event.target.value }))}
+                      disabled={!newUser.costCenterId || teamsForNewUserCc.length === 0}
+                      className={selectOptionalClass}
+                    >
+                      <option value="">Nessun team</option>
+                      {teamsForNewUserCc.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
                         </option>
                       ))}
                     </select>
@@ -708,7 +969,7 @@ export default function AdminPage(): React.JSX.Element {
                 </span>
               </div>
             </div>
-          ) : selectedUser ? (
+          ) : adminModal === "edit" && selectedUser ? (
             <>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="md:col-span-2 border-b border-slate-200 pb-3 dark:border-slate-700/80">
@@ -865,7 +1126,14 @@ export default function AdminPage(): React.JSX.Element {
                     value={selectedUser ? selectedUser.costCenterId ?? "" : ""}
                     onChange={(event) => {
                       const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ costCenterId: value });
+                      if (!selectedUser) return;
+                      const teamsInCc = teamsNestedForTable.find((x) => x.cc.id === value)?.teams ?? [];
+                      const tid = selectedUser.teamId?.trim();
+                      const stillOk = Boolean(tid && teamsInCc.some((t) => t.id === tid));
+                      updateSelectedUser({
+                        costCenterId: value,
+                        ...(stillOk ? {} : { teamId: null })
+                      });
                     }}
                     className={selectOptionalClass}
                   >
@@ -873,6 +1141,25 @@ export default function AdminPage(): React.JSX.Element {
                     {costCenters.map((center) => (
                       <option key={center.id} value={center.id}>
                         {center.code} - {center.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Team (macro-area)</span>
+                  <select
+                    value={selectedUser?.teamId ?? ""}
+                    onChange={(event) => {
+                      const v = event.target.value || null;
+                      if (selectedUser) updateSelectedUser({ teamId: v });
+                    }}
+                    disabled={!selectedUser?.costCenterId || teamsForSelectedCc.length === 0}
+                    className={selectOptionalClass}
+                  >
+                    <option value="">Nessun team</option>
+                    {teamsForSelectedCc.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
                       </option>
                     ))}
                   </select>
@@ -1128,17 +1415,15 @@ export default function AdminPage(): React.JSX.Element {
               </div>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-4 py-12 text-center text-sm text-slate-600 dark:text-slate-400">
-              <p>Nessun utente selezionato. Scegli un nome dall&apos;elenco a sinistra o crea un nuovo profilo.</p>
-              <Button type="button" variant="secondary" onClick={openCreateUser}>
-                Nuovo utente
-              </Button>
-            </div>
+            <p className="py-8 text-center text-sm text-[var(--prom-muted)]">
+              Utente non disponibile. Chiudi e riapri dalla tabella.
+            </p>
           )}
 
-          {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
-        </GlassCard>
-      </div>
+            {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1025,7 +1025,7 @@ export async function fetchImportHistory(token: string): Promise<ImportHistoryIt
 
 export async function createLeavePlan(
   token: string,
-  payload: Pick<LeavePlan, "startDate" | "endDate"> & { kind?: "annual" | "rol" }
+  payload: Pick<LeavePlan, "startDate" | "endDate"> & { kind?: "annual" | "rol"; userId?: string }
 ): Promise<LeavePlan> {
   const response = await fetch(buildApiUrl("/leave/plan"), {
     method: "POST",
@@ -1207,12 +1207,13 @@ export async function updateSmartworkingRequest(
 
 export async function reportSickness(
   token: string,
-  payload: { fromDate: string; toDate: string },
+  payload: { fromDate: string; toDate: string; userId?: string },
   document?: File | null
 ): Promise<unknown> {
   const fd = new FormData();
   fd.append("fromDate", payload.fromDate);
   fd.append("toDate", payload.toDate);
+  if (payload.userId) fd.append("userId", payload.userId);
   if (document) fd.append("document", document);
   const response = await fetch(buildApiUrl("/sickness/report"), {
     method: "POST",

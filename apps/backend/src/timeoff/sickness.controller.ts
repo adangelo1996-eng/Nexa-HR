@@ -12,7 +12,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { IsDateString } from "class-validator";
+import { IsDateString, IsOptional, IsString } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
@@ -24,6 +24,11 @@ class SicknessDto {
 
   @IsDateString()
   toDate!: string;
+
+  /** Solo `admin`: comunicazione per un altro utente. */
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 @Controller("sickness")
@@ -83,7 +88,7 @@ export class SicknessController {
   @RequireNexaPermissions("nexa.sickness:write")
   @UseInterceptors(FileInterceptor("document"))
   async report(
-    @CurrentAuth() auth: { userId: string },
+    @CurrentAuth() auth: AuthContext,
     @Body() dto: SicknessDto,
     @UploadedFile() document?: Express.Multer.File
   ): Promise<unknown> {
@@ -91,8 +96,16 @@ export class SicknessController {
     if (ext && !["pdf", "jpg", "jpeg"].includes(ext)) {
       throw new Error("Formato documento non supportato");
     }
+    let userId = auth.userId;
+    const proxy = dto.userId?.trim();
+    if (proxy && proxy !== auth.userId) {
+      if (auth.role !== "admin") {
+        throw new ForbiddenException("Solo un amministratore può registrare malattia per altri utenti.");
+      }
+      userId = proxy;
+    }
     return this.store.createSicknessEvent({
-      userId: auth.userId,
+      userId,
       fromDate: dto.fromDate,
       toDate: dto.toDate,
       documentUrl: document ? `/uploads/${document.originalname}` : "/uploads/missing-document"

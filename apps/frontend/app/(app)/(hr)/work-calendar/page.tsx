@@ -598,7 +598,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const submitLeave = async (): Promise<void> => {
     const t = getToken();
     if (!t || !modal || !me) return;
-    if (!isOwnRow && !editingLeaveId) {
+    const adminCreatesForOther = me.role === "admin" && !isOwnRow && !editingLeaveId;
+    if (!isOwnRow && !editingLeaveId && !adminCreatesForOther) {
       setError("Non puoi creare una nuova richiesta ferie per un altro utente da questo riquadro.");
       return;
     }
@@ -615,7 +616,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
         await createLeavePlan(t, {
           startDate: leaveStart,
           endDate: leaveEnd,
-          kind: leaveKind
+          kind: leaveKind,
+          ...(adminCreatesForOther ? { userId: modal.row.id } : {})
         });
       }
       closeModal();
@@ -630,7 +632,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const submitSick = async (): Promise<void> => {
     const t = getToken();
     if (!t || !modal || !me) return;
-    if (!isOwnRow && !editingSicknessId) {
+    const adminCreatesForOther = me.role === "admin" && !isOwnRow && !editingSicknessId;
+    if (!isOwnRow && !editingSicknessId && !adminCreatesForOther) {
       setError("Non puoi creare una nuova comunicazione malattia per un altro utente da qui.");
       return;
     }
@@ -640,7 +643,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
       if (editingSicknessId) {
         await updateSicknessEvent(t, editingSicknessId, { fromDate: sickFrom, toDate: sickTo });
       } else {
-        await reportSickness(t, { fromDate: sickFrom, toDate: sickTo }, sickFile);
+        await reportSickness(
+          t,
+          {
+            fromDate: sickFrom,
+            toDate: sickTo,
+            ...(adminCreatesForOther ? { userId: modal.row.id } : {})
+          },
+          sickFile
+        );
       }
       closeModal();
       await load();
@@ -1207,13 +1218,50 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         modificabili da qui).
                       </p>
                     ) : null}
+                    {me?.role === "admin" ? (
+                      <div className="mt-3 grid gap-2 border-t border-[var(--prom-line)] pt-3">
+                        <p className="text-[11px] text-[var(--prom-muted)]">
+                          Admin: registra nuove assenze per {modal.row.fullName}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLeaveId(null);
+                            setLeaveStart(modal.day);
+                            setLeaveEnd(modal.day);
+                            setLeaveKind("annual");
+                            setModalStep("leave");
+                          }}
+                          className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-left text-sm font-medium text-emerald-950 transition hover:bg-emerald-500/15 dark:text-emerald-100"
+                        >
+                          Nuova richiesta ferie / ROL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSicknessId(null);
+                            setSickFrom(modal.day);
+                            setSickTo(modal.day);
+                            setSickFile(null);
+                            setModalStep("sickness");
+                          }}
+                          className="rounded-xl border border-orange-500/35 bg-orange-500/10 px-4 py-3 text-left text-sm font-medium text-orange-950 transition hover:bg-orange-500/15 dark:text-orange-100"
+                        >
+                          Nuova comunicazione malattia
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
                 {modalStep === "leave" ? (
                   <div>
                     <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
-                      {editingLeaveId ? "Modifica richiesta (in attesa)" : "Richiesta ferie / ROL"}
+                      {editingLeaveId
+                        ? "Modifica richiesta (in attesa)"
+                        : !isOwnRow && me?.role === "admin"
+                          ? `Richiesta ferie / ROL per ${modal.row.fullName}`
+                          : "Richiesta ferie / ROL"}
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-[11px] text-[var(--prom-muted)]">
@@ -1337,7 +1385,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 {modalStep === "sickness" ? (
                   <div>
                     <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
-                      {editingSicknessId ? "Modifica comunicazione (in attesa)" : "Comunicazione malattia"}
+                      {editingSicknessId
+                        ? "Modifica comunicazione (in attesa)"
+                        : !isOwnRow && me?.role === "admin"
+                          ? `Comunicazione malattia per ${modal.row.fullName}`
+                          : "Comunicazione malattia"}
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="block text-[11px] text-[var(--prom-muted)]">

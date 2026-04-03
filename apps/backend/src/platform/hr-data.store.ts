@@ -912,6 +912,26 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (input.teamId !== undefined) {
+      const tid = input.teamId === null || input.teamId === "" ? null : String(input.teamId).trim();
+      if (tid) {
+        let team: WorkTeam;
+        try {
+          team = await this.getWorkTeam(tid);
+        } catch (e) {
+          if (e instanceof NotFoundException) {
+            throw new BadRequestException("Team non trovato.");
+          }
+          throw e;
+        }
+        const effCc = input.costCenterId ?? user.costCenterId;
+        if (!effCc || team.costCenterId !== effCc) {
+          throw new BadRequestException(
+            "Il team selezionato deve appartenere al centro di costo del dipendente (allinea CDC o scegli un altro team)."
+          );
+        }
+      }
+    }
     const nextRole = input.role !== undefined ? input.role : user.role;
     if (user.role === "team_lead" && nextRole !== "team_lead") {
       await this.clearWorkTeamLeadPositions(userId);
