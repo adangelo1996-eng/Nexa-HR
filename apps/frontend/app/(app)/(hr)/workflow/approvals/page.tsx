@@ -12,6 +12,7 @@ function requestTypeLabel(item: ApprovalItem): string {
     return item.leaveKind === "rol" ? "ROL" : "Ferie annuali";
   }
   if (item.type === "sickness") return "Malattia";
+  if (item.type === "travel") return "Trasferta";
   return "Smart working";
 }
 
@@ -59,9 +60,11 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   useEffect(() => {
     const a = subscribePostgresTable("approvals", () => void load());
     const s = subscribePostgresTable("smartworking_requests", () => void load());
+    const t = subscribePostgresTable("travel_requests", () => void load());
     return (): void => {
       a.unsubscribe();
       s.unsubscribe();
+      t.unsubscribe();
     };
   }, [load]);
 
@@ -98,8 +101,8 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       <header>
         <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni team</h1>
         <p className="text-sm text-[var(--prom-muted)]">
-          Ferie, ROL, malattia e smart working in un unico flusso. Ogni riga mostra saldo ferie (fino
-          all&apos;anno della richiesta) e utilizzo smart working per settimana e mese della data richiesta.
+          Ferie, ROL, malattia, smart working e trasferte in un unico flusso. Ogni riga mostra saldo ferie (fino
+          all&apos;anno della richiesta) e, per lo smart working, utilizzo per settimana e mese della data richiesta.
         </p>
       </header>
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
@@ -168,6 +171,11 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                         {item.type === "sickness" && item.requestedCalendarDays != null ? (
                           <p className="mt-1 text-xs text-[var(--prom-muted)]">
                             Durata: {item.requestedCalendarDays} giorni calendario
+                          </p>
+                        ) : null}
+                        {item.type === "travel" && item.requestedCalendarDays != null ? (
+                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                            Giorni calendario: {item.requestedCalendarDays} (trasferta su singola data).
                           </p>
                         ) : null}
                         {item.type === "smartworking" ? (

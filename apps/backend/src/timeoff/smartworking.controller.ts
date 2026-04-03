@@ -34,7 +34,7 @@ export class SmartworkingController {
 
   @Post("request")
   @UseGuards(RoleGuard)
-  @RequireRole("employee")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.attendance:write")
   async request(@CurrentAuth() auth: AuthContext, @Body() dto: CreateSwDto): Promise<unknown> {
     return this.store.createSmartworkingRequest(auth.userId, dto.day, dto.note, auth.role);
@@ -42,7 +42,7 @@ export class SmartworkingController {
 
   @Delete("request/:id")
   async cancelRequest(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
-    if (auth.role !== "admin") {
+    if (auth.role !== "superuser") {
       const row = await this.store.findSmartworkingRequestById(id);
       if (!row) {
         throw new NotFoundException();
@@ -54,7 +54,10 @@ export class SmartworkingController {
           throw new ForbiddenException();
         }
       } else {
-        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, row.userId))) {
+        const canManage =
+          (await this.store.isManagerOf(auth.userId, row.userId)) ||
+          (await this.store.isUserLeadOfTeamContaining(auth.userId, row.userId));
+        if (!apprW || !canManage) {
           throw new ForbiddenException();
         }
       }
@@ -69,7 +72,7 @@ export class SmartworkingController {
     @Param("id") id: string,
     @Body() dto: CreateSwDto
   ): Promise<unknown> {
-    if (auth.role !== "admin") {
+    if (auth.role !== "superuser") {
       const row = await this.store.findSmartworkingRequestById(id);
       if (!row) {
         throw new NotFoundException();
@@ -81,7 +84,10 @@ export class SmartworkingController {
           throw new ForbiddenException();
         }
       } else {
-        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, row.userId))) {
+        const canManage =
+          (await this.store.isManagerOf(auth.userId, row.userId)) ||
+          (await this.store.isUserLeadOfTeamContaining(auth.userId, row.userId));
+        if (!apprW || !canManage) {
           throw new ForbiddenException();
         }
       }
@@ -91,10 +97,10 @@ export class SmartworkingController {
 
   @Get("pending")
   @UseGuards(RoleGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.approvals:read")
   async pending(@CurrentAuth() auth: AuthContext): Promise<unknown> {
-    if (auth.role === "admin") {
+    if (auth.role === "superuser") {
       return { items: await this.store.listAllPendingSmartworkingRequests() };
     }
     return { items: await this.store.listPendingSmartworkingForManager(auth.userId) };
@@ -102,7 +108,7 @@ export class SmartworkingController {
 
   @Patch(":id/approve")
   @UseGuards(RoleGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.approvals:write")
   async approve(@CurrentAuth() auth: { userId: string }, @Param("id") id: string): Promise<unknown> {
     return this.store.decideSmartworkingRequest(id, auth.userId, true);
@@ -110,7 +116,7 @@ export class SmartworkingController {
 
   @Patch(":id/reject")
   @UseGuards(RoleGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(
     @CurrentAuth() auth: { userId: string },

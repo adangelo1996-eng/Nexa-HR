@@ -1,6 +1,6 @@
 "use client";
 
-export type UserRole = "admin" | "team_lead" | "employee";
+export type UserRole = "superuser" | "user";
 
 export interface SessionUser {
   id: string;
@@ -29,9 +29,23 @@ export interface SessionUser {
   canNexaAdmin?: boolean;
   /** Export mensile e modifica timbrature altrui (admin / centro HR) */
   canManageTeamAttendance?: boolean;
+  /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
+  isTeamResponsible?: boolean;
+  workTeamIdsWhereLead?: string[];
 }
 
-/** Accesso UI admin Nexa: flag dal backend o fallback ruolo legacy `admin`. */
+function normalizeStoredRole(role: unknown): UserRole {
+  const r = String(role ?? "user");
+  if (r === "superuser" || r === "user") {
+    return r;
+  }
+  if (r === "admin") {
+    return "superuser";
+  }
+  return "user";
+}
+
+/** Accesso UI admin Nexa: flag dal backend o fallback ruolo `superuser`. */
 export function sessionCanNexaAdmin(
   u: Pick<SessionUser, "role" | "canNexaAdmin"> | null | undefined
 ): boolean {
@@ -44,7 +58,23 @@ export function sessionCanNexaAdmin(
   if (u.canNexaAdmin === false) {
     return false;
   }
-  return u.role === "admin";
+  return normalizeStoredRole(u.role) === "superuser";
+}
+
+/** Vista HR (workflow, ecc.): superuser, console admin, o responsabile team. */
+export function sessionCanSeeApprovalsAndHrExtras(
+  u: Pick<SessionUser, "role" | "canNexaAdmin" | "isTeamResponsible"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return true;
+  }
+  if (u.canNexaAdmin) {
+    return true;
+  }
+  return u.isTeamResponsible === true;
 }
 
 /** Solo 401 / token: non sloggare su 403 permessi o errori di rete. */
@@ -75,7 +105,11 @@ export function getSessionUser(): SessionUser | null {
     return null;
   }
   try {
-    return JSON.parse(raw) as SessionUser;
+    const parsed = JSON.parse(raw) as SessionUser;
+    return {
+      ...parsed,
+      role: normalizeStoredRole(parsed.role)
+    };
   } catch {
     return null;
   }

@@ -25,7 +25,7 @@ class SicknessDto {
   @IsDateString()
   toDate!: string;
 
-  /** Solo `admin`: comunicazione per un altro utente. */
+  /** Solo `superuser`: comunicazione per un altro utente. */
   @IsOptional()
   @IsString()
   userId?: string;
@@ -45,7 +45,7 @@ export class SicknessController {
     @Param("id") id: string,
     @Body() dto: SicknessDto
   ): Promise<unknown> {
-    if (auth.role !== "admin") {
+    if (auth.role !== "superuser") {
       const sickW = await this.permissions.userHasAll(auth.userId, ["nexa.sickness:write"]);
       const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
       const ev = await this.store.getSickness(id);
@@ -54,7 +54,10 @@ export class SicknessController {
           throw new ForbiddenException("Permessi insufficienti per modificare le proprie comunicazioni");
         }
       } else {
-        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, ev.userId))) {
+        const canManage =
+          (await this.store.isManagerOf(auth.userId, ev.userId)) ||
+          (await this.store.isUserLeadOfTeamContaining(auth.userId, ev.userId));
+        if (!apprW || !canManage) {
           throw new ForbiddenException(
             "Puoi modificare solo le richieste dei dipendenti di cui sei responsabile (e solo in attesa)"
           );
@@ -66,7 +69,7 @@ export class SicknessController {
 
   @Delete("events/:id")
   async removeEvent(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
-    if (auth.role !== "admin") {
+    if (auth.role !== "superuser") {
       const sickW = await this.permissions.userHasAll(auth.userId, ["nexa.sickness:write"]);
       const apprW = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:write"]);
       const ev = await this.store.getSickness(id);
@@ -75,7 +78,10 @@ export class SicknessController {
           throw new ForbiddenException("Permessi insufficienti");
         }
       } else {
-        if (!apprW || auth.role !== "team_lead" || !(await this.store.isManagerOf(auth.userId, ev.userId))) {
+        const canManage =
+          (await this.store.isManagerOf(auth.userId, ev.userId)) ||
+          (await this.store.isUserLeadOfTeamContaining(auth.userId, ev.userId));
+        if (!apprW || !canManage) {
           throw new ForbiddenException("Operazione non consentita");
         }
       }
@@ -99,8 +105,8 @@ export class SicknessController {
     let userId = auth.userId;
     const proxy = dto.userId?.trim();
     if (proxy && proxy !== auth.userId) {
-      if (auth.role !== "admin") {
-        throw new ForbiddenException("Solo un amministratore può registrare malattia per altri utenti.");
+      if (auth.role !== "superuser") {
+        throw new ForbiddenException("Solo un superuser può registrare malattia per altri utenti.");
       }
       userId = proxy;
     }
@@ -114,30 +120,34 @@ export class SicknessController {
 
   @Patch("approve/:id")
   @UseGuards(RoleGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.approvals:write")
   async approve(@Param("id") id: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
-    if (
-      auth.role !== "admin" &&
-      !(await this.store.isManagerOf(auth.userId, sickness.userId))
-    ) {
-      throw new ForbiddenException("Manager non autorizzato per questo dipendente");
+    if (auth.role !== "superuser") {
+      const ok =
+        (await this.store.isManagerOf(auth.userId, sickness.userId)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, sickness.userId));
+      if (!ok) {
+        throw new ForbiddenException("Manager non autorizzato per questo dipendente");
+      }
     }
     return this.store.approveSickness(id, auth.userId);
   }
 
   @Patch("reject/:id")
   @UseGuards(RoleGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(@Param("id") id: string, @CurrentAuth() auth: AuthContext): Promise<unknown> {
     const sickness = await this.store.getSickness(id);
-    if (
-      auth.role !== "admin" &&
-      !(await this.store.isManagerOf(auth.userId, sickness.userId))
-    ) {
-      throw new ForbiddenException("Manager non autorizzato per questo dipendente");
+    if (auth.role !== "superuser") {
+      const ok =
+        (await this.store.isManagerOf(auth.userId, sickness.userId)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, sickness.userId));
+      if (!ok) {
+        throw new ForbiddenException("Manager non autorizzato per questo dipendente");
+      }
     }
     return this.store.rejectSickness(id, auth.userId);
   }

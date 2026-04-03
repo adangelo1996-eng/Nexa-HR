@@ -8,8 +8,10 @@ import {
   cancelPendingLeavePlan,
   cancelPendingSicknessEvent,
   cancelSmartworkingRequest,
+  cancelTravelRequest,
   createLeavePlan,
   createSmartworkingRequest,
+  createTravelRequest,
   fetchAdminCostCenters,
   fetchAdminWorkTeams,
   fetchCurrentUser,
@@ -22,12 +24,19 @@ import {
   updateLeavePlan,
   updateSicknessEvent,
   updateSmartworkingRequest,
+  updateTravelRequest,
   type CalendarEventDto,
   type LeaveBalance,
   type User
 } from "@/lib/api";
 import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
-import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError, type SessionUser } from "@/lib/auth-session";
+import {
+  clearSession,
+  getToken,
+  sessionCanSeeApprovalsAndHrExtras,
+  shouldClearSessionOnUnauthorizedApiError,
+  type SessionUser
+} from "@/lib/auth-session";
 
 type RowUser = { id: string; fullName: string };
 
@@ -59,6 +68,8 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
       return "border-rose-500/50 bg-rose-500/15 text-rose-900 dark:text-rose-100";
     case "sickness":
       return "border-orange-500/50 bg-orange-500/15 text-orange-900 dark:text-orange-100";
+    case "travel":
+      return "border-cyan-500/50 bg-cyan-500/15 text-cyan-950 dark:text-cyan-100";
     default:
       return "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]";
   }
@@ -72,13 +83,21 @@ function eventStyle(ev: CalendarEventDto): string {
   const st = String(ev.meta?.status ?? "");
   if (
     st === "rejected" &&
-    (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
+    (ev.kind === "leave" ||
+      ev.kind === "rol" ||
+      ev.kind === "smartworking" ||
+      ev.kind === "sickness" ||
+      ev.kind === "travel")
   ) {
     return "border-red-600/70 bg-red-500/15 text-red-950 dark:border-red-500/55 dark:bg-red-950/40 dark:text-red-100";
   }
   if (
     isCalendarPending(ev) &&
-    (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
+    (ev.kind === "leave" ||
+      ev.kind === "rol" ||
+      ev.kind === "smartworking" ||
+      ev.kind === "sickness" ||
+      ev.kind === "travel")
   ) {
     return "border-yellow-500/55 bg-yellow-500/15 text-yellow-950 dark:text-yellow-100";
   }
@@ -158,7 +177,79 @@ function deriveSwFormState(events: CalendarEventDto[], userId: string, swPending
   };
 }
 
-type ModalStep = "menu" | "smartworking" | "leave" | "sickness";
+type TrDayState = { on: boolean; requestId?: string; status?: string };
+
+function deriveTravelDayState(events: CalendarEventDto[]): TrDayState {
+  const trs = events.filter((e) => e.kind === "travel");
+  if (trs.length === 0) return { on: false };
+  const fromReqs = trs.filter(
+    (e) => typeof e.meta?.travelRequestId === "string" && String(e.meta.travelRequestId).length > 0
+  );
+  const activeReq = fromReqs.find((e) => String(e.meta?.status ?? "") !== "rejected");
+  if (activeReq) {
+    const st = String(activeReq.meta?.status ?? "");
+    return {
+      on: st === "pending" || st === "approved",
+      requestId: String(activeReq.meta?.travelRequestId),
+      status: st
+    };
+  }
+  if (fromReqs.length > 0 && fromReqs.every((e) => String(e.meta?.status ?? "") === "rejected")) {
+    return { on: false };
+  }
+  return { on: true, status: "approved" };
+}
+
+function findPendingTravelRequestIdForUser(events: CalendarEventDto[], userId: string): string | undefined {
+  for (const e of events) {
+    if (e.kind !== "travel" || e.userId !== userId) continue;
+    if (String(e.meta?.status) === "pending" && typeof e.meta?.travelRequestId === "string") {
+      return e.meta.travelRequestId;
+    }
+  }
+  return undefined;
+}
+
+function patchTravelRequestInCalendar(
+  events: CalendarEventDto[],
+  userId: string,
+  requestId: string,
+  newDay: string,
+  note: string | null
+): CalendarEventDto[] {
+  const d = newDay.slice(0, 10);
+  const noteTrim = note?.trim() || null;
+  return events.map((ev) => {
+    if (ev.kind !== "travel" || ev.userId !== userId) return ev;
+    if (String(ev.meta?.travelRequestId) !== requestId) return ev;
+    const meta: Record<string, unknown> = { ...ev.meta, travelRequestId: requestId, status: "pending" };
+    if (noteTrim) meta.note = noteTrim;
+    else delete meta.note;
+    return { ...ev, start: d, end: d, meta };
+  });
+}
+
+function deriveTravelFormState(events: CalendarEventDto[], userId: string, trPendingDay: string): TrDayState {
+  const dayIso = trPendingDay.slice(0, 10);
+  const atDay = deriveTravelDayState(eventsForCell(events, userId, dayIso));
+  const rid = findPendingTravelRequestIdForUser(events, userId);
+  if (!rid) return atDay;
+  const pendingEv = events.find(
+    (e) =>
+      e.kind === "travel" &&
+      e.userId === userId &&
+      String(e.meta?.travelRequestId) === rid &&
+      String(e.meta?.status) === "pending"
+  );
+  if (!pendingEv) return atDay;
+  return {
+    on: true,
+    requestId: rid,
+    status: "pending"
+  };
+}
+
+type ModalStep = "menu" | "smartworking" | "leave" | "sickness" | "travel";
 
 function eventTouchesDay(ev: CalendarEventDto, dayIso: string): boolean {
   const d = dayIso.slice(0, 10);
@@ -186,19 +277,25 @@ function holidayTitleForDay(events: CalendarEventDto[], dayIso: string): string 
 }
 
 function filterManagerRows(me: SessionUser, allUsers: User[]): RowUser[] {
-  if (me.role === "admin") {
+  if (me.role === "superuser") {
     return allUsers.map((u) => ({ id: u.id, fullName: u.fullName })).sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
   }
+  const leadTeams = new Set(me.workTeamIdsWhereLead ?? []);
   return allUsers
-    .filter((u) => u.id === me.id || u.managerId === me.id)
+    .filter((u) => {
+      if (u.id === me.id) return true;
+      if (u.managerId === me.id) return true;
+      const tid = u.teamId?.trim();
+      return Boolean(tid && leadTeams.has(tid));
+    })
     .map((u) => ({ id: u.id, fullName: u.fullName }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
 }
 
 function canShowCalendarEventActions(me: SessionUser | null, rowUserId: string): boolean {
   if (!me) return false;
-  if (me.role === "employee") return me.id === rowUserId;
-  return me.id === rowUserId || me.role === "admin" || me.role === "team_lead";
+  if (!sessionCanSeeApprovalsAndHrExtras(me)) return me.id === rowUserId;
+  return me.id === rowUserId || me.role === "superuser" || me.isTeamResponsible === true;
 }
 
 function isPendingWithMutableRequest(ev: CalendarEventDto): boolean {
@@ -206,6 +303,7 @@ function isPendingWithMutableRequest(ev: CalendarEventDto): boolean {
   if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
   if (ev.kind === "sickness") return typeof ev.meta?.sicknessId === "string";
   if (ev.kind === "smartworking") return typeof ev.meta?.swRequestId === "string";
+  if (ev.kind === "travel") return typeof ev.meta?.travelRequestId === "string";
   return false;
 }
 
@@ -216,6 +314,7 @@ function canRemoveCalendarRequest(ev: CalendarEventDto): boolean {
   if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
   if (ev.kind === "sickness") return typeof ev.meta?.sicknessId === "string";
   if (ev.kind === "smartworking") return typeof ev.meta?.swRequestId === "string";
+  if (ev.kind === "travel") return typeof ev.meta?.travelRequestId === "string";
   return false;
 }
 
@@ -231,6 +330,12 @@ function hasActiveNonRejectedSickness(cellEvents: CalendarEventDto[]): boolean {
 
 function hasActiveNonRejectedSmartworking(cellEvents: CalendarEventDto[]): boolean {
   const st = deriveSwDayState(cellEvents);
+  if (String(st.status ?? "") === "rejected") return false;
+  return Boolean(st.on || st.status === "pending");
+}
+
+function hasActiveNonRejectedTravel(cellEvents: CalendarEventDto[]): boolean {
+  const st = deriveTravelDayState(cellEvents);
   if (String(st.status ?? "") === "rejected") return false;
   return Boolean(st.on || st.status === "pending");
 }
@@ -275,6 +380,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
   const [editingSicknessId, setEditingSicknessId] = useState<string | null>(null);
   const [swPendingDay, setSwPendingDay] = useState("");
+  const [travelNote, setTravelNote] = useState("");
+  const [travelPendingDay, setTravelPendingDay] = useState("");
+  const [travelOptimistic, setTravelOptimistic] = useState<boolean | null>(null);
 
   const load = useCallback(async (opts?: { silent?: boolean }): Promise<void> => {
     const t = getToken();
@@ -295,7 +403,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         fetchLeaveBalance(t, year).catch(() => null as LeaveBalance | null)
       ]);
 
-      if (current.role === "employee") {
+      if (!sessionCanSeeApprovalsAndHrExtras(current)) {
         const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
           fetchMeTeamWorkCalendar(t, from, to),
           analyticsP
@@ -314,7 +422,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         let layout: AdminTableRow[] | null = null;
         if (fid) {
           rows = rows.filter((r) => r.id === fid);
-        } else if (current.role === "admin") {
+        } else if (current.role === "superuser") {
           const visibleSet = new Set(rows.map((r) => r.id));
           const ccs = await fetchAdminCostCenters(t);
           const teamsNested = await Promise.all(
@@ -441,14 +549,19 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const modalHeaderDayIso = useMemo(() => {
     if (!modal) return "";
     if (modalStep === "smartworking") return (swPendingDay || modal.day).slice(0, 10);
+    if (modalStep === "travel") return (travelPendingDay || modal.day).slice(0, 10);
     return modal.day.slice(0, 10);
-  }, [modal, modalStep, swPendingDay]);
+  }, [modal, modalStep, swPendingDay, travelPendingDay]);
 
   const openModal = (day: string, row: RowUser): void => {
     setModal({ day, row });
     setModalStep("menu");
     setSwOptimistic(null);
+    setTravelOptimistic(null);
     setSwPendingDay(day.slice(0, 10));
+    setTravelPendingDay(day.slice(0, 10));
+    setTravelNote("");
+    setTravelOptimistic(null);
     setLeaveStart(day);
     setLeaveEnd(day);
     setLeaveKind("annual");
@@ -465,6 +578,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setModalStep("menu");
     setSwOptimistic(null);
     setSwPendingDay("");
+    setTravelPendingDay("");
+    setTravelOptimistic(null);
+    setTravelNote("");
     setSubmitting(null);
     setEditingLeaveId(null);
     setEditingSicknessId(null);
@@ -498,6 +614,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
       setEditingSicknessId(null);
       setSwPendingDay(ev.start.slice(0, 10));
       setSwNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
+      return;
+    }
+    if (ev.kind === "travel") {
+      setModalStep("travel");
+      setEditingLeaveId(null);
+      setEditingSicknessId(null);
+      setTravelPendingDay(ev.start.slice(0, 10));
+      setTravelNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
     }
   };
 
@@ -520,6 +644,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
         await cancelPendingSicknessEvent(t, ev.meta.sicknessId);
       } else if (ev.kind === "smartworking" && typeof ev.meta?.swRequestId === "string") {
         await cancelSmartworkingRequest(t, ev.meta.swRequestId);
+      } else if (ev.kind === "travel" && typeof ev.meta?.travelRequestId === "string") {
+        await cancelTravelRequest(t, ev.meta.travelRequestId);
       } else {
         return;
       }
@@ -549,7 +675,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
   const isOwnRow = Boolean(modal && me && modal.row.id === me.id);
   const canHrEditOtherCalendarRow = Boolean(
-    modal && me && modal.row.id !== me.id && (me.role === "admin" || me.role === "team_lead")
+    modal && me && modal.row.id !== me.id && sessionCanSeeApprovalsAndHrExtras(me)
   );
   const cellEventsModal = modal ? eventsForCell(events, modal.row.id, modal.day) : [];
   const menuDayHasLeave = hasActiveNonRejectedLeave(cellEventsModal);
@@ -575,6 +701,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
       typeof e.meta?.sicknessId === "string"
   );
   const pendingSwInModal = serverSwCell.status === "pending" && Boolean(serverSwCell.requestId);
+  const menuDayHasTravel = hasActiveNonRejectedTravel(cellEventsModal);
+  const serverTravelCell = useMemo(() => deriveTravelDayState(cellEventsModal), [cellEventsModal]);
+  const serverTravelForm = useMemo(
+    () => (modal ? deriveTravelFormState(events, modal.row.id, travelPendingDay || modal.day) : { on: false }),
+    [events, modal, travelPendingDay]
+  );
+  const trDisplayOn = travelOptimistic !== null ? travelOptimistic : serverTravelForm.on;
+  const pendingTravelInModal = serverTravelCell.status === "pending" && Boolean(serverTravelCell.requestId);
 
   useEffect(() => {
     if (!modal) {
@@ -583,6 +717,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     setSwOptimistic(null);
   }, [modal?.day, modal?.row.id, serverSwForm.on, serverSwForm.requestId, serverSwForm.status]);
+
+  useEffect(() => {
+    if (!modal) {
+      setTravelOptimistic(null);
+      return;
+    }
+    setTravelOptimistic(null);
+  }, [modal?.day, modal?.row.id, serverTravelForm.on, serverTravelForm.requestId, serverTravelForm.status]);
 
   const onSmartworkingSwitch = (next: boolean): void => {
     const t = getToken();
@@ -619,10 +761,45 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
   };
 
+  const onTravelSwitch = (next: boolean): void => {
+    const t = getToken();
+    if (!t || !modal) return;
+    setError(null);
+    if (!isOwnRow && next) {
+      setError("Solo il dipendente può richiedere una nuova trasferta da qui.");
+      return;
+    }
+    if (next) {
+      if (serverTravelForm.on) return;
+      setTravelOptimistic(true);
+      const dayIso = (travelPendingDay || modal.day).slice(0, 10);
+      void createTravelRequest(t, { day: dayIso, note: travelNote.trim() || undefined })
+        .then(() => void load({ silent: true }))
+        .catch((e) => {
+          setTravelOptimistic(null);
+          setError(e instanceof Error ? e.message : "Errore trasferta");
+        });
+      return;
+    }
+    if (serverTravelForm.status === "approved" || (serverTravelForm.on && !serverTravelForm.requestId)) {
+      setError("La trasferta risulta già approvata. Contatta il responsabile per modifiche.");
+      return;
+    }
+    if (serverTravelForm.status === "pending" && serverTravelForm.requestId) {
+      setTravelOptimistic(false);
+      void cancelTravelRequest(t, serverTravelForm.requestId)
+        .then(() => void load({ silent: true }))
+        .catch((e) => {
+          setTravelOptimistic(null);
+          setError(e instanceof Error ? e.message : "Errore annullo trasferta");
+        });
+    }
+  };
+
   const submitLeave = async (): Promise<void> => {
     const t = getToken();
     if (!t || !modal || !me) return;
-    const adminCreatesForOther = me.role === "admin" && !isOwnRow && !editingLeaveId;
+    const adminCreatesForOther = me.role === "superuser" && !isOwnRow && !editingLeaveId;
     if (!isOwnRow && !editingLeaveId && !adminCreatesForOther) {
       setError("Non puoi creare una nuova richiesta ferie per un altro utente da questo riquadro.");
       return;
@@ -656,7 +833,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const submitSick = async (): Promise<void> => {
     const t = getToken();
     if (!t || !modal || !me) return;
-    const adminCreatesForOther = me.role === "admin" && !isOwnRow && !editingSicknessId;
+    const adminCreatesForOther = me.role === "superuser" && !isOwnRow && !editingSicknessId;
     if (!isOwnRow && !editingSicknessId && !adminCreatesForOther) {
       setError("Non puoi creare una nuova comunicazione malattia per un altro utente da qui.");
       return;
@@ -721,6 +898,41 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
   };
 
+  const savePendingTravelEdits = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !modal || serverTravelForm.status !== "pending" || !serverTravelForm.requestId) return;
+    const nextNote = travelNote.trim() || null;
+    const rid = serverTravelForm.requestId;
+    const trEv = events.find(
+      (e) =>
+        e.kind === "travel" &&
+        e.userId === modal.row.id &&
+        String(e.meta?.travelRequestId) === rid &&
+        String(e.meta?.status) === "pending"
+    );
+    const prevDay = trEv?.start.slice(0, 10) ?? (travelPendingDay || modal.day).slice(0, 10);
+    const prevNoteRaw = typeof trEv?.meta?.note === "string" ? trEv.meta.note : "";
+    const prevNote = prevNoteRaw.trim() || null;
+    const nextDay = (travelPendingDay || modal.day).slice(0, 10);
+    if (nextDay === prevDay.slice(0, 10) && nextNote === prevNote) {
+      return;
+    }
+    setError(null);
+    setSubmitting("tr-save");
+    try {
+      await updateTravelRequest(t, rid, {
+        day: nextDay,
+        note: nextNote ?? undefined
+      });
+      setEvents((prev) => patchTravelRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+      await load({ silent: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore aggiornamento trasferta");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
   if (loading && events.length === 0 && !error) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-[var(--prom-muted)]">
@@ -767,7 +979,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          {me && me.role !== "employee" ? (
+          {me && sessionCanSeeApprovalsAndHrExtras(me) ? (
             <label className="flex items-center gap-2 text-xs text-[var(--prom-muted)]">
               <span>Dipendente</span>
               <select
@@ -793,6 +1005,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       <div className="flex flex-wrap gap-3 text-[11px]">
         <span className="rounded border border-blue-500/40 bg-blue-500/10 px-2 py-0.5">Turno</span>
         <span className="rounded border border-violet-500/40 bg-violet-500/10 px-2 py-0.5">Smart working</span>
+        <span className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5">Trasferta</span>
         <span className="rounded border border-yellow-500/45 bg-yellow-500/12 px-2 py-0.5 text-yellow-950 dark:text-yellow-100">
           In attesa approvazione
         </span>
@@ -1002,6 +1215,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 <AnalyticsStatRow label="ROL (giorni)" value={statsMese.giorniRol} />
                 <AnalyticsStatRow label="Malattia (giorni)" value={statsMese.giorniMalattia} />
                 <AnalyticsStatRow label="Smart working (giorni)" value={statsMese.giorniSmartWorking} />
+                <AnalyticsStatRow label="Trasferte (giorni)" value={statsMese.giorniTrasferta} />
                 <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsMese.giorniFestivitaAziendali} />
                 <AnalyticsStatRow label="Turni (giorni con turno)" value={statsMese.giorniConTurno} />
                 <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsMese.richiesteInAttesa} />
@@ -1016,6 +1230,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 <AnalyticsStatRow label="ROL (giorni)" value={statsYtd.giorniRol} />
                 <AnalyticsStatRow label="Malattia (giorni)" value={statsYtd.giorniMalattia} />
                 <AnalyticsStatRow label="Smart working (giorni)" value={statsYtd.giorniSmartWorking} />
+                <AnalyticsStatRow label="Trasferte (giorni)" value={statsYtd.giorniTrasferta} />
                 <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsYtd.giorniFestivitaAziendali} />
                 <AnalyticsStatRow label="Turni (giorni con turno)" value={statsYtd.giorniConTurno} />
                 <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsYtd.richiesteInAttesa} />
@@ -1125,6 +1340,19 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         Smart working
                       </button>
                     ) : null}
+                    {!menuDayHasTravel ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTravelPendingDay(modal.day.slice(0, 10));
+                          setTravelNote("");
+                          setModalStep("travel");
+                        }}
+                        className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                      >
+                        Trasferta
+                      </button>
+                    ) : null}
                     {!menuDayHasLeave ? (
                       <button
                         type="button"
@@ -1180,7 +1408,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         Comunicazione malattia
                       </button>
                     ) : null}
-                    {menuDayHasSw && menuDayHasLeave && menuDayHasSickness ? (
+                    {menuDayHasSw && menuDayHasTravel && menuDayHasLeave && menuDayHasSickness ? (
                       <p className="text-[11px] text-[var(--prom-muted)]">
                         Per questo giorno risultano già richieste attive. Usa matita o X sulle etichette in
                         griglia per modificare o annullare quelle in attesa.
@@ -1249,13 +1477,37 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         Modifica smart working in attesa
                       </button>
                     ) : null}
-                    {!pendingLeaveInModal && !pendingSicknessInModal && !pendingSwInModal ? (
+                    {pendingTravelInModal ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ev = cellEventsModal.find(
+                            (e) =>
+                              e.kind === "travel" &&
+                              String(e.meta?.status) === "pending" &&
+                              typeof e.meta?.travelRequestId === "string"
+                          );
+                          if (ev) {
+                            setTravelPendingDay(ev.start.slice(0, 10));
+                            setTravelNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
+                          } else {
+                            setTravelPendingDay(modal.day.slice(0, 10));
+                            setTravelNote("");
+                          }
+                          setModalStep("travel");
+                        }}
+                        className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                      >
+                        Modifica trasferta in attesa
+                      </button>
+                    ) : null}
+                    {!pendingLeaveInModal && !pendingSicknessInModal && !pendingSwInModal && !pendingTravelInModal ? (
                       <p className="text-xs text-[var(--prom-muted)]">
                         Nessuna richiesta in attesa per questa data (solo le richieste approvate non sono
                         modificabili da qui).
                       </p>
                     ) : null}
-                    {me?.role === "admin" ? (
+                    {me?.role === "superuser" ? (
                       <div className="mt-3 grid gap-2 border-t border-[var(--prom-line)] pt-3">
                         <p className="text-[11px] text-[var(--prom-muted)]">
                           Admin: registra nuove assenze per {modal.row.fullName}.
@@ -1296,7 +1548,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
                       {editingLeaveId
                         ? "Modifica richiesta (in attesa)"
-                        : !isOwnRow && me?.role === "admin"
+                        : !isOwnRow && me?.role === "superuser"
                           ? `Richiesta ferie / ROL per ${modal.row.fullName}`
                           : "Richiesta ferie / ROL"}
                     </p>
@@ -1419,12 +1671,75 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   </div>
                 ) : null}
 
+                {modalStep === "travel" ? (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-[var(--prom-text)]">Trasferta</p>
+                    <label className="block text-[11px] text-[var(--prom-muted)]">
+                      Giorno
+                      <input
+                        type="date"
+                        value={(travelPendingDay || modal.day).slice(0, 10)}
+                        onChange={(e) => setTravelPendingDay(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                      />
+                    </label>
+                    {isOwnRow ? (
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
+                        <span className="text-[11px] text-[var(--prom-text)]">Richiedi trasferta per questo giorno</span>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-checked={trDisplayOn}
+                          checked={trDisplayOn}
+                          onChange={(e) => onTravelSwitch(e.target.checked)}
+                          className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-cyan-600"
+                        />
+                      </label>
+                    ) : (
+                      <p className="text-[11px] text-[var(--prom-muted)]">
+                        Per il dipendente: modifica solo richieste ancora in attesa (giorno e nota).
+                      </p>
+                    )}
+                    {!isOwnRow && serverTravelForm.status === "pending" && serverTravelForm.requestId ? (
+                      <Button type="button" variant="secondary" size="sm" onClick={() => onTravelSwitch(false)}>
+                        Annulla richiesta trasferta in attesa
+                      </Button>
+                    ) : null}
+                    {trDisplayOn && serverTravelForm.status !== "pending" ? (
+                      <p className="text-[10px] text-[var(--prom-muted)]">
+                        Per questa data risulta già una trasferta approvata. Non è possibile inserirne un’altra.
+                      </p>
+                    ) : null}
+                    <label className="block text-[11px] text-[var(--prom-muted)]">
+                      Nota / destinazione (opzionale)
+                      <input
+                        type="text"
+                        value={travelNote}
+                        onChange={(e) => setTravelNote(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                      />
+                    </label>
+                    {serverTravelForm.status === "pending" && serverTravelForm.requestId ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="mt-1"
+                        disabled={submitting !== null}
+                        onClick={() => void savePendingTravelEdits()}
+                      >
+                        {submitting === "tr-save" ? "Salvataggio…" : "Aggiorna giorno / nota (in attesa)"}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {modalStep === "sickness" ? (
                   <div>
                     <p className="mb-2 text-xs font-medium text-[var(--prom-text)]">
                       {editingSicknessId
                         ? "Modifica comunicazione (in attesa)"
-                        : !isOwnRow && me?.role === "admin"
+                        : !isOwnRow && me?.role === "superuser"
                           ? `Comunicazione malattia per ${modal.row.fullName}`
                           : "Comunicazione malattia"}
                     </p>

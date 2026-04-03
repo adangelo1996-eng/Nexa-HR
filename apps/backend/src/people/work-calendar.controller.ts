@@ -5,7 +5,7 @@ import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-pe
 
 @Controller("hr/work-calendar")
 @UseGuards(RoleGuard, NexaPermissionGuard)
-@RequireRole("team_lead")
+@RequireRole("user")
 export class WorkCalendarController {
   constructor(private readonly store: HrDataStore) {}
 
@@ -19,11 +19,10 @@ export class WorkCalendarController {
   ): Promise<{ events: Awaited<ReturnType<HrDataStore["getTeamWorkCalendar"]>> }> {
     const allUsers = await this.store.listUsers();
     let allowedIds: string[];
-    if (auth.role === "admin") {
+    if (auth.role === "superuser") {
       allowedIds = allUsers.map((u) => u.id);
     } else {
-      const team = await this.store.listUsersByManager(auth.userId);
-      allowedIds = [auth.userId, ...team.map((u) => u.id)];
+      allowedIds = [...(await this.store.listManagedMemberIdsForApprover(auth.userId))];
     }
     const allowed = new Set(allowedIds);
     let ids = userIdsRaw

@@ -29,8 +29,16 @@ export class OrgController {
     @Query("costCenterId") costCenterId?: string,
     @Query("role") role?: string
   ): Promise<unknown> {
-    const r =
-      role === "admin" || role === "team_lead" || role === "employee" ? role : undefined;
+    let r: string | undefined;
+    if (role === "superuser" || role === "user") {
+      r = role;
+    } else if (role === "admin") {
+      r = "superuser";
+    } else if (role === "employee" || role === "team_lead") {
+      r = "user";
+    } else {
+      r = undefined;
+    }
     return this.store.getOrgChart({
       costCenterId: costCenterId?.trim() || undefined,
       role: r
@@ -52,7 +60,7 @@ export class OrgController {
 
   @Post("delegation")
   @UseGuards(RoleGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.org:write")
   async delegation(@Body() dto: DelegationDto): Promise<unknown> {
     return this.store.addDelegation(dto.managerId, dto.delegateManagerId, dto.from, dto.to);

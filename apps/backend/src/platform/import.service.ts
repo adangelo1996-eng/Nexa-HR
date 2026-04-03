@@ -302,7 +302,9 @@ export class ImportService {
         { header: "Data assunzione YYYY-MM-DD (opz.)", key: "hireDate", width: 28 }
       ];
       sheet.addRow({});
-      help.addRow(["Ruolo piattaforma: admin | employee (team_lead solo dopo nomina team da UI CDC)"]);
+      help.addRow([
+        "Ruolo piattaforma: superuser | user (alias import: admin→superuser, employee→user; responsabile team solo da UI CDC)"
+      ]);
       help.addRow(["Email: se vuota viene generata automaticamente (nome.cognome@dominio)."]);
       help.addRow(["Manager: deve essere un utente già presente; colonna opzionale."]);
     } else if (category === "cost_centers") {
@@ -410,12 +412,20 @@ export class ImportService {
           row: baseRow,
           field: "Ruolo piattaforma",
           message:
-            "team_lead non è importabile: usare admin o employee e nominare il responsabile da Gestione centri di costo → Team"
+            "team_lead non è importabile: usare superuser o user e nominare il responsabile da Gestione centri di costo → Team"
         });
-      } else if (roleRaw === "admin" || roleRaw === "employee") {
+      } else if (roleRaw === "superuser" || roleRaw === "user") {
         role = roleRaw;
+      } else if (roleRaw === "admin") {
+        role = "superuser";
+      } else if (roleRaw === "employee") {
+        role = "user";
       } else {
-        errors.push({ row: baseRow, field: "Ruolo piattaforma", message: "Valore non valido (admin | employee)" });
+        errors.push({
+          row: baseRow,
+          field: "Ruolo piattaforma",
+          message: "Valore non valido (superuser | user; alias: admin, employee)"
+        });
       }
       if (!roleId) {
         errors.push({ row: baseRow, field: "ID ruolo organizzativo", message: "Obbligatorio" });

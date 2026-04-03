@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useState } from "react";
+import type { UserRole } from "@/lib/auth-session";
 
 interface Payslip {
   id: string;
@@ -11,7 +12,7 @@ interface Payslip {
 }
 
 interface Props {
-  role: "admin" | "team_lead" | "employee";
+  role: UserRole;
   currentUserId: string;
   currentUserName: string;
   payslips: Payslip[];

@@ -17,7 +17,7 @@ describe("HrDataStore", () => {
     const created = await store.createUser({
       firstName: "Paolo",
       lastName: "Esposito",
-      role: "employee",
+      role: "user",
       companyId: "comp-1",
       roleId: "r3",
       costCenterId: "cc-2",
@@ -38,7 +38,7 @@ describe("HrDataStore", () => {
     const user = await store.createUser({
       firstName: "Mario",
       lastName: "Rossi",
-      role: "employee",
+      role: "user",
       companyId: "comp-1",
       roleId: "r3",
       costCenterId: "cc-2",
@@ -68,7 +68,7 @@ describe("HrDataStore", () => {
     const user = await store.createUser({
       firstName: "Luca",
       lastName: "Bianchi",
-      role: "employee",
+      role: "user",
       companyId: "comp-1",
       roleId: "r3",
       costCenterId: "cc-2",
@@ -99,7 +99,7 @@ describe("HrDataStore", () => {
     const user = await store.createUser({
       firstName: "Giulia",
       lastName: "Verdi",
-      role: "employee",
+      role: "user",
       companyId: "comp-1",
       roleId: "r3",
       costCenterId: "cc-2",

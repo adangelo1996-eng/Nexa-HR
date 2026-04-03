@@ -35,6 +35,7 @@ import {
 import {
   getToken,
   getSessionUser,
+  sessionCanSeeApprovalsAndHrExtras,
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
@@ -142,7 +143,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       const me = await fetchCurrentUser(t).catch(() => getSessionUser() as SessionUser);
       const u = me ?? getSessionUser();
       setUser(u);
-      if (u.role === "employee") {
+      if (!sessionCanSeeApprovalsAndHrExtras(u)) {
         router.replace("/");
         return;
       }
@@ -263,7 +264,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   if (loading) {
     return <p className="text-sm text-[var(--prom-muted)]">Caricamento budget…</p>;
   }
-  if (!user || user.role === "employee") {
+  if (!user || !sessionCanSeeApprovalsAndHrExtras(user)) {
     return null;
   }
 

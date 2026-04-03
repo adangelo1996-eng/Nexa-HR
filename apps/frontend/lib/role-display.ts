@@ -3,7 +3,9 @@ import type { Role, User } from "./api";
 /** Etichette per slug noti (catalogo o ruolo piattaforma). */
 const KNOWN_SLUG_LABELS: Record<string, string> = {
   employee: "Dipendente",
+  user: "Utente piattaforma",
   admin: "Amministratore",
+  superuser: "Superuser",
   team_lead: "Responsabile team",
   manager_controllo_gestione: "Responsabile team"
 };

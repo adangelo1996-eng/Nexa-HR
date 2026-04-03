@@ -31,6 +31,7 @@ import {
   clearSession,
   getSessionUser,
   sessionCanNexaAdmin,
+  sessionCanSeeApprovalsAndHrExtras,
   type SessionUser
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
@@ -106,8 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, []);
 
   const isAdminUi = sessionCanNexaAdmin(user ?? undefined);
-  const showHrExtras =
-    user && user.role !== "employee" && !(employeeView && isAdminUi);
+  const showHrExtras = Boolean(user && sessionCanSeeApprovalsAndHrExtras(user) && !(employeeView && isAdminUi));
 
   const filteredSearch = useMemo(() => {
     const q = searchQ.trim().toLowerCase();

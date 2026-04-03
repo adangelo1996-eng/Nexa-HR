@@ -11,7 +11,7 @@ import {
   rejectApproval,
   type ApprovalItem
 } from "@/lib/api";
-import { clearSession, getToken, type SessionUser } from "@/lib/auth-session";
+import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
 
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
 
@@ -37,7 +37,7 @@ export default function WorkflowPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const me = await fetchCurrentUser(tokenValue);
-        if (me.role === "employee") {
+        if (!sessionCanSeeApprovalsAndHrExtras(me)) {
           router.replace("/");
           return;
         }

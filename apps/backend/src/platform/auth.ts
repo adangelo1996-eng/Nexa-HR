@@ -11,7 +11,7 @@ import {
 import { verify } from "jsonwebtoken";
 import type { Request } from "express";
 
-export type AuthRole = "admin" | "team_lead" | "employee";
+export type AuthRole = "superuser" | "user";
 
 export interface AuthContext {
   userId: string;
@@ -28,10 +28,18 @@ interface TokenPayload {
   tenantId?: string;
 }
 
-const VALID_ROLES = ["admin", "team_lead", "employee"] as const;
-
-function isValidRole(role: string): role is AuthRole {
-  return VALID_ROLES.includes(role as AuthRole);
+/** Accetta JWT ancora con ruoli legacy fino a scadenza / re-login. */
+function normalizeRoleFromToken(role: string): AuthRole | null {
+  if (role === "superuser" || role === "user") {
+    return role;
+  }
+  if (role === "admin") {
+    return "superuser";
+  }
+  if (role === "employee" || role === "team_lead") {
+    return "user";
+  }
+  return null;
 }
 
 function fromLegacyHeaders(request: Request): AuthContext | undefined {
@@ -46,10 +54,11 @@ function fromLegacyHeaders(request: Request): AuthContext | undefined {
   if (typeof userId !== "string" || typeof role !== "string") {
     return undefined;
   }
-  if (!isValidRole(role)) {
+  const norm = normalizeRoleFromToken(role);
+  if (!norm) {
     throw new BadRequestException("Ruolo non valido");
   }
-  return { userId, role };
+  return { userId, role: norm };
 }
 
 function fromBearerToken(request: Request): AuthContext | undefined {
@@ -65,10 +74,14 @@ function fromBearerToken(request: Request): AuthContext | undefined {
   } catch {
     throw new UnauthorizedException("Token non valido o scaduto");
   }
-  if (!payload?.sub || typeof payload.sub !== "string" || !payload.role || !isValidRole(payload.role)) {
+  if (!payload?.sub || typeof payload.sub !== "string" || !payload.role) {
     throw new UnauthorizedException("Token non valido");
   }
-  return { userId: payload.sub, role: payload.role, tenantId: payload.tenantId };
+  const norm = normalizeRoleFromToken(payload.role);
+  if (!norm) {
+    throw new UnauthorizedException("Token non valido");
+  }
+  return { userId: payload.sub, role: norm, tenantId: payload.tenantId };
 }
 
 export function getAuthContext(request: Request): AuthContext {
@@ -101,9 +114,15 @@ export class RoleGuard implements CanActivate {
     }
     const request = context.switchToHttp().getRequest<Request>();
     const auth = getAuthContext(request);
-    if (auth.role !== requiredRole && auth.role !== "admin") {
+    if (auth.role === "superuser") {
+      return true;
+    }
+    if (requiredRole === "user") {
+      if (auth.role === "user") {
+        return true;
+      }
       throw new ForbiddenException("Permessi insufficienti");
     }
-    return true;
+    throw new ForbiddenException("Permessi insufficienti");
   }
 }

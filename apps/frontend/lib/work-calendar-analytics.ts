@@ -5,6 +5,7 @@ export type WorkCalendarUserStats = {
   giorniRol: number;
   giorniMalattia: number;
   giorniSmartWorking: number;
+  giorniTrasferta: number;
   giorniFestivitaAziendali: number;
   giorniConTurno: number;
   richiesteInAttesa: number;
@@ -62,6 +63,7 @@ export function aggregateWorkCalendarStats(
   const rol = new Set<string>();
   const mal = new Set<string>();
   const sw = new Set<string>();
+  const tr = new Set<string>();
   const fest = new Set<string>();
   const turni = new Set<string>();
   let richiesteInAttesa = 0;
@@ -76,7 +78,11 @@ export function aggregateWorkCalendarStats(
 
     if (
       isPendingApproval(ev) &&
-      (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
+      (ev.kind === "leave" ||
+        ev.kind === "rol" ||
+        ev.kind === "smartworking" ||
+        ev.kind === "sickness" ||
+        ev.kind === "travel")
     ) {
       richiesteInAttesa += 1;
     }
@@ -94,6 +100,9 @@ export function aggregateWorkCalendarStats(
       case "smartworking":
         for (const d of daysInWindow(ev.start, ev.end, rangeFrom, rangeTo)) sw.add(d);
         break;
+      case "travel":
+        for (const d of daysInWindow(ev.start, ev.end, rangeFrom, rangeTo)) tr.add(d);
+        break;
       case "shift":
         for (const d of daysInWindow(ev.start, ev.end, rangeFrom, rangeTo)) turni.add(d);
         break;
@@ -107,6 +116,7 @@ export function aggregateWorkCalendarStats(
     giorniRol: rol.size,
     giorniMalattia: mal.size,
     giorniSmartWorking: sw.size,
+    giorniTrasferta: tr.size,
     giorniFestivitaAziendali: fest.size,
     giorniConTurno: turni.size,
     richiesteInAttesa

@@ -502,7 +502,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
       {selected ? (
         <GlassCard
           title="Team di lavoro"
-          description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri; un dipendente può stare in un solo team come membro (compare disabilitato negli altri). Un responsabile può essere nominato su più team. Il responsabile ottiene il ruolo piattaforma team_lead e dirige gli altri membri in approvazione."
+          description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri; un dipendente può stare in un solo team come membro (compare disabilitato negli altri). Un responsabile può essere nominato su più team (flag su work_teams, non un ruolo piattaforma); dirige gli altri membri nelle approvazioni."
         >
           <div className="flex flex-wrap items-end gap-2 text-xs">
             <label className="flex min-w-[200px] flex-1 flex-col gap-1">

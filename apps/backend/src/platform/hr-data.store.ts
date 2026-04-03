@@ -27,6 +27,7 @@ import type {
   TimeEntry,
   User,
   UserNotification,
+  WorkMode,
   WorkdaySummary,
   Role,
   CostCenter,
@@ -41,7 +42,7 @@ import type { AuthRole } from "./auth";
 interface ApprovalRecord {
   id: string;
   entityId: string;
-  type: "leave" | "sickness" | "smartworking";
+  type: "leave" | "sickness" | "smartworking" | "travel";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -59,6 +60,32 @@ export interface SmartworkingRequestRow {
   decisionAt?: string | null;
   rejectReason?: string | null;
   createdAt: string;
+}
+
+export type TravelRequestRow = SmartworkingRequestRow;
+
+export interface AttendanceDayBoardRow {
+  userId: string;
+  fullName: string;
+  email: string;
+  firstClockIn: string | null;
+  lastClockOut: string | null;
+  workdayMode: WorkMode | null;
+  statusLabels: string[];
+  alerts: string[];
+}
+
+export interface AttendanceDayBoardResponse {
+  day: string;
+  costCenters: Array<{
+    id: string;
+    label: string;
+    teams: Array<{
+      id: string;
+      label: string;
+      rows: AttendanceDayBoardRow[];
+    }>;
+  }>;
 }
 
 export type PersonnelBudgetMoney = {
@@ -98,7 +125,21 @@ const SMARTWORKING_MONTHLY_QUOTA = 8;
 /** Massimo giorni smart working richiedibili nella stessa settimana (lun–dom UTC) per dipendente. */
 const SMARTWORKING_WEEKLY_QUOTA = 2;
 
-/** Opzioni scrittura utente: `skipTeamLeadLinkValidation` solo per chiamate admin console (API Nest). */
+function coercePlatformRole(role: string | undefined | null): User["role"] {
+  const r = String(role ?? "user");
+  if (r === "superuser" || r === "user") {
+    return r;
+  }
+  if (r === "admin") {
+    return "superuser";
+  }
+  if (r === "employee" || r === "team_lead") {
+    return "user";
+  }
+  return "user";
+}
+
+/** Opzioni scrittura utente: riservate a chiamate console (API Nest). */
 interface UserWriteOptions {
   skipTeamLeadLinkValidation?: boolean;
 }
@@ -274,7 +315,7 @@ export class HrDataStore {
       fullName: "HR Admin",
       firstName: "HR",
       lastName: "Admin",
-      role: "admin",
+      role: "superuser",
       companyId: "comp-1",
       roleId: "r-super",
       costCenterId: "cc-1",
@@ -288,7 +329,7 @@ export class HrDataStore {
       fullName: "Manager Controllo",
       firstName: "Manager",
       lastName: "Controllo",
-      role: "team_lead",
+      role: "user",
       companyId: "comp-1",
       roleId: "r2",
       costCenterId: "cc-1",
@@ -303,7 +344,7 @@ export class HrDataStore {
       fullName: "Dipendente Demo",
       firstName: "Dipendente",
       lastName: "Demo",
-      role: "employee",
+      role: "user",
       managerId: "u-manager",
       companyId: "comp-1",
       roleId: "r3",
@@ -347,6 +388,7 @@ export class HrDataStore {
   private readonly sicknessEvents: SicknessEvent[] = [];
   private readonly approvals: ApprovalRecord[] = [];
   private readonly smartworkingRequests: SmartworkingRequestRow[] = [];
+  private readonly travelRequests: TravelRequestRow[] = [];
   private readonly nfcTokenMap: Map<string, string> = new Map();
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
@@ -474,9 +516,11 @@ export class HrDataStore {
       if (error) {
         return null;
       }
-      return (data?.[0] as User | undefined) ?? null;
+      const row = data?.[0] as User | undefined;
+      return row ? { ...row, role: coercePlatformRole(row.role) } : null;
     }
-    return this.users.find((item) => item.email.toLowerCase() === normalized.toLowerCase()) ?? null;
+    const mem = this.users.find((item) => item.email.toLowerCase() === normalized.toLowerCase());
+    return mem ? { ...mem, role: coercePlatformRole(mem.role) } : null;
   }
 
   private async ensureSeedReferenceData(): Promise<void> {
@@ -558,9 +602,9 @@ export class HrDataStore {
     await this.ensureSeedUsers();
     if (this.useDb) {
       const { data } = await this.supabase!.from("users").select("*").order("fullName", { ascending: true });
-      return (data as User[]) ?? [];
+      return ((data as User[]) ?? []).map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
     }
-    return this.users;
+    return this.users.map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
   }
 
   async getUser(userId: string): Promise<User> {
@@ -573,13 +617,14 @@ export class HrDataStore {
       if (!data) {
         throw new NotFoundException("Utente non trovato");
       }
-      return data as User;
+      const u = data as User;
+      return { ...u, role: coercePlatformRole(u.role) };
     }
     const user = this.users.find((item) => item.id === userId);
     if (!user) {
       throw new NotFoundException("Utente non trovato");
     }
-    return user;
+    return { ...user, role: coercePlatformRole(user.role) };
   }
 
   async listUsersByManager(managerId: string): Promise<User[]> {
@@ -818,12 +863,12 @@ export class HrDataStore {
       team.leadUserId = userId;
     }
     if (prevLeadId && prevLeadId !== userId) {
-      await this.updateUser(prevLeadId, { role: "employee", roleId: employeeRoleId });
+      await this.updateUser(prevLeadId, { roleId: employeeRoleId });
     }
     if (lead.teamId !== teamId) {
       await this.updateUser(userId, { teamId });
     }
-    const promoted = await this.updateUser(userId, { role: "team_lead", roleId });
+    const promoted = await this.updateUser(userId, { roleId });
     const peers = await this.listUsersByTeam(teamId);
     for (const m of peers) {
       if (m.id !== userId) {
@@ -922,11 +967,6 @@ export class HrDataStore {
       throw new BadRequestException("Nome e cognome sono obbligatori");
     }
     await this.validateReferenceIds(input.roleId, input.costCenterId);
-    if (input.role === "team_lead" && !options?.skipTeamLeadLinkValidation) {
-      throw new BadRequestException(
-        "Il ruolo team_lead è legato al team di cui si è responsabili: crea l'utente come dipendente o admin, poi nomina il responsabile da Gestione centri di costo → Team."
-      );
-    }
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
     const email = await this.resolveCreateEmail(firstName, lastName, input.email);
@@ -993,10 +1033,6 @@ export class HrDataStore {
         }
       }
     }
-    const nextRole = input.role !== undefined ? input.role : user.role;
-    if (user.role === "team_lead" && nextRole !== "team_lead") {
-      await this.clearWorkTeamLeadPositions(userId);
-    }
     if (input.email !== undefined) {
       const trimmed = input.email.trim();
       if (!this.simpleEmailRegex().test(trimmed)) {
@@ -1026,20 +1062,6 @@ export class HrDataStore {
       fullName,
       email: nextEmail
     };
-    if (nextRole === "team_lead" && !options?.skipTeamLeadLinkValidation) {
-      const teamAsLead = await this.findWorkTeamByLeadUserId(userId);
-      if (!teamAsLead) {
-        throw new BadRequestException(
-          "Il ruolo team_lead è consentito solo se sei il responsabile nominato di un work team (Gestione centri di costo → Team → Nomina lead)."
-        );
-      }
-      const effectiveTeamId = payload.teamId ?? null;
-      if (effectiveTeamId !== teamAsLead.id) {
-        throw new BadRequestException(
-          `Un team lead deve avere «team» anagrafico uguale al team di cui è responsabile (${teamAsLead.name}).`
-        );
-      }
-    }
     if (this.useDb) {
       const { data } = await this.supabase!
         .from("users")
@@ -1050,9 +1072,11 @@ export class HrDataStore {
       if (!data) {
         throw new NotFoundException("Utente non trovato");
       }
-      return data as User;
+      const u = data as User;
+      return { ...u, role: coercePlatformRole(u.role) };
     }
     Object.assign(user, payload);
+    user.role = coercePlatformRole(payload.role);
     return user;
   }
 
@@ -1151,9 +1175,12 @@ export class HrDataStore {
     if (role.name === "admin" || role.name === "Superuser") {
       throw new BadRequestException("Questo ruolo di sistema non puo essere eliminato");
     }
-    const remainingAdmin = currentRoles.some((item) => item.id !== roleId && item.name === "admin");
-    if (!remainingAdmin) {
-      throw new BadRequestException("Deve esistere almeno un ruolo admin");
+    const remainingSuperuserCatalog = currentRoles.some(
+      (item) =>
+        item.id !== roleId && (item.name === "Superuser" || item.name?.toLowerCase() === "admin")
+    );
+    if (!remainingSuperuserCatalog) {
+      throw new BadRequestException("Deve esistere almeno un ruolo Superuser nel catalogo");
     }
     if (this.useDb) {
       await this.supabase!.from("roles").delete().eq("id", roleId);
@@ -1287,7 +1314,7 @@ export class HrDataStore {
     return this.updateUser(userId, { role }, { skipTeamLeadLinkValidation: true });
   }
 
-  /** Admin (stessa company) o team_lead con managerId diretto sul dipendente. */
+  /** Superuser (stessa company) oppure `user` con `managerId` diretto o ruolo responsabile su `work_teams`. */
   private async assertCanActOnBehalfOfUser(
     actorUserId: string,
     actorRole: AuthRole,
@@ -1296,7 +1323,7 @@ export class HrDataStore {
     if (targetUserId === actorUserId) {
       return;
     }
-    if (actorRole === "admin") {
+    if (actorRole === "superuser") {
       const a = await this.getUser(actorUserId);
       const t = await this.getUser(targetUserId);
       if (a.companyId !== t.companyId) {
@@ -1304,11 +1331,14 @@ export class HrDataStore {
       }
       return;
     }
-    if (actorRole === "team_lead") {
-      if (!(await this.isManagerOf(actorUserId, targetUserId))) {
-        throw new ForbiddenException("Non sei il responsabile di questo dipendente");
+    if (actorRole === "user") {
+      if (await this.isManagerOf(actorUserId, targetUserId)) {
+        return;
       }
-      return;
+      if (await this.isUserLeadOfTeamContaining(actorUserId, targetUserId)) {
+        return;
+      }
+      throw new ForbiddenException("Non sei il responsabile di questo dipendente");
     }
     throw new ForbiddenException("Operazione non consentita");
   }
@@ -1316,6 +1346,57 @@ export class HrDataStore {
   async isManagerOf(managerId: string, employeeId: string): Promise<boolean> {
     const employee = (await this.listUsers()).find((item) => item.id === employeeId);
     return employee?.managerId === managerId;
+  }
+
+  /** Il membro appartiene a un team di cui `leadUserId` è responsabile nominato. */
+  async isUserLeadOfTeamContaining(leadUserId: string, memberUserId: string): Promise<boolean> {
+    if (leadUserId === memberUserId) {
+      return false;
+    }
+    const member = (await this.listUsers()).find((item) => item.id === memberUserId);
+    const tid = member?.teamId?.trim();
+    if (!tid) {
+      return false;
+    }
+    try {
+      const team = await this.getWorkTeam(tid);
+      return (team.leadUserId ?? "").trim() === leadUserId.trim();
+    } catch {
+      return false;
+    }
+  }
+
+  async listWorkTeamIdsWhereUserIsLead(leadUserId: string): Promise<string[]> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!.from("work_teams").select("id").eq("leadUserId", leadUserId);
+      if (error) {
+        if (this.isWorkTeamsUnavailableError(error)) {
+          this.logger.warn(`listWorkTeamIdsWhereUserIsLead: ${error.message}`);
+          return [];
+        }
+        throw new BadRequestException(`Lettura team fallita: ${error.message}`);
+      }
+      return ((data as { id: string }[]) ?? []).map((r) => String(r.id));
+    }
+    return this.workTeamsMem.filter((t) => (t.leadUserId ?? "").trim() === leadUserId.trim()).map((t) => t.id);
+  }
+
+  /** Utente corrente, riporti diretti e membri dei team di cui è responsabile. */
+  async listManagedMemberIdsForApprover(approverId: string): Promise<Set<string>> {
+    const subs = await this.listUsersByManager(approverId);
+    const ids = new Set<string>([approverId, ...subs.map((s) => s.id)]);
+    const ledTeamIds = await this.listWorkTeamIdsWhereUserIsLead(approverId);
+    if (ledTeamIds.length === 0) {
+      return ids;
+    }
+    const teamIdSet = new Set(ledTeamIds);
+    for (const u of await this.listUsers()) {
+      const t = u.teamId?.trim();
+      if (t && teamIdSet.has(t)) {
+        ids.add(u.id);
+      }
+    }
+    return ids;
   }
 
   private async computeClockState(userId: string, date: string): Promise<{
@@ -1474,6 +1555,26 @@ export class HrDataStore {
       return ((data as TimeEntry[]) ?? []).sort((a, b) => a.at.localeCompare(b.at));
     }
     return this.timeEntries.filter((item) => item.at.startsWith(monthPrefix)).sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /** Timbrature di più dipendenti in un singolo giorno (prefisso data su `at`). */
+  async listTimeEntriesForUsersOnDay(userIds: string[], day: string): Promise<TimeEntry[]> {
+    const d = day.slice(0, 10);
+    if (userIds.length === 0) {
+      return [];
+    }
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("time_entries")
+        .select("*")
+        .in("userId", userIds)
+        .like("at", `${d}%`);
+      return ((data as TimeEntry[]) ?? []).sort((a, b) => a.at.localeCompare(b.at));
+    }
+    const idSet = new Set(userIds);
+    return this.timeEntries
+      .filter((item) => idSet.has(item.userId) && item.at.slice(0, 10) === d)
+      .sort((a, b) => a.at.localeCompare(b.at));
   }
 
   async getTimeEntryById(entryId: string): Promise<TimeEntry | null> {
@@ -1826,7 +1927,7 @@ export class HrDataStore {
   ): Promise<LeavePlan> {
     const leave = await this.getLeave(leaveId);
     if (!leave) throw new NotFoundException("Piano ferie non trovato");
-    const role = actorRole ?? "employee";
+    const role = actorRole ?? "user";
     await this.assertCanActOnBehalfOfUser(actorUserId, role, leave.userId);
     if (leave.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
@@ -2075,7 +2176,7 @@ export class HrDataStore {
     actorRole?: AuthRole
   ): Promise<SicknessEvent> {
     const sickness = await this.getSickness(sicknessId);
-    const role = actorRole ?? "employee";
+    const role = actorRole ?? "user";
     await this.assertCanActOnBehalfOfUser(actorUserId, role, sickness.userId);
     if (sickness.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa di approvazione possono essere modificate");
@@ -2363,7 +2464,7 @@ export class HrDataStore {
       recipientIds.add(managerUserId);
     }
     for (const u of await this.listUsers()) {
-      if (u.role === "admin") {
+      if (u.role === "superuser") {
         recipientIds.add(u.id);
       }
     }
@@ -2599,24 +2700,25 @@ export class HrDataStore {
     status?: "pending" | "approved" | "rejected"
   ): Promise<ApprovalView[]> {
     const requester = await this.getUser(requesterId);
-    const subordinates = await this.listUsersByManager(requesterId);
-    const visibleUserIds = new Set<string>([requesterId, ...subordinates.map((item) => item.id)]);
+    const visibleUserIds = await this.listManagedMemberIdsForApprover(requesterId);
     const allApprovals = this.useDb
       ? (((await this.supabase!.from("approvals").select("*")).data ?? []) as ApprovalRecord[])
       : this.approvals;
     let approvals = allApprovals
-      .filter((item) => requester.role === "admin" || visibleUserIds.has(item.requestedBy))
+      .filter((item) => requester.role === "superuser" || visibleUserIds.has(item.requestedBy))
       .filter((item) => (status ? item.status === status : true))
       .sort((a, b) => b.at.localeCompare(a.at));
 
     const leavesById = new Map<string, LeavePlan>();
     const sicknessById = new Map<string, SicknessEvent>();
     const swById = new Map<string, SmartworkingRequestRow>();
+    const travelById = new Map<string, TravelRequestRow>();
 
     if (this.useDb) {
       const leaveIds = approvals.filter((item) => item.type === "leave").map((item) => item.entityId);
       const sicknessIds = approvals.filter((item) => item.type === "sickness").map((item) => item.entityId);
       const swIds = approvals.filter((item) => item.type === "smartworking").map((item) => item.entityId);
+      const travelIds = approvals.filter((item) => item.type === "travel").map((item) => item.entityId);
 
       if (leaveIds.length > 0) {
         const { data } = await this.supabase!.from("leave_plans").select("*").in("id", leaveIds);
@@ -2638,6 +2740,13 @@ export class HrDataStore {
           swById.set(row.id, row);
         }
       }
+
+      if (travelIds.length > 0) {
+        const { data } = await this.supabase!.from("travel_requests").select("*").in("id", travelIds);
+        for (const row of (data ?? []) as TravelRequestRow[]) {
+          travelById.set(row.id, row);
+        }
+      }
     } else {
       for (const leave of this.leavePlans) {
         leavesById.set(leave.id, leave);
@@ -2649,6 +2758,12 @@ export class HrDataStore {
       for (const r of this.smartworkingRequests) {
         if (needSw.has(r.id)) {
           swById.set(r.id, r);
+        }
+      }
+      const needTr = new Set(approvals.filter((a) => a.type === "travel").map((a) => a.entityId));
+      for (const r of this.travelRequests) {
+        if (needTr.has(r.id)) {
+          travelById.set(r.id, r);
         }
       }
     }
@@ -2664,6 +2779,10 @@ export class HrDataStore {
       if (item.type === "sickness") {
         const sickness = sicknessById.get(item.entityId);
         return sickness?.status === "pending";
+      }
+      if (item.type === "travel") {
+        const tr = travelById.get(item.entityId);
+        return tr?.status === "pending";
       }
       const sw = swById.get(item.entityId);
       return sw?.status === "pending";
@@ -2692,6 +2811,7 @@ export class HrDataStore {
       const leave = item.type === "leave" ? leavesById.get(item.entityId) : undefined;
       const sickness = item.type === "sickness" ? sicknessById.get(item.entityId) : undefined;
       const sw = item.type === "smartworking" ? swById.get(item.entityId) : undefined;
+      const tr = item.type === "travel" ? travelById.get(item.entityId) : undefined;
       const requesterPhotoUrl = await loadPhoto(item.requestedBy);
 
       let leaveKind: "annual" | "rol" | undefined;
@@ -2731,6 +2851,9 @@ export class HrDataStore {
           sw.userId,
           sw.day.slice(0, 7)
         );
+      } else if (tr) {
+        requestedCalendarDays = 1;
+        note = tr.note ?? null;
       }
 
       out.push({
@@ -2743,8 +2866,8 @@ export class HrDataStore {
         at: item.at,
         requesterName: user?.fullName,
         requesterPhotoUrl,
-        startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day,
-        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day,
+        startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day ?? tr?.day,
+        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day ?? tr?.day,
         leaveKind,
         residualAnnualLeaveDays,
         requestedCalendarDays,
@@ -2773,6 +2896,15 @@ export class HrDataStore {
         at: new Date().toISOString()
       };
     }
+    if (approval.type === "travel") {
+      await this.decideTravelRequest(approval.entityId, approverId, true);
+      return {
+        ...approval,
+        status: "approved",
+        approverId,
+        at: new Date().toISOString()
+      };
+    }
     if (approval.type === "leave") {
       await this.approveLeave(approval.entityId, approverId, approval.id);
     } else {
@@ -2794,6 +2926,15 @@ export class HrDataStore {
     }
     if (approval.type === "smartworking") {
       await this.decideSmartworkingRequest(approval.entityId, approverId, false, rejectReason);
+      return {
+        ...approval,
+        status: "rejected",
+        approverId,
+        at: new Date().toISOString()
+      };
+    }
+    if (approval.type === "travel") {
+      await this.decideTravelRequest(approval.entityId, approverId, false, rejectReason);
       return {
         ...approval,
         status: "rejected",
@@ -3240,6 +3381,46 @@ export class HrDataStore {
         meta: { date: ws.date }
       });
     }
+    const travelReqs = await this.listMyTravel(userId);
+    for (const r of travelReqs) {
+      if (!this.inCalendarRange(r.day, from, to)) continue;
+      const trSt =
+        r.status === "rejected"
+          ? "rifiutato"
+          : r.status === "pending"
+            ? "in attesa"
+            : r.status === "approved"
+              ? "approvato"
+              : r.status;
+      if (r.status === "rejected") {
+        events.push({
+          id: `cal-tr-${r.id}`,
+          kind: "travel",
+          title: `Trasferta (${trSt})`,
+          start: r.day,
+          end: r.day,
+          meta: {
+            travelRequestId: r.id,
+            status: r.status,
+            ...(r.note ? { note: r.note } : {})
+          }
+        });
+        continue;
+      }
+      const pendingTr = r.status === "pending";
+      events.push({
+        id: `cal-tr-${r.id}`,
+        kind: "travel",
+        title: pendingTr ? "Trasferta (in attesa)" : "Trasferta",
+        start: r.day,
+        end: r.day,
+        meta: {
+          travelRequestId: r.id,
+          status: r.status,
+          ...(r.note ? { note: r.note } : {})
+        }
+      });
+    }
     if (!skipCompanyHolidays) {
       const holidays = await this.listCompanyHolidays(user.companyId, from, to);
       for (const h of holidays) {
@@ -3294,9 +3475,11 @@ export class HrDataStore {
       return null;
     }
     const isSelf = requesterId === targetUserId;
-    const isAdmin = requesterRole === "admin";
+    const isAdmin = requesterRole === "superuser";
     const isManagerWithHierarchy =
-      requesterRole === "team_lead" && (await this.isManagerOf(requesterId, targetUserId));
+      requesterRole === "user" &&
+      ((await this.isManagerOf(requesterId, targetUserId)) ||
+        (await this.isUserLeadOfTeamContaining(requesterId, targetUserId)));
     if (!isSelf && !isAdmin && !isManagerWithHierarchy) {
       throw new ForbiddenException("Accesso negato alla foto profilo");
     }
@@ -3402,14 +3585,13 @@ export class HrDataStore {
     scope: "self" | "team"
   ): Promise<ExpenseClaim[]> {
     let userIds: string[];
-    if (scope === "self" || requesterRole === "employee") {
+    if (scope === "self") {
       userIds = [requesterId];
-    } else if (requesterRole === "admin") {
+    } else if (requesterRole === "superuser") {
       const all = await this.listUsers();
       userIds = all.map((u) => u.id);
     } else {
-      const subs = await this.listUsersByManager(requesterId);
-      userIds = [...subs.map((s) => s.id), requesterId];
+      userIds = [...(await this.listManagedMemberIdsForApprover(requesterId))];
     }
     if (!this.useDb) {
       return this.expenseClaims.filter((c) => userIds.includes(c.userId));
@@ -3476,9 +3658,7 @@ export class HrDataStore {
   async approveExpenseClaim(claimId: string, approverId: string): Promise<ExpenseClaim> {
     const claim = await this.getExpenseClaim(claimId);
     const approver = await this.getUser(approverId);
-    if (approver.role !== "admin" && !(await this.isManagerOf(approverId, claim.userId))) {
-      throw new BadRequestException("Solo il responsabile diretto o admin può approvare");
-    }
+    await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
     if (claim.status !== "submitted") {
       throw new BadRequestException("Solo richieste inviate possono essere approvate");
     }
@@ -3505,9 +3685,7 @@ export class HrDataStore {
   async rejectExpenseClaim(claimId: string, approverId: string): Promise<ExpenseClaim> {
     const claim = await this.getExpenseClaim(claimId);
     const approver = await this.getUser(approverId);
-    if (approver.role !== "admin" && !(await this.isManagerOf(approverId, claim.userId))) {
-      throw new BadRequestException("Solo il responsabile diretto o admin può rifiutare");
-    }
+    await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
     if (claim.status !== "submitted") {
       throw new BadRequestException("Solo richieste inviate possono essere rifiutate");
     }
@@ -3553,7 +3731,11 @@ export class HrDataStore {
     const uid = targetUserId ?? requesterId;
     if (uid !== requesterId) {
       const req = await this.getUser(requesterId);
-      if (req.role !== "admin" && !(await this.isManagerOf(requesterId, uid))) {
+      if (
+        req.role !== "superuser" &&
+        !(await this.isManagerOf(requesterId, uid)) &&
+        !(await this.isUserLeadOfTeamContaining(requesterId, uid))
+      ) {
         throw new BadRequestException("Non puoi consultare i turni di questo utente");
       }
     }
@@ -3576,11 +3758,13 @@ export class HrDataStore {
     requesterRole: User["role"],
     input: { userId: string; startAt: string; endAt: string; premiumCode?: string }
   ): Promise<Shift> {
-    if (requesterRole === "employee") {
-      throw new BadRequestException("Solo manager o admin possono creare turni");
-    }
-    if (requesterRole !== "admin" && !(await this.isManagerOf(requesterId, input.userId))) {
-      throw new BadRequestException("Puoi pianificare solo i membri del tuo team");
+    if (requesterRole === "user") {
+      if (
+        !(await this.isManagerOf(requesterId, input.userId)) &&
+        !(await this.isUserLeadOfTeamContaining(requesterId, input.userId))
+      ) {
+        throw new BadRequestException("Puoi pianificare solo i membri del tuo team");
+      }
     }
     const shift: Shift = {
       id: `sh-${Date.now()}`,
@@ -3615,10 +3799,11 @@ export class HrDataStore {
       shift = data ? this.mapShiftRow(data as Record<string, unknown>) : undefined;
     }
     if (!shift) throw new NotFoundException("Turno non trovato");
-    if (requesterRole === "employee") {
-      throw new BadRequestException("Operazione non consentita");
-    }
-    if (requesterRole !== "admin" && !(await this.isManagerOf(requesterId, shift.userId))) {
+    if (
+      requesterRole === "user" &&
+      !(await this.isManagerOf(requesterId, shift.userId)) &&
+      !(await this.isUserLeadOfTeamContaining(requesterId, shift.userId))
+    ) {
       throw new BadRequestException("Operazione non consentita");
     }
     if (this.useDb) {
@@ -3680,7 +3865,12 @@ export class HrDataStore {
     requesterId: string,
     requesterRole: User["role"]
   ): Promise<OnboardingStatus> {
-    if (userId !== requesterId && requesterRole !== "admin" && !(await this.isManagerOf(requesterId, userId))) {
+    if (
+      userId !== requesterId &&
+      requesterRole !== "superuser" &&
+      !(await this.isManagerOf(requesterId, userId)) &&
+      !(await this.isUserLeadOfTeamContaining(requesterId, userId))
+    ) {
       throw new BadRequestException("Non puoi modificare questo onboarding");
     }
     const st = await this.getOrCreateOnboarding(userId);
@@ -3723,7 +3913,11 @@ export class HrDataStore {
   ): Promise<EmployeeDocument[]> {
     const uid = targetUserId ?? requesterId;
     if (uid !== requesterId) {
-      if (requesterRole !== "admin" && !(await this.isManagerOf(requesterId, uid))) {
+      if (
+        requesterRole !== "superuser" &&
+        !(await this.isManagerOf(requesterId, uid)) &&
+        !(await this.isUserLeadOfTeamContaining(requesterId, uid))
+      ) {
         throw new BadRequestException("Accesso ai documenti non autorizzato");
       }
     }
@@ -3796,7 +3990,12 @@ export class HrDataStore {
       row = data ? this.mapDocumentRow(data as Record<string, unknown>) : undefined;
     }
     if (!row) throw new NotFoundException("Documento non trovato");
-    if (row.userId !== requesterId && requesterRole !== "admin" && !(await this.isManagerOf(requesterId, row.userId))) {
+    if (
+      row.userId !== requesterId &&
+      requesterRole !== "superuser" &&
+      !(await this.isManagerOf(requesterId, row.userId)) &&
+      !(await this.isUserLeadOfTeamContaining(requesterId, row.userId))
+    ) {
       throw new BadRequestException("Accesso negato");
     }
     const b64 = row.bodyBase64;
@@ -3880,7 +4079,7 @@ export class HrDataStore {
     if (await this.hasActiveSmartworkingRequestForDay(userId, dayNorm)) {
       throw new BadRequestException("Smart working già richiesto per questa data");
     }
-    const skipSwQuota = actorRole === "admin";
+    const skipSwQuota = actorRole === "superuser";
     if (!skipSwQuota) {
       const monthPrefix = dayNorm.slice(0, 7);
       const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(userId, monthPrefix);
@@ -3980,7 +4179,7 @@ export class HrDataStore {
     ) {
       throw new BadRequestException("Smart working già richiesto per questa data");
     }
-    if (nextDay !== row.day.slice(0, 10) && actorRole !== "admin") {
+    if (nextDay !== row.day.slice(0, 10) && actorRole !== "superuser") {
       const monthPrefix = nextDay.slice(0, 7);
       const monthBooked = (
         await this.listMySmartworking(requesterId)
@@ -4075,15 +4274,14 @@ export class HrDataStore {
   }
 
   async listPendingSmartworkingForManager(managerId: string): Promise<SmartworkingRequestRow[]> {
-    const subs = await this.listUsersByManager(managerId);
-    const ids = new Set(subs.map((u) => u.id));
+    const visible = await this.listManagedMemberIdsForApprover(managerId);
     if (this.useDb) {
       const { data } = await this.supabase!.from("smartworking_requests").select("*").eq("status", "pending");
       const rows = (data as SmartworkingRequestRow[]) ?? [];
-      return rows.filter((r) => ids.has(r.userId) || r.approverId === managerId);
+      return rows.filter((r) => visible.has(r.userId) || r.approverId === managerId);
     }
     return this.smartworkingRequests.filter(
-      (r) => r.status === "pending" && (ids.has(r.userId) || r.approverId === managerId)
+      (r) => r.status === "pending" && (visible.has(r.userId) || r.approverId === managerId)
     );
   }
 
@@ -4116,10 +4314,12 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     const decidingUser = await this.getUser(managerId);
-    const isAdminApprover = decidingUser.role === "admin";
-    if (!isAdminApprover) {
+    const isSuperuserApprover = decidingUser.role === "superuser";
+    if (!isSuperuserApprover) {
       const subs = await this.listUsersByManager(managerId);
-      if (!subs.some((u) => u.id === row.userId) && row.approverId !== managerId) {
+      const okSub = subs.some((u) => u.id === row.userId);
+      const okLead = await this.isUserLeadOfTeamContaining(managerId, row.userId);
+      if (!okSub && row.approverId !== managerId && !okLead) {
         throw new BadRequestException("Non autorizzato su questa richiesta");
       }
     }
@@ -4179,6 +4379,306 @@ export class HrDataStore {
       read: false,
       createdAt: decisionAt,
       kind: "smartworking"
+    });
+    return { ...row, status, approverId: managerId, decisionAt, rejectReason: approve ? null : reason };
+  }
+
+  private async hasActiveTravelRequestForDay(
+    userId: string,
+    day: string,
+    excludeRequestId?: string
+  ): Promise<boolean> {
+    const d = day.slice(0, 10);
+    const list = await this.listMyTravel(userId);
+    return list.some(
+      (r) =>
+        r.day.slice(0, 10) === d &&
+        r.status !== "rejected" &&
+        (excludeRequestId === undefined || r.id !== excludeRequestId)
+    );
+  }
+
+  async createTravelRequest(
+    userId: string,
+    day: string,
+    note?: string,
+    _actorRole?: AuthRole
+  ): Promise<TravelRequestRow> {
+    void _actorRole;
+    const user = await this.getUser(userId);
+    const dayNorm = day.slice(0, 10);
+    if (await this.hasActiveTravelRequestForDay(userId, dayNorm)) {
+      throw new BadRequestException("Trasferta già richiesta per questa data");
+    }
+    const id = `tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const createdAt = new Date().toISOString();
+    const row: TravelRequestRow = {
+      id,
+      userId,
+      day: dayNorm,
+      note: note?.trim() || null,
+      status: "pending",
+      approverId: user.managerId ?? null,
+      createdAt
+    };
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("travel_requests").insert({
+        id: row.id,
+        userId: row.userId,
+        day: row.day,
+        note: row.note,
+        status: row.status,
+        approverId: row.approverId,
+        createdAt: row.createdAt
+      });
+      if (error) {
+        throw new InternalServerErrorException(`Richiesta trasferta fallita: ${error.message}`);
+      }
+    } else {
+      this.travelRequests.push(row);
+    }
+    const appr = {
+      id: `ap-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      entityId: row.id,
+      type: "travel" as const,
+      requestedBy: userId,
+      status: "pending" as const,
+      at: createdAt
+    };
+    if (this.useDb) {
+      await this.supabase!.from("approvals").insert(appr);
+    } else {
+      this.approvals.push(appr);
+    }
+    await this.notifyApproversOfRequest(
+      user,
+      "Richiesta trasferta",
+      `${user.fullName}: ${dayNorm}${note?.trim() ? ` — ${note.trim()}` : ""}`,
+      "travel_request",
+      `/workflow/approvals?approvalId=${encodeURIComponent(appr.id)}`
+    );
+    return row;
+  }
+
+  async findTravelRequestById(requestId: string): Promise<TravelRequestRow | null> {
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("travel_requests").select("*").eq("id", requestId).maybeSingle();
+      return (data as TravelRequestRow) ?? null;
+    }
+    return this.travelRequests.find((r) => r.id === requestId) ?? null;
+  }
+
+  async updateTravelRequest(
+    requesterId: string,
+    requestId: string,
+    day: string,
+    note: string | null | undefined,
+    actorRole: AuthRole
+  ): Promise<TravelRequestRow> {
+    const row = await this.findTravelRequestById(requestId);
+    if (!row) {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
+    if (row.status !== "pending") {
+      throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
+    }
+    const nextDay = day.slice(0, 10);
+    const nextNote = note?.trim() || null;
+    const prevDay = row.day.slice(0, 10);
+    const prevNote = row.note?.trim() || null;
+    if (nextDay === prevDay && nextNote === prevNote) {
+      return row;
+    }
+    if (
+      nextDay !== prevDay &&
+      (await this.hasActiveTravelRequestForDay(row.userId, nextDay, requestId))
+    ) {
+      throw new BadRequestException("Trasferta già richiesta per questa data");
+    }
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("travel_requests")
+        .update({ day: nextDay, note: nextNote })
+        .eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento trasferta fallito: ${error.message}`);
+      }
+    } else {
+      row.day = nextDay;
+      row.note = nextNote;
+    }
+    const user = await this.getUser(requesterId);
+    let linkApprovalId: string | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("approvals")
+        .select("id")
+        .eq("entityId", requestId)
+        .eq("type", "travel")
+        .eq("status", "pending")
+        .maybeSingle();
+      linkApprovalId = (data as { id?: string } | null)?.id;
+    } else {
+      linkApprovalId = this.approvals.find(
+        (a) => a.entityId === requestId && a.type === "travel" && a.status === "pending"
+      )?.id;
+    }
+    await this.notifyApproversOfRequest(
+      user,
+      "Richiesta trasferta",
+      `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
+      "travel_request",
+      linkApprovalId
+        ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
+        : "/workflow/approvals"
+    );
+    return { ...row, day: nextDay, note: nextNote };
+  }
+
+  async cancelTravelRequest(requesterId: string, requestId: string, actorRole: AuthRole): Promise<void> {
+    const row = await this.findTravelRequestById(requestId);
+    if (!row) {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
+    if (row.status !== "pending" && row.status !== "rejected") {
+      throw new BadRequestException("Solo una richiesta in attesa o rifiutata può essere rimossa");
+    }
+    if (this.useDb) {
+      await this.supabase!.from("approvals").delete().eq("entityId", requestId).eq("type", "travel");
+      const { error } = await this.supabase!.from("travel_requests").delete().eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Annullamento trasferta fallito: ${error.message}`);
+      }
+    } else {
+      for (let i = this.approvals.length - 1; i >= 0; i--) {
+        const a = this.approvals[i];
+        if (a.entityId === requestId && a.type === "travel") this.approvals.splice(i, 1);
+      }
+      const idx = this.travelRequests.findIndex((r) => r.id === requestId);
+      if (idx >= 0) this.travelRequests.splice(idx, 1);
+    }
+  }
+
+  async listMyTravel(userId: string): Promise<TravelRequestRow[]> {
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("travel_requests")
+        .select("*")
+        .eq("userId", userId)
+        .order("day", { ascending: false });
+      return (data as TravelRequestRow[]) ?? [];
+    }
+    return this.travelRequests.filter((r) => r.userId === userId).sort((a, b) => b.day.localeCompare(a.day));
+  }
+
+  async listPendingTravelForManager(managerId: string): Promise<TravelRequestRow[]> {
+    const visible = await this.listManagedMemberIdsForApprover(managerId);
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("travel_requests").select("*").eq("status", "pending");
+      const rows = (data as TravelRequestRow[]) ?? [];
+      return rows.filter((r) => visible.has(r.userId) || r.approverId === managerId);
+    }
+    return this.travelRequests.filter(
+      (r) => r.status === "pending" && (visible.has(r.userId) || r.approverId === managerId)
+    );
+  }
+
+  async listAllPendingTravelRequests(): Promise<TravelRequestRow[]> {
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("travel_requests")
+        .select("*")
+        .eq("status", "pending")
+        .order("createdAt", { ascending: false });
+      return (data as TravelRequestRow[]) ?? [];
+    }
+    return this.travelRequests.filter((r) => r.status === "pending");
+  }
+
+  async decideTravelRequest(
+    requestId: string,
+    managerId: string,
+    approve: boolean,
+    rejectReason?: string
+  ): Promise<TravelRequestRow> {
+    let row: TravelRequestRow | undefined;
+    if (this.useDb) {
+      const { data } = await this.supabase!.from("travel_requests").select("*").eq("id", requestId).single();
+      row = data as TravelRequestRow | undefined;
+    } else {
+      row = this.travelRequests.find((r) => r.id === requestId);
+    }
+    if (!row || row.status !== "pending") {
+      throw new NotFoundException("Richiesta non trovata");
+    }
+    const decidingUser = await this.getUser(managerId);
+    const isSuperuserApprover = decidingUser.role === "superuser";
+    if (!isSuperuserApprover) {
+      const subs = await this.listUsersByManager(managerId);
+      const okSub = subs.some((u) => u.id === row.userId);
+      const okLead = await this.isUserLeadOfTeamContaining(managerId, row.userId);
+      if (!okSub && row.approverId !== managerId && !okLead) {
+        throw new BadRequestException("Non autorizzato su questa richiesta");
+      }
+    }
+    const decisionAt = new Date().toISOString();
+    const status = approve ? "approved" : "rejected";
+    const reason = rejectReason?.trim() || null;
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("travel_requests")
+        .update({
+          status,
+          approverId: managerId,
+          decisionAt,
+          rejectReason: approve ? null : reason
+        })
+        .eq("id", requestId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento trasferta fallito: ${error.message}`);
+      }
+    } else {
+      row.status = status;
+      row.approverId = managerId;
+      row.decisionAt = decisionAt;
+      row.rejectReason = approve ? null : reason;
+    }
+    if (this.useDb) {
+      const { error: apprErr } = await this.supabase!
+        .from("approvals")
+        .update({
+          status,
+          approverId: managerId,
+          at: decisionAt,
+          rejectReason: approve ? null : reason
+        })
+        .eq("entityId", requestId)
+        .eq("type", "travel")
+        .eq("status", "pending");
+      if (apprErr) {
+        throw new InternalServerErrorException(`Aggiornamento workflow trasferta fallito: ${apprErr.message}`);
+      }
+    } else {
+      const arow = this.approvals.find(
+        (a) => a.entityId === requestId && a.type === "travel" && a.status === "pending"
+      );
+      if (arow) {
+        arow.status = status;
+        arow.approverId = managerId;
+        arow.at = decisionAt;
+        arow.rejectReason = approve ? null : reason;
+      }
+    }
+    await this.insertUserNotification({
+      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      userId: row.userId,
+      title: approve ? "Trasferta approvata" : "Trasferta rifiutata",
+      body: `${row.day}${!approve && reason ? ` — ${reason}` : ""}`,
+      read: false,
+      createdAt: decisionAt,
+      kind: "travel"
     });
     return { ...row, status, approverId: managerId, decisionAt, rejectReason: approve ? null : reason };
   }
@@ -4248,11 +4748,179 @@ export class HrDataStore {
     return list.filter((r) => r.status !== "rejected" && r.day.startsWith(monthPrefix)).length;
   }
 
+  private composeAttendanceBoardRow(
+    u: User,
+    dayIso: string,
+    entries: TimeEntry[],
+    calEvents: CalendarEvent[],
+    workdayMode: WorkMode | undefined,
+    flags: { isWeekend: boolean; isCompanyHoliday: boolean }
+  ): AttendanceDayBoardRow {
+    const sorted = [...entries].sort((a, b) => a.at.localeCompare(b.at));
+    const firstIn = sorted.find((e) => e.type === "clock_in");
+    const lastOut = [...sorted].reverse().find((e) => e.type === "clock_out");
+    const fmt = (iso: string): string => {
+      const t = new Date(iso);
+      return Number.isNaN(t.getTime()) ? iso.slice(11, 16) : t.toLocaleTimeString("it-CH", { hour: "2-digit", minute: "2-digit" });
+    };
+
+    const statusLabels: string[] = [];
+    for (const ev of calEvents) {
+      if (ev.kind === "holiday") continue;
+      const st = String(ev.meta?.status ?? "");
+      if (st === "rejected") continue;
+      if (ev.title && !statusLabels.includes(ev.title)) {
+        statusLabels.push(ev.title);
+      }
+    }
+    if (workdayMode === "smartworking" && !statusLabels.some((x) => x.toLowerCase().includes("smart"))) {
+      statusLabels.push("Modalità presenze: smart working");
+    }
+    if (workdayMode === "office" && sorted.length > 0) {
+      statusLabels.push("Modalità presenze: sede");
+    }
+
+    const absenceApproved = calEvents.some(
+      (e) =>
+        (e.kind === "leave" || e.kind === "rol" || e.kind === "sickness") &&
+        String(e.meta?.status ?? "") === "approved"
+    );
+    const absencePending = calEvents.some(
+      (e) =>
+        (e.kind === "leave" || e.kind === "rol" || e.kind === "sickness") &&
+        String(e.meta?.status ?? "") === "pending"
+    );
+    const travelApproved = calEvents.some((e) => e.kind === "travel" && String(e.meta?.status ?? "") === "approved");
+
+    const alerts: string[] = [];
+    if (sorted.length > 0 && (absenceApproved || travelApproved)) {
+      alerts.push("Timbratura registrata con assenza/trasferta dichiarata: verificare coerenza.");
+    }
+    const expectPunch = !flags.isCompanyHoliday && !flags.isWeekend && !absenceApproved;
+    if (expectPunch && sorted.length === 0) {
+      alerts.push("Nessuna timbratura in questa data lavorativa.");
+    }
+    if (sorted.length > 0 && sorted.length % 2 !== 0) {
+      alerts.push("Numero di timbrature dispari (coppie entrata/uscita).");
+    }
+    if (sorted.length > 0 && sorted[sorted.length - 1]!.type === "clock_in") {
+      alerts.push("Ultima timbratura è un’entrata: uscita non registrata.");
+    }
+    if (absencePending) {
+      alerts.push("Presenza di richieste assenza in attesa di approvazione.");
+    }
+
+    return {
+      userId: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      firstClockIn: firstIn ? fmt(firstIn.at) : null,
+      lastClockOut: lastOut ? fmt(lastOut.at) : null,
+      workdayMode: workdayMode ?? null,
+      statusLabels,
+      alerts
+    };
+  }
+
+  async buildAttendanceDayBoard(userIds: string[], day: string): Promise<AttendanceDayBoardResponse> {
+    const d = day.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      throw new BadRequestException("Parametro day atteso nel formato YYYY-MM-DD");
+    }
+    const idSet = new Set(userIds);
+    const allUsers = (await this.listUsers()).filter((u) => idSet.has(u.id));
+    const entries = await this.listTimeEntriesForUsersOnDay(userIds, d);
+    const byUserEntries = new Map<string, TimeEntry[]>();
+    for (const e of entries) {
+      const list = byUserEntries.get(e.userId) ?? [];
+      list.push(e);
+      byUserEntries.set(e.userId, list);
+    }
+
+    const dow = new Date(`${d}T12:00:00.000Z`).getUTCDay();
+    const isWeekend = dow === 0 || dow === 6;
+    let isCompanyHoliday = false;
+    const sampleCompany = allUsers.find((u) => u.companyId?.trim())?.companyId;
+    if (sampleCompany) {
+      const hols = await this.listCompanyHolidays(sampleCompany, d, d);
+      isCompanyHoliday = hols.length > 0;
+    }
+
+    const rowMap = new Map<string, AttendanceDayBoardRow>();
+    for (const u of allUsers) {
+      const uEntries = byUserEntries.get(u.id) ?? [];
+      const cal = await this.buildCalendarEventsForUser(u.id, d, d, true);
+      const summaries = await this.listWorkdaySummariesInRange(u.id, d, d);
+      const summary = summaries.find((s) => s.date.slice(0, 10) === d);
+      rowMap.set(
+        u.id,
+        this.composeAttendanceBoardRow(u, d, uEntries, cal, summary?.mode, {
+          isWeekend,
+          isCompanyHoliday
+        })
+      );
+    }
+
+    type TeamBucket = { id: string; label: string; userIds: string[] };
+    type CcBucket = { id: string; label: string; teams: Map<string, TeamBucket> };
+    const ccBuckets = new Map<string, CcBucket>();
+
+    for (const u of allUsers) {
+      const ccId = u.costCenterId?.trim() || "__none__";
+      if (!ccBuckets.has(ccId)) {
+        let ccLabel = "Senza centro di costo";
+        if (ccId !== "__none__") {
+          const cc = await this.getCostCenterById(ccId);
+          ccLabel = cc ? [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name : ccId;
+        }
+        ccBuckets.set(ccId, { id: ccId, label: ccLabel, teams: new Map() });
+      }
+      const ccB = ccBuckets.get(ccId)!;
+      const tid = u.teamId?.trim() || "__none__";
+      if (!ccB.teams.has(tid)) {
+        let teamLabel = tid === "__none__" ? "Senza team / altro" : tid;
+        if (tid !== "__none__") {
+          try {
+            const wt = await this.getWorkTeam(tid);
+            teamLabel = wt.name;
+          } catch {
+            teamLabel = tid;
+          }
+        }
+        ccB.teams.set(tid, { id: tid, label: teamLabel, userIds: [] });
+      }
+      ccB.teams.get(tid)!.userIds.push(u.id);
+    }
+
+    const costCenters = [...ccBuckets.values()]
+      .sort((a, b) => a.label.localeCompare(b.label, "it"))
+      .map((cc) => ({
+        id: cc.id,
+        label: cc.label,
+        teams: [...cc.teams.values()]
+          .sort((a, b) => a.label.localeCompare(b.label, "it"))
+          .map((tm) => ({
+            id: tm.id,
+            label: tm.label,
+            rows: [...tm.userIds]
+              .sort((a, b) => {
+                const ua = allUsers.find((x) => x.id === a)?.fullName ?? "";
+                const ub = allUsers.find((x) => x.id === b)?.fullName ?? "";
+                return ua.localeCompare(ub, "it");
+              })
+              .map((uid) => rowMap.get(uid)!)
+              .filter(Boolean)
+          }))
+      }));
+
+    return { day: d, costCenters };
+  }
+
   async getPeopleInsightsRisk(): Promise<Array<{ userId: string; fullName: string; score: number; reasons: string[] }>> {
     const users = await this.listUsers();
     const rows: Array<{ userId: string; fullName: string; score: number; reasons: string[] }> = [];
     for (const u of users) {
-      if (u.role === "admin") {
+      if (u.role === "superuser") {
         continue;
       }
       let score = 15;
@@ -4310,7 +4978,7 @@ export class HrDataStore {
   }
 
   async proposeShiftsPreview(weekStart: string): Promise<Shift[]> {
-    const users = (await this.listUsers()).filter((u) => u.role === "employee").slice(0, 12);
+    const users = (await this.listUsers()).filter((u) => u.role !== "superuser").slice(0, 12);
     const proposals: Shift[] = [];
     let i = 0;
     for (const u of users) {

@@ -11,7 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const PASSWORD = "Synapse2026";
 
-type RoleName = "admin" | "team_lead" | "employee";
+type RoleName = "superuser" | "user";
 
 interface SeedPerson {
   firstName: string;
@@ -56,7 +56,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Giulia",
     lastName: "Ferrari",
-    role: "admin",
+    role: "superuser",
     managerIndex: null,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-01",
@@ -79,7 +79,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Marco",
     lastName: "Bernasconi",
-    role: "team_lead",
+    role: "user",
     managerIndex: 0,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-09",
@@ -102,7 +102,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Elena",
     lastName: "Rossi",
-    role: "team_lead",
+    role: "user",
     managerIndex: 0,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-02",
@@ -125,7 +125,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Luca",
     lastName: "Colombo",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-10",
@@ -148,7 +148,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Sofia",
     lastName: "Marini",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-11",
@@ -171,7 +171,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Andrea",
     lastName: "Greco",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-12",
@@ -194,7 +194,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Chiara",
     lastName: "Fontana",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-13",
@@ -217,7 +217,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Davide",
     lastName: "Serra",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-14",
@@ -240,7 +240,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Francesca",
     lastName: "Vitale",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-03",
@@ -263,7 +263,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Matteo",
     lastName: "Caruso",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-04",
@@ -286,7 +286,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Valentina",
     lastName: "Pellegrini",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-05",
@@ -309,7 +309,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Alessandro",
     lastName: "De Luca",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-18",
@@ -332,7 +332,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Ilaria",
     lastName: "Romano",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-19",
@@ -355,7 +355,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Paolo",
     lastName: "Bianco",
-    role: "employee",
+    role: "user",
     managerIndex: 0,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-17",
@@ -378,7 +378,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Nadia",
     lastName: "Costa",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-15",
@@ -401,7 +401,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Giorgio",
     lastName: "Leone",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-16",
@@ -424,7 +424,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Beatrice",
     lastName: "Galliani",
-    role: "employee",
+    role: "user",
     managerIndex: 0,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-06",
@@ -447,7 +447,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Simone",
     lastName: "Parisi",
-    role: "employee",
+    role: "user",
     managerIndex: 2,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-07",
@@ -470,7 +470,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Teresa",
     lastName: "Mancini",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-08",
@@ -493,7 +493,7 @@ const people: SeedPerson[] = [
   {
     firstName: "Riccardo",
     lastName: "Fabbri",
-    role: "employee",
+    role: "user",
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-20",

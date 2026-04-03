@@ -194,6 +194,17 @@ export class AttendanceController {
     return this.team.listPickerUsers(auth.userId);
   }
 
+  /** Vista giornaliera HR: dipendenti per CDC/team, timbrature e stati da calendario. */
+  @Get("team/day-board")
+  @RequireNexaPermissions("nexa.attendance:read")
+  async teamDayBoard(
+    @CurrentAuth() auth: { userId: string },
+    @Query("date") date?: string
+  ): Promise<unknown> {
+    const day = date ?? new Date().toISOString().slice(0, 10);
+    return this.team.getDayAttendanceBoard(auth.userId, day);
+  }
+
   @Post("team/entries")
   @RequireNexaPermissions("nexa.attendance:write")
   async teamAddEntry(

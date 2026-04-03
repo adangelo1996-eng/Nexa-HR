@@ -158,13 +158,24 @@ async function resolveTargetUserId(
   if (!requested || requested === auth.userId) {
     return auth.userId;
   }
-  if (auth.role === "admin") {
+  if (auth.role === "superuser" || auth.role === "admin") {
     return requested;
   }
-  if (auth.role === "team_lead") {
-    const { data } = await service.from("users").select("managerId").eq("id", requested).maybeSingle();
-    if (data?.managerId === auth.userId) {
+  if (auth.role === "user" || auth.role === "employee" || auth.role === "team_lead") {
+    const { data: target } = await service
+      .from("users")
+      .select("managerId, teamId")
+      .eq("id", requested)
+      .maybeSingle();
+    if (target?.managerId === auth.userId) {
       return requested;
+    }
+    const tid = target?.teamId as string | null | undefined;
+    if (tid) {
+      const { data: wt } = await service.from("work_teams").select("leadUserId").eq("id", tid).maybeSingle();
+      if (wt?.leadUserId === auth.userId) {
+        return requested;
+      }
     }
   }
   return jsonError("Permessi insufficienti", 403);

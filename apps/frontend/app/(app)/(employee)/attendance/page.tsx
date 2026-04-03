@@ -14,6 +14,7 @@ import {
   fetchAttendanceOvertimeAggregates,
   fetchAttendanceStatus,
   fetchAttendanceSummary,
+  fetchAttendanceDayBoard,
   fetchAttendanceTeamUsers,
   fetchCurrentUser,
   nexaUsesSupabaseAttendance,
@@ -22,9 +23,10 @@ import {
   type AttendanceStatus,
   type TeamAttendanceUserPicker,
   type TimeEntry,
-  type WorkdaySummary
+  type WorkdaySummary,
+  type AttendanceDayBoardResponse
 } from "@/lib/api";
-import { clearSession, getToken, type SessionUser } from "@/lib/auth-session";
+import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");
@@ -77,6 +79,10 @@ export default function AttendancePage(): React.JSX.Element {
   const [addLoading, setAddLoading] = useState(false);
   const [nfcToken, setNfcToken] = useState("");
   const [nfcMsg, setNfcMsg] = useState<string | null>(null);
+  const [hrBoardDate, setHrBoardDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [hrBoard, setHrBoard] = useState<AttendanceDayBoardResponse | null>(null);
+  const [hrBoardLoading, setHrBoardLoading] = useState(false);
+  const [hrBoardError, setHrBoardError] = useState<string | null>(null);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -135,6 +141,36 @@ export default function AttendancePage(): React.JSX.Element {
       cancelled = true;
     };
   }, [token, user?.canManageTeamAttendance]);
+
+  useEffect(() => {
+    if (!token || !user?.canManageTeamAttendance || nexaUsesSupabaseAttendance()) {
+      setHrBoard(null);
+      return;
+    }
+    let cancelled = false;
+    setHrBoardLoading(true);
+    setHrBoardError(null);
+    void fetchAttendanceDayBoard(token, hrBoardDate)
+      .then((b) => {
+        if (!cancelled) {
+          setHrBoard(b);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setHrBoardError(err instanceof Error ? err.message : "Errore caricamento vista giornaliera");
+          setHrBoard(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHrBoardLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.canManageTeamAttendance, hrBoardDate]);
 
   useEffect(() => {
     setNewEntryAtLocal(`${hrEditMonth}-01T09:00`);
@@ -362,7 +398,7 @@ export default function AttendancePage(): React.JSX.Element {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Timbrature</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Storico giornaliero e giorni passati per {user?.fullName}.</p>
-          {user?.role !== "employee" ? (
+          {user && sessionCanSeeApprovalsAndHrExtras(user) ? (
             <Link href="/payroll-calc" className="synapse-nav-link-compact mt-2 inline-block">
               Vai a Calcolo Cedolino
             </Link>
@@ -489,6 +525,125 @@ export default function AttendancePage(): React.JSX.Element {
               {hrManageError ? (
                 <p className="text-sm text-rose-600 dark:text-rose-300">{hrManageError}</p>
               ) : null}
+
+              <div className="border-t border-slate-200 pt-6 dark:border-slate-700">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Vista giornaliera team (CDC e team)
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Elenco dipendenti per centro di costo e team: prima entrata, ultima uscita, stati da calendario
+                  (smart working, trasferta, ferie, malattia) e avvisi.
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Data
+                    <input
+                      type="date"
+                      className="mt-1 block rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      value={hrBoardDate}
+                      onChange={(e) => setHrBoardDate(e.target.value)}
+                    />
+                  </label>
+                </div>
+                {hrBoardLoading ? (
+                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Caricamento…</p>
+                ) : hrBoardError ? (
+                  <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{hrBoardError}</p>
+                ) : hrBoard && hrBoard.costCenters.length > 0 ? (
+                  <div className="mt-4 space-y-6 max-h-[min(70vh,520px)] overflow-y-auto pr-1">
+                    {hrBoard.costCenters.map((cc) => (
+                      <div key={cc.id}>
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                          {cc.label}
+                        </h4>
+                        <div className="mt-2 space-y-4">
+                          {cc.teams.map((tm) => (
+                            <div key={tm.id}>
+                              <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{tm.label}</p>
+                              <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                                <table className="w-full min-w-[720px] text-left text-xs">
+                                  <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                                    <tr>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">
+                                        Dipendente
+                                      </th>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">
+                                        Entrata
+                                      </th>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">
+                                        Uscita
+                                      </th>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">
+                                        Modalità
+                                      </th>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">
+                                        Stato / calendario
+                                      </th>
+                                      <th className="px-2 py-2 font-medium text-slate-700 dark:text-slate-300">Avvisi</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {tm.rows.map((r) => (
+                                      <tr
+                                        key={r.userId}
+                                        className="border-b border-slate-100 dark:border-slate-800 align-top"
+                                      >
+                                        <td className="px-2 py-2 font-medium text-slate-900 dark:text-slate-100">
+                                          {r.fullName}
+                                          <div className="font-normal text-[10px] text-slate-500 dark:text-slate-500">
+                                            {r.email}
+                                          </div>
+                                        </td>
+                                        <td className="px-2 py-2 tabular-nums text-slate-700 dark:text-slate-300">
+                                          {r.firstClockIn ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-2 tabular-nums text-slate-700 dark:text-slate-300">
+                                          {r.lastClockOut ?? "—"}
+                                        </td>
+                                        <td className="px-2 py-2 text-slate-700 dark:text-slate-300">
+                                          {r.workdayMode === "smartworking"
+                                            ? "Smart working"
+                                            : r.workdayMode === "office"
+                                              ? "Sede"
+                                              : "—"}
+                                        </td>
+                                        <td className="px-2 py-2 text-slate-700 dark:text-slate-300">
+                                          {r.statusLabels.length === 0 ? (
+                                            "—"
+                                          ) : (
+                                            <ul className="list-inside list-disc space-y-0.5">
+                                              {r.statusLabels.map((s) => (
+                                                <li key={s}>{s}</li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </td>
+                                        <td className="px-2 py-2">
+                                          {r.alerts.length === 0 ? (
+                                            <span className="text-slate-500">—</span>
+                                          ) : (
+                                            <ul className="list-inside list-disc space-y-0.5 text-amber-800 dark:text-amber-200">
+                                              {r.alerts.map((a) => (
+                                                <li key={a}>{a}</li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : hrBoard ? (
+                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Nessun dipendente in vista per questa data.</p>
+                ) : null}
+              </div>
 
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">

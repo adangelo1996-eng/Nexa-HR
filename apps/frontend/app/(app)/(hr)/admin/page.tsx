@@ -141,7 +141,7 @@ function emptyNewUser(): CreateUserPayload {
     firstName: "",
     lastName: "",
     email: "",
-    role: "employee",
+    role: "user",
     companyId: "comp-1",
     roleId: "",
     costCenterId: "",
@@ -295,10 +295,14 @@ export default function AdminPage(): React.JSX.Element {
 
   const selectedRoleName = selectedUser ? displayUserCatalogRole(selectedUser, roles) : "";
 
-  /** Il ruolo piattaforma `team_lead` non si deriva dal catalogo: solo la nomina team (CDC → Team). */
+  /** Allinea ruolo accesso al catalogo solo per righe «Superuser» / «admin» / «employee» / «user». */
   function mapOrgRoleToAccess(roleName: string | undefined): CreateUserPayload["role"] | undefined {
-    if (roleName === "admin" || roleName === "employee") {
-      return roleName;
+    const n = (roleName ?? "").trim().toLowerCase();
+    if (n === "admin" || n === "superuser") {
+      return "superuser";
+    }
+    if (n === "employee" || n === "user") {
+      return "user";
     }
     return undefined;
   }
@@ -561,9 +565,6 @@ export default function AdminPage(): React.JSX.Element {
                         <span className="rounded-full bg-slate-200/90 px-2 py-0.5 text-[10px] font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
                           {displayUserCatalogRole(item, roles)}
                         </span>
-                        {item.role === "team_lead" ? (
-                          <span className="text-[9px] uppercase text-amber-800 dark:text-amber-200">Team lead</span>
-                        ) : null}
                       </span>
                     </td>
                     <td className="px-1 py-1.5">
@@ -717,8 +718,8 @@ export default function AdminPage(): React.JSX.Element {
                       }
                       className={selectRequiredClass}
                     >
-                      <option value="employee">employee</option>
-                      <option value="admin">admin</option>
+                      <option value="user">user</option>
+                      <option value="superuser">superuser</option>
                     </select>
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -746,8 +747,8 @@ export default function AdminPage(): React.JSX.Element {
                     </select>
                   </label>
                   <p className="md:col-span-2 text-[10px] text-slate-500 dark:text-slate-400">
-                    Per avere accesso team lead (approvazioni, calendario HR) nomina il responsabile da{" "}
-                    <strong>Gestione centri di costo → Team</strong>: il ruolo piattaforma è legato al team.
+                    Responsabile team e approvazioni: nomina il lead da{" "}
+                    <strong>Gestione centri di costo → Team</strong> (resta ruolo piattaforma `user`).
                   </p>
                   <label className="flex flex-col gap-1 text-xs">
                     <span className="text-slate-700 dark:text-slate-300">Centro di costo *</span>
@@ -1075,7 +1076,7 @@ export default function AdminPage(): React.JSX.Element {
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ruolo accesso *</span>
                   <select
-                    value={selectedUser ? selectedUser.role : "employee"}
+                    value={selectedUser ? selectedUser.role : "user"}
                     onChange={(event) =>
                       selectedUser
                         ? updateSelectedUser({ role: event.target.value as User["role"] })
@@ -1083,20 +1084,9 @@ export default function AdminPage(): React.JSX.Element {
                     }
                     className={selectRequiredClass}
                   >
-                    <option value="employee">employee</option>
-                    <option value="admin">admin</option>
-                    {selectedUser?.role === "team_lead" ? (
-                      <option value="team_lead" disabled>
-                        team_lead (solo tramite nomina team in Centri di costo)
-                      </option>
-                    ) : null}
+                    <option value="user">user</option>
+                    <option value="superuser">superuser</option>
                   </select>
-                  {selectedUser?.role === "team_lead" ? (
-                    <span className="text-[10px] text-slate-500">
-                      Per cambiare il responsabile del team usa <strong>Centri di costo → Team</strong>. Puoi retrocedere a
-                      employee o promuovere ad admin da qui.
-                    </span>
-                  ) : null}
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ruolo organizzativo</span>
@@ -1106,8 +1096,7 @@ export default function AdminPage(): React.JSX.Element {
                       if (!selectedUser) return;
                       const value = event.target.value || undefined;
                       const roleName = roles.find((role) => role.id === value)?.name;
-                      const mappedRole =
-                        roleName === "admin" || roleName === "employee" ? roleName : undefined;
+                      const mappedRole = mapOrgRoleToAccess(roleName);
                       updateSelectedUser({ roleId: value, ...(mappedRole ? { role: mappedRole } : {}) });
                     }}
                     className={selectOptionalClass}

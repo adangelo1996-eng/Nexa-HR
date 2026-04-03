@@ -44,8 +44,11 @@ export class ExpensesController {
     @Query("scope") scope?: string
   ): Promise<{ items: ExpenseClaim[] }> {
     const s = scope === "team" ? "team" : "self";
-    if (s === "team" && auth.role === "employee") {
-      throw new ForbiddenException("Scope team non consentito");
+    if (s === "team" && auth.role !== "superuser") {
+      const managed = await this.store.listManagedMemberIdsForApprover(auth.userId);
+      if (managed.size <= 1) {
+        throw new ForbiddenException("Scope team non consentito");
+      }
     }
     const items = await this.store.listExpenseClaimsForRequester(auth.userId, auth.role, s);
     return { items };

@@ -45,6 +45,9 @@ export interface User {
   taxRegion?: string;
   taxMunicipalityIt?: string;
   profilePhotoPath?: string;
+  /** Opzionali da GET /users/me (non sempre presenti su liste). */
+  isTeamResponsible?: boolean;
+  workTeamIdsWhereLead?: string[];
 }
 
 export interface Role {
@@ -240,7 +243,7 @@ export interface LeaveBalance {
 export interface ApprovalItem {
   id: string;
   entityId: string;
-  type: "leave" | "sickness" | "smartworking";
+  type: "leave" | "sickness" | "smartworking" | "travel";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -742,6 +745,47 @@ export async function fetchAttendanceTeamUsers(token: string): Promise<TeamAtten
     await parseError(response);
   }
   return (await response.json()) as TeamAttendanceUserPicker[];
+}
+
+export interface AttendanceDayBoardRow {
+  userId: string;
+  fullName: string;
+  email: string;
+  firstClockIn: string | null;
+  lastClockOut: string | null;
+  workdayMode: "office" | "smartworking" | null;
+  statusLabels: string[];
+  alerts: string[];
+}
+
+export interface AttendanceDayBoardResponse {
+  day: string;
+  costCenters: Array<{
+    id: string;
+    label: string;
+    teams: Array<{
+      id: string;
+      label: string;
+      rows: AttendanceDayBoardRow[];
+    }>;
+  }>;
+}
+
+export async function fetchAttendanceDayBoard(token: string, date?: string): Promise<AttendanceDayBoardResponse> {
+  if (nexaUsesSupabaseAttendance()) {
+    throw new Error(
+      "La vista giornaliera team non è disponibile quando le timbrature usano Supabase Edge."
+    );
+  }
+  const q = date ? `?date=${encodeURIComponent(date)}` : "";
+  const response = await fetch(buildApiUrl(`/attendance/team/day-board${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as AttendanceDayBoardResponse;
 }
 
 export async function downloadAttendanceMonthExport(token: string, month: string): Promise<void> {
@@ -1248,6 +1292,47 @@ export async function updateSmartworkingRequest(
   return (await response.json()) as SmartworkingRequestDto;
 }
 
+export type TravelRequestDto = SmartworkingRequestDto;
+
+export async function createTravelRequest(
+  token: string,
+  payload: { day: string; note?: string }
+): Promise<TravelRequestDto> {
+  const response = await fetch(buildApiUrl("/travel/request"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TravelRequestDto;
+}
+
+export async function cancelTravelRequest(token: string, requestId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/travel/request/${encodeURIComponent(requestId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export async function updateTravelRequest(
+  token: string,
+  requestId: string,
+  payload: { day: string; note?: string }
+): Promise<TravelRequestDto> {
+  const response = await fetch(buildApiUrl(`/travel/request/${encodeURIComponent(requestId)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TravelRequestDto;
+}
+
 export async function reportSickness(
   token: string,
   payload: { fromDate: string; toDate: string; userId?: string },
@@ -1370,7 +1455,7 @@ export async function downloadPayslipPdf(token: string, userId: string, period: 
 
 export interface CalendarEventDto {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol";
+  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol" | "travel";
   title: string;
   start: string;
   end?: string;

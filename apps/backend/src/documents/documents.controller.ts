@@ -61,7 +61,12 @@ export class DocumentsController {
   async upload(@CurrentAuth() auth: AuthContext, @Body() dto: UploadDocDto): Promise<EmployeeDocument> {
     const target = dto.targetUserId ?? auth.userId;
     if (dto.targetUserId && dto.targetUserId !== auth.userId) {
-      if (auth.role !== "admin" && auth.role !== "team_lead") {
+      const tid = dto.targetUserId;
+      const ok =
+        auth.role === "superuser" ||
+        (await this.store.isManagerOf(auth.userId, tid)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, tid));
+      if (!ok) {
         throw new BadRequestException("Caricamento per altri utenti non consentito");
       }
     }

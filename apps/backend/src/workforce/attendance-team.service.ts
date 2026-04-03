@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import type { TimeEntry, User } from "@payday/domain";
+import type { AttendanceDayBoardResponse } from "../platform/hr-data.store";
 import { HrDataStore } from "../platform/hr-data.store";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 
@@ -22,9 +23,25 @@ export class AttendanceTeamService {
     }
   }
 
+  static assertValidDay(day: string): void {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      throw new BadRequestException("Parametro date atteso nel formato YYYY-MM-DD");
+    }
+  }
+
+  async getDayAttendanceBoard(viewerId: string, day: string): Promise<AttendanceDayBoardResponse> {
+    await this.assertCanManageTeam(viewerId);
+    AttendanceTeamService.assertValidDay(day.slice(0, 10));
+    const pick = await this.listPickerUsers(viewerId);
+    return this.store.buildAttendanceDayBoard(
+      pick.map((p) => p.id),
+      day.slice(0, 10)
+    );
+  }
+
   async canManageTeamAttendance(userId: string): Promise<boolean> {
     const user = await this.store.getUser(userId);
-    if (user.role === "admin") {
+    if (user.role === "superuser") {
       return true;
     }
     if (isSynapseSuperuserEmail(user.email)) {
@@ -66,7 +83,7 @@ export class AttendanceTeamService {
     }
     const viewer = await this.store.getUser(viewerId);
     const target = await this.store.getUser(targetUserId);
-    if (viewer.role !== "admin" && !isSynapseSuperuserEmail(viewer.email)) {
+    if (viewer.role !== "superuser" && !isSynapseSuperuserEmail(viewer.email)) {
       if (viewer.companyId !== target.companyId) {
         throw new ForbiddenException("Utente non nella stessa azienda");
       }
@@ -78,7 +95,7 @@ export class AttendanceTeamService {
     const viewer = await this.store.getUser(viewerId);
     const all = await this.store.listUsers();
     const wide =
-      viewer.role === "admin" || isSynapseSuperuserEmail(viewer.email)
+      viewer.role === "superuser" || isSynapseSuperuserEmail(viewer.email)
         ? all
         : all.filter((u) => u.companyId === viewer.companyId);
     return wide

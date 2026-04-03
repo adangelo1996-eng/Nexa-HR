@@ -24,8 +24,8 @@ class AssignRoleDto {
   @IsString()
   userId!: string;
 
-  @IsIn(["admin", "team_lead", "employee"])
-  role!: "admin" | "team_lead" | "employee";
+  @IsIn(["superuser", "user"])
+  role!: "superuser" | "user";
 }
 
 class CreateUserDto {
@@ -40,8 +40,8 @@ class CreateUserDto {
   @MaxLength(320)
   email?: string;
 
-  @IsIn(["admin", "team_lead", "employee"])
-  role!: "admin" | "team_lead" | "employee";
+  @IsIn(["superuser", "user"])
+  role!: "superuser" | "user";
 
   @IsOptional()
   @IsString()
@@ -155,8 +155,8 @@ class UpdateUserDto {
   fullName?: string;
 
   @IsOptional()
-  @IsIn(["admin", "team_lead", "employee"])
-  role?: "admin" | "team_lead" | "employee";
+  @IsIn(["superuser", "user"])
+  role?: "superuser" | "user";
 
   @IsOptional()
   @IsString()
@@ -277,7 +277,7 @@ export class UserController {
 
   @Get()
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("team_lead")
+  @RequireRole("user")
   @RequireNexaPermissions("nexa.admin_users:read")
   async list(): Promise<unknown> {
     return this.store.listUsers();
@@ -288,11 +288,14 @@ export class UserController {
     const user = await this.store.getUser(auth.userId);
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
     const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
+    const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
       canNexaAdmin,
-      canManageTeamAttendance
+      canManageTeamAttendance,
+      isTeamResponsible: workTeamIdsWhereLead.length > 0,
+      workTeamIdsWhereLead
     };
   }
 
@@ -341,7 +344,7 @@ export class UserController {
 
   @Get("roles")
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_roles:read")
   roles(): unknown {
     return this.store.listRoles();
@@ -349,7 +352,7 @@ export class UserController {
 
   @Patch("assign-role")
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_users:write")
   async assignRole(@Body() dto: AssignRoleDto): Promise<unknown> {
     return this.store.assignRole(dto.userId, dto.role);
@@ -357,7 +360,7 @@ export class UserController {
 
   @Post()
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_users:write")
   async create(@Body() dto: CreateUserDto): Promise<unknown> {
     return this.store.createUser(dto, { skipTeamLeadLinkValidation: true });
@@ -365,7 +368,7 @@ export class UserController {
 
   @Post(":userId/profile-photo")
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_users:write")
   @UseInterceptors(FileInterceptor("file"))
   async uploadProfilePhoto(
@@ -389,7 +392,7 @@ export class UserController {
 
   @Patch(":userId")
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_users:write")
   async update(@Param("userId") userId: string, @Body() dto: UpdateUserDto): Promise<unknown> {
     return this.store.updateUser(userId, dto, { skipTeamLeadLinkValidation: true });
@@ -397,7 +400,7 @@ export class UserController {
 
   @Patch(":userId/manager")
   @UseGuards(RoleGuard, NexaPermissionGuard)
-  @RequireRole("admin")
+  @RequireRole("superuser")
   @RequireNexaPermissions("nexa.admin_users:write")
   async updateManager(
     @Param("userId") userId: string,

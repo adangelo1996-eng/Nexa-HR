@@ -70,7 +70,7 @@ export class PermissionsService {
    * Chi può aprire l’area /admin nel frontend: JWT admin, superuser Synapse, o almeno una lettura su moduli amministrativi.
    */
   async canAccessNexaAdminUi(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
-    if (jwtRole === "admin") {
+    if (jwtRole === "superuser") {
       return true;
     }
     if (isSynapseSuperuserEmail(email)) {

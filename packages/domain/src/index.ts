@@ -1,6 +1,7 @@
 /** Tipi dominio Nexa HR (canonici per backend e client). */
 
-export type RoleName = "admin" | "team_lead" | "employee";
+/** Ruolo accesso piattaforma (JWT / `users.role`). Il “responsabile team” non è un valore qui: vive in `work_teams.leadUserId`. */
+export type RoleName = "superuser" | "user";
 
 export type JurisdictionCode = "CH" | "IT";
 
@@ -28,10 +29,7 @@ export interface User {
   fullName: string;
   firstName?: string;
   lastName?: string;
-  /**
-   * Ruolo accesso piattaforma. `team_lead` è valido solo se l’utente è il `leadUserId`
-   * di un `work_team` e il proprio `teamId` coincide con quel team (nomina da CDC → Team).
-   */
+  /** Ruolo accesso piattaforma: `superuser` oppure `user`. */
   role: RoleName;
   managerId?: string;
   companyId: string;
@@ -154,7 +152,7 @@ export interface Payslip {
 export interface ApprovalView {
   id: string;
   entityId: string;
-  type: "leave" | "sickness" | "smartworking";
+  type: "leave" | "sickness" | "smartworking" | "travel";
   requestedBy: string;
   approverId?: string;
   status: "pending" | "approved" | "rejected";
@@ -265,7 +263,7 @@ export interface UserNotification {
 
 export interface CalendarEvent {
   id: string;
-  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol";
+  kind: "leave" | "sickness" | "shift" | "deadline" | "smartworking" | "holiday" | "rol" | "travel";
   title: string;
   start: string;
   end?: string;

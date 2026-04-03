@@ -32,7 +32,7 @@ export class NexaPermissionGuard implements CanActivate {
     }
     const request = context.switchToHttp().getRequest<Request>();
     const auth: AuthContext = getAuthContext(request);
-    if (auth.role === "admin") {
+    if (auth.role === "superuser") {
       return true;
     }
     const ok = await this.permissions.userHasAll(auth.userId, required);

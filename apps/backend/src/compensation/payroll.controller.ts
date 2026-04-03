@@ -15,7 +15,7 @@ import { createChExportGenerator } from "@payday/payroll-adapters-ch";
 import { createItExportGenerator } from "@payday/payroll-adapters-it";
 import type { JurisdictionCode } from "@payday/payroll-core";
 import PDFDocument from "pdfkit";
-import { CurrentAuth } from "../platform/auth";
+import { CurrentAuth, type AuthRole } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 
@@ -66,13 +66,25 @@ class SimulateHireDto {
 export class PayrollController {
   constructor(private readonly store: HrDataStore) {}
 
+  private async hasPayrollManagerialAccess(userId: string, role: AuthRole): Promise<boolean> {
+    if (role === "superuser") {
+      return true;
+    }
+    const subs = await this.store.listUsersByManager(userId);
+    if (subs.length > 0) {
+      return true;
+    }
+    const led = await this.store.listWorkTeamIdsWhereUserIsLead(userId);
+    return led.length > 0;
+  }
+
   @Post("simulate-hire")
   @RequireNexaPermissions("nexa.payroll:read")
-  simulateHire(
-    @CurrentAuth() auth: { role: string },
+  async simulateHire(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Body() dto: SimulateHireDto
-  ): unknown {
-    if (auth.role !== "admin" && auth.role !== "team_lead") {
+  ): Promise<unknown> {
+    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
       throw new ForbiddenException("Solo manager/admin possono simulare costi assunzione");
     }
     return this.store.simulateHirePayroll({
@@ -91,11 +103,11 @@ export class PayrollController {
   @Get("exports/preview")
   @RequireNexaPermissions("nexa.payroll:read")
   async exportPreview(
-    @CurrentAuth() auth: { role: string },
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Query("jurisdiction") jurisdiction: string,
     @Query("period") period?: string
   ): Promise<unknown> {
-    if (auth.role !== "admin" && auth.role !== "team_lead") {
+    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
       throw new ForbiddenException("Solo manager/admin possono anteprima export paghe");
     }
     const j: JurisdictionCode = jurisdiction === "IT" ? "IT" : "CH";
@@ -107,19 +119,20 @@ export class PayrollController {
   @Post(":userId/:period/generate")
   @RequireNexaPermissions("nexa.payroll:write")
   async generate(
-    @CurrentAuth() auth: { userId: string; role: string },
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Param("userId") userId: string,
     @Param("period") period: string
   ): Promise<unknown> {
-    if (auth.role !== "admin" && auth.role !== "team_lead") {
+    if (!(await this.hasPayrollManagerialAccess(auth.userId, auth.role))) {
       throw new ForbiddenException("Solo manager/admin possono generare cedolini di altri utenti");
     }
-    if (
-      auth.role === "team_lead" &&
-      userId !== auth.userId &&
-      !(await this.store.isManagerOf(auth.userId, userId))
-    ) {
-      throw new ForbiddenException("Manager può generare solo cedolini dei sottoposti");
+    if (auth.role !== "superuser" && userId !== auth.userId) {
+      const ok =
+        (await this.store.isManagerOf(auth.userId, userId)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, userId));
+      if (!ok) {
+        throw new ForbiddenException("Manager può generare solo cedolini dei sottoposti");
+      }
     }
     return this.store.generatePayslip(userId, period);
   }
@@ -127,10 +140,10 @@ export class PayrollController {
   @Post(":period/generate-self")
   @RequireNexaPermissions("nexa.payroll:write")
   async generateSelf(
-    @CurrentAuth() auth: { userId: string; role: string },
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Param("period") period: string
   ): Promise<unknown> {
-    if (auth.role !== "employee") {
+    if (auth.role !== "user") {
       throw new ForbiddenException("Solo dipendente può usare generate-self");
     }
     return this.store.generatePayslip(auth.userId, period);
@@ -139,20 +152,21 @@ export class PayrollController {
   @Get("payslips")
   @RequireNexaPermissions("nexa.payslips:read")
   async list(
-    @CurrentAuth() auth: { userId: string; role: string },
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Query("userId") userId?: string,
     @Query("months") months?: string
   ): Promise<unknown> {
-    const canReadOthers = auth.role === "admin" || auth.role === "team_lead";
+    const canReadOthers = await this.hasPayrollManagerialAccess(auth.userId, auth.role);
     if (userId && !canReadOthers && userId !== auth.userId) {
       throw new ForbiddenException("Accesso non autorizzato al cedolino");
     }
-    if (
-      userId &&
-      auth.role === "team_lead" &&
-      !(await this.store.isManagerOf(auth.userId, userId))
-    ) {
-      throw new ForbiddenException("Manager può leggere solo cedolini dei sottoposti");
+    if (userId && auth.role !== "superuser" && userId !== auth.userId) {
+      const ok =
+        (await this.store.isManagerOf(auth.userId, userId)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, userId));
+      if (!ok) {
+        throw new ForbiddenException("Manager può leggere solo cedolini dei sottoposti");
+      }
     }
     const target = canReadOthers ? userId : auth.userId;
     let items = await this.store.listPayslipsWithNewFlag(auth.userId, target);
@@ -181,16 +195,23 @@ export class PayrollController {
   @Get(":userId/:period/pdf")
   @RequireNexaPermissions("nexa.payslips:read")
   async exportPdf(
-    @CurrentAuth() auth: { userId: string; role: string },
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
     @Param("userId") userId: string,
     @Param("period") period: string
   ): Promise<StreamableFile> {
-    const canRead = auth.role !== "employee" || auth.userId === userId;
-    if (!canRead) {
-      throw new ForbiddenException("Accesso PDF cedolino non autorizzato");
-    }
-    if (auth.role === "team_lead" && !(await this.store.isManagerOf(auth.userId, userId))) {
-      throw new ForbiddenException("Manager può esportare solo PDF dei sottoposti");
+    if (auth.userId !== userId) {
+      if (auth.role === "superuser") {
+        /* ok */
+      } else if (auth.role === "user") {
+        const ok =
+          (await this.store.isManagerOf(auth.userId, userId)) ||
+          (await this.store.isUserLeadOfTeamContaining(auth.userId, userId));
+        if (!ok) {
+          throw new ForbiddenException("Manager può esportare solo PDF dei sottoposti");
+        }
+      } else {
+        throw new ForbiddenException("Accesso PDF cedolino non autorizzato");
+      }
     }
     let payslip = await this.store.getPayslipForPeriod(userId, period);
     if (!payslip) {

@@ -16,9 +16,8 @@ import {
 import { getToken, getSessionUser, type SessionUser, type UserRole } from "@/lib/auth-session";
 
 const ROLES: { value: UserRole; label: string }[] = [
-  { value: "employee", label: "Dipendente" },
-  { value: "team_lead", label: "Team lead" },
-  { value: "admin", label: "Admin" }
+  { value: "user", label: "Utente (accesso standard)" },
+  { value: "superuser", label: "Superuser" }
 ];
 
 export default function OrgChartPage(): React.JSX.Element {

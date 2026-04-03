@@ -11,7 +11,7 @@ import {
   type Payslip,
   type User
 } from "@/lib/api";
-import { clearSession, getToken, type SessionUser } from "@/lib/auth-session";
+import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
 
 export default function PayrollCalcPage(): React.JSX.Element {
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function PayrollCalcPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const currentUser = await fetchCurrentUser(tokenValue);
-        if (currentUser.role === "employee") {
+        if (!sessionCanSeeApprovalsAndHrExtras(currentUser)) {
           router.replace("/");
           return;
         }

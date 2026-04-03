@@ -33,6 +33,7 @@ import {
   clearSession,
   getToken,
   getSessionUser,
+  sessionCanSeeApprovalsAndHrExtras,
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
 
@@ -118,9 +119,9 @@ export default function HomePage(): React.JSX.Element {
           ),
           fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
           fetchLeavePlans(tokenValue).catch(() => [] as LeavePlan[]),
-          me.role === "employee"
-            ? Promise.resolve([] as ApprovalItem[])
-            : fetchApprovals(tokenValue, "pending").catch(() => [] as ApprovalItem[])
+          me && sessionCanSeeApprovalsAndHrExtras(me)
+            ? fetchApprovals(tokenValue, "pending").catch(() => [] as ApprovalItem[])
+            : Promise.resolve([] as ApprovalItem[])
         ]);
 
         setAttendanceStatusFailed(!statusResult.ok);
@@ -162,7 +163,7 @@ export default function HomePage(): React.JSX.Element {
               ),
               fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
               fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
-              user && user.role !== "employee"
+              user && sessionCanSeeApprovalsAndHrExtras(user)
                 ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
                 : Promise.resolve([] as ApprovalItem[])
             ]);
@@ -295,7 +296,7 @@ export default function HomePage(): React.JSX.Element {
           <h1 className="text-2xl font-semibold text-[var(--prom-text)]">{user.fullName}</h1>
           <p className="mt-1 text-sm text-[var(--prom-muted)]">Dashboard</p>
         </div>
-        {user.role !== "employee" && approvals.length > 0 ? (
+        {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
           <Link
             href="/workflow/approvals"
             className="text-sm font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
