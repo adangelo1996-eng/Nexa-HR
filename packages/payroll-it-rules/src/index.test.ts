@@ -4,7 +4,8 @@ import {
   calculateItalianPayroll,
   computeAnnualIrpef,
   defaultItalianRuleSet2026,
-  employerBudgetBucketsFromGrossIt
+  employerBudgetBucketsFromGrossIt,
+  employerRatesFromItalianProfile
 } from "./index.js";
 
 test("computeAnnualIrpef uses brackets and detrazione", () => {
@@ -33,9 +34,20 @@ test("calculateItalianPayroll returns net lower than gross", () => {
   assert.ok(r.netSalary > 0);
   assert.ok(r.netSalary < r.grossAdjusted);
   assert.ok(r.lines.some((l) => l.code === "INPS" && l.amount < 0));
+  assert.ok(r.lines.some((l) => l.code === "DAT_INPS" && l.amount > 0));
+  assert.ok(r.lines.some((l) => l.code === "DAT_INAIL" && l.amount > 0));
 });
 
 test("employerBudgetBucketsFromGrossIt sums cost", () => {
-  const b = employerBudgetBucketsFromGrossIt(3000, defaultItalianRuleSet2026);
+  const b = employerBudgetBucketsFromGrossIt(3000, { ruleSet: defaultItalianRuleSet2026 });
   assert.ok(b.totalCompanyCost > 3000);
+});
+
+test("employerRatesFromItalianProfile uses INAIL permille", () => {
+  const r = employerRatesFromItalianProfile(
+    { sector: "commerce", inailPermille: 4 },
+    defaultItalianRuleSet2026
+  );
+  assert.equal(r.inailRate, 0.004);
+  assert.ok(r.employerInpsRate > 0);
 });

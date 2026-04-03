@@ -1,11 +1,17 @@
 import type { PayrollExportArtifact, PayrollRunContext, PayrollExportGenerator, JurisdictionCode } from "../../payroll-core/dist/index";
 export {
   calculateItalianPayroll,
+  computeAnnualIrpef,
   employerBudgetBucketsFromGrossIt,
+  employerRatesFromItalianProfile,
   defaultItalianRuleSet2026,
+  ITALIAN_EMPLOYER_INPS_RATE_BY_SECTOR,
   type ItalianPayrollInput,
+  type ItalianPayrollProfileEmployer,
   type ItalianTaxProfile,
   type ItalianRuleSet,
+  type PayrollItSector,
+  type EmployerItBucketOptions,
   type PayrollResult as ItalianPayrollEngineResult
 } from "../../payroll-it-rules/dist/index";
 

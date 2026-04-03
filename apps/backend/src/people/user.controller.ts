@@ -13,12 +13,32 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
-import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import {
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min
+} from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AttendanceTeamService } from "../workforce/attendance-team.service";
 import { PermissionsService } from "../platform/permissions.service";
+
+const PAYROLL_IT_SECTORS = [
+  "industry",
+  "commerce",
+  "services",
+  "tourism",
+  "credit_insurance",
+  "agriculture",
+  "custom"
+] as const;
 
 class AssignRoleDto {
   @IsString()
@@ -134,6 +154,38 @@ class CreateUserDto {
   @IsString()
   @MaxLength(120)
   taxMunicipalityIt?: string;
+
+  @IsOptional()
+  @IsIn(PAYROLL_IT_SECTORS as unknown as string[])
+  payrollItSector?: (typeof PAYROLL_IT_SECTORS)[number] | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(40)
+  payrollEmployerInpsPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  payrollInailPermille?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(20)
+  payrollTfrDivisor?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  payrollAtecoCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  payrollInailRiskDescription?: string | null;
 
   /** Team di lavoro (solo console admin; opzionale in creazione). */
   @IsOptional()
@@ -260,6 +312,38 @@ class UpdateUserDto {
   @IsString()
   @MaxLength(120)
   taxMunicipalityIt?: string;
+
+  @IsOptional()
+  @IsIn(PAYROLL_IT_SECTORS as unknown as string[])
+  payrollItSector?: (typeof PAYROLL_IT_SECTORS)[number] | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(40)
+  payrollEmployerInpsPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  payrollInailPermille?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(20)
+  payrollTfrDivisor?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  payrollAtecoCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  payrollInailRiskDescription?: string | null;
 
   @IsOptional()
   @IsString()

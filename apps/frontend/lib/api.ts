@@ -45,6 +45,12 @@ export interface User {
   taxRegion?: string;
   taxMunicipalityIt?: string;
   profilePhotoPath?: string;
+  payrollItSector?: string | null;
+  payrollEmployerInpsPercent?: number | null;
+  payrollInailPermille?: number | null;
+  payrollTfrDivisor?: number | null;
+  payrollAtecoCode?: string | null;
+  payrollInailRiskDescription?: string | null;
   /** Opzionali da GET /users/me (non sempre presenti su liste). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
@@ -106,6 +112,8 @@ export interface CostCenter {
   name: string;
   description?: string;
   companyId?: string;
+  payrollItSector?: string | null;
+  payrollDefaultInailPermille?: number | null;
 }
 
 export interface WorkTeamDto {
@@ -289,6 +297,12 @@ export interface CreateUserPayload {
   jurisdiction?: "CH" | "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
+  payrollItSector?: string | null;
+  payrollEmployerInpsPercent?: number | null;
+  payrollInailPermille?: number | null;
+  payrollTfrDivisor?: number | null;
+  payrollAtecoCode?: string | null;
+  payrollInailRiskDescription?: string | null;
   /** Assegnazione team (solo admin console). */
   teamId?: string | null;
 }
@@ -320,6 +334,12 @@ export interface UpdateUserPayload {
   jurisdiction?: "CH" | "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
+  payrollItSector?: string | null;
+  payrollEmployerInpsPercent?: number | null;
+  payrollInailPermille?: number | null;
+  payrollTfrDivisor?: number | null;
+  payrollAtecoCode?: string | null;
+  payrollInailRiskDescription?: string | null;
   profilePhotoPath?: string | null;
   /** Assegnazione team (solo admin console). */
   teamId?: string | null;
@@ -990,7 +1010,13 @@ export async function fetchAdminCostCenters(token: string): Promise<CostCenter[]
 
 export async function createAdminCostCenter(
   token: string,
-  payload: { code?: string; name: string; description?: string }
+  payload: {
+    code?: string;
+    name: string;
+    description?: string;
+    payrollItSector?: string | null;
+    payrollDefaultInailPermille?: number | null;
+  }
 ): Promise<CostCenter> {
   const response = await fetch(buildApiUrl("/admin/cost-centers"), {
     method: "POST",
@@ -1006,7 +1032,13 @@ export async function createAdminCostCenter(
 export async function updateAdminCostCenter(
   token: string,
   costCenterId: string,
-  payload: { code?: string; name?: string; description?: string }
+  payload: {
+    code?: string;
+    name?: string;
+    description?: string;
+    payrollItSector?: string | null;
+    payrollDefaultInailPermille?: number | null;
+  }
 ): Promise<CostCenter> {
   const response = await fetch(buildApiUrl(`/admin/cost-centers/${costCenterId}`), {
     method: "PATCH",
@@ -1801,6 +1833,7 @@ export interface PersonnelBudgetRow {
   costCenterName?: string;
   budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
   actual: PersonnelBudgetMoney;
+  suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 }
 
 export interface PersonnelBudgetDepartment {

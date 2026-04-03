@@ -323,9 +323,10 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
 
       {snap ? (
         <p className="text-xs text-[var(--prom-muted)]">
-          Periodo consuntivo: <strong>{snap.period}</strong> — tutti gli importi in CHF. Colonne omonime:{" "}
-          <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo (sola lettura). Costo azienda C =
-          somma RAL + oneri datore (modello CH) + trasferte.
+          Periodo consuntivo: <strong>{snap.period}</strong> — importi in EUR per profilo IT, CHF per profilo CH dove
+          applicabile. Colonne: <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo da cedolino /
+          competenze. Per dipendenti <strong>IT</strong>, la riga «Suggerito» sotto il nome propone INPS datore, INAIL
+          (permille) e TFR da RAL base e da settore/rischio in anagrafica (verificare sempre con il consulente).
         </p>
       ) : null}
 
@@ -353,7 +354,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
                       INAIL (stima datore)
                     </th>
                     <th className={th} colSpan={2}>
-                      TFR (proxy CH)
+                      TFR (accanton.)
                     </th>
                     <th className={th} colSpan={2}>
                       Tot. costo az.**
@@ -393,6 +394,13 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
                       <tr key={row.userId}>
                         <td className={td}>
                           <span className="font-medium">{row.fullName}</span>
+                          {row.suggestedBudget ? (
+                            <p className="mt-0.5 max-w-[220px] text-[10px] leading-tight text-[var(--prom-muted)]">
+                              Suggerito IT: INPS {formatNum(row.suggestedBudget.inps ?? 0)} · INAIL{" "}
+                              {formatNum(row.suggestedBudget.inail ?? 0)} · TFR{" "}
+                              {formatNum(row.suggestedBudget.tfr ?? 0)}
+                            </p>
+                          ) : null}
                         </td>
                         <td className={td}>
                           <input
@@ -477,8 +485,9 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       </DndContext>
 
       <p className="text-xs text-[var(--prom-muted)]">
-        ** Totale consuntivo costo azienda include trasferte del mese oltre al lordo + oneri datore stimati (Svizzera).
-        Etichette INPS/INAIL/TFR sono bucket di reportistica sul modello CH.
+        ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:
+        settore IVS, premio INAIL in permille, divisore TFR) oppure modello CH, più trasferte. Valori normativi vanno
+        allineati annualmente con consulenza del lavoro e tabella INAIL reale.
       </p>
 
       <Link href="/" className="text-sm text-[var(--prom-gold)] hover:underline">

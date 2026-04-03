@@ -385,7 +385,13 @@ export default function AdminPage(): React.JSX.Element {
         jurisdiction: selectedUser.jurisdiction,
         taxRegion: selectedUser.taxRegion,
         taxMunicipalityIt: selectedUser.taxMunicipalityIt,
-        teamId: selectedUser.teamId ?? null
+        teamId: selectedUser.teamId ?? null,
+        payrollItSector: selectedUser.payrollItSector ?? null,
+        payrollEmployerInpsPercent: selectedUser.payrollEmployerInpsPercent ?? null,
+        payrollInailPermille: selectedUser.payrollInailPermille ?? null,
+        payrollTfrDivisor: selectedUser.payrollTfrDivisor ?? null,
+        payrollAtecoCode: selectedUser.payrollAtecoCode ?? null,
+        payrollInailRiskDescription: selectedUser.payrollInailRiskDescription ?? null
       });
       await setLeaveAllowance(token, selectedUser.id, selectedUser.vacationAllowanceDays ?? 22);
       await refreshUsers();
@@ -1277,6 +1283,121 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
+                <div className="md:col-span-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="mb-2 text-[11px] font-medium text-slate-800 dark:text-slate-200">
+                    Contributi datore Italia (budget / cedolino)
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      <span className="text-slate-600 dark:text-slate-400">Settore IVS (preset)</span>
+                      <select
+                        value={selectedUser?.payrollItSector ?? ""}
+                        onChange={(event) => {
+                          if (!selectedUser) return;
+                          const v = event.target.value;
+                          updateSelectedUser({ payrollItSector: v === "" ? null : v });
+                        }}
+                        className={selectOptionalClass}
+                      >
+                        <option value="">— usa default reparto —</option>
+                        <option value="industry">Industria</option>
+                        <option value="commerce">Commercio</option>
+                        <option value="services">Terziario / servizi</option>
+                        <option value="tourism">Turismo / pubblici esercizi</option>
+                        <option value="credit_insurance">Credito / assicurazioni</option>
+                        <option value="agriculture">Agricoltura (semplif.)</option>
+                        <option value="custom">Personalizzato (% sotto)</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      <span className="text-slate-600 dark:text-slate-400">IVS datore % (override)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={40}
+                        step={0.01}
+                        value={selectedUser?.payrollEmployerInpsPercent ?? ""}
+                        onChange={(event) => {
+                          if (!selectedUser) return;
+                          const v = event.target.value;
+                          updateSelectedUser({
+                            payrollEmployerInpsPercent: v === "" ? null : Number(v)
+                          });
+                        }}
+                        placeholder="es. 24.48"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      <span className="text-slate-600 dark:text-slate-400">INAIL (permille su lordo)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        step={0.1}
+                        value={selectedUser?.payrollInailPermille ?? ""}
+                        onChange={(event) => {
+                          if (!selectedUser) return;
+                          const v = event.target.value;
+                          updateSelectedUser({
+                            payrollInailPermille: v === "" ? null : Number(v)
+                          });
+                        }}
+                        placeholder="es. 3.2"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px]">
+                      <span className="text-slate-600 dark:text-slate-400">Divisore TFR mensile</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={0.1}
+                        value={selectedUser?.payrollTfrDivisor ?? ""}
+                        onChange={(event) => {
+                          if (!selectedUser) return;
+                          const v = event.target.value;
+                          updateSelectedUser({
+                            payrollTfrDivisor: v === "" ? null : Number(v)
+                          });
+                        }}
+                        placeholder="13.5"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] md:col-span-2">
+                      <span className="text-slate-600 dark:text-slate-400">Codice Ateco (riferimento)</span>
+                      <input
+                        value={selectedUser?.payrollAtecoCode ?? ""}
+                        onChange={(event) => {
+                          if (selectedUser) {
+                            updateSelectedUser({
+                              payrollAtecoCode: event.target.value.trim() || null
+                            });
+                          }
+                        }}
+                        placeholder="es. 62.01.00"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] md:col-span-2">
+                      <span className="text-slate-600 dark:text-slate-400">Rischio / tariffa INAIL (note)</span>
+                      <input
+                        value={selectedUser?.payrollInailRiskDescription ?? ""}
+                        onChange={(event) => {
+                          if (selectedUser) {
+                            updateSelectedUser({
+                              payrollInailRiskDescription: event.target.value.trim() || null
+                            });
+                          }
+                        }}
+                        placeholder="es. Rischio basso — ufficio amministrativo"
+                        className={inputOptionalClass}
+                      />
+                    </label>
+                  </div>
+                </div>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Numero AVS</span>
                   <input

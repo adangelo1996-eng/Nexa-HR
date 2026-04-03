@@ -31,6 +31,8 @@ describe("HrDataStore", () => {
     const payslip = await store.generatePayslip(created.id, "2026-04");
     assert.ok(payslip.lines.some((l) => l.code === "INPS"));
     assert.ok(payslip.lines.some((l) => l.code === "IRPEF"));
+    assert.ok(payslip.lines.some((l) => l.code === "DAT_INPS" && l.amount > 0));
+    assert.ok(payslip.lines.some((l) => l.code === "DAT_INAIL" && l.amount > 0));
   });
 
   it("gestisce entrata/uscita con pausa-ripresa e calcola straordinario giornaliero", async () => {

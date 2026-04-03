@@ -63,6 +63,18 @@ export interface User {
   taxMunicipalityIt?: string;
   /** Path oggetto in bucket Storage (foto profilo). */
   profilePhotoPath?: string | null;
+  /** Settore preset IVS datore IT (vedi engine payroll-it-rules). */
+  payrollItSector?: string | null;
+  /** Override % IVS datore totale (es. 24.48). */
+  payrollEmployerInpsPercent?: number | null;
+  /** Premio INAIL permille su lordo mensile. */
+  payrollInailPermille?: number | null;
+  /** Divisore accantonamento TFR (default 13.5). */
+  payrollTfrDivisor?: number | null;
+  /** Codice Ateco (riferimento rischio / tariffa). */
+  payrollAtecoCode?: string | null;
+  /** Descrizione rischio mansione / tariffa INAIL. */
+  payrollInailRiskDescription?: string | null;
 }
 
 export interface CostCenter {
@@ -71,6 +83,10 @@ export interface CostCenter {
   name: string;
   description?: string;
   companyId?: string;
+  /** Default settore preset IVS datore (IT) per il reparto. */
+  payrollItSector?: string | null;
+  /** Default premio INAIL in permille per dipendenti senza valore in anagrafica. */
+  payrollDefaultInailPermille?: number | null;
 }
 
 export interface WorkTeam {

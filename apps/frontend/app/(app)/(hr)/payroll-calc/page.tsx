@@ -25,6 +25,7 @@ function payrollUserDropdownList(me: SessionUser, fromApi: User[]): User[] {
   return [
     {
       id: me.id,
+      email: me.email,
       fullName: me.fullName,
       role: me.role,
       companyId: me.companyId ?? ""

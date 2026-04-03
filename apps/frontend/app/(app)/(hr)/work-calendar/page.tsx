@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,10 @@ type AdminTableRow =
   | { kind: "cc"; id: string; label: string }
   | { kind: "team"; id: string; label: string }
   | { kind: "person"; row: RowUser };
+
+function readMultiSelectValues(e: ChangeEvent<HTMLSelectElement>): string[] {
+  return Array.from(e.target.selectedOptions, (opt) => opt.value);
+}
 
 function monthRange(year: number, month: number): { from: string; to: string } {
   const pad = (n: number) => String(n).padStart(2, "0");

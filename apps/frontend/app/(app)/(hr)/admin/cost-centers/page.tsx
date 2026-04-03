@@ -28,7 +28,7 @@ import {
   sessionCanNexaAdmin,
   shouldClearSessionOnUnauthorizedApiError
 } from "@/lib/auth-session";
-import { inputOptionalClass, inputRequiredClass } from "@/lib/form-field-styles";
+import { inputOptionalClass, inputRequiredClass, selectOptionalClass } from "@/lib/form-field-styles";
 
 function generateTenDigitCostCode(): string {
   const suffix = Math.floor(Math.random() * 10_000_000)
@@ -321,7 +321,9 @@ export default function AdminCostCentersPage(): React.JSX.Element {
       await updateAdminCostCenter(token, selected.id, {
         code: codeDigits,
         name,
-        description: selected.description
+        description: selected.description,
+        payrollItSector: selected.payrollItSector ?? null,
+        payrollDefaultInailPermille: selected.payrollDefaultInailPermille ?? null
       });
       await refresh();
     } catch (submitError) {
@@ -438,6 +440,44 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                 <input
                   value={selected.description ?? ""}
                   onChange={(event) => updateSelected({ description: event.target.value || undefined })}
+                  className={inputOptionalClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
+                <span className="text-slate-700 dark:text-slate-300">Default settore IVS (IT) per il reparto</span>
+                <select
+                  value={selected.payrollItSector ?? ""}
+                  onChange={(event) => {
+                    const v = event.target.value;
+                    updateSelected({ payrollItSector: v === "" ? null : v });
+                  }}
+                  className={selectOptionalClass}
+                >
+                  <option value="">— nessun default —</option>
+                  <option value="industry">Industria</option>
+                  <option value="commerce">Commercio</option>
+                  <option value="services">Terziario / servizi</option>
+                  <option value="tourism">Turismo / pubblici esercizi</option>
+                  <option value="credit_insurance">Credito / assicurazioni</option>
+                  <option value="agriculture">Agricoltura (semplif.)</option>
+                  <option value="custom">Custom (dipendente: % IVS)</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs md:col-span-2">
+                <span className="text-slate-700 dark:text-slate-300">Default premio INAIL (permille)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={0.1}
+                  value={selected.payrollDefaultInailPermille ?? ""}
+                  onChange={(event) => {
+                    const v = event.target.value;
+                    updateSelected({
+                      payrollDefaultInailPermille: v === "" ? null : Number(v)
+                    });
+                  }}
+                  placeholder="es. 3"
                   className={inputOptionalClass}
                 />
               </label>

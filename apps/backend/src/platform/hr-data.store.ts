@@ -36,7 +36,14 @@ import type {
   GeoFix
 } from "@payday/domain";
 import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
-import { calculateItalianPayroll, employerBudgetBucketsFromGrossIt } from "@payday/payroll-adapters-it";
+import {
+  calculateItalianPayroll,
+  defaultItalianRuleSet2026,
+  employerBudgetBucketsFromGrossIt,
+  employerRatesFromItalianProfile,
+  type ItalianPayrollProfileEmployer,
+  type PayrollItSector
+} from "@payday/payroll-adapters-it";
 import type { AuthRole } from "./auth";
 
 interface ApprovalRecord {
@@ -105,6 +112,8 @@ export type PersonnelBudgetRow = {
   costCenterName?: string;
   budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
   actual: PersonnelBudgetMoney;
+  /** Stima da RAL base e profilo IT (orientativa; verificare con consulente). */
+  suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 };
 
 export type PersonnelBudgetDepartment = {
@@ -173,6 +182,12 @@ interface UserCreateInput {
   jurisdiction?: User["jurisdiction"];
   taxRegion?: string;
   taxMunicipalityIt?: string;
+  payrollItSector?: string | null;
+  payrollEmployerInpsPercent?: number | null;
+  payrollInailPermille?: number | null;
+  payrollTfrDivisor?: number | null;
+  payrollAtecoCode?: string | null;
+  payrollInailRiskDescription?: string | null;
 }
 
 interface UserUpdateInput {
@@ -204,6 +219,12 @@ interface UserUpdateInput {
   taxMunicipalityIt?: string;
   profilePhotoPath?: string | null;
   teamId?: string | null;
+  payrollItSector?: string | null;
+  payrollEmployerInpsPercent?: number | null;
+  payrollInailPermille?: number | null;
+  payrollTfrDivisor?: number | null;
+  payrollAtecoCode?: string | null;
+  payrollInailRiskDescription?: string | null;
 }
 
 type EmployeeDocumentRow = EmployeeDocument & { bodyBase64?: string | null };
@@ -1000,7 +1021,13 @@ export class HrDataStore {
       taxMunicipality: input.taxMunicipality,
       jurisdiction: input.jurisdiction ?? "CH",
       taxRegion: input.taxRegion,
-      taxMunicipalityIt: input.taxMunicipalityIt
+      taxMunicipalityIt: input.taxMunicipalityIt,
+      payrollItSector: input.payrollItSector ?? undefined,
+      payrollEmployerInpsPercent: input.payrollEmployerInpsPercent ?? undefined,
+      payrollInailPermille: input.payrollInailPermille ?? undefined,
+      payrollTfrDivisor: input.payrollTfrDivisor ?? undefined,
+      payrollAtecoCode: input.payrollAtecoCode ?? undefined,
+      payrollInailRiskDescription: input.payrollInailRiskDescription ?? undefined
     };
     if (this.useDb) {
       await this.supabase!.from("users").insert(user);
@@ -1216,7 +1243,14 @@ export class HrDataStore {
     throw new BadRequestException("Impossibile generare un codice centro di costo univoco");
   }
 
-  async createCostCenter(input: { code?: string; name: string; description?: string; companyId?: string }): Promise<CostCenter> {
+  async createCostCenter(input: {
+    code?: string;
+    name: string;
+    description?: string;
+    companyId?: string;
+    payrollItSector?: string | null;
+    payrollDefaultInailPermille?: number | null;
+  }): Promise<CostCenter> {
     const name = input.name.trim();
     if (!name) {
       throw new BadRequestException("Nome centro di costo obbligatorio");
@@ -1240,7 +1274,11 @@ export class HrDataStore {
       code,
       name,
       description: input.description,
-      ...(companyId ? { companyId } : {})
+      ...(companyId ? { companyId } : {}),
+      ...(input.payrollItSector !== undefined ? { payrollItSector: input.payrollItSector } : {}),
+      ...(input.payrollDefaultInailPermille !== undefined
+        ? { payrollDefaultInailPermille: input.payrollDefaultInailPermille }
+        : {})
     };
     if (this.useDb) {
       await this.supabase!.from("cost_centers").insert(costCenter);
@@ -1252,7 +1290,14 @@ export class HrDataStore {
 
   async updateCostCenter(
     costCenterId: string,
-    input: { code?: string; name?: string; description?: string; companyId?: string | null }
+    input: {
+      code?: string;
+      name?: string;
+      description?: string;
+      companyId?: string | null;
+      payrollItSector?: string | null;
+      payrollDefaultInailPermille?: number | null;
+    }
   ): Promise<CostCenter> {
     const currentCostCenters = await this.listCostCenters();
     const center = currentCostCenters.find((item) => item.id === costCenterId);
@@ -1285,6 +1330,12 @@ export class HrDataStore {
     if (input.companyId !== undefined) {
       const v = input.companyId?.trim();
       center.companyId = v && v.length > 0 ? v : undefined;
+    }
+    if (input.payrollItSector !== undefined) {
+      center.payrollItSector = input.payrollItSector;
+    }
+    if (input.payrollDefaultInailPermille !== undefined) {
+      center.payrollDefaultInailPermille = input.payrollDefaultInailPermille;
     }
     if (this.useDb) {
       await this.supabase!.from("cost_centers").update(center).eq("id", costCenterId);
@@ -2530,6 +2581,28 @@ export class HrDataStore {
     return Math.max(18, Math.min(75, age));
   }
 
+  private italianPayrollProfileForUser(
+    user: User,
+    costCenter: CostCenter | null | undefined
+  ): ItalianPayrollProfileEmployer {
+    const su = user.payrollItSector?.trim();
+    const sc = costCenter?.payrollItSector?.trim();
+    const sectorRaw = su && su.length > 0 ? su : sc && sc.length > 0 ? sc : undefined;
+    return {
+      sector: sectorRaw != null ? (sectorRaw as PayrollItSector) : null,
+      employerInpsPercent: user.payrollEmployerInpsPercent ?? null,
+      inailPermille: user.payrollInailPermille ?? costCenter?.payrollDefaultInailPermille ?? null,
+      tfrDivisor: user.payrollTfrDivisor ?? null
+    };
+  }
+
+  private italianEmployerRatesForUser(user: User, costCenter: CostCenter | null | undefined) {
+    return employerRatesFromItalianProfile(
+      this.italianPayrollProfileForUser(user, costCenter),
+      defaultItalianRuleSet2026
+    );
+  }
+
   async generatePayslip(userId: string, period: string): Promise<Payslip> {
     const user = await this.getUser(userId);
     const grossMonthlySalary =
@@ -2546,6 +2619,10 @@ export class HrDataStore {
     const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
     const jurisdiction = user.jurisdiction === "IT" ? "IT" : "CH";
+    const costCenter =
+      user.costCenterId != null ? await this.getCostCenterById(user.costCenterId) : null;
+    const employerIt =
+      jurisdiction === "IT" ? this.italianEmployerRatesForUser(user, costCenter ?? undefined) : null;
     let result: { lines: Payslip["lines"]; grossAdjusted: number; netSalary: number };
     if (jurisdiction === "IT") {
       result = calculateItalianPayroll({
@@ -2561,7 +2638,14 @@ export class HrDataStore {
           regionCode: user.taxRegion?.trim() || "LAZ",
           municipality: user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma"
         },
-        vacationResidualDays: balance.residualDays
+        vacationResidualDays: balance.residualDays,
+        employerContributions: employerIt
+          ? {
+              employerInpsRate: employerIt.employerInpsRate,
+              inailRate: employerIt.inailRate,
+              tfrDivisor: employerIt.tfrDivisor
+            }
+          : undefined
       });
     } else {
       const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
@@ -5267,9 +5351,23 @@ export class HrDataStore {
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
       const isIt = u.jurisdiction === "IT";
+      const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
+      const ratesIt = isIt ? this.italianEmployerRatesForUser(u, ccRow) : null;
       const buckets = isIt
-        ? employerBudgetBucketsFromGrossIt(grossAdjusted)
+        ? employerBudgetBucketsFromGrossIt(grossAdjusted, {
+            employerInpsRate: ratesIt!.employerInpsRate,
+            inailRate: ratesIt!.inailRate,
+            tfrDivisor: ratesIt!.tfrDivisor
+          })
         : employerBudgetBucketsFromGrossChf(grossAdjusted, this.ageFromBirthDate(u.birthDate));
+      const sugB =
+        isIt && ratesIt
+          ? employerBudgetBucketsFromGrossIt(base, {
+              employerInpsRate: ratesIt.employerInpsRate,
+              inailRate: ratesIt.inailRate,
+              tfrDivisor: ratesIt.tfrDivisor
+            })
+          : null;
       const actual: PersonnelBudgetMoney = {
         ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
         overtime: Math.round(overtime * 100) / 100,
@@ -5302,7 +5400,20 @@ export class HrDataStore {
         costCenterId: ccId,
         costCenterName: ccId ? ccById.get(ccId)?.name : undefined,
         budget,
-        actual
+        actual,
+        ...(sugB
+          ? {
+              suggestedBudget: {
+                ral: Math.round(base * 100) / 100,
+                overtime: 0,
+                travel: 0,
+                inps: sugB.employerInpsLike,
+                inail: sugB.employerInailLike,
+                tfr: sugB.employerTfrLike,
+                totalCompanyCost: sugB.totalCompanyCost
+              }
+            }
+          : {})
       });
     }
 

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { Transform } from "class-transformer";
-import { IsArray, IsOptional, IsString } from "class-validator";
+import { IsArray, IsIn, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 import { RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import {
@@ -40,6 +40,16 @@ class UpdateRoleDto {
   permissions?: string[];
 }
 
+const PAYROLL_IT_SECTORS = [
+  "industry",
+  "commerce",
+  "services",
+  "tourism",
+  "credit_insurance",
+  "agriculture",
+  "custom"
+] as const;
+
 function optionalCostCenterCodeTransform(value: unknown): string | undefined {
   if (value === null || value === undefined) {
     return undefined;
@@ -67,6 +77,16 @@ class CreateCostCenterDto {
   @IsOptional()
   @IsString()
   companyId?: string;
+
+  @IsOptional()
+  @IsIn(PAYROLL_IT_SECTORS as unknown as string[])
+  payrollItSector?: (typeof PAYROLL_IT_SECTORS)[number] | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  payrollDefaultInailPermille?: number | null;
 }
 
 class CreateWorkTeamDto {
@@ -111,6 +131,16 @@ class UpdateCostCenterDto {
   @IsOptional()
   @IsString()
   companyId?: string | null;
+
+  @IsOptional()
+  @IsIn(PAYROLL_IT_SECTORS as unknown as string[])
+  payrollItSector?: (typeof PAYROLL_IT_SECTORS)[number] | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  payrollDefaultInailPermille?: number | null;
 }
 
 @Controller("admin")
