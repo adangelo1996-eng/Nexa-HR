@@ -21,6 +21,7 @@ import {
   UserCog,
   Wallet2,
   Workflow,
+  Network,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const NAV_MAIN: { href: Route; label: string; icon: typeof LayoutDashboard }[] =
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Presenze", icon: Clock3 },
   { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
+  { href: "/organigramma", label: "Organigramma", icon: Network },
   { href: "/workflow", label: "Workflow", icon: Workflow },
   { href: "/expenses", label: "Spese", icon: Receipt },
   { href: "/settings", label: "Impostazioni", icon: Settings }
@@ -52,7 +54,8 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/workflow", label: "Workflow" },
   { href: "/expenses", label: "Spese" },
   { href: "/settings", label: "Impostazioni" },
-  { href: "/org-chart", label: "Organigramma" },
+  { href: "/org-chart", label: "Organigramma (persone)" },
+  { href: "/organigramma", label: "Organigramma strutturale" },
   { href: "/payslips", label: "Cedolini" },
   { href: "/smartworking", label: "Smartworking" },
   { href: "/workflow/approvals", label: "Approvazioni team" },

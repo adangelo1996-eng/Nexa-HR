@@ -36,8 +36,8 @@ export class SmartworkingController {
   @UseGuards(RoleGuard)
   @RequireRole("employee")
   @RequireNexaPermissions("nexa.attendance:write")
-  async request(@CurrentAuth() auth: { userId: string }, @Body() dto: CreateSwDto): Promise<unknown> {
-    return this.store.createSmartworkingRequest(auth.userId, dto.day, dto.note);
+  async request(@CurrentAuth() auth: AuthContext, @Body() dto: CreateSwDto): Promise<unknown> {
+    return this.store.createSmartworkingRequest(auth.userId, dto.day, dto.note, auth.role);
   }
 
   @Delete("request/:id")

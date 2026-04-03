@@ -69,6 +69,13 @@ function isCalendarPending(ev: CalendarEventDto): boolean {
 }
 
 function eventStyle(ev: CalendarEventDto): string {
+  const st = String(ev.meta?.status ?? "");
+  if (
+    st === "rejected" &&
+    (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
+  ) {
+    return "border-red-600/70 bg-red-500/15 text-red-950 dark:border-red-500/55 dark:bg-red-950/40 dark:text-red-100";
+  }
   if (
     isCalendarPending(ev) &&
     (ev.kind === "leave" || ev.kind === "rol" || ev.kind === "smartworking" || ev.kind === "sickness")
@@ -196,6 +203,16 @@ function canShowCalendarEventActions(me: SessionUser | null, rowUserId: string):
 
 function isPendingWithMutableRequest(ev: CalendarEventDto): boolean {
   if (!isCalendarPending(ev)) return false;
+  if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
+  if (ev.kind === "sickness") return typeof ev.meta?.sicknessId === "string";
+  if (ev.kind === "smartworking") return typeof ev.meta?.swRequestId === "string";
+  return false;
+}
+
+/** Rimuovi dal calendario (annulla in attesa o elimina rifiutato). */
+function canRemoveCalendarRequest(ev: CalendarEventDto): boolean {
+  const st = String(ev.meta?.status ?? "");
+  if (st !== "pending" && st !== "rejected") return false;
   if (ev.kind === "leave" || ev.kind === "rol") return typeof ev.meta?.leaveId === "string";
   if (ev.kind === "sickness") return typeof ev.meta?.sicknessId === "string";
   if (ev.kind === "smartworking") return typeof ev.meta?.swRequestId === "string";
@@ -487,7 +504,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const cancelPendingFromChip = async (ev: CalendarEventDto): Promise<void> => {
     const t = getToken();
     if (!t) return;
-    if (!window.confirm("Annullare questa richiesta in attesa?")) return;
+    const rejected = String(ev.meta?.status ?? "") === "rejected";
+    if (
+      !window.confirm(
+        rejected ? "Rimuovere questa richiesta rifiutata dal calendario?" : "Annullare questa richiesta in attesa?"
+      )
+    ) {
+      return;
+    }
     setError(null);
     try {
       if ((ev.kind === "leave" || ev.kind === "rol") && typeof ev.meta?.leaveId === "string") {
@@ -772,6 +796,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
         <span className="rounded border border-yellow-500/45 bg-yellow-500/12 px-2 py-0.5 text-yellow-950 dark:text-yellow-100">
           In attesa approvazione
         </span>
+        <span className="rounded border border-red-500/50 bg-red-500/12 px-2 py-0.5 text-red-950 dark:text-red-100">
+          Rifiutato (rimuovibile)
+        </span>
         <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5">Ferie</span>
         <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">ROL</span>
         <span className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5">Festività</span>
@@ -879,31 +906,41 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       >
                         <div className="flex min-h-[48px] flex-col gap-0.5">
                           {list.map((ev) => {
+                            const showEdit = showActions && isPendingWithMutableRequest(ev);
+                            const showRemove = showActions && canRemoveCalendarRequest(ev);
                             const actions =
-                              showActions && isPendingWithMutableRequest(ev) ? (
+                              showEdit || showRemove ? (
                                 <span className="ml-0.5 inline-flex shrink-0 gap-0">
-                                  <button
-                                    type="button"
-                                    className="rounded p-0.5 text-[var(--prom-muted)] hover:bg-black/10 hover:text-[var(--prom-text)] dark:hover:bg-white/10"
-                                    aria-label="Modifica richiesta"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      beginEditFromChip(iso, row, ev);
-                                    }}
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="rounded p-0.5 text-[var(--prom-muted)] hover:bg-rose-500/20 hover:text-rose-700 dark:hover:text-rose-300"
-                                    aria-label="Annulla richiesta"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void cancelPendingFromChip(ev);
-                                    }}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
+                                  {showEdit ? (
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-[var(--prom-muted)] hover:bg-black/10 hover:text-[var(--prom-text)] dark:hover:bg-white/10"
+                                      aria-label="Modifica richiesta"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        beginEditFromChip(iso, row, ev);
+                                      }}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                  ) : null}
+                                  {showRemove ? (
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-[var(--prom-muted)] hover:bg-rose-500/20 hover:text-rose-700 dark:hover:text-rose-300"
+                                      aria-label={
+                                        String(ev.meta?.status ?? "") === "rejected"
+                                          ? "Rimuovi richiesta rifiutata"
+                                          : "Annulla richiesta"
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void cancelPendingFromChip(ev);
+                                      }}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  ) : null}
                                 </span>
                               ) : null;
                             return (

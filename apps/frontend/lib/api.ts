@@ -149,6 +149,38 @@ export interface OrgChartResponse {
   edges: OrgEdge[];
 }
 
+/** Nodo ricorsivo per organigramma strutturale (CDC → team). */
+export interface OrgStructureTreeNode {
+  id: string;
+  fullName: string;
+  email?: string;
+  role: string;
+  roleName?: string;
+  managerId?: string;
+  reports: OrgStructureTreeNode[];
+}
+
+export interface OrgStructureTeam {
+  id: string;
+  name: string;
+  leadUserId?: string | null;
+  tree: OrgStructureTreeNode[];
+}
+
+export interface OrgStructureCostCenter {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  teams: OrgStructureTeam[];
+  /** Persone del CDC senza team valido o senza teamId. */
+  unteamedTree: OrgStructureTreeNode[];
+}
+
+export interface OrgStructureResponse {
+  costCenters: OrgStructureCostCenter[];
+}
+
 export interface TimeEntry {
   id: string;
   userId: string;
@@ -522,6 +554,17 @@ export async function fetchOrgChart(
     await parseError(response);
   }
   return (await response.json()) as OrgChartResponse;
+}
+
+export async function fetchOrgStructure(token: string): Promise<OrgStructureResponse> {
+  const response = await fetch(buildApiUrl("/org/structure"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as OrgStructureResponse;
 }
 
 export type ClockPayload = {

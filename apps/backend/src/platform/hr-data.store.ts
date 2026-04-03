@@ -206,6 +206,60 @@ export interface CompanySettingsStored {
 
 export type CompanySettingsDto = CompanySettingsStored & { companyId: string };
 
+interface OrgStructureTreeNode {
+  id: string;
+  fullName: string;
+  email?: string;
+  role: string;
+  roleName?: string;
+  managerId?: string;
+  reports: OrgStructureTreeNode[];
+}
+
+function buildOrgStructureManagerTree(
+  people: User[],
+  roleById: Map<string, Role>,
+  leadUserId?: string | null
+): OrgStructureTreeNode[] {
+  const idSet = new Set(people.map((p) => p.id));
+  const childMap = new Map<string, User[]>();
+  for (const p of people) {
+    childMap.set(p.id, []);
+  }
+  const roots: User[] = [];
+  for (const p of people) {
+    const mid = p.managerId?.trim();
+    if (mid && idSet.has(mid)) {
+      childMap.get(mid)!.push(p);
+    } else {
+      roots.push(p);
+    }
+  }
+  const sortUsers = (a: User, b: User): number => a.fullName.localeCompare(b.fullName, "it");
+  roots.sort(sortUsers);
+  for (const arr of childMap.values()) {
+    arr.sort(sortUsers);
+  }
+  const lid = leadUserId?.trim();
+  let orderedRoots = roots;
+  if (lid) {
+    const ix = orderedRoots.findIndex((r) => r.id === lid);
+    if (ix > 0) {
+      orderedRoots = [orderedRoots[ix]!, ...orderedRoots.slice(0, ix), ...orderedRoots.slice(ix + 1)];
+    }
+  }
+  const toDto = (u: User): OrgStructureTreeNode => ({
+    id: u.id,
+    fullName: u.fullName,
+    email: u.email,
+    role: u.role,
+    roleName: u.roleId ? (roleById.get(u.roleId)?.name ?? u.role) : u.role,
+    managerId: u.managerId ?? undefined,
+    reports: (childMap.get(u.id) ?? []).map(toDto)
+  });
+  return orderedRoots.map(toDto);
+}
+
 @Injectable()
 export class HrDataStore {
   private readonly logger = new Logger(HrDataStore.name);
@@ -1929,8 +1983,8 @@ export class HrDataStore {
   async cancelPendingLeavePlan(leaveId: string, actorUserId: string, actorRole: AuthRole): Promise<void> {
     const leave = await this.getLeave(leaveId);
     await this.assertCanActOnBehalfOfUser(actorUserId, actorRole, leave.userId);
-    if (leave.status !== "pending") {
-      throw new BadRequestException("Solo le richieste in attesa possono essere annullate");
+    if (leave.status !== "pending" && leave.status !== "rejected") {
+      throw new BadRequestException("Solo richieste in attesa o rifiutate possono essere rimosse dal calendario");
     }
     if (this.useDb) {
       await this.supabase!.from("approvals").delete().eq("entityId", leaveId).eq("type", "leave");
@@ -1951,8 +2005,8 @@ export class HrDataStore {
   async cancelPendingSicknessEvent(sicknessId: string, actorUserId: string, actorRole: AuthRole): Promise<void> {
     const sickness = await this.getSickness(sicknessId);
     await this.assertCanActOnBehalfOfUser(actorUserId, actorRole, sickness.userId);
-    if (sickness.status !== "pending") {
-      throw new BadRequestException("Solo le richieste in attesa possono essere annullate");
+    if (sickness.status !== "pending" && sickness.status !== "rejected") {
+      throw new BadRequestException("Solo richieste in attesa o rifiutate possono essere rimosse dal calendario");
     }
     if (this.useDb) {
       await this.supabase!.from("approvals").delete().eq("entityId", sicknessId).eq("type", "sickness");
@@ -2200,6 +2254,59 @@ export class HrDataStore {
         .filter((user) => user.managerId && idSet.has(user.managerId!))
         .map((user) => ({ from: user.managerId!, to: user.id }))
     };
+  }
+
+  /** Struttura CDC → team → gerarchia manageriale (stesso permesso lettura dell’organigramma classico). */
+  async getOrgStructure(): Promise<{
+    costCenters: Array<{
+      id: string;
+      code: string;
+      name: string;
+      description?: string;
+      teams: Array<{
+        id: string;
+        name: string;
+        leadUserId?: string | null;
+        tree: OrgStructureTreeNode[];
+      }>;
+      unteamedTree: OrgStructureTreeNode[];
+    }>;
+  }> {
+    const [centers, allUsers, roles] = await Promise.all([this.listCostCenters(), this.listUsers(), this.listRoles()]);
+    const roleById = new Map(roles.map((r) => [r.id, r] as const));
+    const costCenters = [];
+    const sortedCcs = [...centers].sort((a, b) => a.name.localeCompare(b.name, "it"));
+    for (const cc of sortedCcs) {
+      const teams = await this.listWorkTeamsByCostCenter(cc.id);
+      const ccUsers = allUsers.filter((u) => u.costCenterId === cc.id);
+      const teamIdSet = new Set(teams.map((t) => t.id));
+      const teamPayloads = [];
+      const sortedTeams = [...teams].sort((a, b) => a.name.localeCompare(b.name, "it"));
+      for (const team of sortedTeams) {
+        const inTeam = ccUsers.filter((u) => u.teamId === team.id || u.id === team.leadUserId);
+        const unique = [...new Map(inTeam.map((u) => [u.id, u])).values()];
+        teamPayloads.push({
+          id: team.id,
+          name: team.name,
+          leadUserId: team.leadUserId ?? null,
+          tree: buildOrgStructureManagerTree(unique, roleById, team.leadUserId)
+        });
+      }
+      const unteamedUsers = ccUsers.filter((u) => {
+        const tid = u.teamId?.trim();
+        return !tid || !teamIdSet.has(tid);
+      });
+      const unteamedUnique = [...new Map(unteamedUsers.map((u) => [u.id, u])).values()];
+      costCenters.push({
+        id: cc.id,
+        code: cc.code,
+        name: cc.name,
+        description: cc.description,
+        teams: teamPayloads,
+        unteamedTree: buildOrgStructureManagerTree(unteamedUnique, roleById, null)
+      });
+    }
+    return { costCenters };
   }
 
   async addDelegation(
@@ -2721,7 +2828,7 @@ export class HrDataStore {
     const allocatedDays = user.vacationAllowanceDays ?? 22;
     const leaves = await this.listLeave(userId);
     const usedDays = leaves
-      .filter((item) => item.status === "approved")
+      .filter((item) => item.status === "approved" || item.status === "pending")
       .filter((item) => (item.kind ?? "annual") === "annual")
       .filter((item) => Number(item.startDate.slice(0, 4)) === year)
       .reduce((acc, item) => acc + this.countCalendarDays(item.startDate, item.endDate), 0);
@@ -3030,10 +3137,18 @@ export class HrDataStore {
         continue;
       }
       const isRol = (l.kind ?? "annual") === "rol";
+      const leaveSt =
+        l.status === "rejected"
+          ? "rifiutato"
+          : l.status === "pending"
+            ? "in attesa"
+            : l.status === "approved"
+              ? "approvato"
+              : l.status;
       events.push({
         id: `cal-leave-${l.id}`,
         kind: isRol ? "rol" : "leave",
-        title: isRol ? `Permesso ROL (${l.status})` : `Ferie (${l.status})`,
+        title: isRol ? `Permesso ROL (${leaveSt})` : `Ferie (${leaveSt})`,
         start: l.startDate,
         end: l.endDate,
         meta: { leaveId: l.id, status: l.status, kind: l.kind ?? "annual" }
@@ -3044,10 +3159,18 @@ export class HrDataStore {
       if (!this.inCalendarRange(s.fromDate, from, to) && !this.inCalendarRange(s.toDate, from, to)) {
         continue;
       }
+      const skSt =
+        s.status === "rejected"
+          ? "rifiutato"
+          : s.status === "pending"
+            ? "in attesa"
+            : s.status === "approved"
+              ? "approvato"
+              : s.status;
       events.push({
         id: `cal-sk-${s.id}`,
         kind: "sickness",
-        title: `Malattia (${s.status})`,
+        title: `Malattia (${skSt})`,
         start: s.fromDate,
         end: s.toDate,
         meta: { sicknessId: s.id, status: s.status }
@@ -3073,8 +3196,22 @@ export class HrDataStore {
     const swRequests = await this.listMySmartworking(userId);
     const pendingSwDays = new Set(swRequests.filter((r) => r.status === "pending").map((r) => r.day));
     for (const r of swRequests) {
-      if (r.status === "rejected") continue;
       if (!this.inCalendarRange(r.day, from, to)) continue;
+      if (r.status === "rejected") {
+        events.push({
+          id: `cal-swr-${r.id}`,
+          kind: "smartworking",
+          title: "Smart working (rifiutato)",
+          start: r.day,
+          end: r.day,
+          meta: {
+            swRequestId: r.id,
+            status: r.status,
+            ...(r.note ? { note: r.note } : {})
+          }
+        });
+        continue;
+      }
       if (r.status === "approved" && summarySwDays.has(r.day)) continue;
       const pending = r.status === "pending";
       events.push({
@@ -3732,16 +3869,30 @@ export class HrDataStore {
     return job;
   }
 
-  async createSmartworkingRequest(userId: string, day: string, note?: string): Promise<SmartworkingRequestRow> {
+  async createSmartworkingRequest(
+    userId: string,
+    day: string,
+    note?: string,
+    actorRole?: AuthRole
+  ): Promise<SmartworkingRequestRow> {
     const user = await this.getUser(userId);
     const dayNorm = day.slice(0, 10);
     if (await this.hasActiveSmartworkingRequestForDay(userId, dayNorm)) {
       throw new BadRequestException("Smart working già richiesto per questa data");
     }
-    const monthPrefix = dayNorm.slice(0, 7);
-    const used = await this.countApprovedSmartworkingDaysInMonth(userId, monthPrefix);
-    if (used >= SMARTWORKING_MONTHLY_QUOTA) {
-      throw new BadRequestException("Quota smartworking mensile esaurita");
+    const skipSwQuota = actorRole === "admin";
+    if (!skipSwQuota) {
+      const monthPrefix = dayNorm.slice(0, 7);
+      const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(userId, monthPrefix);
+      if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
+        throw new BadRequestException("Quota smartworking mensile esaurita (richieste in attesa incluso)");
+      }
+      const weekBooked = await this.countSmartworkingBookedDaysInWeek(userId, dayNorm);
+      if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
+        throw new BadRequestException(
+          `Quota smartworking settimanale esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
+        );
+      }
     }
     const id = `sw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const createdAt = new Date().toISOString();
@@ -3829,14 +3980,21 @@ export class HrDataStore {
     ) {
       throw new BadRequestException("Smart working già richiesto per questa data");
     }
-    if (nextDay !== row.day.slice(0, 10)) {
+    if (nextDay !== row.day.slice(0, 10) && actorRole !== "admin") {
       const monthPrefix = nextDay.slice(0, 7);
-      const usedApproved = await this.countApprovedSmartworkingDaysInMonth(requesterId, monthPrefix);
-      const pendingOthers = (await this.listMySmartworking(requesterId)).filter(
-        (r) => r.id !== requestId && r.status === "pending" && r.day.startsWith(monthPrefix)
+      const monthBooked = (
+        await this.listMySmartworking(requesterId)
+      ).filter(
+        (r) => r.id !== requestId && r.status !== "rejected" && r.day.startsWith(monthPrefix)
       ).length;
-      if (usedApproved + pendingOthers >= SMARTWORKING_MONTHLY_QUOTA) {
+      if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
         throw new BadRequestException("Quota smartworking mensile esaurita per il mese selezionato");
+      }
+      const weekBooked = await this.countSmartworkingBookedDaysInWeek(requesterId, nextDay, requestId);
+      if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
+        throw new BadRequestException(
+          `Quota smartworking settimanale esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
+        );
       }
     }
     if (this.useDb) {
@@ -3885,8 +4043,8 @@ export class HrDataStore {
       throw new NotFoundException("Richiesta non trovata");
     }
     await this.assertCanActOnBehalfOfUser(requesterId, actorRole, row.userId);
-    if (row.status !== "pending") {
-      throw new BadRequestException("Solo una richiesta in attesa può essere annullata");
+    if (row.status !== "pending" && row.status !== "rejected") {
+      throw new BadRequestException("Solo una richiesta in attesa o rifiutata può essere rimossa");
     }
     if (this.useDb) {
       await this.supabase!.from("approvals").delete().eq("entityId", requestId).eq("type", "smartworking");
@@ -4027,7 +4185,7 @@ export class HrDataStore {
 
   async getSmartworkingMonthlyBalance(userId: string, month?: string): Promise<{ used: number; quota: number }> {
     const m = month ?? new Date().toISOString().slice(0, 7);
-    const used = await this.countApprovedSmartworkingDaysInMonth(userId, m);
+    const used = await this.countNonRejectedSmartworkingDaysInMonth(userId, m);
     return { used, quota: SMARTWORKING_MONTHLY_QUOTA };
   }
 

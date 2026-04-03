@@ -37,6 +37,13 @@ export class OrgController {
     });
   }
 
+  /** Centri di costo → team di lavoro → albero gerarchica (manager). */
+  @Get("structure")
+  @RequireNexaPermissions("nexa.org:read")
+  async structure(): Promise<unknown> {
+    return this.store.getOrgStructure();
+  }
+
   @Get("approver-chain")
   @RequireNexaPermissions("nexa.org:read")
   async approverChain(@Query("userId") userId: string): Promise<unknown> {
