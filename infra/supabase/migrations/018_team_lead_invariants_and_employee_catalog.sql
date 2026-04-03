@@ -17,20 +17,8 @@ where not exists (select 1 from roles where lower(name) = 'employee' limit 1);
 -- Se esiste già una riga `employee` con altro id, non duplicare: niente altro da fare.
 
 -- -----------------------------------------------------------------------------
--- 2) Garantisce ruolo catalogo team_lead canonico (per promozioni da work_teams)
+-- 2) Ruolo catalogo `team_lead`: gestito in migrazione 017 (`on conflict (name)`).
 -- -----------------------------------------------------------------------------
-insert into roles (id, name, description, permissions)
-values
-  (
-    'nexa-r-team-lead',
-    'team_lead',
-    'Responsabile di team — approvazioni ferie, malattia, smart working',
-    '["read:team", "approve:leave", "approve:sickness", "nexa.approvals:read", "nexa.approvals:write", "nexa.work_calendar:read"]'::jsonb
-  )
-on conflict (id) do update set
-  name = excluded.name,
-  description = excluded.description,
-  permissions = excluded.permissions;
 
 -- -----------------------------------------------------------------------------
 -- 3) Promuove a team_lead chi è lead su un solo work_team ma non ha ancora il ruolo piattaforma
@@ -39,7 +27,7 @@ update users u
 set
   role = 'team_lead',
   "teamId" = wt.id,
-  "roleId" = 'nexa-r-team-lead'
+  "roleId" = (select r2.id from roles r2 where r2.name = 'team_lead' limit 1)
 from work_teams wt
 where wt."leadUserId" = u.id
   and u.role not in ('admin', 'team_lead')

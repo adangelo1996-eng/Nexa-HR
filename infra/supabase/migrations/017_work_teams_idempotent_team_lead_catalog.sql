@@ -29,7 +29,8 @@ create index if not exists idx_users_team_id on users ("teamId");
 -- Allineamento ruolo piattaforma legacy
 update users set role = 'team_lead' where role = 'manager_controllo_gestione';
 
--- Catalogo: riga canonica nome esatto `team_lead` (Nomina lead in Centri di costo)
+-- Catalogo: riga nome `team_lead`. `on conflict (id)` fallisce se il nome esiste già con altro id (es. seed r2);
+-- si usa `on conflict (name)` per allineare permessi senza violare roles_name_key.
 insert into roles (id, name, description, permissions) values
   (
     'nexa-r-team-lead',
@@ -37,17 +38,16 @@ insert into roles (id, name, description, permissions) values
     'Responsabile di team — approvazioni ferie, malattia, smart working',
     '["read:team", "approve:leave", "approve:sickness", "nexa.approvals:read", "nexa.approvals:write", "nexa.work_calendar:read"]'::jsonb
   )
-on conflict (id) do update set
-  name = excluded.name,
+on conflict (name) do update set
   description = excluded.description,
   permissions = excluded.permissions;
 
--- Porta gli utenti da eventuali altre righe catalogo team_lead / legacy sulla riga canonica
+-- Porta gli utenti da eventuali altre righe catalogo team_lead / legacy sull'id effettivo del ruolo `team_lead`
 update users u
-set "roleId" = 'nexa-r-team-lead'
+set "roleId" = (select r2.id from roles r2 where r2.name = 'team_lead' limit 1)
 from roles r
 where u."roleId" = r.id
-  and r.id <> 'nexa-r-team-lead'
+  and r.id <> (select r2.id from roles r2 where r2.name = 'team_lead' limit 1)
   and (
     lower(r.name) in ('manager_controllo_gestione', 'manager controllo gestione')
     or r.name = 'team_lead'
@@ -55,7 +55,7 @@ where u."roleId" = r.id
 
 -- Rimuovi duplicati catalogo team_lead / legacy non più referenziati
 delete from roles r
-where r.id <> 'nexa-r-team-lead'
+where r.id <> (select r2.id from roles r2 where r2.name = 'team_lead' limit 1)
   and (
     lower(r.name) in ('manager_controllo_gestione', 'manager controllo gestione')
     or r.name = 'team_lead'

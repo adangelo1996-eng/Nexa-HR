@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException
 } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -207,6 +208,7 @@ export type CompanySettingsDto = CompanySettingsStored & { companyId: string };
 
 @Injectable()
 export class HrDataStore {
+  private readonly logger = new Logger(HrDataStore.name);
   private readonly supabase?: SupabaseClient;
   private seeded = false;
   /** Evita count+seed su roles/cost_centers a ogni list (molto lento su Supabase/Render). */
@@ -546,6 +548,23 @@ export class HrDataStore {
       .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
   }
 
+  /**
+   * Tabella `work_teams` assente o non esposta a PostgREST (es. migrazioni 016+ non applicate sul DB).
+   * In quel caso si evita di bloccare il calendario HR: si tratta come elenco team vuoto.
+   */
+  private isWorkTeamsUnavailableError(error: { message?: string } | null | undefined): boolean {
+    const m = String(error?.message ?? "");
+    if (!m.includes("work_teams")) {
+      return false;
+    }
+    return (
+      m.includes("schema cache") ||
+      m.includes("Could not find the table") ||
+      m.includes("does not exist") ||
+      /PGRST205/i.test(m)
+    );
+  }
+
   async listWorkTeamsByCostCenter(costCenterId: string): Promise<WorkTeam[]> {
     if (this.useDb) {
       const { data, error } = await this.supabase!
@@ -554,6 +573,12 @@ export class HrDataStore {
         .eq("costCenterId", costCenterId)
         .order("name", { ascending: true });
       if (error) {
+        if (this.isWorkTeamsUnavailableError(error)) {
+          this.logger.warn(
+            `work_teams non disponibile (applica migrazioni Supabase da infra/supabase/migrations, da 016 in poi): ${error.message}`
+          );
+          return [];
+        }
         throw new BadRequestException(`Lettura team fallita: ${error.message}`);
       }
       return ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapWorkTeamRow(r));
@@ -652,6 +677,10 @@ export class HrDataStore {
         .eq("leadUserId", userId)
         .maybeSingle();
       if (error) {
+        if (this.isWorkTeamsUnavailableError(error)) {
+          this.logger.warn(`findWorkTeamByLeadUserId: work_teams non disponibile: ${error.message}`);
+          return null;
+        }
         throw new BadRequestException(`Lettura team fallita: ${error.message}`);
       }
       if (!data) {
@@ -666,6 +695,10 @@ export class HrDataStore {
     if (this.useDb) {
       const { error } = await this.supabase!.from("work_teams").update({ leadUserId: null }).eq("leadUserId", userId);
       if (error) {
+        if (this.isWorkTeamsUnavailableError(error)) {
+          this.logger.warn(`clearWorkTeamLeadPositions: work_teams non disponibile: ${error.message}`);
+          return;
+        }
         throw new InternalServerErrorException(`Rimozione responsabile team fallita: ${error.message}`);
       }
       return;
