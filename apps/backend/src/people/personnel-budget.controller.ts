@@ -1,4 +1,13 @@
-import { Body, Controller, ForbiddenException, Get, Patch, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Patch,
+  Post,
+  Query,
+  UseGuards
+} from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
   IsArray,
@@ -81,6 +90,73 @@ class PatchBudgetCellsDto {
   cells!: BudgetCellPatchDto[];
 }
 
+class ForecastCellPatchDto {
+  @IsString()
+  userId!: string;
+
+  @IsOptional()
+  @IsNumber()
+  forecastRal?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  forecastOvertime?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  forecastTravel?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  forecastInps?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  forecastInail?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  forecastTfr?: number | null;
+}
+
+class PatchForecastCellsDto {
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ForecastCellPatchDto)
+  cells!: ForecastCellPatchDto[];
+}
+
+class PatchAnalysisNoteDto {
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  @IsString()
+  category!: string;
+
+  @IsString()
+  subjectUserId!: string;
+
+  @IsString()
+  comment!: string;
+}
+
 @Controller("hr/personnel-budget")
 @UseGuards(NexaPermissionGuard)
 export class PersonnelBudgetController {
@@ -101,6 +177,15 @@ export class PersonnelBudgetController {
     }
   }
 
+  private async companyIdForAuth(auth: AuthContext): Promise<string> {
+    const me = await this.store.getUser(auth.userId);
+    const cid = me.companyId?.trim();
+    if (!cid) {
+      throw new ForbiddenException("Azienda non associata");
+    }
+    return cid;
+  }
+
   @Get()
   @RequireNexaPermissions("nexa.personnel_budget:read")
   async get(
@@ -118,6 +203,131 @@ export class PersonnelBudgetController {
     return this.store.getPersonnelBudgetSnapshot(year, month);
   }
 
+  @Get("year-status")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async getYearStatus(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      return this.store.getPersonnelBudgetYearStatus(cid, new Date().getFullYear());
+    }
+    return this.store.getPersonnelBudgetYearStatus(cid, year);
+  }
+
+  @Post("year-status/approve")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async approveYear(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      throw new ForbiddenException("Anno non valido");
+    }
+    return this.store.approvePersonnelBudgetYear(cid, year, auth.userId);
+  }
+
+  @Get("annual-matrix")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async annualMatrix(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      return this.store.getPersonnelBudgetAnnualMatrix(cid, new Date().getFullYear());
+    }
+    return this.store.getPersonnelBudgetAnnualMatrix(cid, year);
+  }
+
+  @Post("apply-pro-rata")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async applyProRata(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      throw new ForbiddenException("Anno non valido");
+    }
+    return this.store.applyPersonnelBudgetProRata(cid, year);
+  }
+
+  @Get("forecast-snapshot")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async forecastSnapshot(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string,
+    @Query("month") monthQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const now = new Date();
+    const year = yearQ ? Number.parseInt(yearQ, 10) : now.getFullYear();
+    const month = monthQ ? Number.parseInt(monthQ, 10) : now.getMonth() + 1;
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      return this.store.getPersonnelBudgetForecastSnapshot(cid, now.getFullYear(), now.getMonth() + 1);
+    }
+    return this.store.getPersonnelBudgetForecastSnapshot(cid, year, month);
+  }
+
+  @Get("analysis")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async analysis(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string,
+    @Query("month") monthQ?: string,
+    @Query("thresholdPct") thresholdPctQ?: string,
+    @Query("thresholdAbs") thresholdAbsQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const now = new Date();
+    const year = yearQ ? Number.parseInt(yearQ, 10) : now.getFullYear();
+    const month = monthQ ? Number.parseInt(monthQ, 10) : now.getMonth() + 1;
+    const thresholdPct = thresholdPctQ != null ? Number.parseFloat(thresholdPctQ) : 5;
+    const thresholdAbs = thresholdAbsQ != null ? Number.parseFloat(thresholdAbsQ) : 500;
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      return this.store.getPersonnelBudgetAnalysis(cid, now.getFullYear(), now.getMonth() + 1, 5, 500);
+    }
+    return this.store.getPersonnelBudgetAnalysis(
+      cid,
+      year,
+      month,
+      Number.isFinite(thresholdPct) ? thresholdPct : 5,
+      Number.isFinite(thresholdAbs) ? thresholdAbs : 500
+    );
+  }
+
+  @Patch("analysis/note")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async patchAnalysisNote(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PatchAnalysisNoteDto
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    return this.store.upsertPersonnelBudgetAnalysisNote(
+      cid,
+      dto.year,
+      dto.month,
+      dto.category,
+      dto.subjectUserId,
+      dto.comment,
+      auth.userId
+    );
+  }
+
   @Patch("cost-center-order")
   @RequireNexaPermissions("nexa.personnel_budget:write")
   async patchOrder(
@@ -125,7 +335,9 @@ export class PersonnelBudgetController {
     @Body() dto: PatchBudgetOrderDto
   ): Promise<{ ok: true }> {
     await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
     await this.store.setPersonnelBudgetCostCenterOrder(
+      cid,
       dto.year,
       dto.order.map((o) => ({ costCenterId: o.costCenterId.trim(), sortOrder: o.sortOrder }))
     );
@@ -136,7 +348,20 @@ export class PersonnelBudgetController {
   @RequireNexaPermissions("nexa.personnel_budget:write")
   async patchCells(@CurrentAuth() auth: AuthContext, @Body() dto: PatchBudgetCellsDto): Promise<{ ok: true }> {
     await this.assertNexaAdminPersonnelBudget(auth);
-    await this.store.upsertPersonnelBudgetCells(dto.year, dto.month, dto.cells);
+    const cid = await this.companyIdForAuth(auth);
+    await this.store.upsertPersonnelBudgetCells(cid, dto.year, dto.month, dto.cells);
+    return { ok: true };
+  }
+
+  @Patch("forecast-cells")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async patchForecastCells(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PatchForecastCellsDto
+  ): Promise<{ ok: true }> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    await this.store.upsertPersonnelForecastCells(cid, dto.year, dto.month, dto.cells);
     return { ok: true };
   }
 }

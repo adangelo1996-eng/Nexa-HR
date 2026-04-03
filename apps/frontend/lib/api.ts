@@ -133,6 +133,8 @@ export interface CompanySettingsDto {
   companyRegistrationInfo: string;
   defaultCurrency: string;
   weeklyFullTimeHours: number;
+  /** Mensilità per riparto budget (12–14). */
+  payrollInstallmentMonths: number;
   customVariables: Record<string, string>;
 }
 
@@ -1915,4 +1917,231 @@ export async function patchPersonnelBudgetCells(
     body: JSON.stringify(payload)
   });
   if (!response.ok) await parseError(response);
+}
+
+export type PersonnelBudgetYearStatusKind = "draft" | "approved";
+
+export interface PersonnelBudgetYearStatusDto {
+  companyId: string;
+  year: number;
+  status: PersonnelBudgetYearStatusKind;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+}
+
+export interface PersonnelBudgetAnnualMatrixRow {
+  userId: string;
+  fullName: string;
+  costCenterId: string | null;
+  costCenterName?: string;
+  teamId: string | null;
+  teamName?: string;
+  months: Array<{
+    month: number;
+    budget: {
+      ral: number | null;
+      overtime: number | null;
+      travel: number | null;
+      inps: number | null;
+      inail: number | null;
+      tfr: number | null;
+    };
+  }>;
+}
+
+export interface PersonnelBudgetAnnualMatrixResult {
+  year: number;
+  yearStatus: PersonnelBudgetYearStatusDto;
+  payrollInstallmentMonths: number;
+  rows: PersonnelBudgetAnnualMatrixRow[];
+}
+
+export async function fetchPersonnelBudgetYearStatus(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetYearStatusDto> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/year-status${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetYearStatusDto>;
+}
+
+export async function postPersonnelBudgetYearApprove(token: string, year: number): Promise<PersonnelBudgetYearStatusDto> {
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/year-status/approve?year=${year}`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetYearStatusDto>;
+}
+
+export async function fetchPersonnelBudgetAnnualMatrix(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetAnnualMatrixResult> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/annual-matrix${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAnnualMatrixResult>;
+}
+
+export async function postPersonnelBudgetApplyProRata(
+  token: string,
+  year: number
+): Promise<{ monthsPatched: number; users: number }> {
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/apply-pro-rata?year=${year}`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ monthsPatched: number; users: number }>;
+}
+
+export interface PersonnelBudgetForecastRow extends PersonnelBudgetRow {
+  forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+}
+
+export interface PersonnelBudgetForecastDepartment {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetForecastRow[];
+}
+
+export interface PersonnelBudgetForecastSnapshot {
+  year: number;
+  month: number;
+  period: string;
+  departments: PersonnelBudgetForecastDepartment[];
+}
+
+export async function fetchPersonnelBudgetForecastSnapshot(
+  token: string,
+  year?: number,
+  month?: number
+): Promise<PersonnelBudgetForecastSnapshot> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  if (month != null) q.set("month", String(month));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/forecast-snapshot${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetForecastSnapshot>;
+}
+
+export async function patchPersonnelBudgetForecastCells(
+  token: string,
+  payload: {
+    year: number;
+    month: number;
+    cells: Array<{
+      userId: string;
+      forecastRal?: number | null;
+      forecastOvertime?: number | null;
+      forecastTravel?: number | null;
+      forecastInps?: number | null;
+      forecastInail?: number | null;
+      forecastTfr?: number | null;
+    }>;
+  }
+): Promise<void> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/forecast-cells"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export type PersonnelBudgetAnalysisCategory =
+  | "ral"
+  | "overtime"
+  | "travel"
+  | "inps"
+  | "inail"
+  | "tfr"
+  | "totalCompanyCost";
+
+export interface PersonnelBudgetAnalysisVarianceRow {
+  category: PersonnelBudgetAnalysisCategory;
+  userId: string | null;
+  fullName: string | null;
+  actual: number;
+  budget: number;
+  forecast: number;
+  varianceBf: number;
+  variancePct: number | null;
+  exceedsThreshold: boolean;
+}
+
+export interface PersonnelBudgetAnalysisNoteDto {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number;
+  category: string;
+  subjectUserId: string;
+  comment: string;
+  authorId: string;
+  updatedAt: string;
+}
+
+export interface PersonnelBudgetAnalysisResult {
+  year: number;
+  month: number;
+  thresholdPct: number;
+  thresholdAbs: number;
+  totals: {
+    actual: PersonnelBudgetMoney;
+    budget: PersonnelBudgetMoney;
+    forecast: PersonnelBudgetMoney;
+  };
+  variances: PersonnelBudgetAnalysisVarianceRow[];
+  notes: PersonnelBudgetAnalysisNoteDto[];
+}
+
+export async function fetchPersonnelBudgetAnalysis(
+  token: string,
+  opts?: { year?: number; month?: number; thresholdPct?: number; thresholdAbs?: number }
+): Promise<PersonnelBudgetAnalysisResult> {
+  const q = new URLSearchParams();
+  if (opts?.year != null) q.set("year", String(opts.year));
+  if (opts?.month != null) q.set("month", String(opts.month));
+  if (opts?.thresholdPct != null) q.set("thresholdPct", String(opts.thresholdPct));
+  if (opts?.thresholdAbs != null) q.set("thresholdAbs", String(opts.thresholdAbs));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/analysis${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAnalysisResult>;
+}
+
+export async function patchPersonnelBudgetAnalysisNote(
+  token: string,
+  payload: {
+    year: number;
+    month: number;
+    category: string;
+    subjectUserId: string;
+    comment: string;
+  }
+): Promise<PersonnelBudgetAnalysisNoteDto> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/analysis/note"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAnalysisNoteDto>;
 }

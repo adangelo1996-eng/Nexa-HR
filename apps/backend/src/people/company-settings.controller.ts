@@ -39,6 +39,12 @@ class PatchCompanySettingsDto {
   weeklyFullTimeHours?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(12)
+  @Max(14)
+  payrollInstallmentMonths?: number;
+
+  @IsOptional()
   @IsObject()
   customVariables?: Record<string, string>;
 }

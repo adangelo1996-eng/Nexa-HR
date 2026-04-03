@@ -207,6 +207,7 @@ export default function SettingsPage(): React.JSX.Element {
         companyRegistrationInfo: companyDraft.companyRegistrationInfo,
         defaultCurrency: companyDraft.defaultCurrency,
         weeklyFullTimeHours: companyDraft.weeklyFullTimeHours,
+        payrollInstallmentMonths: companyDraft.payrollInstallmentMonths,
         customVariables
       });
       setCompanyDraft(updated);
@@ -460,6 +461,26 @@ export default function SettingsPage(): React.JSX.Element {
                   setCompanyDraft({
                     ...companyDraft,
                     weeklyFullTimeHours: Math.min(80, Math.max(1, Number(e.target.value) || 40))
+                  })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Mensilità (ripartizione RAL annua)</span>
+              <p className="text-xs text-slate-500 dark:text-slate-500">
+                Numero di rate mensili considerato per la pro-rata del budget personale (tipicamente 12–14).
+              </p>
+              <input
+                type="number"
+                min={12}
+                max={14}
+                value={companyDraft.payrollInstallmentMonths}
+                onChange={(e) =>
+                  setCompanyDraft({
+                    ...companyDraft,
+                    payrollInstallmentMonths: Math.min(14, Math.max(12, Number(e.target.value) || 12))
                   })
                 }
                 className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"

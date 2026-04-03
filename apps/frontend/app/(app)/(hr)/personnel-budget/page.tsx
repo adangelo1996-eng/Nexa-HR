@@ -296,10 +296,10 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Budget personale</h1>
+          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Budget mensile</h1>
           <p className="text-sm text-[var(--prom-muted)]">
-            Pianificazione annuale per mese; consuntivo da cedolini, straordinari e note spese. Trascina i reparti
-            per riordinare.
+            Pianificazione per mese; consuntivo da cedolini, straordinari e note spese. Trascina i reparti per
+            riordinare. Usa le altre schede per annuale, forecast e analysis.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

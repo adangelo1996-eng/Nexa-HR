@@ -131,6 +131,102 @@ export type PersonnelBudgetSnapshot = {
   departments: PersonnelBudgetDepartment[];
 };
 
+export type PersonnelBudgetYearStatusKind = "draft" | "approved";
+
+export type PersonnelBudgetYearStatusDto = {
+  companyId: string;
+  year: number;
+  status: PersonnelBudgetYearStatusKind;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+};
+
+export type PersonnelBudgetCellValues = {
+  ral: number | null;
+  overtime: number | null;
+  travel: number | null;
+  inps: number | null;
+  inail: number | null;
+  tfr: number | null;
+};
+
+export type PersonnelBudgetAnnualMatrixRow = {
+  userId: string;
+  fullName: string;
+  costCenterId: string | null;
+  costCenterName?: string;
+  teamId: string | null;
+  teamName?: string;
+  months: Array<{
+    month: number;
+    budget: PersonnelBudgetCellValues;
+  }>;
+};
+
+export type PersonnelBudgetAnnualMatrixResult = {
+  year: number;
+  yearStatus: PersonnelBudgetYearStatusDto;
+  payrollInstallmentMonths: number;
+  rows: PersonnelBudgetAnnualMatrixRow[];
+};
+
+export type PersonnelBudgetForecastSnapshot = {
+  year: number;
+  month: number;
+  period: string;
+  /** Come getPersonnelBudgetSnapshot ma con forecast per cella. */
+  departments: Array<{
+    costCenterId: string | null;
+    costCenterName: string;
+    sortOrder: number;
+    rows: Array<
+      PersonnelBudgetRow & {
+        forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+      }
+    >;
+  }>;
+};
+
+export type PersonnelBudgetAnalysisCategory = "ral" | "overtime" | "travel" | "inps" | "inail" | "tfr" | "totalCompanyCost";
+
+export type PersonnelBudgetAnalysisVarianceRow = {
+  category: PersonnelBudgetAnalysisCategory;
+  userId: string | null;
+  fullName: string | null;
+  actual: number;
+  budget: number;
+  forecast: number;
+  varianceBf: number;
+  variancePct: number | null;
+  exceedsThreshold: boolean;
+};
+
+export type PersonnelBudgetAnalysisNoteDto = {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number;
+  category: string;
+  subjectUserId: string;
+  comment: string;
+  authorId: string;
+  updatedAt: string;
+};
+
+export type PersonnelBudgetAnalysisResult = {
+  year: number;
+  month: number;
+  thresholdPct: number;
+  thresholdAbs: number;
+  totals: {
+    actual: PersonnelBudgetMoney;
+    budget: PersonnelBudgetMoney;
+    forecast: PersonnelBudgetMoney;
+  };
+  variances: PersonnelBudgetAnalysisVarianceRow[];
+  notes: PersonnelBudgetAnalysisNoteDto[];
+};
+
 const SMARTWORKING_MONTHLY_QUOTA = 8;
 /** Massimo giorni smart working richiedibili nella stessa settimana (lun–dom UTC) per dipendente. */
 const SMARTWORKING_WEEKLY_QUOTA = 2;
@@ -264,6 +360,8 @@ export interface CompanySettingsStored {
   companyRegistrationInfo: string;
   defaultCurrency: string;
   weeklyFullTimeHours: number;
+  /** Mensilità per riparto RAL / costi (es. 12, 13, 14). Default 12. */
+  payrollInstallmentMonths: number;
   customVariables: Record<string, string>;
 }
 
@@ -454,6 +552,24 @@ export class HrDataStore {
       budgetTfr: number | null;
     }
   >();
+  /** key companyId|year */
+  private readonly personnelBudgetYearStatusMem = new Map<
+    string,
+    { status: PersonnelBudgetYearStatusKind; approvedAt: string | null; approvedByUserId: string | null }
+  >();
+  /** forecast: stesso schema celle budget */
+  private readonly personnelBudgetForecastMem = new Map<
+    string,
+    {
+      forecastRal: number | null;
+      forecastOvertime: number | null;
+      forecastTravel: number | null;
+      forecastInps: number | null;
+      forecastInail: number | null;
+      forecastTfr: number | null;
+    }
+  >();
+  private readonly personnelBudgetAnalysisNotesMem = new Map<string, PersonnelBudgetAnalysisNoteDto>();
   private costCenters: CostCenter[] = [
     {
       id: "cc-1",
@@ -5442,6 +5558,14 @@ export class HrDataStore {
     return `${year}|${month}|${userId}`;
   }
 
+  private pbYearStatusKey(companyId: string, year: number): string {
+    return `${companyId.trim()}|${year}`;
+  }
+
+  private pbForecastMemKey(year: number, month: number, userId: string): string {
+    return `${year}|${month}|${userId}`;
+  }
+
   private payslipGrossAmount(p: Payslip | undefined): number | null {
     if (!p) {
       return null;
@@ -5678,10 +5802,81 @@ export class HrDataStore {
     return { year, month, period, departments };
   }
 
+  async getPersonnelBudgetYearStatus(companyId: string, year: number): Promise<PersonnelBudgetYearStatusDto> {
+    const cid = companyId.trim();
+    if (!this.useDb) {
+      const st = this.personnelBudgetYearStatusMem.get(this.pbYearStatusKey(cid, year));
+      return {
+        companyId: cid,
+        year,
+        status: st?.status ?? "draft",
+        approvedAt: st?.approvedAt ?? null,
+        approvedByUserId: st?.approvedByUserId ?? null
+      };
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_year_status")
+      .select("status, approved_at, approved_by_user_id")
+      .eq("company_id", cid)
+      .eq("year", year)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Stato budget anno: ${error.message}`);
+    }
+    const row = data as Record<string, unknown> | null;
+    return {
+      companyId: cid,
+      year,
+      status: (row?.status as PersonnelBudgetYearStatusKind) ?? "draft",
+      approvedAt: row?.approved_at != null ? String(row.approved_at) : null,
+      approvedByUserId: row?.approved_by_user_id != null ? String(row.approved_by_user_id) : null
+    };
+  }
+
+  async assertPersonnelBudgetYearEditable(companyId: string, year: number): Promise<void> {
+    const st = await this.getPersonnelBudgetYearStatus(companyId, year);
+    if (st.status === "approved") {
+      throw new BadRequestException("Il budget per questo anno è approvato e non è modificabile.");
+    }
+  }
+
+  async approvePersonnelBudgetYear(
+    companyId: string,
+    year: number,
+    approvedByUserId: string
+  ): Promise<PersonnelBudgetYearStatusDto> {
+    const cid = companyId.trim();
+    const now = new Date().toISOString();
+    if (!this.useDb) {
+      this.personnelBudgetYearStatusMem.set(this.pbYearStatusKey(cid, year), {
+        status: "approved",
+        approvedAt: now,
+        approvedByUserId
+      });
+      return this.getPersonnelBudgetYearStatus(cid, year);
+    }
+    const { error } = await this.supabase!.from("personnel_budget_year_status").upsert(
+      {
+        company_id: cid,
+        year,
+        status: "approved",
+        approved_at: now,
+        approved_by_user_id: approvedByUserId
+      },
+      { onConflict: "company_id,year" }
+    );
+    if (error) {
+      throw new InternalServerErrorException(`Approvazione budget: ${error.message}`);
+    }
+    return this.getPersonnelBudgetYearStatus(cid, year);
+  }
+
   async setPersonnelBudgetCostCenterOrder(
+    companyId: string,
     year: number,
     items: Array<{ costCenterId: string; sortOrder: number }>
   ): Promise<void> {
+    await this.assertPersonnelBudgetYearEditable(companyId, year);
     if (!this.useDb) {
       for (const it of items) {
         this.personnelBudgetCcOrderMem.set(this.pbMemOrderKey(year, it.costCenterId), it.sortOrder);
@@ -5704,6 +5899,7 @@ export class HrDataStore {
   }
 
   async upsertPersonnelBudgetCells(
+    companyId: string,
     year: number,
     month: number,
     cells: Array<{
@@ -5719,11 +5915,17 @@ export class HrDataStore {
     if (month < 1 || month > 12) {
       throw new BadRequestException("Mese non valido");
     }
+    await this.assertPersonnelBudgetYearEditable(companyId, year);
+    const cid = companyId.trim();
     const users = await this.listUsers();
     const idOk = new Set(users.map((u) => u.id));
     for (const c of cells) {
       if (!idOk.has(c.userId)) {
         throw new BadRequestException(`Utente sconosciuto: ${c.userId}`);
+      }
+      const u = users.find((x) => x.id === c.userId);
+      if (u && (u.companyId?.trim() || "") !== cid) {
+        throw new BadRequestException(`Utente fuori azienda: ${c.userId}`);
       }
     }
     if (!this.useDb) {
@@ -5770,6 +5972,600 @@ export class HrDataStore {
     }
   }
 
+  private async fetchAllPersonnelBudgetCellsForYear(year: number): Promise<
+    Map<
+      string,
+      Map<
+        number,
+        {
+          budgetRal: number | null;
+          budgetOvertime: number | null;
+          budgetTravel: number | null;
+          budgetInps: number | null;
+          budgetInail: number | null;
+          budgetTfr: number | null;
+        }
+      >
+    >
+  > {
+    const out = new Map<
+      string,
+      Map<
+        number,
+        {
+          budgetRal: number | null;
+          budgetOvertime: number | null;
+          budgetTravel: number | null;
+          budgetInps: number | null;
+          budgetInail: number | null;
+          budgetTfr: number | null;
+        }
+      >
+    >();
+    if (!this.useDb) {
+      for (const [k, v] of this.personnelBudgetCellsMem) {
+        const [y, m, uid] = k.split("|");
+        if (Number(y) !== year) continue;
+        const month = Number(m);
+        if (!out.has(uid)) {
+          out.set(uid, new Map());
+        }
+        out.get(uid)!.set(month, v);
+      }
+      return out;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_cells")
+      .select(
+        "month, user_id, budget_ral, budget_overtime, budget_travel, budget_social_inps, budget_social_inail, budget_tfr"
+      )
+      .eq("year", year);
+    if (error) {
+      throw new InternalServerErrorException(`Budget celle anno: ${error.message}`);
+    }
+    for (const r of data ?? []) {
+      const row = r as Record<string, unknown>;
+      const uid = String(row.user_id);
+      const month = Number(row.month);
+      if (!out.has(uid)) {
+        out.set(uid, new Map());
+      }
+      out.get(uid)!.set(month, {
+        budgetRal: row.budget_ral != null ? Number(row.budget_ral) : null,
+        budgetOvertime: row.budget_overtime != null ? Number(row.budget_overtime) : null,
+        budgetTravel: row.budget_travel != null ? Number(row.budget_travel) : null,
+        budgetInps: row.budget_social_inps != null ? Number(row.budget_social_inps) : null,
+        budgetInail: row.budget_social_inail != null ? Number(row.budget_social_inail) : null,
+        budgetTfr: row.budget_tfr != null ? Number(row.budget_tfr) : null
+      });
+    }
+    return out;
+  }
+
+  async getPersonnelBudgetAnnualMatrix(companyId: string, year: number): Promise<PersonnelBudgetAnnualMatrixResult> {
+    const cid = companyId.trim();
+    const [yearStatus, settings, cellByUser, usersAll, centers] = await Promise.all([
+      this.getPersonnelBudgetYearStatus(cid, year),
+      this.getCompanySettings(cid),
+      this.fetchAllPersonnelBudgetCellsForYear(year),
+      this.listUsers(),
+      this.listCostCenters()
+    ]);
+    const ccById = new Map(centers.map((c) => [c.id, c]));
+    const teamNameById = new Map<string, string>();
+    for (const u of usersAll) {
+      const tid = u.teamId?.trim();
+      if (tid && !teamNameById.has(tid)) {
+        try {
+          const wt = await this.getWorkTeam(tid);
+          teamNameById.set(tid, wt.name);
+        } catch {
+          teamNameById.set(tid, tid);
+        }
+      }
+    }
+    const companyUsers = usersAll.filter((u) => (u.companyId?.trim() || "") === cid);
+    const rows: PersonnelBudgetAnnualMatrixRow[] = [];
+    for (const u of companyUsers) {
+      const perMonth = cellByUser.get(u.id) ?? new Map();
+      const months: PersonnelBudgetAnnualMatrixRow["months"] = [];
+      for (let m = 1; m <= 12; m++) {
+        const c = perMonth.get(m);
+        months.push({
+          month: m,
+          budget: {
+            ral: c?.budgetRal ?? null,
+            overtime: c?.budgetOvertime ?? null,
+            travel: c?.budgetTravel ?? null,
+            inps: c?.budgetInps ?? null,
+            inail: c?.budgetInail ?? null,
+            tfr: c?.budgetTfr ?? null
+          }
+        });
+      }
+      const ccId = u.costCenterId ?? null;
+      const tid = u.teamId?.trim() ?? null;
+      rows.push({
+        userId: u.id,
+        fullName: u.fullName,
+        costCenterId: ccId,
+        costCenterName: ccId ? ccById.get(ccId)?.name : undefined,
+        teamId: tid,
+        teamName: tid ? teamNameById.get(tid) : undefined,
+        months
+      });
+    }
+    rows.sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+    return {
+      year,
+      yearStatus,
+      payrollInstallmentMonths: settings.payrollInstallmentMonths,
+      rows
+    };
+  }
+
+  async applyPersonnelBudgetProRata(companyId: string, year: number): Promise<{ monthsPatched: number; users: number }> {
+    await this.assertPersonnelBudgetYearEditable(companyId, year);
+    const cid = companyId.trim();
+    const settings = await this.getCompanySettings(cid);
+    const pim = settings.payrollInstallmentMonths;
+    const users = (await this.listUsers()).filter((u) => (u.companyId?.trim() || "") === cid);
+    const centers = await this.listCostCenters();
+    const ccById = new Map(centers.map((c) => [c.id, c]));
+    let monthsPatched = 0;
+    for (let month = 1; month <= 12; month++) {
+      const cells: Array<{
+        userId: string;
+        budgetRal: number | null;
+        budgetOvertime: number | null;
+        budgetTravel: number | null;
+        budgetInps: number | null;
+        budgetInail: number | null;
+        budgetTfr: number | null;
+      }> = [];
+      for (const u of users) {
+        const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
+        const monthlyRal = Math.round(((base * pim) / 12) * 100) / 100;
+        const isIt = this.effectivePayrollJurisdiction(u) === "IT";
+        let inps = 0;
+        let inail = 0;
+        let tfr = 0;
+        if (isIt) {
+          const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
+          const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+          const buckets = employerBudgetBucketsFromGrossIt(monthlyRal, {
+            employerInpsRate: ratesIt.employerInpsRate,
+            inailRate: ratesIt.inailRate,
+            tfrDivisor: ratesIt.tfrDivisor
+          });
+          inps = buckets.employerInpsLike;
+          inail = buckets.employerInailLike;
+          tfr = buckets.employerTfrLike;
+        } else {
+          const buckets = employerBudgetBucketsFromGrossChf(monthlyRal, this.ageFromBirthDate(u.birthDate));
+          inps = buckets.employerInpsLike;
+          inail = buckets.employerInailLike;
+          tfr = buckets.employerTfrLike;
+        }
+        cells.push({
+          userId: u.id,
+          budgetRal: monthlyRal,
+          budgetOvertime: 0,
+          budgetTravel: 0,
+          budgetInps: Math.round(inps * 100) / 100,
+          budgetInail: Math.round(inail * 100) / 100,
+          budgetTfr: Math.round(tfr * 100) / 100
+        });
+      }
+      await this.upsertPersonnelBudgetCells(cid, year, month, cells);
+      monthsPatched += 1;
+    }
+    return { monthsPatched, users: users.length };
+  }
+
+  private async fetchForecastCellsForMonth(
+    year: number,
+    month: number
+  ): Promise<
+    Map<
+      string,
+      {
+        forecastRal: number | null;
+        forecastOvertime: number | null;
+        forecastTravel: number | null;
+        forecastInps: number | null;
+        forecastInail: number | null;
+        forecastTfr: number | null;
+      }
+    >
+  > {
+    const map = new Map<
+      string,
+      {
+        forecastRal: number | null;
+        forecastOvertime: number | null;
+        forecastTravel: number | null;
+        forecastInps: number | null;
+        forecastInail: number | null;
+        forecastTfr: number | null;
+      }
+    >();
+    if (!this.useDb) {
+      for (const [k, v] of this.personnelBudgetForecastMem) {
+        const [y, m, uid] = k.split("|");
+        if (Number(y) === year && Number(m) === month) {
+          map.set(uid, v);
+        }
+      }
+      return map;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_forecast_cells")
+      .select(
+        "user_id, forecast_ral, forecast_overtime, forecast_travel, forecast_social_inps, forecast_social_inail, forecast_tfr"
+      )
+      .eq("year", year)
+      .eq("month", month);
+    if (error) {
+      throw new InternalServerErrorException(`Forecast cells: ${error.message}`);
+    }
+    for (const r of data ?? []) {
+      const row = r as Record<string, unknown>;
+      map.set(String(row.user_id), {
+        forecastRal: row.forecast_ral != null ? Number(row.forecast_ral) : null,
+        forecastOvertime: row.forecast_overtime != null ? Number(row.forecast_overtime) : null,
+        forecastTravel: row.forecast_travel != null ? Number(row.forecast_travel) : null,
+        forecastInps: row.forecast_social_inps != null ? Number(row.forecast_social_inps) : null,
+        forecastInail: row.forecast_social_inail != null ? Number(row.forecast_social_inail) : null,
+        forecastTfr: row.forecast_tfr != null ? Number(row.forecast_tfr) : null
+      });
+    }
+    return map;
+  }
+
+  async getPersonnelBudgetForecastSnapshot(
+    companyId: string,
+    year: number,
+    month: number
+  ): Promise<PersonnelBudgetForecastSnapshot> {
+    const cid = companyId.trim();
+    const snap = await this.getPersonnelBudgetSnapshot(year, month);
+    const fcMap = await this.fetchForecastCellsForMonth(year, month);
+    const users = await this.listUsers();
+    const inCo = new Set(users.filter((u) => (u.companyId?.trim() || "") === cid).map((u) => u.id));
+    const departments = snap.departments
+      .map((d) => {
+        const rows = d.rows
+          .filter((r) => inCo.has(r.userId))
+          .map((r) => {
+            const f = fcMap.get(r.userId);
+            const b = r.budget;
+            const bral = b.ral ?? 0;
+            const bot = b.overtime ?? 0;
+            const btr = b.travel ?? 0;
+            const bin = b.inps ?? 0;
+            const bia = b.inail ?? 0;
+            const btf = b.tfr ?? 0;
+            const fral = f?.forecastRal ?? bral;
+            const fot = f?.forecastOvertime ?? bot;
+            const ftr = f?.forecastTravel ?? btr;
+            const fin = f?.forecastInps ?? bin;
+            const fia = f?.forecastInail ?? bia;
+            const ftf = f?.forecastTfr ?? btf;
+            const forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number } = {
+              ral: fral,
+              overtime: fot,
+              travel: ftr,
+              inps: fin,
+              inail: fia,
+              tfr: ftf,
+              totalCompanyCost: fral + fot + ftr + fin + fia + ftf
+            };
+            return { ...r, forecast };
+          });
+        return { ...d, rows };
+      })
+      .filter((d) => d.rows.length > 0);
+    return { year, month, period: snap.period, departments };
+  }
+
+  async upsertPersonnelForecastCells(
+    companyId: string,
+    year: number,
+    month: number,
+    cells: Array<{
+      userId: string;
+      forecastRal?: number | null;
+      forecastOvertime?: number | null;
+      forecastTravel?: number | null;
+      forecastInps?: number | null;
+      forecastInail?: number | null;
+      forecastTfr?: number | null;
+    }>
+  ): Promise<void> {
+    if (month < 1 || month > 12) {
+      throw new BadRequestException("Mese non valido");
+    }
+    const cid = companyId.trim();
+    const users = await this.listUsers();
+    const idOk = new Set(users.map((u) => u.id));
+    for (const c of cells) {
+      if (!idOk.has(c.userId)) {
+        throw new BadRequestException(`Utente sconosciuto: ${c.userId}`);
+      }
+      const u = users.find((x) => x.id === c.userId);
+      if (u && (u.companyId?.trim() || "") !== cid) {
+        throw new BadRequestException(`Utente fuori azienda: ${c.userId}`);
+      }
+    }
+    const now = new Date().toISOString();
+    if (!this.useDb) {
+      for (const c of cells) {
+        const prev = this.personnelBudgetForecastMem.get(this.pbForecastMemKey(year, month, c.userId)) ?? {
+          forecastRal: null,
+          forecastOvertime: null,
+          forecastTravel: null,
+          forecastInps: null,
+          forecastInail: null,
+          forecastTfr: null
+        };
+        this.personnelBudgetForecastMem.set(this.pbForecastMemKey(year, month, c.userId), {
+          forecastRal: c.forecastRal !== undefined ? c.forecastRal : prev.forecastRal,
+          forecastOvertime: c.forecastOvertime !== undefined ? c.forecastOvertime : prev.forecastOvertime,
+          forecastTravel: c.forecastTravel !== undefined ? c.forecastTravel : prev.forecastTravel,
+          forecastInps: c.forecastInps !== undefined ? c.forecastInps : prev.forecastInps,
+          forecastInail: c.forecastInail !== undefined ? c.forecastInail : prev.forecastInail,
+          forecastTfr: c.forecastTfr !== undefined ? c.forecastTfr : prev.forecastTfr
+        });
+      }
+      return;
+    }
+    for (const c of cells) {
+      const { error } = await this.supabase!.from("personnel_budget_forecast_cells").upsert(
+        {
+          year,
+          month,
+          user_id: c.userId,
+          forecast_ral: c.forecastRal ?? null,
+          forecast_overtime: c.forecastOvertime ?? null,
+          forecast_travel: c.forecastTravel ?? null,
+          forecast_social_inps: c.forecastInps ?? null,
+          forecast_social_inail: c.forecastInail ?? null,
+          forecast_tfr: c.forecastTfr ?? null,
+          updated_at: now
+        },
+        { onConflict: "year,month,user_id" }
+      );
+      if (error) {
+        throw new InternalServerErrorException(`Salvataggio forecast: ${error.message}`);
+      }
+    }
+  }
+
+  async getPersonnelBudgetAnalysis(
+    companyId: string,
+    year: number,
+    month: number,
+    thresholdPct: number,
+    thresholdAbs: number
+  ): Promise<PersonnelBudgetAnalysisResult> {
+    const cid = companyId.trim();
+    const snap = await this.getPersonnelBudgetForecastSnapshot(cid, year, month);
+    const notes = await this.listPersonnelBudgetAnalysisNotes(cid, year, month);
+    const totals: {
+      actual: PersonnelBudgetMoney;
+      budget: PersonnelBudgetMoney;
+      forecast: PersonnelBudgetMoney;
+    } = {
+      actual: { ral: 0, overtime: 0, travel: 0, inps: 0, inail: 0, tfr: 0, totalCompanyCost: 0 },
+      budget: { ral: 0, overtime: 0, travel: 0, inps: 0, inail: 0, tfr: 0, totalCompanyCost: 0 },
+      forecast: { ral: 0, overtime: 0, travel: 0, inps: 0, inail: 0, tfr: 0, totalCompanyCost: 0 }
+    };
+    const variances: PersonnelBudgetAnalysisVarianceRow[] = [];
+    const cats: PersonnelBudgetAnalysisCategory[] = [
+      "ral",
+      "overtime",
+      "travel",
+      "inps",
+      "inail",
+      "tfr",
+      "totalCompanyCost"
+    ];
+    const pick = (
+      m: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number },
+      cat: PersonnelBudgetAnalysisCategory
+    ): number => {
+      if (cat === "totalCompanyCost") {
+        return m.totalCompanyCost ?? 0;
+      }
+      return (m[cat] as number) ?? 0;
+    };
+    for (const d of snap.departments) {
+      for (const r of d.rows) {
+        const b = r.budget;
+        const a = r.actual;
+        const fr = r.forecast;
+        const budTotal = this.budgetTotal(b);
+        const actTotal = a.totalCompanyCost;
+        const frTotal = fr.totalCompanyCost ?? 0;
+
+        totals.actual.ral += a.ral;
+        totals.actual.overtime += a.overtime;
+        totals.actual.travel += a.travel;
+        totals.actual.inps += a.inps;
+        totals.actual.inail += a.inail;
+        totals.actual.tfr += a.tfr;
+        totals.actual.totalCompanyCost += actTotal;
+
+        totals.budget.ral += b.ral ?? 0;
+        totals.budget.overtime += b.overtime ?? 0;
+        totals.budget.travel += b.travel ?? 0;
+        totals.budget.inps += b.inps ?? 0;
+        totals.budget.inail += b.inail ?? 0;
+        totals.budget.tfr += b.tfr ?? 0;
+        totals.budget.totalCompanyCost += budTotal;
+
+        totals.forecast.ral += fr.ral ?? 0;
+        totals.forecast.overtime += fr.overtime ?? 0;
+        totals.forecast.travel += fr.travel ?? 0;
+        totals.forecast.inps += fr.inps ?? 0;
+        totals.forecast.inail += fr.inail ?? 0;
+        totals.forecast.tfr += fr.tfr ?? 0;
+        totals.forecast.totalCompanyCost += frTotal;
+
+        const bud: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number } = {
+          ...b,
+          totalCompanyCost: budTotal
+        };
+        const act: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number } = {
+          ...a,
+          totalCompanyCost: actTotal
+        };
+        for (const cat of cats) {
+          const av = pick(act, cat);
+          const bv = pick(bud, cat);
+          const fv = pick(fr, cat);
+          const varianceBf = fv - bv;
+          const denom = Math.abs(bv) < 1e-6 ? null : (varianceBf / bv) * 100;
+          const exceeds =
+            Math.abs(varianceBf) >= thresholdAbs ||
+            (denom != null && Math.abs(denom) >= thresholdPct);
+          if (exceeds) {
+            variances.push({
+              category: cat,
+              userId: r.userId,
+              fullName: r.fullName,
+              actual: av,
+              budget: bv,
+              forecast: fv,
+              varianceBf,
+              variancePct: denom,
+              exceedsThreshold: true
+            });
+          }
+        }
+      }
+    }
+    variances.sort((x, y) => Math.abs(y.varianceBf) - Math.abs(x.varianceBf));
+    return {
+      year,
+      month,
+      thresholdPct,
+      thresholdAbs,
+      totals,
+      variances,
+      notes
+    };
+  }
+
+  async listPersonnelBudgetAnalysisNotes(
+    companyId: string,
+    year: number,
+    month: number
+  ): Promise<PersonnelBudgetAnalysisNoteDto[]> {
+    const cid = companyId.trim();
+    if (!this.useDb) {
+      return [...this.personnelBudgetAnalysisNotesMem.values()].filter(
+        (n) => n.companyId === cid && n.year === year && n.month === month
+      );
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_analysis_notes")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year)
+      .eq("month", month)
+      .order("updated_at", { ascending: false });
+    if (error) {
+      throw new InternalServerErrorException(`Note analysis: ${error.message}`);
+    }
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      id: String(row.id),
+      companyId: cid,
+      year,
+      month,
+      category: String(row.category),
+      subjectUserId: String(row.subject_user_id ?? ""),
+      comment: String(row.comment ?? ""),
+      authorId: String(row.author_id),
+      updatedAt: String(row.updated_at)
+    }));
+  }
+
+  async upsertPersonnelBudgetAnalysisNote(
+    companyId: string,
+    year: number,
+    month: number,
+    category: string,
+    subjectUserId: string,
+    comment: string,
+    authorId: string
+  ): Promise<PersonnelBudgetAnalysisNoteDto> {
+    const cid = companyId.trim();
+    const sub = subjectUserId.trim();
+    const now = new Date().toISOString();
+    if (!this.useDb) {
+      const id = `pb-note-${cid}-${year}-${month}-${category}-${sub}-${authorId}`;
+      const dto: PersonnelBudgetAnalysisNoteDto = {
+        id,
+        companyId: cid,
+        year,
+        month,
+        category,
+        subjectUserId: sub,
+        comment: comment.slice(0, 8000),
+        authorId,
+        updatedAt: now
+      };
+      this.personnelBudgetAnalysisNotesMem.set(id, dto);
+      return dto;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_analysis_notes")
+      .upsert(
+        {
+          company_id: cid,
+          year,
+          month,
+          category: category.slice(0, 64),
+          subject_user_id: sub,
+          comment: comment.slice(0, 8000),
+          author_id: authorId,
+          updated_at: now
+        },
+        { onConflict: "company_id,year,month,category,subject_user_id" }
+      )
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Salvataggio nota: ${error.message}`);
+    }
+    const rows = await this.supabase!
+      .from("personnel_budget_analysis_notes")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year)
+      .eq("month", month)
+      .eq("category", category.slice(0, 64))
+      .eq("subject_user_id", sub)
+      .maybeSingle();
+    if (rows.error || !rows.data) {
+      throw new InternalServerErrorException("Nota non recuperata dopo upsert");
+    }
+    const row = rows.data as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      companyId: cid,
+      year,
+      month,
+      category: String(row.category),
+      subjectUserId: String(row.subject_user_id ?? ""),
+      comment: String(row.comment ?? ""),
+      authorId: String(row.author_id),
+      updatedAt: String(row.updated_at)
+    };
+  }
+
   private defaultCompanySettingsStored(): CompanySettingsStored {
     return {
       fiscalYearStartMonth: 1,
@@ -5778,6 +6574,7 @@ export class HrDataStore {
       companyRegistrationInfo: "",
       defaultCurrency: "EUR",
       weeklyFullTimeHours: 40,
+      payrollInstallmentMonths: 12,
       customVariables: {}
     };
   }
@@ -5810,6 +6607,10 @@ export class HrDataStore {
       if (n >= 1 && n <= 80) {
         d.weeklyFullTimeHours = n;
       }
+    }
+    const pim = o.payrollInstallmentMonths;
+    if (typeof pim === "number" && Number.isInteger(pim) && pim >= 12 && pim <= 14) {
+      d.payrollInstallmentMonths = pim;
     }
     if (o.customVariables && typeof o.customVariables === "object" && !Array.isArray(o.customVariables)) {
       const out: Record<string, string> = {};
@@ -5848,6 +6649,10 @@ export class HrDataStore {
     if (patch.weeklyFullTimeHours !== undefined) {
       const h = patch.weeklyFullTimeHours;
       if (h >= 1 && h <= 80) next.weeklyFullTimeHours = h;
+    }
+    if (patch.payrollInstallmentMonths !== undefined) {
+      const p = patch.payrollInstallmentMonths;
+      if (p >= 12 && p <= 14) next.payrollInstallmentMonths = p;
     }
     if (patch.customVariables !== undefined) {
       next.customVariables = this.normalizeCompanySettingsStored({
