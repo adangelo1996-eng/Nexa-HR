@@ -11,9 +11,12 @@
  * Uso (PowerShell, modalità A):
  *   $env:SUPABASE_DB_URL="postgresql://postgres:...@db....supabase.co:5432/postgres"
  *   node scripts/supabase-remote-push.mjs
+ *
+ * Variabili lette anche da (se non già in ambiente): .env, .env.local, apps/backend/.env,
+ * infra/supabase/.env — chiavi: SUPABASE_DB_URL o DATABASE_URL, oppure token + password.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -21,9 +24,46 @@ import { spawnSync } from "node:child_process";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 
+/** Carica variabili da .env senza dipendenza dotenv (solo righe KEY=valore). */
+function loadEnvFiles(paths) {
+  for (const p of paths) {
+    if (!existsSync(p)) continue;
+    try {
+      const raw = readFileSync(p, "utf8");
+      for (const line of raw.split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq === -1) continue;
+        const k = t.slice(0, eq).trim();
+        let v = t.slice(eq + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        if (k && process.env[k] === undefined) {
+          process.env[k] = v;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+loadEnvFiles([
+  join(root, ".env"),
+  join(root, ".env.local"),
+  join(root, "apps", "backend", ".env"),
+  join(root, "infra", "supabase", ".env")
+]);
+
 const token = process.env.SUPABASE_ACCESS_TOKEN?.trim();
 const dbPassword = process.env.SUPABASE_DB_PASSWORD?.trim();
-const dbUrl = process.env.SUPABASE_DB_URL?.trim();
+const dbUrl =
+  process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
 
 const configPath = join(root, "infra", "supabase", "config.toml");
 let projectRef = "kcaliyzmsvsrkuonnmrc";
