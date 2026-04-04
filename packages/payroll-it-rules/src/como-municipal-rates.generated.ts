@@ -20,7 +20,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.002
   },
   "alzate brianza": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "anzano del parco": {
     "vigente": 0.006
@@ -35,7 +35,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "asso": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "barni": {
     "vigente": 0.008
@@ -62,7 +62,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "bregnano": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "brenna": {
     "vigente": 0.0075
@@ -71,7 +71,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.004
   },
   "brunate": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "bulgarograsso": {
     "vigente": 0.001
@@ -155,10 +155,10 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "como": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "cucciago": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "cusino": {
     "vigente": 0.004
@@ -182,19 +182,19 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "faggeto lario": {
-    "vigente": 0.0055000000000000005
+    "vigente": 0.0055
   },
   "faloppio": {
-    "vigente": 0.0045000000000000005
+    "vigente": 0.0045
   },
   "fenegro": {
     "vigente": 0.0058
   },
   "figino serenza": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "fino mornasco": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "garzeno": {
     "vigente": 0.002
@@ -212,7 +212,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.002
   },
   "guanzate": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "inverigo": {
     "vigente": 0.008
@@ -269,7 +269,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "menaggio": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "merone": {
     "vigente": 0.008
@@ -281,13 +281,13 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "montano lucino": {
-    "vigente": 0.0078000000000000005
+    "vigente": 0.0078
   },
   "montorfano": {
     "vigente": 0.008
   },
   "mozzate": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "musso": {
     "vigente": 0.006
@@ -323,7 +323,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "ponna": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "ponte lambro": {
     "vigente": 0.008
@@ -344,7 +344,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.002
   },
   "rodero": {
-    "vigente": 0.0055000000000000005
+    "vigente": 0.0055
   },
   "ronago": {
     "vigente": 0.008
@@ -365,7 +365,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.008
   },
   "san fermo della battaglia": {
-    "vigente": 0.0034999999999999996
+    "vigente": 0.0035
   },
   "schignano": {
     "vigente": 0.006
@@ -389,10 +389,10 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.004
   },
   "tavernerio": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "torno": {
-    "vigente": 0.006999999999999999
+    "vigente": 0.007
   },
   "tremezzina": {
     "vigente": 0.008
@@ -413,7 +413,7 @@ export const COMO_MUNICIPAL_ADDIZIONALE_RATES: Record<string, { vigente: number 
     "vigente": 0.006
   },
   "veniano": {
-    "vigente": 0.0060999999999999995
+    "vigente": 0.0061
   },
   "vercana": {
     "vigente": 0.004

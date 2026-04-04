@@ -44,7 +44,8 @@ for (const line of t.split("\n")) {
 
 const map = {};
 for (const r of rows) {
-  map[norm(r.name)] = { vigente: r.vigentePct / 100 };
+  const frac = Math.round((r.vigentePct / 100) * 1e8) / 1e8;
+  map[norm(r.name)] = { vigente: frac };
 }
 
 const header = `/**
