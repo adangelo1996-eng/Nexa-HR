@@ -29,7 +29,8 @@ export interface User {
   teamId?: string | null;
   contractType?: string;
   weeklyContractHours?: number;
-  avsNumber?: string;
+  /** Deprecato; backend azzera sempre (usare fiscalCode). */
+  avsNumber?: string | null;
   iban?: string;
   bankName?: string;
   bicSwift?: string;
@@ -307,7 +308,8 @@ export interface CreateUserPayload {
   costCenterId: string;
   contractType: string;
   weeklyContractHours: number;
-  avsNumber: string;
+  /** Codice fiscale (16 caratteri alfanumerici). */
+  fiscalCode: string;
   iban: string;
   bankName: string;
   bicSwift: string;
@@ -344,7 +346,7 @@ export interface UpdateUserPayload {
   costCenterId?: string;
   contractType?: string;
   weeklyContractHours?: number;
-  avsNumber?: string;
+  fiscalCode?: string | null;
   iban?: string;
   bankName?: string;
   bicSwift?: string;

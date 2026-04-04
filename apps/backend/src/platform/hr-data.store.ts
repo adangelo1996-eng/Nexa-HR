@@ -263,7 +263,6 @@ interface UserCreateInput {
   teamId?: string | null;
   contractType: string;
   weeklyContractHours: number;
-  avsNumber?: string;
   iban?: string;
   bankName?: string;
   bicSwift?: string;
@@ -316,7 +315,6 @@ interface UserUpdateInput {
   costCenterId?: string;
   contractType?: string;
   weeklyContractHours?: number;
-  avsNumber?: string;
   iban?: string;
   bankName?: string;
   bicSwift?: string;
@@ -1265,7 +1263,7 @@ export class HrDataStore {
       teamId: input.teamId,
       contractType: input.contractType,
       weeklyContractHours,
-      avsNumber: input.avsNumber,
+      avsNumber: null,
       iban: input.iban,
       bankName: input.bankName,
       bicSwift: input.bicSwift,
@@ -1378,6 +1376,7 @@ export class HrDataStore {
       fullName,
       email: nextEmail
     };
+    (payload as { avsNumber?: string | null }).avsNumber = null;
     if (input.annualGrossSalary !== undefined || input.payMonthsPerYear !== undefined) {
       const pm = this.coercePayMonthsPerYear(
         input.payMonthsPerYear !== undefined ? input.payMonthsPerYear : payload.payMonthsPerYear
@@ -3090,9 +3089,6 @@ export class HrDataStore {
     }
     if (user.bankName?.trim()) {
       add("BANK", `Istituto di credito: ${user.bankName.trim()}`);
-    }
-    if (user.avsNumber?.trim()) {
-      add("AVS", `Numero AVS / identificativo: ${user.avsNumber.trim()}`);
     }
     if (user.phone?.trim()) {
       add("TEL", `Telefono: ${user.phone.trim()}`);

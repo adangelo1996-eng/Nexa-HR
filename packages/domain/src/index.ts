@@ -39,7 +39,8 @@ export interface User {
   teamId?: string | null;
   contractType?: string;
   weeklyContractHours?: number;
-  avsNumber?: string;
+  /** Deprecato: non usare (solo IT, vedi fiscalCode). */
+  avsNumber?: string | null;
   iban?: string;
   bankName?: string;
   bicSwift?: string;

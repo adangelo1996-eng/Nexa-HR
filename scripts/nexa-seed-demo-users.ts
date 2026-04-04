@@ -29,7 +29,6 @@ export interface SeedPerson {
   contractType: string;
   weeklyContractHours: number;
   vacationAllowanceDays: number;
-  avsNumber: string;
 }
 
 /** Campi payroll / fisco IT per calcolo cedolino (allineati a migrazione 024 + 026). */
@@ -76,7 +75,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "",
   },
   {
     firstName: "Marco",
@@ -92,7 +90,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "",
   },
   {
     firstName: "Elena",
@@ -108,7 +105,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "",
   },
   {
     firstName: "Luca",
@@ -124,7 +120,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 42,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Sofia",
@@ -140,7 +135,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Andrea",
@@ -156,7 +150,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Chiara",
@@ -172,7 +165,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Davide",
@@ -188,7 +180,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 24,
-    avsNumber: "",
   },
   {
     firstName: "Francesca",
@@ -204,7 +195,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Matteo",
@@ -220,7 +210,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Valentina",
@@ -236,7 +225,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Alessandro",
@@ -252,7 +240,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 23,
-    avsNumber: "",
   },
   {
     firstName: "Ilaria",
@@ -268,7 +255,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Paolo",
@@ -284,7 +270,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "",
   },
   {
     firstName: "Nadia",
@@ -300,7 +285,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Giorgio",
@@ -316,7 +300,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 24,
-    avsNumber: "",
   },
   {
     firstName: "Beatrice",
@@ -332,7 +315,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "",
   },
   {
     firstName: "Simone",
@@ -348,7 +330,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Teresa",
@@ -364,7 +345,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   },
   {
     firstName: "Riccardo",
@@ -380,7 +360,6 @@ export const people: SeedPerson[] = [
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
   }
 ];
 
@@ -436,7 +415,7 @@ async function main(): Promise<void> {
             hireDate: p.hireDate,
             phone: p.phone,
             address: p.address,
-            avsNumber: p.avsNumber,
+            avsNumber: null,
             iban: banking.iban,
             bankName: banking.bankName,
             bicSwift: banking.bicSwift,
@@ -477,7 +456,7 @@ async function main(): Promise<void> {
       hireDate: p.hireDate,
       phone: p.phone,
       address: p.address,
-      avsNumber: p.avsNumber,
+      avsNumber: null,
       iban: banking.iban,
       bankName: banking.bankName,
       bicSwift: banking.bicSwift,

@@ -12,6 +12,7 @@
     "test": "corepack pnpm -r test",
     "gen:addizionali-como": "node scripts/gen-como-rates.mjs",
     "seed:demo-users": "corepack pnpm exec tsx scripts/nexa-seed-demo-users.ts",
+    "seed:backfill-italy-anagrafica": "corepack pnpm exec tsx scripts/backfill-users-italy-anagrafica.ts",
     "update:demo-iban-ral": "corepack pnpm exec tsx scripts/update-demo-users-iban-ral.ts",
     "dev": "corepack pnpm --parallel --filter @payday/backend --filter @payday/frontend dev",
     "build:backend": "corepack pnpm --filter @payday/backend build",

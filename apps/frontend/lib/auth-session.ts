@@ -14,7 +14,6 @@ export interface SessionUser {
   costCenterId?: string;
   contractType?: string;
   weeklyContractHours?: number;
-  avsNumber?: string;
   iban?: string;
   bankName?: string;
   bicSwift?: string;

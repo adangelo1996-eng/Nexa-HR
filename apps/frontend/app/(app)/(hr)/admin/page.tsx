@@ -136,6 +136,16 @@ function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
+function isPlausibleItalianCf(s: string): boolean {
+  const t = s.trim().toUpperCase();
+  return t.length === 16 && /^[A-Z0-9]{16}$/.test(t);
+}
+
+function isPlausibleItalianIban(s: string): boolean {
+  const t = s.replace(/\s/g, "").toUpperCase();
+  return /^IT[0-9]{2}[A-Z0-9]{23}$/.test(t);
+}
+
 function emptyNewUser(): CreateUserPayload {
   return {
     firstName: "",
@@ -148,7 +158,7 @@ function emptyNewUser(): CreateUserPayload {
     contractType: "",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "",
+    fiscalCode: "",
     iban: "",
     bankName: "",
     bicSwift: "",
@@ -320,7 +330,7 @@ export default function AdminPage(): React.JSX.Element {
         lastName: newUser.lastName.trim(),
         email: newUser.email.trim(),
         contractType: newUser.contractType.trim(),
-        avsNumber: newUser.avsNumber.trim(),
+        fiscalCode: newUser.fiscalCode.trim().toUpperCase(),
         iban: newUser.iban.trim(),
         bankName: newUser.bankName.trim(),
         bicSwift: newUser.bicSwift.trim(),
@@ -332,6 +342,7 @@ export default function AdminPage(): React.JSX.Element {
       };
       const created = await createUser(token, {
         ...payload,
+        jurisdiction: "IT",
         teamId: newUser.teamId?.trim() ? newUser.teamId.trim() : undefined
       });
       setNewUser(emptyNewUser());
@@ -369,7 +380,7 @@ export default function AdminPage(): React.JSX.Element {
         costCenterId: selectedUser.costCenterId,
         contractType: selectedUser.contractType,
         weeklyContractHours: selectedUser.weeklyContractHours,
-        avsNumber: selectedUser.avsNumber,
+        fiscalCode: (selectedUser.fiscalCode ?? "").trim().toUpperCase() || null,
         iban: selectedUser.iban,
         bankName: selectedUser.bankName,
         bicSwift: selectedUser.bicSwift,
@@ -434,8 +445,8 @@ export default function AdminPage(): React.JSX.Element {
     if (step === 4) {
       const u = newUser;
       return Boolean(
-        u.avsNumber.trim() &&
-          u.iban.trim() &&
+        isPlausibleItalianCf(u.fiscalCode) &&
+          isPlausibleItalianIban(u.iban) &&
           u.bankName.trim() &&
           u.bicSwift.trim() &&
           u.accountHolder.trim() &&
@@ -880,18 +891,22 @@ export default function AdminPage(): React.JSX.Element {
               {wizardStep === 4 ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">Numero AVS *</span>
+                    <span className="text-slate-700 dark:text-slate-300">Codice fiscale *</span>
                     <input
-                      value={newUser.avsNumber}
-                      onChange={(event) => setNewUser((c) => ({ ...c, avsNumber: event.target.value }))}
+                      value={newUser.fiscalCode}
+                      onChange={(event) => setNewUser((c) => ({ ...c, fiscalCode: event.target.value }))}
+                      maxLength={16}
+                      autoCapitalize="characters"
+                      placeholder="16 caratteri"
                       className={inputRequiredClass}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    <span className="text-slate-700 dark:text-slate-300">IBAN *</span>
+                    <span className="text-slate-700 dark:text-slate-300">IBAN (Italia) *</span>
                     <input
                       value={newUser.iban}
                       onChange={(event) => setNewUser((c) => ({ ...c, iban: event.target.value }))}
+                      placeholder="IT… (27 caratteri)"
                       className={inputRequiredClass}
                     />
                   </label>
@@ -1365,13 +1380,16 @@ export default function AdminPage(): React.JSX.Element {
                   </div>
                 </div>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Numero AVS</span>
+                  <span className="text-slate-700 dark:text-slate-300">Codice fiscale</span>
                   <input
-                    value={selectedUser ? selectedUser.avsNumber ?? "" : ""}
+                    value={selectedUser ? selectedUser.fiscalCode ?? "" : ""}
                     onChange={(event) => {
                       const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ avsNumber: value });
+                      if (selectedUser) updateSelectedUser({ fiscalCode: value ?? null });
                     }}
+                    maxLength={16}
+                    autoCapitalize="characters"
+                    placeholder="16 caratteri"
                     className={inputOptionalClass}
                   />
                 </label>
@@ -1390,7 +1408,7 @@ export default function AdminPage(): React.JSX.Element {
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">IBAN</span>
+                  <span className="text-slate-700 dark:text-slate-300">IBAN (Italia)</span>
                   <input
                     value={selectedUser ? selectedUser.iban ?? "" : ""}
                     onChange={(event) => {

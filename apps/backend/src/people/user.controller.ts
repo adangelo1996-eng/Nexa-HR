@@ -87,10 +87,6 @@ class CreateUserDto {
 
   @IsOptional()
   @IsString()
-  avsNumber?: string;
-
-  @IsOptional()
-  @IsString()
   iban?: string;
 
   @IsOptional()
@@ -300,10 +296,6 @@ class UpdateUserDto {
   @IsOptional()
   @IsString()
   contractType?: string;
-
-  @IsOptional()
-  @IsString()
-  avsNumber?: string;
 
   @IsOptional()
   @IsString()
