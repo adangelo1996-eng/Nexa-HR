@@ -42,8 +42,8 @@ interface SeedPerson {
 function seedPayrollAnagrafica(): Record<string, unknown> {
   return {
     jurisdiction: "IT",
-    taxRegion: "LAZ",
-    taxMunicipalityIt: "Roma",
+    taxRegion: "LOM",
+    taxMunicipalityIt: "Como",
     payrollItSector: "services",
     payrollEmployerInpsPercent: null,
     payrollInailPermille: 3.2,
@@ -53,8 +53,29 @@ function seedPayrollAnagrafica(): Record<string, unknown> {
   };
 }
 
-const IT_REGIONS = ["LAZ", "LOM", "PIE", "EMR", "VEN", "TOS"] as const;
-const IT_COMUNI = ["Roma", "Milano", "Torino", "Bologna", "Venezia", "Firenze"] as const;
+/** Comuni provincia Como (allineati a addizionali_como_2025.md). */
+const CO_COMUNI = [
+  "Como",
+  "Cantù",
+  "Cernobbio",
+  "Erba",
+  "Menaggio",
+  "Bellagio",
+  "Fino Mornasco",
+  "Olgiate Comasco",
+  "Lomazzo",
+  "Mariano Comense",
+  "Mozzate",
+  "Uggiate-Trevano",
+  "Campione D'Italia",
+  "Grandate",
+  "Montano Lucino",
+  "Veniano",
+  "Albavilla",
+  "Appiano Gentile",
+  "Bregnano",
+  "Guanzate"
+] as const;
 const IT_LEGAL = ["impiegato", "operaio", "quadro", "dirigente"] as const;
 
 function pseudoFiscalCode(seed: string): string {
@@ -90,10 +111,10 @@ function seedItPayrollExtensions(index: number): Record<string, unknown> {
     payMonthsPerYear: payMonths,
     annualGrossSalary: ral,
     baseSalaryMonthly,
-    taxRegion: IT_REGIONS[index % IT_REGIONS.length],
-    taxMunicipalityIt: IT_COMUNI[index % IT_COMUNI.length],
+    taxRegion: "LOM",
+    taxMunicipalityIt: CO_COMUNI[index % CO_COMUNI.length],
     taxDomicileSameAsResidence: index % 5 !== 0,
-    taxDomicileMunicipalityIt: index % 5 === 0 ? IT_COMUNI[(index + 2) % IT_COMUNI.length] : null,
+    taxDomicileMunicipalityIt: index % 5 === 0 ? CO_COMUNI[(index + 2) % CO_COMUNI.length] : null,
     fiscalCode: pseudoFiscalCode(`nexa-seed-${index}-${ral}`),
     maritalStatus: index % 4 === 0 ? "married" : index % 4 === 1 ? "single" : "divorced",
     dependentsChildren: index % 6,

@@ -42,6 +42,7 @@ import {
   defaultItalianRuleSet2026,
   employerBudgetBucketsFromGrossIt,
   employerRatesFromItalianProfile,
+  resolveComoMunicipalAddizionaleRate,
   type ItalianPayrollInput,
   type ItalianPayrollProfileEmployer,
   type PayrollItSector
@@ -2947,15 +2948,20 @@ export class HrDataStore {
     return user.jurisdiction === "IT" ? "IT" : "CH";
   }
 
-  private async buildItalianPayrollInputForUser(user: User, period: string): Promise<ItalianPayrollInput> {
+  private async buildItalianPayrollInputForUser(
+    user: User,
+    period: string,
+    variablePeriod?: string
+  ): Promise<ItalianPayrollInput> {
+    const vp = variablePeriod?.trim() || period;
     const grossMonthlySalary =
       user.baseSalaryMonthly != null && Number(user.baseSalaryMonthly) > 0
         ? Number(user.baseSalaryMonthly)
         : 5800;
-    const overtimeAmount = await this.countMonthlyOvertimeAmount(user.id, period, grossMonthlySalary);
-    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(user.id, period);
-    const sicknessDays = await this.countSicknessDays(user.id, period);
-    const smartworkingDays = await this.countSmartworkingDays(user.id, period);
+    const overtimeAmount = await this.countMonthlyOvertimeAmount(user.id, vp, grossMonthlySalary);
+    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(user.id, vp);
+    const sicknessDays = await this.countSicknessDays(user.id, vp);
+    const smartworkingDays = await this.countSmartworkingDays(user.id, vp);
     const year = Number(period.slice(0, 4));
     const balance = await this.getLeaveBalance(user.id, year);
     const costCenter =
@@ -2966,6 +2972,14 @@ export class HrDataStore {
         ? user.taxDomicileMunicipalityIt.trim()
         : user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma";
     const payMonths = this.coercePayMonthsPerYear(user.payMonthsPerYear);
+    const regionCode = user.taxRegion?.trim().toUpperCase() || "LAZ";
+    const comoComunale = resolveComoMunicipalAddizionaleRate(domicile);
+    const addizionaleComunaleRate = comoComunale != null ? comoComunale : undefined;
+    if (regionCode === "LOM" && comoComunale == null) {
+      this.logger.warn(
+        `Addizionale comunale: comune "${domicile}" assente dalla tabella provincia Como; uso aliquota default del motore.`
+      );
+    }
     return {
       period,
       grossMonthlySalary,
@@ -2976,9 +2990,10 @@ export class HrDataStore {
       smartworkingDays,
       overtimeAmount,
       taxProfile: {
-        regionCode: user.taxRegion?.trim() || "LAZ",
+        regionCode: user.taxRegion?.trim() || regionCode,
         municipality: domicile
       },
+      ...(addizionaleComunaleRate != null ? { addizionaleComunaleRate } : {}),
       vacationResidualDays: balance.residualDays,
       employerContributions: {
         employerInpsRate: employerIt.employerInpsRate,
@@ -3004,11 +3019,15 @@ export class HrDataStore {
   async simulateItalianPayrollForUser(
     userId: string,
     period: string,
-    overrides?: Partial<ItalianPayrollInput>
+    options?: { overrides?: Partial<ItalianPayrollInput>; variablePeriod?: string }
   ): Promise<ReturnType<typeof calculateItalianPayroll>> {
     const user = await this.getUser(userId);
-    const base = await this.buildItalianPayrollInputForUser(user, period);
-    return calculateItalianPayroll({ ...base, ...overrides });
+    const base = await this.buildItalianPayrollInputForUser(
+      user,
+      period,
+      options?.variablePeriod
+    );
+    return calculateItalianPayroll({ ...base, ...options?.overrides });
   }
 
   /** Righe informative da anagrafica dipendente (importo 0), incluse nel cedolino/PDF. */
@@ -3106,23 +3125,65 @@ export class HrDataStore {
     return out;
   }
 
-  async generatePayslip(userId: string, period: string): Promise<Payslip> {
+  private mapPayslipRow(row: Record<string, unknown>): Payslip {
+    const status = (row.status as Payslip["status"]) ?? "published";
+    return {
+      id: String(row.id),
+      userId: String(row.userId),
+      period: String(row.period),
+      grossSalary: Number(row.grossSalary),
+      netSalary: Number(row.netSalary),
+      lines: (row.lines as Payslip["lines"]) ?? [],
+      pdfUrl: String(row.pdfUrl ?? ""),
+      status,
+      publishedAt: row.publishedAt != null ? String(row.publishedAt) : null,
+      publishedByUserId: row.publishedByUserId != null ? String(row.publishedByUserId) : null,
+      computedAt: row.computedAt != null ? String(row.computedAt) : null,
+      variablePeriod: row.variablePeriod != null ? String(row.variablePeriod) : null
+    };
+  }
+
+  /** Mese di calendario precedente a `period` (YYYY-MM), per variabili da mese precedente. */
+  previousPayrollVariableMonth(period: string): string {
+    const [ys, ms] = period.split("-");
+    const y = Number(ys);
+    const mo = Number(ms);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
+      throw new BadRequestException("Periodo non valido (atteso YYYY-MM)");
+    }
+    const d = new Date(Date.UTC(y, mo - 2, 1));
+    const yy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    return `${yy}-${mm}`;
+  }
+
+  async generatePayslip(
+    userId: string,
+    period: string,
+    options?: {
+      status?: Payslip["status"];
+      variablePeriod?: string;
+      publishedByUserId?: string;
+    }
+  ): Promise<Payslip> {
+    const status = options?.status ?? "published";
+    const varPer = options?.variablePeriod?.trim() || period;
     const user = await this.getUser(userId);
     const grossMonthlySalary =
       user.baseSalaryMonthly != null && Number(user.baseSalaryMonthly) > 0
         ? Number(user.baseSalaryMonthly)
         : 5800;
-    const overtimeAmount = await this.countMonthlyOvertimeAmount(userId, period, grossMonthlySalary);
-    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(userId, period);
-    const sicknessDays = await this.countSicknessDays(userId, period);
-    const smartworkingDays = await this.countSmartworkingDays(userId, period);
+    const overtimeAmount = await this.countMonthlyOvertimeAmount(userId, varPer, grossMonthlySalary);
+    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(userId, varPer);
+    const sicknessDays = await this.countSicknessDays(userId, varPer);
+    const smartworkingDays = await this.countSmartworkingDays(userId, varPer);
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
     const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
     const jurisdiction = this.effectivePayrollJurisdiction(user);
     let result: { lines: Payslip["lines"]; grossAdjusted: number; netSalary: number };
     if (jurisdiction === "IT") {
-      const input = await this.buildItalianPayrollInputForUser(user, period);
+      const input = await this.buildItalianPayrollInputForUser(user, period, varPer);
       result = calculateItalianPayroll(input);
     } else {
       const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
@@ -3151,16 +3212,29 @@ export class HrDataStore {
     }));
     const lines = [...result.lines, ...this.payslipAnagraficaLines(user), ...extraLines];
     const netSalary = Math.round((result.netSalary + reimbursement) * 100) / 100;
+    const computedAt = new Date().toISOString();
+    const publishedAt = status === "published" ? computedAt : null;
+    const publishedByUserId =
+      status === "published" ? (options?.publishedByUserId?.trim() ?? null) : null;
     const payslip: Payslip = {
-      id: `ps-${Date.now()}`,
+      id: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId,
       period,
       grossSalary: result.grossAdjusted,
       netSalary,
       lines,
-      pdfUrl: `/api/payroll/${userId}/${period}/pdf`
+      pdfUrl: `/api/payroll/${userId}/${period}/pdf`,
+      status,
+      publishedAt,
+      publishedByUserId,
+      computedAt,
+      variablePeriod: varPer !== period ? varPer : null
     };
     if (this.useDb) {
+      const { error: delErr } = await this.supabase!.from("payslips").delete().eq("userId", userId).eq("period", period);
+      if (delErr) {
+        throw new InternalServerErrorException(`Aggiornamento cedolino fallito: ${delErr.message}`);
+      }
       const { error } = await this.supabase!.from("payslips").insert({
         id: payslip.id,
         userId: payslip.userId,
@@ -3168,13 +3242,24 @@ export class HrDataStore {
         grossSalary: payslip.grossSalary,
         netSalary: payslip.netSalary,
         lines: payslip.lines,
-        pdfUrl: payslip.pdfUrl
+        pdfUrl: payslip.pdfUrl,
+        status: payslip.status,
+        publishedAt: payslip.publishedAt,
+        publishedByUserId: payslip.publishedByUserId,
+        computedAt: payslip.computedAt,
+        variablePeriod: payslip.variablePeriod
       });
       if (error) {
         throw new InternalServerErrorException(`Salvataggio cedolino fallito: ${error.message}`);
       }
       await this.markExpenseClaimsPaidAfterPayslip(claims.map((c) => c.id), period, payslip.id);
     } else {
+      for (let i = this.payslips.length - 1; i >= 0; i -= 1) {
+        const p = this.payslips[i]!;
+        if (p.userId === userId && p.period === period) {
+          this.payslips.splice(i, 1);
+        }
+      }
       this.payslips.push(payslip);
       for (const c of claims) {
         const row = this.expenseClaims.find((e) => e.id === c.id);
@@ -3203,6 +3288,8 @@ export class HrDataStore {
     const j =
       !isSwissPayrollFeatureEnabled() || input.jurisdiction === "IT" ? "IT" : "CH";
     if (j === "IT") {
+      const mun = input.taxMunicipalityIt?.trim() || input.municipality?.trim() || "Roma";
+      const como = resolveComoMunicipalAddizionaleRate(mun);
       return calculateItalianPayroll({
         period,
         grossMonthlySalary: input.grossMonthlySalary,
@@ -3214,9 +3301,10 @@ export class HrDataStore {
         overtimeAmount: 0,
         taxProfile: {
           regionCode: input.taxRegion?.trim() || "LAZ",
-          municipality: input.taxMunicipalityIt?.trim() || input.municipality?.trim() || "Roma"
+          municipality: mun
         },
-        vacationResidualDays: undefined
+        vacationResidualDays: undefined,
+        ...(como != null ? { addizionaleComunaleRate: como } : {})
       });
     }
     const canton = (input.canton?.trim() || "TI").toUpperCase();
@@ -3251,7 +3339,7 @@ export class HrDataStore {
   ): Promise<Payslip | undefined> {
     if (this.useDb) {
       const { data } = await this.supabase!.from("payslips").select("*").eq("userId", userId);
-      const rows = (data as Payslip[]) ?? [];
+      const rows = ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapPayslipRow(r));
       return rows.find((item) => item.period === period);
     }
     return this.payslips.find((item) => item.userId === userId && item.period === period);
@@ -3261,9 +3349,111 @@ export class HrDataStore {
     const target = targetUserId ?? requesterId;
     if (this.useDb) {
       const { data } = await this.supabase!.from("payslips").select("*").eq("userId", target);
-      return (data as Payslip[]) ?? [];
+      return ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapPayslipRow(r));
     }
     return this.payslips.filter((item) => item.userId === target);
+  }
+
+  async listDraftPayslipsForPeriod(requesterId: string, period: string): Promise<Payslip[]> {
+    const requester = await this.getUser(requesterId);
+    const allUsers = await this.listUsers();
+    const scope = new Set(
+      allUsers
+        .filter((u) => requester.role === "superuser" || u.companyId === requester.companyId)
+        .map((u) => u.id)
+    );
+    if (this.useDb) {
+      const { data } = await this.supabase!
+        .from("payslips")
+        .select("*")
+        .eq("period", period)
+        .eq("status", "draft");
+      const rows = ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapPayslipRow(r));
+      return rows.filter((p) => scope.has(p.userId));
+    }
+    return this.payslips.filter(
+      (p) => p.period === period && p.status === "draft" && scope.has(p.userId)
+    );
+  }
+
+  async publishPayslipsForPeriod(requesterId: string, period: string): Promise<{ updated: number }> {
+    const requester = await this.getUser(requesterId);
+    const allUsers = await this.listUsers();
+    const allowedIds = allUsers
+      .filter((u) => requester.role === "superuser" || u.companyId === requester.companyId)
+      .map((u) => u.id);
+    const now = new Date().toISOString();
+    if (!this.useDb) {
+      let n = 0;
+      for (const p of this.payslips) {
+        if (p.period !== period || p.status !== "draft") {
+          continue;
+        }
+        if (!allowedIds.includes(p.userId)) {
+          continue;
+        }
+        p.status = "published";
+        p.publishedAt = now;
+        p.publishedByUserId = requesterId;
+        n += 1;
+      }
+      return { updated: n };
+    }
+    const { data } = await this.supabase!
+      .from("payslips")
+      .select("id")
+      .eq("period", period)
+      .eq("status", "draft")
+      .in("userId", allowedIds);
+    let updated = 0;
+    for (const row of data ?? []) {
+      const { error } = await this.supabase!
+        .from("payslips")
+        .update({
+          status: "published",
+          publishedAt: now,
+          publishedByUserId: requesterId
+        })
+        .eq("id", (row as { id: string }).id);
+      if (!error) {
+        updated += 1;
+      }
+    }
+    return { updated };
+  }
+
+  async batchGenerateDraftPayslips(
+    requesterId: string,
+    period: string,
+    opts: { usePreviousMonthVariables?: boolean }
+  ): Promise<Array<{ userId: string; payslipId?: string; ok: boolean; error?: string }>> {
+    const requester = await this.getUser(requesterId);
+    const varPer = opts.usePreviousMonthVariables
+      ? this.previousPayrollVariableMonth(period)
+      : period;
+    const allUsers = await this.listUsers();
+    const targets = allUsers.filter(
+      (u) =>
+        (requester.role === "superuser" || u.companyId === requester.companyId) &&
+        this.effectivePayrollJurisdiction(u) === "IT"
+    );
+    const out: Array<{ userId: string; payslipId?: string; ok: boolean; error?: string }> = [];
+    for (const u of targets) {
+      try {
+        const ps = await this.generatePayslip(u.id, period, {
+          status: "draft",
+          variablePeriod: varPer
+        });
+        out.push({ userId: u.id, payslipId: ps.id, ok: true });
+      } catch (e) {
+        out.push({
+          userId: u.id,
+          ok: false,
+          error: e instanceof Error ? e.message : String(e)
+        });
+      }
+    }
+    return out;
   }
 
   async listPayslipsWithNewFlag(requesterId: string, targetUserId?: string): Promise<Array<Payslip & { isNew: boolean }>> {

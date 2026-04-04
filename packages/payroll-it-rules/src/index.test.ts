@@ -7,7 +7,8 @@ import {
   computeDetrazioneLavoroDipendenteIt2025,
   defaultItalianRuleSet2026,
   employerBudgetBucketsFromGrossIt,
-  employerRatesFromItalianProfile
+  employerRatesFromItalianProfile,
+  resolveComoMunicipalAddizionaleRate
 } from "./index.js";
 
 test("computeAnnualIrpef uses 35% middle bracket and detrazioni a tratti", () => {
@@ -78,4 +79,29 @@ test("employerRatesFromItalianProfile uses INAIL permille", () => {
   );
   assert.equal(r.inailRate, 0.004);
   assert.ok(r.employerInpsRate > 0);
+});
+
+test("resolveComoMunicipalAddizionaleRate matches addizionali_como_2025", () => {
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+  assert.ok(near(resolveComoMunicipalAddizionaleRate("Como") ?? 0, 0.007));
+  assert.ok(near(resolveComoMunicipalAddizionaleRate("Cantù") ?? 0, 0.0076));
+  assert.ok(near(resolveComoMunicipalAddizionaleRate("Campione D'Italia") ?? 0, 0.008));
+});
+
+test("addizionaleComunaleRate override affects ADD_COM line", () => {
+  const r = calculateItalianPayroll({
+    period: "2026-03",
+    grossMonthlySalary: 3500,
+    weeklyContractHours: 40,
+    age: 35,
+    vacationDaysUsed: 0,
+    sicknessDays: 0,
+    smartworkingDays: 0,
+    overtimeAmount: 0,
+    taxProfile: { regionCode: "LOM", municipality: "Como" },
+    addizionaleComunaleRate: 0.007
+  });
+  const add = r.lines.find((l) => l.code === "ADD_COM");
+  assert.ok(add && add.description.includes("0.70%"));
+  assert.ok(add && add.amount < 0);
 });

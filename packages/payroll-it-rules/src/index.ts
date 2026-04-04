@@ -66,6 +66,11 @@ export interface ItalianPayrollInput {
   garnishmentMonthly?: number;
   /** Se false, non calcola il trattamento integrativo semplificato. Default true. */
   tirSimplifiedEnabled?: boolean;
+  /**
+   * Sostituisce `ItalianRuleSet.addizionaleComunaleRate` per la sola trattenuta ADD_COM
+   * (es. aliquota da tabella comunale provincia Como).
+   */
+  addizionaleComunaleRate?: number;
 }
 
 export interface ItalianRuleSet {
@@ -346,8 +351,9 @@ export function calculateItalianPayroll(
       : computeTirAnnualEuros(annualEstimate, irpefLordaAnnuo, detrazioneLavoro);
   const irpefMonthly = irpefNetAnnuo / 12;
   const tirMonthly = tirAnnual / 12;
+  const comunaleRate = input.addizionaleComunaleRate ?? ruleSet.addizionaleComunaleRate;
   const addReg = irpefMonthly * ruleSet.addizionaleRegionaleRate;
-  const addCom = irpefMonthly * ruleSet.addizionaleComunaleRate;
+  const addCom = irpefMonthly * comunaleRate;
   const garnishment = Math.max(0, input.garnishmentMonthly ?? 0);
   const totalDeductions = inpsEmployee + irpefMonthly + addReg + addCom + garnishment;
   const netSalary = Math.max(0, g - totalDeductions + tirMonthly);
@@ -410,7 +416,7 @@ export function calculateItalianPayroll(
     },
     {
       code: "ADD_COM",
-      description: `Addizionale comunale (${input.taxProfile.municipality})`,
+      description: `Addizionale comunale ${input.taxProfile.municipality} (${(comunaleRate * 100).toFixed(2)}% su IRPEF mensile stimata)`,
       amount: -round(addCom)
     },
     ...(garnishment > 0
@@ -461,3 +467,9 @@ export function calculateItalianPayroll(
     netSalary: round(netSalary)
   };
 }
+
+export {
+  normalizeComoMunicipalityKey,
+  resolveComoMunicipalAddizionaleRate,
+  isComoDatasetMunicipality
+} from "./como-municipal-rates";

@@ -4,6 +4,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -11,13 +12,14 @@ import {
   StreamableFile,
   UseGuards
 } from "@nestjs/common";
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
+import type { User } from "@payday/domain";
 import { createChExportGenerator } from "@payday/payroll-adapters-ch";
 import { createItExportGenerator } from "@payday/payroll-adapters-it";
 import type { JurisdictionCode } from "@payday/payroll-core";
 import PDFDocument from "pdfkit";
 import { CurrentAuth, type AuthRole } from "../platform/auth";
-import { HrDataStore } from "../platform/hr-data.store";
+import { type CompanySettingsDto, HrDataStore } from "../platform/hr-data.store";
 import { isSwissPayrollFeatureEnabled } from "../platform/nexa-swiss-payroll-flag";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
@@ -62,6 +64,20 @@ class SimulateHireDto {
   @Min(1)
   @Max(80)
   weeklyContractHours?: number;
+}
+
+class BatchGenerateDto {
+  @IsString()
+  period!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  usePreviousMonthVariables?: boolean;
+}
+
+class PublishPeriodDto {
+  @IsString()
+  period!: string;
 }
 
 @Controller("payroll")
@@ -111,6 +127,15 @@ export class PayrollController {
     return led.length > 0;
   }
 
+  /** HR / console estesa: vede bozze e può generare al volo. */
+  private async isPayrollCalcOperator(auth: { userId: string; role: AuthRole }): Promise<boolean> {
+    if (auth.role === "superuser") {
+      return true;
+    }
+    const me = await this.store.getUser(auth.userId);
+    return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+  }
+
   @Post("simulate-hire")
   @RequireNexaPermissions("nexa.payroll:read")
   async simulateHire(
@@ -157,7 +182,49 @@ export class PayrollController {
   ): Promise<unknown> {
     await this.assertPayrollCalcAccess(auth);
     await this.assertSameCompanyUnlessSuperuser(auth, userId);
-    return this.store.generatePayslip(userId, period);
+    return this.store.generatePayslip(userId, period, {
+      status: "published",
+      publishedByUserId: auth.userId
+    });
+  }
+
+  @Get("payslips/drafts")
+  @RequireNexaPermissions("nexa.payroll:read")
+  async listDrafts(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @Query("period") period?: string
+  ): Promise<unknown> {
+    await this.assertPayrollCalcAccess(auth);
+    const p = period?.trim();
+    if (!p) {
+      throw new BadRequestException("Query period (YYYY-MM) obbligatorio");
+    }
+    const items = await this.store.listDraftPayslipsForPeriod(auth.userId, p);
+    return { items };
+  }
+
+  @Post("batch-generate")
+  @RequireNexaPermissions("nexa.payroll:write")
+  async batchGenerate(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @Body() dto: BatchGenerateDto
+  ): Promise<unknown> {
+    await this.assertPayrollCalcAccess(auth);
+    const results = await this.store.batchGenerateDraftPayslips(auth.userId, dto.period.trim(), {
+      usePreviousMonthVariables: dto.usePreviousMonthVariables === true
+    });
+    return { results };
+  }
+
+  @Post("payslips/publish")
+  @RequireNexaPermissions("nexa.payroll:write")
+  async publishPeriod(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @Body() dto: PublishPeriodDto
+  ): Promise<unknown> {
+    await this.assertPayrollCalcAccess(auth);
+    const { updated } = await this.store.publishPayslipsForPeriod(auth.userId, dto.period.trim());
+    return { updated };
   }
 
   @Get("payslips")
@@ -181,6 +248,10 @@ export class PayrollController {
     }
     const target = canReadOthers ? userId : auth.userId;
     let items = await this.store.listPayslipsWithNewFlag(auth.userId, target);
+    const payrollOperator = await this.isPayrollCalcOperator(auth);
+    if (!payrollOperator) {
+      items = items.filter((p) => (p.status ?? "published") === "published");
+    }
     const cap = months ? Math.min(24, Math.max(1, Number(months) || 12)) : 12;
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - cap);
@@ -224,19 +295,25 @@ export class PayrollController {
         throw new ForbiddenException("Accesso PDF cedolino non autorizzato");
       }
     }
+    const payrollOperator = await this.isPayrollCalcOperator(auth);
     let payslip = await this.store.getPayslipForPeriod(userId, period);
+    if (payslip && !payrollOperator && (payslip.status ?? "published") !== "published") {
+      throw new NotFoundException("Cedolino non ancora pubblicato");
+    }
     if (!payslip) {
-      payslip = await this.store.generatePayslip(userId, period);
+      if (!payrollOperator) {
+        throw new NotFoundException("Cedolino non disponibile");
+      }
+      payslip = await this.store.generatePayslip(userId, period, {
+        status: "published",
+        publishedByUserId: auth.userId
+      });
     }
     const employee = await this.store.getUser(userId);
+    const company = await this.store.getCompanySettings(employee.companyId);
     const isItaly =
       !isSwissPayrollFeatureEnabled() || employee.jurisdiction === "IT";
-    const buffer = await this.buildOfficialPayslipPdf(
-      employee.fullName,
-      period,
-      payslip,
-      isItaly
-    );
+    const buffer = await this.buildOfficialPayslipPdf(employee, company, payslip, isItaly);
     return new StreamableFile(buffer, {
       disposition: `attachment; filename="nexa-hr-cedolino-${userId}-${period}.pdf"`,
       type: "application/pdf"
@@ -244,9 +321,16 @@ export class PayrollController {
   }
 
   private async buildOfficialPayslipPdf(
-    employeeName: string,
-    period: string,
-    payslip: { lines: Array<{ code: string; description: string; amount: number }>; netSalary: number; grossSalary: number },
+    employee: User,
+    company: CompanySettingsDto,
+    payslip: {
+      lines: Array<{ code: string; description: string; amount: number }>;
+      netSalary: number;
+      grossSalary: number;
+      period: string;
+      variablePeriod?: string | null;
+      status?: string;
+    },
     isItaly: boolean
   ): Promise<Buffer> {
     return new Promise((resolve) => {
@@ -259,35 +343,110 @@ export class PayrollController {
         ? "Nexa HR — Busta paga (Italia, simulazione)"
         : "Nexa HR — Busta paga (Svizzera)";
       const currency = isItaly ? "EUR" : "CHF";
-      const templateNote = isItaly
-        ? "Template: simulazione IT — validare con consulenza del lavoro"
-        : "Template: formato ufficiale interno payroll CH";
+      const generatedAt = new Date().toISOString();
 
-      doc.fontSize(18).text(title, { align: "center" });
-      doc.moveDown(0.8);
-      doc.fontSize(11).text(`Periodo: ${period}`);
-      doc.text(`Dipendente: ${employeeName}`);
-      doc.text(templateNote);
-      doc.moveDown();
-
-      doc.fontSize(12).text("Dettaglio competenze e trattenute", { underline: true });
+      doc.fontSize(16).text(title, { align: "center" });
       doc.moveDown(0.5);
-      payslip.lines.forEach((line) => {
-        doc
-          .fontSize(10)
-          .text(`${line.code.padEnd(6)} ${line.description}`, { continued: true })
-          .text(` ${currency} ${line.amount.toFixed(2)}`, { align: "right" });
-      });
-
-      doc.moveDown();
-      doc.fontSize(12).text(`Lordo rettificato: ${currency} ${payslip.grossSalary.toFixed(2)}`);
-      doc.fontSize(14).text(`Netto da pagare: ${currency} ${payslip.netSalary.toFixed(2)}`, {
-        align: "right"
-      });
-      doc.moveDown(2);
-      doc.fontSize(9).text("Documento generato automaticamente da Nexa HR Payroll Engine", {
+      doc.fontSize(9).fillColor("#444444").text("Trasparenza retributiva (informazioni da D.Lgs 23/2015, ove applicabile)", {
         align: "center"
       });
+      doc.fillColor("#000000");
+      doc.moveDown(0.8);
+
+      doc.fontSize(10).text("Datore di lavoro", { underline: true });
+      doc.fontSize(9).text(company.companyLegalName || "—");
+      if (company.companyVatNumber?.trim()) {
+        doc.text(`P.IVA: ${company.companyVatNumber.trim()}`);
+      }
+      if (company.companyRegistrationInfo?.trim()) {
+        doc.text(company.companyRegistrationInfo.trim().slice(0, 200));
+      }
+      doc.moveDown(0.6);
+      doc.fontSize(10).text("Dipendente", { underline: true });
+      doc.fontSize(9).text(employee.fullName);
+      if (employee.fiscalCode?.trim()) {
+        doc.text(`Codice fiscale: ${employee.fiscalCode.trim()}`);
+      }
+      if (employee.contractType?.trim()) {
+        doc.text(`Contratto: ${employee.contractType.trim()}`);
+      }
+      if (employee.weeklyContractHours != null && employee.weeklyContractHours > 0) {
+        doc.text(`Ore settimanali: ${employee.weeklyContractHours}`);
+      }
+      if (employee.payMonthsPerYear != null) {
+        doc.text(`Mensilità: ${employee.payMonthsPerYear}`);
+      }
+      if (employee.annualGrossSalary != null && Number(employee.annualGrossSalary) > 0) {
+        doc.text(`RAL indicativa: ${employee.annualGrossSalary} ${currency}`);
+      }
+      doc.moveDown(0.6);
+      doc.fontSize(10).text("Periodo e stato", { underline: true });
+      doc.fontSize(9).text(`Competenza: ${payslip.period}`);
+      if (payslip.variablePeriod && payslip.variablePeriod !== payslip.period) {
+        doc.text(`Variabili (straordinari, assenze, smart working): mese ${payslip.variablePeriod}`);
+      }
+      doc.text(`Stato documento: ${payslip.status ?? "published"}`);
+      doc.moveDown();
+
+      const competenze = ["BASE", "FIX_SUP", "EXTRA", "GROSS", "RMB", "TIR"];
+      const trattenute = [
+        "INPS",
+        "IRPEF",
+        "ADD_REG",
+        "ADD_COM",
+        "GARN",
+        "NET"
+      ];
+      const info = payslip.lines.filter(
+        (l) => !competenze.includes(l.code) && !trattenute.includes(l.code)
+      );
+      const compLines = payslip.lines.filter((l) => competenze.includes(l.code) && l.code !== "NET");
+      const trattLines = payslip.lines.filter((l) => trattenute.includes(l.code) && l.code !== "NET");
+
+      const drawTable = (heading: string, rows: typeof payslip.lines): void => {
+        if (rows.length === 0) {
+          return;
+        }
+        doc.fontSize(11).text(heading, { underline: true });
+        doc.moveDown(0.3);
+        rows.forEach((line) => {
+          doc
+            .fontSize(9)
+            .text(`${line.code.padEnd(7)} ${line.description}`.slice(0, 78), {
+              continued: true,
+              width: 400
+            })
+            .text(`${currency} ${line.amount.toFixed(2)}`, { align: "right" });
+        });
+        doc.moveDown(0.5);
+      };
+
+      drawTable("Competenze e elementi retributivi", compLines);
+      drawTable("Trattenute fiscali, sociali e altre trattenute", trattLines);
+      drawTable("Altri elementi (anagrafica / informativi)", info);
+
+      doc.moveDown(0.5);
+      doc.fillColor("#000000").fontSize(11).text(`Lordo imponibile: ${currency} ${payslip.grossSalary.toFixed(2)}`);
+      doc.fontSize(13).text(`Netto da pagare: ${currency} ${payslip.netSalary.toFixed(2)}`, {
+        align: "right"
+      });
+      doc.moveDown(0.6);
+      if (employee.iban?.trim()) {
+        const ib = employee.iban.replace(/\s+/g, "");
+        doc.fontSize(9).text(`Pagamento — IBAN: ${ib.slice(0, 4)}…${ib.slice(-4)}`);
+        if (employee.bankName?.trim()) {
+          doc.text(`Istituto: ${employee.bankName.trim()}`);
+        }
+      }
+
+      doc.moveDown(1.2);
+      doc.fontSize(8).fillColor("#555555");
+      doc.text(
+        "Documento prodotto da Nexa HR con motore interno Hebb (simulazione). Non sostituisce software paghe certificato né adempimenti (UniEmens, F24). Per formalità rivolgersi al consulente del lavoro.",
+        { align: "justify" }
+      );
+      doc.text(`Generato: ${generatedAt} · Motore Nexa/Hebb`, { align: "center" });
+      doc.fillColor("#000000");
       doc.end();
     });
   }

@@ -136,7 +136,10 @@ export default function PayrollCalcPage(): React.JSX.Element {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/payroll-hebb" className="synapse-nav-link">
-            Hebb HR
+            Hebb (motore)
+          </Link>
+          <Link href="/payroll-batch" className="synapse-nav-link">
+            Batch payroll
           </Link>
           <Link href="/" className="synapse-nav-link">
             Torna alla dashboard

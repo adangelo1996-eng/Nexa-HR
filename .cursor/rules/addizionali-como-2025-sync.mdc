@@ -1,0 +1,37 @@
+---
+description: Dopo modifiche a addizionali_como_2025.md rigenerare dataset Como e allineare artefatti collegati
+globs: addizionali_como_2025.md, scripts/gen-como-rates.mjs, packages/payroll-it-rules/src/como-municipal-rates.generated.ts, packages/payroll-it-rules/src/como-municipal-rates.ts
+alwaysApply: false
+---
+
+# Sincronizzazione `addizionali_como_2025.md`
+
+Quando **questo file viene modificato o aggiornato** (o quando l’utente chiede di allinearvi il codice), eseguire **sempre** la catena sotto prima di considerare il lavoro completo.
+
+## 1. Rigenerare il dataset TypeScript
+
+- Eseguire dalla root del monorepo: `pnpm gen:addizionali-como` (alias di `node scripts/gen-como-rates.mjs`).
+- Output atteso: `packages/payroll-it-rules/src/como-municipal-rates.generated.ts` (generato, **non** editare a mano).
+
+Se la struttura della tabella markdown cambia (nomi colonne, numero colonne), aggiornare **prima** `scripts/gen-como-rates.mjs` in modo che continui a produrre `COMO_MUNICIPAL_ADDIZIONALE_RATES` coerente con `como-municipal-rates.ts` (`vigente` come frazione).
+
+## 2. Verificare il consumatore
+
+- `packages/payroll-it-rules/src/como-municipal-rates.ts` — `resolveComoMunicipalAddizionaleRate` deve leggere i campi del tipo generato.
+- Re-export tramite `@payday/payroll-adapters-it` e uso in `apps/backend/src/platform/hr-data.store.ts` (nessuna duplicazione manuale delle aliquote).
+
+## 3. Test
+
+- `corepack pnpm --filter @payday/payroll-it-rules test` (o suite che include `resolveComoMunicipalAddizionaleRate` / `calculateItalianPayroll`).
+- Aggiornare le asserzioni nei test se cambiano aliquote di riferimento (es. Como, Cantù).
+
+## 4. Seed demo (se servono nuovi comuni in anagrafica)
+
+- In `scripts/nexa-seed-demo-users.ts`, l’array `CO_COMUNI` deve contenere **solo** nomi comune presenti nella tabella (stessa grafia del markdown; il lookup normalizza maiuscole/unicode).
+- Aggiungere voci al seed quando compaiono comuni nuovi nel file e si vogliono usare nei profili demo.
+
+## 5. UI / copy
+
+- Se il significato della colonna o delle note cambia, allineare testi in `apps/frontend/app/(app)/(hr)/payroll-hebb/page.tsx` (e altri riferimenti espliciti al file).
+
+Non committare solo il `.md` senza aver rigenerato `como-municipal-rates.generated.ts` quando la tabella è la fonte delle aliquote in busta paga.

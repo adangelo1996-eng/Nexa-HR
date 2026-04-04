@@ -10,6 +10,9 @@ export interface Payslip {
   lines?: Array<{ code: string; description: string; amount: number }>;
   netSalary: number;
   isNew?: boolean;
+  status?: "draft" | "published";
+  publishedAt?: string | null;
+  variablePeriod?: string | null;
 }
 
 export interface User {
@@ -538,19 +541,70 @@ export async function patchMyPayrollProfileIt(
   return user;
 }
 
-export async function postHebbHrChat(
+export async function postHebbSimulateIt(
   token: string,
-  messages: Array<{ role: "user" | "assistant"; content: string }>
-): Promise<{ message: string; toolResults?: unknown[] }> {
-  const response = await fetch(buildApiUrl("/ai/hebb-hr/messages"), {
+  body: {
+    userId?: string;
+    period?: string;
+    grossMonthlySalaryOverride?: number;
+    usePreviousMonthVariables?: boolean;
+  }
+): Promise<unknown> {
+  const response = await fetch(buildApiUrl("/ai/hebb-hr/simulate-it"), {
     method: "POST",
-    headers: getAuthHeaders(token),
-    body: JSON.stringify({ messages })
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   if (!response.ok) {
     await parseError(response);
   }
-  return (await response.json()) as { message: string; toolResults?: unknown[] };
+  return response.json();
+}
+
+export type PayrollBatchRowResult = {
+  userId: string;
+  payslipId?: string;
+  ok: boolean;
+  error?: string;
+};
+
+export async function postPayrollBatchGenerate(
+  token: string,
+  body: { period: string; usePreviousMonthVariables?: boolean }
+): Promise<{ results: PayrollBatchRowResult[] }> {
+  const response = await fetch(buildApiUrl("/payroll/batch-generate"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { results: PayrollBatchRowResult[] };
+}
+
+export async function fetchPayslipDrafts(token: string, period: string): Promise<Payslip[]> {
+  const response = await fetch(
+    buildApiUrl(`/payroll/payslips/drafts?period=${encodeURIComponent(period)}`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const body = (await response.json()) as { items: Payslip[] };
+  return body.items ?? [];
+}
+
+export async function publishPayrollPeriod(token: string, period: string): Promise<{ updated: number }> {
+  const response = await fetch(buildApiUrl("/payroll/payslips/publish"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ period })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { updated: number };
 }
 
 export async function fetchCompanySettings(token: string): Promise<CompanySettingsDto> {

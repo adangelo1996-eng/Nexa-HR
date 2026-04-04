@@ -182,6 +182,8 @@ export interface PayslipLine {
   amount: number;
 }
 
+export type PayslipWorkflowStatus = "draft" | "published";
+
 export interface Payslip {
   id: string;
   userId: string;
@@ -190,6 +192,13 @@ export interface Payslip {
   netSalary: number;
   lines: PayslipLine[];
   pdfUrl: string;
+  /** Bozza (solo HR/Admin) o pubblicato al dipendente. Default published per retrocompatibilità. */
+  status?: PayslipWorkflowStatus;
+  publishedAt?: string | null;
+  publishedByUserId?: string | null;
+  computedAt?: string | null;
+  /** Mese YYYY-MM usato per variabili (straordinari, ferie, …) se diverso dalla competenza. */
+  variablePeriod?: string | null;
 }
 
 export interface ApprovalView {

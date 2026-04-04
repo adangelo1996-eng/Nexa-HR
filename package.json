@@ -10,6 +10,7 @@
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm -r test",
+    "gen:addizionali-como": "node scripts/gen-como-rates.mjs",
     "dev": "corepack pnpm --parallel --filter @payday/backend --filter @payday/frontend dev",
     "build:backend": "corepack pnpm --filter @payday/backend build",
     "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-ch-rules build && corepack pnpm --filter @payday/payroll-it-rules build && corepack pnpm --filter @payday/payroll-adapters-ch build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend exec nest build",

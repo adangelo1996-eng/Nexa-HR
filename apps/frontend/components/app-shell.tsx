@@ -11,13 +11,14 @@ import {
   ChevronDown,
   FileText,
   LayoutDashboard,
+  Layers,
   LogOut,
   Menu,
-  MessageSquare,
   Moon,
   Receipt,
   Search,
   Settings,
+  Sparkles,
   Sun,
   User,
   UserCog,
@@ -69,7 +70,8 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/workflow/approvals", label: "Approvazioni team" },
   { href: "/reports", label: "Report HR" },
   { href: "/payroll-calc", label: "Payroll" },
-  { href: "/payroll-hebb", label: "Hebb HR" },
+  { href: "/payroll-batch", label: "Elaborazione batch" },
+  { href: "/payroll-hebb", label: "Hebb (motore)" },
   { href: "/admin", label: "Admin" },
   { href: "/insights", label: "People insights" },
   { href: "/scheduling", label: "Turni" },
@@ -152,7 +154,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       routes = routes.filter((r) => r.href !== "/compensation/bench" && r.href !== "/forecast");
     }
     if (!sessionCanAccessPayrollArea(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== "/payroll-calc" && r.href !== "/payroll-hebb");
+      routes = routes.filter(
+        (r) => r.href !== "/payroll-calc" && r.href !== "/payroll-hebb" && r.href !== "/payroll-batch"
+      );
     }
     if (!sessionCanAccessPersonnelBudgetArea(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/personnel-budget");
@@ -226,6 +230,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                 Payroll
               </Link>
               <Link
+                href="/payroll-batch"
+                onClick={() => setMobileOpen(false)}
+                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                  pathname.startsWith("/payroll-batch")
+                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+                }`}
+              >
+                <Layers className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                Batch payroll
+              </Link>
+              <Link
                 href="/payroll-hebb"
                 onClick={() => setMobileOpen(false)}
                 className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
@@ -234,8 +250,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                     : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
                 }`}
               >
-                <MessageSquare className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Hebb HR
+                <Sparkles className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                Hebb (motore)
               </Link>
             </>
           ) : null}
