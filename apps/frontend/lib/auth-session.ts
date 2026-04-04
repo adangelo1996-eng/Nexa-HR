@@ -41,6 +41,27 @@ export interface SessionUser {
   workTeamIdsWhereLead?: string[];
   /** Area calcolo cedolino (/payroll-calc): solo superuser o console admin (`canAccessPayrollArea` da backend). */
   canAccessPayrollArea?: boolean;
+
+  fiscalCode?: string | null;
+  maritalStatus?: string | null;
+  dependentsChildren?: number;
+  dependentSpouse?: boolean;
+  disabilityFlag?: boolean;
+  taxDomicileMunicipalityIt?: string | null;
+  taxDomicileSameAsResidence?: boolean;
+  payMonthsPerYear?: number;
+  annualGrossSalary?: number | null;
+  partTimeModality?: string | null;
+  ccnlCode?: string | null;
+  ccnlLevel?: string | null;
+  legalCategory?: string | null;
+  contractEndDate?: string | null;
+  fixedSupplementMonthly?: number | null;
+  garnishmentMonthlyEstimate?: number | null;
+  fringeBenefitYtdEuros?: number | null;
+  contractFixedTerm?: boolean;
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
   /** Permesso catalogo budget; in UI è usabile solo insieme alla console admin (vedi `sessionCanAccessPersonnelBudgetArea`). */
   canAccessPersonnelBudgetArea?: boolean;
 }

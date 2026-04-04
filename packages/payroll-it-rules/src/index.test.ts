@@ -3,16 +3,44 @@ import test from "node:test";
 import {
   calculateItalianPayroll,
   computeAnnualIrpef,
+  computeAnnualIrpefLorda,
+  computeDetrazioneLavoroDipendenteIt2025,
   defaultItalianRuleSet2026,
   employerBudgetBucketsFromGrossIt,
   employerRatesFromItalianProfile
 } from "./index.js";
 
-test("computeAnnualIrpef uses brackets and detrazione", () => {
+test("computeAnnualIrpef uses 35% middle bracket and detrazioni a tratti", () => {
   const rs = defaultItalianRuleSet2026;
+  const lorda = computeAnnualIrpefLorda(30_000, rs);
+  const raw = 28_000 * 0.23 + 2_000 * 0.35;
+  assert.equal(Math.round(lorda * 100) / 100, Math.round(raw * 100) / 100);
+  const det = computeDetrazioneLavoroDipendenteIt2025(30_000, false);
   const t = computeAnnualIrpef(30_000, rs);
-  const raw = 28_000 * 0.23 + 2_000 * 0.33;
-  assert.equal(Math.round((raw - rs.detrazioneLavoroAnnuo) * 100) / 100, Math.round(t * 100) / 100);
+  assert.equal(Math.round((lorda - det) * 100) / 100, Math.round(t * 100) / 100);
+});
+
+test("computeAnnualIrpef legacy flat detrazione matches old behaviour", () => {
+  const rs = defaultItalianRuleSet2026;
+  const lorda = computeAnnualIrpefLorda(30_000, rs);
+  const t = computeAnnualIrpef(30_000, rs, { legacyFlatDetrazione: true });
+  assert.equal(Math.round((lorda - rs.detrazioneLavoroAnnuo) * 100) / 100, Math.round(t * 100) / 100);
+});
+
+test("calculateItalianPayroll may include TIR for low projected annual income", () => {
+  const r = calculateItalianPayroll({
+    period: "2026-03",
+    grossMonthlySalary: 950,
+    weeklyContractHours: 40,
+    age: 30,
+    vacationDaysUsed: 0,
+    sicknessDays: 0,
+    smartworkingDays: 0,
+    overtimeAmount: 0,
+    taxProfile: { regionCode: "LAZ", municipality: "Roma" }
+  });
+  const tir = r.lines.find((l) => l.code === "TIR");
+  assert.ok(tir && tir.amount > 0);
 });
 
 test("calculateItalianPayroll returns net lower than gross", () => {

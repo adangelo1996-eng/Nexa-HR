@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsInt,
@@ -187,6 +188,92 @@ class CreateUserDto {
   @MaxLength(400)
   payrollInailRiskDescription?: string | null;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  fiscalCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  maritalStatus?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  dependentsChildren?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dependentSpouse?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disabilityFlag?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxDomicileMunicipalityIt?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  taxDomicileSameAsResidence?: boolean;
+
+  @IsOptional()
+  @IsIn([12, 13, 14])
+  payMonthsPerYear?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualGrossSalary?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  partTimeModality?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlLevel?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  legalCategory?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  contractEndDate?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedSupplementMonthly?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  garnishmentMonthlyEstimate?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fringeBenefitYtdEuros?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  contractFixedTerm?: boolean;
+
   /** Team di lavoro (solo console admin; opzionale in creazione). */
   @IsOptional()
   @IsString()
@@ -349,6 +436,191 @@ class UpdateUserDto {
   @IsString()
   @MaxLength(512)
   profilePhotoPath?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  fiscalCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  maritalStatus?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  dependentsChildren?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dependentSpouse?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disabilityFlag?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxDomicileMunicipalityIt?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  taxDomicileSameAsResidence?: boolean;
+
+  @IsOptional()
+  @IsIn([12, 13, 14])
+  payMonthsPerYear?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualGrossSalary?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  partTimeModality?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlLevel?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  legalCategory?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  contractEndDate?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedSupplementMonthly?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  garnishmentMonthlyEstimate?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fringeBenefitYtdEuros?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  contractFixedTerm?: boolean;
+}
+
+/** Anagrafica / profilo fisco-contratto IT: aggiornabile dal dipendente su se stesso. */
+class PatchMePayrollProfileItDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  fiscalCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  maritalStatus?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  dependentsChildren?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dependentSpouse?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disabilityFlag?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxDomicileMunicipalityIt?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  taxDomicileSameAsResidence?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  taxRegion?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  taxMunicipalityIt?: string;
+
+  @IsOptional()
+  @IsIn([12, 13, 14])
+  payMonthsPerYear?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualGrossSalary?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  partTimeModality?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ccnlLevel?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  legalCategory?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  contractEndDate?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixedSupplementMonthly?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  garnishmentMonthlyEstimate?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fringeBenefitYtdEuros?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  contractFixedTerm?: boolean;
 }
 
 @Controller("users")
@@ -365,6 +637,16 @@ export class UserController {
   @RequireNexaPermissions("nexa.admin_users:read")
   async list(): Promise<unknown> {
     return this.store.listUsers();
+  }
+
+  @Patch("me/payroll-profile-it")
+  @UseGuards(RoleGuard)
+  @RequireRole("user")
+  async patchMyPayrollProfileIt(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PatchMePayrollProfileItDto
+  ): Promise<unknown> {
+    return this.store.updateUser(auth.userId, dto);
   }
 
   @Get("me")

@@ -134,9 +134,14 @@ export default function PayrollCalcPage(): React.JSX.Element {
             Area manager/admin. Operatore attuale: {user?.fullName}
           </p>
         </div>
-        <Link href="/" className="synapse-nav-link">
-          Torna alla dashboard
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/payroll-hebb" className="synapse-nav-link">
+            Hebb HR
+          </Link>
+          <Link href="/" className="synapse-nav-link">
+            Torna alla dashboard
+          </Link>
+        </div>
       </header>
 
       <section className="card">

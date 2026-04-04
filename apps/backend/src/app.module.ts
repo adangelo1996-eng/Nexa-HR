@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { HebbHrModule } from "./ai/hebb-hr.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { CompensationModule } from "./compensation/compensation.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -25,7 +26,8 @@ import { WorkforceModule } from "./workforce/workforce.module";
     LifecycleModule,
     AnalyticsModule,
     InnovationModule,
-    RealtimeModule
+    RealtimeModule,
+    HebbHrModule
   ]
 })
 export class AppModule {}

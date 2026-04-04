@@ -327,6 +327,15 @@ export default function HomePage(): React.JSX.Element {
 
   const formattedCountdown = useMemo(() => formatHmCountdown(remainingSeconds), [remainingSeconds]);
 
+  /** Ora locale in cui si chiude l’obiettivo giornaliero se si resta timbrati (allineato al countdown «Residuo»). */
+  const expectedExitTimeLabel = useMemo(() => {
+    if (status?.isRunning !== true) {
+      return null;
+    }
+    const ms = Date.now() + Math.max(0, remainingSeconds) * 1000;
+    return new Date(ms).toLocaleTimeString("it-CH", { hour: "2-digit", minute: "2-digit" });
+  }, [status?.isRunning, remainingSeconds]);
+
   async function onClock(type: "clock_in" | "clock_out"): Promise<void> {
     if (!token) {
       return;
@@ -393,39 +402,64 @@ export default function HomePage(): React.JSX.Element {
         <section className="card space-y-3">
           <h2 className="sr-only">Azioni rapide</h2>
           <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={!canClockIn}
-              onClick={() => void onClock("clock_in")}
-              className="dashboard-quick-action flex h-24 flex-col gap-1 font-medium text-[var(--prom-text)]"
-              title="Timbra entrata"
-            >
-              <LogIn className="mx-auto h-6 w-6 opacity-80" />
-              <span>Entrata</span>
-            </button>
-            <button
-              type="button"
-              disabled={!canClockOut}
-              onClick={() => void onClock("clock_out")}
-              className="dashboard-quick-action flex h-24 flex-col gap-1 font-medium text-[var(--prom-text)]"
-              title="Timbra uscita"
-            >
-              <LogOut className="mx-auto h-6 w-6 opacity-80" />
-              <span>Uscita</span>
-            </button>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <button
+                type="button"
+                disabled={!canClockIn}
+                onClick={() => void onClock("clock_in")}
+                className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1.5 text-center text-sm font-medium leading-none text-[var(--prom-text)]"
+                title="Timbra entrata"
+              >
+                <LogIn className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
+                <span className="px-1">Entrata</span>
+              </button>
+              <div
+                className="flex min-h-[2.5rem] flex-col items-center justify-center text-balance text-center text-[10px] leading-tight text-[var(--prom-muted)]"
+                aria-hidden={!expectedExitTimeLabel}
+              >
+                {/* Spazio riservato per allineare l’altezza con la colonna Uscita */}
+                {!expectedExitTimeLabel ? <span className="invisible">·</span> : null}
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <button
+                type="button"
+                disabled={!canClockOut}
+                onClick={() => void onClock("clock_out")}
+                className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1.5 text-center text-sm font-medium leading-none text-[var(--prom-text)]"
+                title="Timbra uscita"
+              >
+                <LogOut className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
+                <span className="px-1">Uscita</span>
+              </button>
+              <div className="flex min-h-[2.5rem] flex-col items-center justify-center text-balance text-center text-[10px] leading-tight text-[var(--prom-muted)]">
+                {expectedExitTimeLabel ? (
+                  <>
+                    <span>Uscita prevista</span>
+                    <span className="mt-0.5 font-mono text-xs font-medium tabular-nums text-[var(--prom-text)]">
+                      {expectedExitTimeLabel}
+                    </span>
+                  </>
+                ) : (
+                  <span className="invisible">·</span>
+                )}
+              </div>
+            </div>
             <Link
               href="/workflow"
-              className="dashboard-quick-action flex h-24 flex-col items-center justify-center gap-1 text-sm font-medium text-[var(--prom-text)]"
+              prefetch
+              className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1.5 text-center text-sm font-medium leading-none text-[var(--prom-text)]"
             >
-              <Palmtree className="h-6 w-6 opacity-80" />
-              Ferie
+              <Palmtree className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
+              <span className="px-1">Ferie</span>
             </Link>
             <Link
               href="/expenses"
-              className="dashboard-quick-action flex h-24 flex-col items-center justify-center gap-1 text-sm font-medium text-[var(--prom-text)]"
+              prefetch
+              className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1.5 text-center text-sm font-medium leading-none text-[var(--prom-text)]"
             >
-              <Receipt className="h-6 w-6 opacity-80" />
-              Spese
+              <Receipt className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
+              <span className="px-1">Spese</span>
             </Link>
           </div>
           {attendanceStatusFailed ? (

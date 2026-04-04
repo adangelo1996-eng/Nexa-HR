@@ -42,6 +42,7 @@ import {
   defaultItalianRuleSet2026,
   employerBudgetBucketsFromGrossIt,
   employerRatesFromItalianProfile,
+  type ItalianPayrollInput,
   type ItalianPayrollProfileEmployer,
   type PayrollItSector
 } from "@payday/payroll-adapters-it";
@@ -285,6 +286,24 @@ interface UserCreateInput {
   payrollTfrDivisor?: number | null;
   payrollAtecoCode?: string | null;
   payrollInailRiskDescription?: string | null;
+  fiscalCode?: string | null;
+  maritalStatus?: string | null;
+  dependentsChildren?: number;
+  dependentSpouse?: boolean;
+  disabilityFlag?: boolean;
+  taxDomicileMunicipalityIt?: string | null;
+  taxDomicileSameAsResidence?: boolean;
+  payMonthsPerYear?: number;
+  annualGrossSalary?: number | null;
+  partTimeModality?: string | null;
+  ccnlCode?: string | null;
+  ccnlLevel?: string | null;
+  legalCategory?: string | null;
+  contractEndDate?: string | null;
+  fixedSupplementMonthly?: number | null;
+  garnishmentMonthlyEstimate?: number | null;
+  fringeBenefitYtdEuros?: number | null;
+  contractFixedTerm?: boolean;
 }
 
 interface UserUpdateInput {
@@ -322,6 +341,24 @@ interface UserUpdateInput {
   payrollTfrDivisor?: number | null;
   payrollAtecoCode?: string | null;
   payrollInailRiskDescription?: string | null;
+  fiscalCode?: string | null;
+  maritalStatus?: string | null;
+  dependentsChildren?: number;
+  dependentSpouse?: boolean;
+  disabilityFlag?: boolean;
+  taxDomicileMunicipalityIt?: string | null;
+  taxDomicileSameAsResidence?: boolean;
+  payMonthsPerYear?: number;
+  annualGrossSalary?: number | null;
+  partTimeModality?: string | null;
+  ccnlCode?: string | null;
+  ccnlLevel?: string | null;
+  legalCategory?: string | null;
+  contractEndDate?: string | null;
+  fixedSupplementMonthly?: number | null;
+  garnishmentMonthlyEstimate?: number | null;
+  fringeBenefitYtdEuros?: number | null;
+  contractFixedTerm?: boolean;
 }
 
 type EmployeeDocumentRow = EmployeeDocument & { bodyBase64?: string | null };
@@ -682,6 +719,21 @@ export class HrDataStore {
       return 40;
     }
     return Math.min(80, Math.max(1, Number(input)));
+  }
+
+  private coercePayMonthsPerYear(input?: number): number {
+    if (input === 12 || input === 13 || input === 14) {
+      return input;
+    }
+    return 13;
+  }
+
+  private recomputeBaseSalaryFromRal(ral: number | null | undefined, months: number): number | undefined {
+    if (ral == null || !Number.isFinite(Number(ral)) || Number(ral) <= 0) {
+      return undefined;
+    }
+    const m = months >= 12 && months <= 14 ? months : 13;
+    return Math.round((Number(ral) / m) * 100) / 100;
   }
 
   private computeDailyTargetSecondsFromWeekly(weeklyContractHours: number): number {
@@ -1238,8 +1290,34 @@ export class HrDataStore {
       payrollInailPermille: input.payrollInailPermille ?? undefined,
       payrollTfrDivisor: input.payrollTfrDivisor ?? undefined,
       payrollAtecoCode: input.payrollAtecoCode ?? undefined,
-      payrollInailRiskDescription: input.payrollInailRiskDescription ?? undefined
+      payrollInailRiskDescription: input.payrollInailRiskDescription ?? undefined,
+      fiscalCode: input.fiscalCode ?? undefined,
+      maritalStatus: input.maritalStatus ?? undefined,
+      dependentsChildren: input.dependentsChildren ?? 0,
+      dependentSpouse: input.dependentSpouse ?? false,
+      disabilityFlag: input.disabilityFlag ?? false,
+      taxDomicileMunicipalityIt: input.taxDomicileMunicipalityIt ?? undefined,
+      taxDomicileSameAsResidence: input.taxDomicileSameAsResidence ?? true,
+      payMonthsPerYear: this.coercePayMonthsPerYear(input.payMonthsPerYear),
+      annualGrossSalary: input.annualGrossSalary ?? undefined,
+      partTimeModality: input.partTimeModality ?? undefined,
+      ccnlCode: input.ccnlCode ?? undefined,
+      ccnlLevel: input.ccnlLevel ?? undefined,
+      legalCategory: input.legalCategory ?? undefined,
+      contractEndDate: input.contractEndDate ?? undefined,
+      fixedSupplementMonthly: input.fixedSupplementMonthly ?? undefined,
+      garnishmentMonthlyEstimate: input.garnishmentMonthlyEstimate ?? undefined,
+      fringeBenefitYtdEuros: input.fringeBenefitYtdEuros ?? undefined,
+      contractFixedTerm: input.contractFixedTerm ?? false
     };
+    if (
+      user.annualGrossSalary != null &&
+      Number(user.annualGrossSalary) > 0 &&
+      user.payMonthsPerYear != null
+    ) {
+      user.baseSalaryMonthly =
+        Math.round((Number(user.annualGrossSalary) / user.payMonthsPerYear) * 100) / 100;
+    }
     if (this.useDb) {
       await this.supabase!.from("users").insert(user);
       return user;
@@ -1305,6 +1383,20 @@ export class HrDataStore {
       fullName,
       email: nextEmail
     };
+    if (input.annualGrossSalary !== undefined || input.payMonthsPerYear !== undefined) {
+      const pm = this.coercePayMonthsPerYear(
+        input.payMonthsPerYear !== undefined ? input.payMonthsPerYear : payload.payMonthsPerYear
+      );
+      payload.payMonthsPerYear = pm;
+      const ral =
+        input.annualGrossSalary !== undefined ? input.annualGrossSalary : payload.annualGrossSalary;
+      if (ral != null && Number(ral) > 0) {
+        const nextBase = this.recomputeBaseSalaryFromRal(ral, pm);
+        if (nextBase !== undefined) {
+          payload.baseSalaryMonthly = nextBase;
+        }
+      }
+    }
     if (this.useDb) {
       const { data } = await this.supabase!
         .from("users")
@@ -2855,6 +2947,70 @@ export class HrDataStore {
     return user.jurisdiction === "IT" ? "IT" : "CH";
   }
 
+  private async buildItalianPayrollInputForUser(user: User, period: string): Promise<ItalianPayrollInput> {
+    const grossMonthlySalary =
+      user.baseSalaryMonthly != null && Number(user.baseSalaryMonthly) > 0
+        ? Number(user.baseSalaryMonthly)
+        : 5800;
+    const overtimeAmount = await this.countMonthlyOvertimeAmount(user.id, period, grossMonthlySalary);
+    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(user.id, period);
+    const sicknessDays = await this.countSicknessDays(user.id, period);
+    const smartworkingDays = await this.countSmartworkingDays(user.id, period);
+    const year = Number(period.slice(0, 4));
+    const balance = await this.getLeaveBalance(user.id, year);
+    const costCenter =
+      user.costCenterId != null ? await this.getCostCenterById(user.costCenterId) : null;
+    const employerIt = this.italianEmployerRatesForUser(user, costCenter ?? undefined);
+    const domicile =
+      user.taxDomicileSameAsResidence === false && user.taxDomicileMunicipalityIt?.trim()
+        ? user.taxDomicileMunicipalityIt.trim()
+        : user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma";
+    const payMonths = this.coercePayMonthsPerYear(user.payMonthsPerYear);
+    return {
+      period,
+      grossMonthlySalary,
+      weeklyContractHours: this.normalizeWeeklyContractHours(user.weeklyContractHours),
+      age: this.ageFromBirthDate(user.birthDate),
+      vacationDaysUsed,
+      sicknessDays,
+      smartworkingDays,
+      overtimeAmount,
+      taxProfile: {
+        regionCode: user.taxRegion?.trim() || "LAZ",
+        municipality: domicile
+      },
+      vacationResidualDays: balance.residualDays,
+      employerContributions: {
+        employerInpsRate: employerIt.employerInpsRate,
+        inailRate: employerIt.inailRate,
+        tfrDivisor: employerIt.tfrDivisor
+      },
+      payMonthsPerYear: payMonths,
+      grossAnnualSalary:
+        user.annualGrossSalary != null && Number(user.annualGrossSalary) > 0
+          ? Number(user.annualGrossSalary)
+          : undefined,
+      contractFixedTerm: user.contractFixedTerm === true,
+      fixedSupplementMonthly:
+        user.fixedSupplementMonthly != null ? Number(user.fixedSupplementMonthly) : undefined,
+      garnishmentMonthly:
+        user.garnishmentMonthlyEstimate != null
+          ? Math.max(0, Number(user.garnishmentMonthlyEstimate))
+          : undefined
+    };
+  }
+
+  /** Simulazione motore IT (senza persistenza cedolino). */
+  async simulateItalianPayrollForUser(
+    userId: string,
+    period: string,
+    overrides?: Partial<ItalianPayrollInput>
+  ): Promise<ReturnType<typeof calculateItalianPayroll>> {
+    const user = await this.getUser(userId);
+    const base = await this.buildItalianPayrollInputForUser(user, period);
+    return calculateItalianPayroll({ ...base, ...overrides });
+  }
+
   /** Righe informative da anagrafica dipendente (importo 0), incluse nel cedolino/PDF. */
   private payslipAnagraficaLines(user: User): Payslip["lines"] {
     const out: Payslip["lines"] = [];
@@ -2881,6 +3037,30 @@ export class HrDataStore {
         "TAXIT",
         `Fisco IT: regione ${user.taxRegion?.trim() ?? "—"} · comune ${user.taxMunicipalityIt?.trim() ?? user.taxMunicipality?.trim() ?? "—"}`
       );
+    }
+    if (user.taxDomicileSameAsResidence === false && user.taxDomicileMunicipalityIt?.trim()) {
+      add("DOM", `Domicilio fiscale: ${user.taxDomicileMunicipalityIt.trim()}`);
+    }
+    if (user.fiscalCode?.trim()) {
+      add("CF", `Codice fiscale: ${user.fiscalCode.trim().slice(0, 20)}`);
+    }
+    if (user.annualGrossSalary != null && Number(user.annualGrossSalary) > 0) {
+      add("RAL", `RAL annua indicativa: ${user.annualGrossSalary} € / ${user.payMonthsPerYear ?? 13} mens.`);
+    }
+    if (user.maritalStatus?.trim()) {
+      add("CIV", `Stato civile: ${user.maritalStatus.trim()}`);
+    }
+    if ((user.dependentsChildren ?? 0) > 0) {
+      add("FIG", `Figli a carico: ${user.dependentsChildren}`);
+    }
+    if (user.dependentSpouse) {
+      add("SPO", "Coniuge a carico: sì");
+    }
+    if (user.legalCategory?.trim()) {
+      add("CAT", `Categoria: ${user.legalCategory.trim()}`);
+    }
+    if (user.ccnlCode?.trim()) {
+      add("CCNL", `CCNL: ${user.ccnlCode.trim().slice(0, 80)}`);
     }
     if (user.taxCanton?.trim()) {
       add(
@@ -2936,40 +3116,14 @@ export class HrDataStore {
     const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(userId, period);
     const sicknessDays = await this.countSicknessDays(userId, period);
     const smartworkingDays = await this.countSmartworkingDays(userId, period);
-    const year = Number(period.slice(0, 4));
-    const balance = await this.getLeaveBalance(userId, year);
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
     const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
     const jurisdiction = this.effectivePayrollJurisdiction(user);
-    const costCenter =
-      user.costCenterId != null ? await this.getCostCenterById(user.costCenterId) : null;
-    const employerIt =
-      jurisdiction === "IT" ? this.italianEmployerRatesForUser(user, costCenter ?? undefined) : null;
     let result: { lines: Payslip["lines"]; grossAdjusted: number; netSalary: number };
     if (jurisdiction === "IT") {
-      result = calculateItalianPayroll({
-        period,
-        grossMonthlySalary,
-        weeklyContractHours: this.normalizeWeeklyContractHours(user.weeklyContractHours),
-        age: this.ageFromBirthDate(user.birthDate),
-        vacationDaysUsed,
-        sicknessDays,
-        smartworkingDays,
-        overtimeAmount,
-        taxProfile: {
-          regionCode: user.taxRegion?.trim() || "LAZ",
-          municipality: user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma"
-        },
-        vacationResidualDays: balance.residualDays,
-        employerContributions: employerIt
-          ? {
-              employerInpsRate: employerIt.employerInpsRate,
-              inailRate: employerIt.inailRate,
-              tfrDivisor: employerIt.tfrDivisor
-            }
-          : undefined
-      });
+      const input = await this.buildItalianPayrollInputForUser(user, period);
+      result = calculateItalianPayroll(input);
     } else {
       const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
       const municipality = user.taxMunicipality?.trim() || "Lugano";

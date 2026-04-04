@@ -53,6 +53,64 @@ function seedPayrollAnagrafica(): Record<string, unknown> {
   };
 }
 
+const IT_REGIONS = ["LAZ", "LOM", "PIE", "EMR", "VEN", "TOS"] as const;
+const IT_COMUNI = ["Roma", "Milano", "Torino", "Bologna", "Venezia", "Firenze"] as const;
+const IT_LEGAL = ["impiegato", "operaio", "quadro", "dirigente"] as const;
+
+function pseudoFiscalCode(seed: string): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let s = "";
+  for (let i = 0; i < 16; i += 1) {
+    s += chars[(seed.charCodeAt(i % seed.length) + i * 7) % chars.length];
+  }
+  return s;
+}
+
+/**
+ * RAL credibile IT e campi anagrafica coerenti (deterministico per indice).
+ * Sostituisce `baseSalaryMonthly` con RAL / payMonths.
+ */
+function seedItPayrollExtensions(index: number): Record<string, unknown> {
+  const payMonths = index % 9 === 0 ? 14 : 13;
+  const mod5 = index % 5;
+  const band =
+    mod5 === 0
+      ? 28_000 + (index % 4) * 1_500
+      : mod5 === 1
+        ? 36_000 + (index % 4) * 2_000
+        : mod5 === 2
+          ? 48_000 + (index % 3) * 2_500
+          : mod5 === 3
+            ? 62_000 + (index % 4) * 2_800
+            : 80_000 + (index % 3) * 3_500;
+  const jitter = ((index * 17) % 2_400) - 800;
+  const ral = Math.max(24_000, Math.min(95_000, band + jitter));
+  const baseSalaryMonthly = Math.round((ral / payMonths) * 100) / 100;
+  return {
+    payMonthsPerYear: payMonths,
+    annualGrossSalary: ral,
+    baseSalaryMonthly,
+    taxRegion: IT_REGIONS[index % IT_REGIONS.length],
+    taxMunicipalityIt: IT_COMUNI[index % IT_COMUNI.length],
+    taxDomicileSameAsResidence: index % 5 !== 0,
+    taxDomicileMunicipalityIt: index % 5 === 0 ? IT_COMUNI[(index + 2) % IT_COMUNI.length] : null,
+    fiscalCode: pseudoFiscalCode(`nexa-seed-${index}-${ral}`),
+    maritalStatus: index % 4 === 0 ? "married" : index % 4 === 1 ? "single" : "divorced",
+    dependentsChildren: index % 6,
+    dependentSpouse: index % 7 === 0,
+    disabilityFlag: index % 13 === 0,
+    legalCategory: IT_LEGAL[index % IT_LEGAL.length],
+    partTimeModality: index % 10 === 0 ? "horizontal" : "full",
+    ccnlCode: index % 3 === 0 ? "Commercio" : "Metalmeccanico",
+    ccnlLevel: `L${(index % 5) + 1}`,
+    contractFixedTerm: index % 11 === 0,
+    contractEndDate: index % 11 === 0 ? "2026-12-31" : null,
+    fixedSupplementMonthly: index % 8 === 0 ? 120 : null,
+    garnishmentMonthlyEstimate: index % 15 === 0 ? 50 : null,
+    fringeBenefitYtdEuros: index % 4 === 0 ? 400 : 0
+  };
+}
+
 function emailLocal(first: string, last: string): string {
   const f = first
     .normalize("NFD")
@@ -586,10 +644,10 @@ async function main(): Promise<void> {
             bankName: p.bankName,
             bicSwift: p.bicSwift,
             accountHolder: p.accountHolder,
-            baseSalaryMonthly: p.baseSalaryMonthly,
             taxCanton: p.taxCanton,
             taxMunicipality: p.taxMunicipality,
-            ...seedPayrollAnagrafica()
+            ...seedPayrollAnagrafica(),
+            ...seedItPayrollExtensions(i)
           },
           { onConflict: "id" }
         );
@@ -629,10 +687,10 @@ async function main(): Promise<void> {
       bankName: p.bankName,
       bicSwift: p.bicSwift,
       accountHolder: p.accountHolder,
-      baseSalaryMonthly: p.baseSalaryMonthly,
       taxCanton: p.taxCanton,
       taxMunicipality: p.taxMunicipality,
-      ...seedPayrollAnagrafica()
+      ...seedPayrollAnagrafica(),
+      ...seedItPayrollExtensions(i)
     });
     if (insErr) {
       // eslint-disable-next-line no-console

@@ -51,6 +51,24 @@ export interface User {
   payrollTfrDivisor?: number | null;
   payrollAtecoCode?: string | null;
   payrollInailRiskDescription?: string | null;
+  fiscalCode?: string | null;
+  maritalStatus?: string | null;
+  dependentsChildren?: number;
+  dependentSpouse?: boolean;
+  disabilityFlag?: boolean;
+  taxDomicileMunicipalityIt?: string | null;
+  taxDomicileSameAsResidence?: boolean;
+  payMonthsPerYear?: number;
+  annualGrossSalary?: number | null;
+  partTimeModality?: string | null;
+  ccnlCode?: string | null;
+  ccnlLevel?: string | null;
+  legalCategory?: string | null;
+  contractEndDate?: string | null;
+  fixedSupplementMonthly?: number | null;
+  garnishmentMonthlyEstimate?: number | null;
+  fringeBenefitYtdEuros?: number | null;
+  contractFixedTerm?: boolean;
   /** Opzionali da GET /users/me (non sempre presenti su liste). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
@@ -476,6 +494,63 @@ export async function fetchCurrentUser(token: string): Promise<SessionUser> {
     saveSession(token, me);
   }
   return me;
+}
+
+export type PayrollProfileItPatch = Partial<{
+  fiscalCode: string | null;
+  maritalStatus: string | null;
+  dependentsChildren: number;
+  dependentSpouse: boolean;
+  disabilityFlag: boolean;
+  taxDomicileMunicipalityIt: string | null;
+  taxDomicileSameAsResidence: boolean;
+  taxRegion: string;
+  taxMunicipalityIt: string;
+  payMonthsPerYear: number;
+  annualGrossSalary: number | null;
+  partTimeModality: string | null;
+  ccnlCode: string | null;
+  ccnlLevel: string | null;
+  legalCategory: string | null;
+  contractEndDate: string | null;
+  fixedSupplementMonthly: number | null;
+  garnishmentMonthlyEstimate: number | null;
+  fringeBenefitYtdEuros: number | null;
+  contractFixedTerm: boolean;
+}>;
+
+export async function patchMyPayrollProfileIt(
+  token: string,
+  patch: PayrollProfileItPatch
+): Promise<SessionUser> {
+  const response = await fetch(buildApiUrl("/users/me/payroll-profile-it"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(patch)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const user = (await response.json()) as SessionUser;
+  if (typeof window !== "undefined") {
+    saveSession(token, user);
+  }
+  return user;
+}
+
+export async function postHebbHrChat(
+  token: string,
+  messages: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<{ message: string; toolResults?: unknown[] }> {
+  const response = await fetch(buildApiUrl("/ai/hebb-hr/messages"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ messages })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { message: string; toolResults?: unknown[] };
 }
 
 export async function fetchCompanySettings(token: string): Promise<CompanySettingsDto> {

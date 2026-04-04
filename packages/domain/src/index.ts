@@ -75,6 +75,33 @@ export interface User {
   payrollAtecoCode?: string | null;
   /** Descrizione rischio mansione / tariffa INAIL. */
   payrollInailRiskDescription?: string | null;
+
+  /** Codice fiscale (IT). */
+  fiscalCode?: string | null;
+  /** Stato civile (es. single, married, divorced, widowed, civil_union). */
+  maritalStatus?: string | null;
+  dependentsChildren?: number;
+  dependentSpouse?: boolean;
+  disabilityFlag?: boolean;
+  /** Comune domicilio fiscale IT (se diverso da residenza). */
+  taxDomicileMunicipalityIt?: string | null;
+  taxDomicileSameAsResidence?: boolean;
+  /** Mensilità contrattuali 12 / 13 / 14. */
+  payMonthsPerYear?: number;
+  /** RAL lorda annua (con `payMonthsPerYear` definisce stipendio mensile). */
+  annualGrossSalary?: number | null;
+  /** full | horizontal | vertical | mixed (part-time). */
+  partTimeModality?: string | null;
+  ccnlCode?: string | null;
+  ccnlLevel?: string | null;
+  /** operaio | impiegato | quadro | dirigente */
+  legalCategory?: string | null;
+  contractEndDate?: string | null;
+  fixedSupplementMonthly?: number | null;
+  garnishmentMonthlyEstimate?: number | null;
+  fringeBenefitYtdEuros?: number | null;
+  /** Contratto determinato (detrazioni art.13 semplificate). */
+  contractFixedTerm?: boolean;
 }
 
 export interface CostCenter {

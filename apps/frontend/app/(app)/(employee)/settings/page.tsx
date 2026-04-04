@@ -11,11 +11,13 @@ import {
   fetchCurrentUser,
   fetchImportHistory,
   patchCompanySettings,
+  patchMyPayrollProfileIt,
   validateImportFile,
   type CompanySettingsDto,
   type ImportCategory,
   type ImportCellError,
-  type ImportHistoryItem
+  type ImportHistoryItem,
+  type PayrollProfileItPatch
 } from "@/lib/api";
 import {
   clearSession,
@@ -76,6 +78,30 @@ export default function SettingsPage(): React.JSX.Element {
   const [importBusy, setImportBusy] = useState(false);
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [history, setHistory] = useState<ImportHistoryItem[]>([]);
+  const [itBusy, setItBusy] = useState(false);
+  const [itOk, setItOk] = useState<string | null>(null);
+  const [itForm, setItForm] = useState<PayrollProfileItPatch>({
+    fiscalCode: "",
+    maritalStatus: "",
+    dependentsChildren: 0,
+    dependentSpouse: false,
+    disabilityFlag: false,
+    taxDomicileMunicipalityIt: "",
+    taxDomicileSameAsResidence: true,
+    taxRegion: "",
+    taxMunicipalityIt: "",
+    payMonthsPerYear: 13,
+    annualGrossSalary: null,
+    partTimeModality: "",
+    ccnlCode: "",
+    ccnlLevel: "",
+    legalCategory: "",
+    contractEndDate: "",
+    fixedSupplementMonthly: null,
+    garnishmentMonthlyEstimate: null,
+    fringeBenefitYtdEuros: null,
+    contractFixedTerm: false
+  });
 
   useEffect(() => {
     const t = getToken();
@@ -89,6 +115,28 @@ export default function SettingsPage(): React.JSX.Element {
       try {
         const me = await fetchCurrentUser(tokenValue);
         setIsSuperuser(Boolean(me.isSynapseSuperuser));
+        setItForm({
+          fiscalCode: me.fiscalCode ?? "",
+          maritalStatus: me.maritalStatus ?? "",
+          dependentsChildren: me.dependentsChildren ?? 0,
+          dependentSpouse: Boolean(me.dependentSpouse),
+          disabilityFlag: Boolean(me.disabilityFlag),
+          taxDomicileMunicipalityIt: me.taxDomicileMunicipalityIt ?? "",
+          taxDomicileSameAsResidence: me.taxDomicileSameAsResidence !== false,
+          taxRegion: me.taxRegion ?? "",
+          taxMunicipalityIt: me.taxMunicipalityIt ?? "",
+          payMonthsPerYear: me.payMonthsPerYear === 12 || me.payMonthsPerYear === 14 ? me.payMonthsPerYear : 13,
+          annualGrossSalary: me.annualGrossSalary ?? null,
+          partTimeModality: me.partTimeModality ?? "",
+          ccnlCode: me.ccnlCode ?? "",
+          ccnlLevel: me.ccnlLevel ?? "",
+          legalCategory: me.legalCategory ?? "",
+          contractEndDate: me.contractEndDate ?? "",
+          fixedSupplementMonthly: me.fixedSupplementMonthly ?? null,
+          garnishmentMonthlyEstimate: me.garnishmentMonthlyEstimate ?? null,
+          fringeBenefitYtdEuros: me.fringeBenefitYtdEuros ?? null,
+          contractFixedTerm: Boolean(me.contractFixedTerm)
+        });
         const canCo = sessionCanNexaAdmin(me);
         setCanCompanySettings(canCo);
         if (canCo) {
@@ -221,6 +269,55 @@ export default function SettingsPage(): React.JSX.Element {
     }
   }
 
+  async function onSaveItProfile(): Promise<void> {
+    if (!token) return;
+    setItOk(null);
+    setError(null);
+    setItBusy(true);
+    try {
+      const ral =
+        itForm.annualGrossSalary != null && String(itForm.annualGrossSalary).trim() !== ""
+          ? Number(itForm.annualGrossSalary)
+          : null;
+      await patchMyPayrollProfileIt(token, {
+        fiscalCode: (itForm.fiscalCode ?? "").trim() || null,
+        maritalStatus: (itForm.maritalStatus ?? "").trim() || null,
+        dependentsChildren: Math.min(20, Math.max(0, Number(itForm.dependentsChildren) || 0)),
+        dependentSpouse: Boolean(itForm.dependentSpouse),
+        disabilityFlag: Boolean(itForm.disabilityFlag),
+        taxDomicileMunicipalityIt: (itForm.taxDomicileMunicipalityIt ?? "").trim() || null,
+        taxDomicileSameAsResidence: Boolean(itForm.taxDomicileSameAsResidence),
+        taxRegion: (itForm.taxRegion ?? "").trim() || undefined,
+        taxMunicipalityIt: (itForm.taxMunicipalityIt ?? "").trim() || undefined,
+        payMonthsPerYear: itForm.payMonthsPerYear === 12 || itForm.payMonthsPerYear === 14 ? itForm.payMonthsPerYear : 13,
+        annualGrossSalary: ral != null && ral >= 0 ? ral : null,
+        partTimeModality: (itForm.partTimeModality ?? "").trim() || null,
+        ccnlCode: (itForm.ccnlCode ?? "").trim() || null,
+        ccnlLevel: (itForm.ccnlLevel ?? "").trim() || null,
+        legalCategory: (itForm.legalCategory ?? "").trim() || null,
+        contractEndDate: (itForm.contractEndDate ?? "").trim() || null,
+        fixedSupplementMonthly:
+          itForm.fixedSupplementMonthly != null && Number(itForm.fixedSupplementMonthly) >= 0
+            ? Number(itForm.fixedSupplementMonthly)
+            : null,
+        garnishmentMonthlyEstimate:
+          itForm.garnishmentMonthlyEstimate != null && Number(itForm.garnishmentMonthlyEstimate) >= 0
+            ? Number(itForm.garnishmentMonthlyEstimate)
+            : null,
+        fringeBenefitYtdEuros:
+          itForm.fringeBenefitYtdEuros != null && Number(itForm.fringeBenefitYtdEuros) >= 0
+            ? Number(itForm.fringeBenefitYtdEuros)
+            : null,
+        contractFixedTerm: Boolean(itForm.contractFixedTerm)
+      });
+      setItOk("Profilo salvato. Lo stipendio mensile operativo viene ricalcolato da RAL e mensilità, se indicati.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Salvataggio profilo IT fallito");
+    } finally {
+      setItBusy(false);
+    }
+  }
+
   async function onApplyImport(): Promise<void> {
     if (!token || !validatedRows?.length) return;
     setError(null);
@@ -324,6 +421,246 @@ export default function SettingsPage(): React.JSX.Element {
               <option value="hm">Ore e minuti</option>
             </select>
           </label>
+        </div>
+      </GlassCard>
+
+      <GlassCard
+        title="Profilo fiscale e contratto (Italia)"
+        description="Dati per simulazioni cedolino e detrazioni. RAL e mensilità aggiornano lo stipendio mensile usato dal motore (RAL ÷ mensilità)."
+      >
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Codice fiscale</span>
+            <input
+              value={String(itForm.fiscalCode ?? "")}
+              onChange={(e) => setItForm({ ...itForm, fiscalCode: e.target.value.toUpperCase().slice(0, 16) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              maxLength={16}
+              autoComplete="off"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Stato civile</span>
+            <select
+              value={String(itForm.maritalStatus ?? "")}
+              onChange={(e) => setItForm({ ...itForm, maritalStatus: e.target.value || "" })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            >
+              <option value="">—</option>
+              <option value="single">Single</option>
+              <option value="married">Sposato/a</option>
+              <option value="divorced">Divorziato/a</option>
+              <option value="widowed">Vedovo/a</option>
+              <option value="civil_union">Unione civile</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Figli a carico</span>
+            <input
+              type="number"
+              min={0}
+              max={20}
+              value={itForm.dependentsChildren ?? 0}
+              onChange={(e) =>
+                setItForm({ ...itForm, dependentsChildren: Math.min(20, Math.max(0, Number(e.target.value) || 0)) })
+              }
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex items-center gap-2 pt-6">
+            <input
+              type="checkbox"
+              checked={Boolean(itForm.dependentSpouse)}
+              onChange={(e) => setItForm({ ...itForm, dependentSpouse: e.target.checked })}
+            />
+            <span className="text-slate-700 dark:text-slate-300">Coniuge a carico</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={Boolean(itForm.disabilityFlag)}
+              onChange={(e) => setItForm({ ...itForm, disabilityFlag: e.target.checked })}
+            />
+            <span className="text-slate-700 dark:text-slate-300">Disabilità (flag informativo)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={Boolean(itForm.contractFixedTerm)}
+              onChange={(e) => setItForm({ ...itForm, contractFixedTerm: e.target.checked })}
+            />
+            <span className="text-slate-700 dark:text-slate-300">Contratto a tempo determinato</span>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Regione (addizionale)</span>
+            <input
+              value={String(itForm.taxRegion ?? "")}
+              onChange={(e) => setItForm({ ...itForm, taxRegion: e.target.value.slice(0, 64) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              placeholder="es. LAZ"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Comune di residenza</span>
+            <input
+              value={String(itForm.taxMunicipalityIt ?? "")}
+              onChange={(e) => setItForm({ ...itForm, taxMunicipalityIt: e.target.value.slice(0, 120) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex items-center gap-2 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={Boolean(itForm.taxDomicileSameAsResidence)}
+              onChange={(e) => setItForm({ ...itForm, taxDomicileSameAsResidence: e.target.checked })}
+            />
+            <span className="text-slate-700 dark:text-slate-300">Domicilio fiscale = residenza</span>
+          </label>
+          {!itForm.taxDomicileSameAsResidence ? (
+            <label className="flex flex-col gap-1 sm:col-span-2">
+              <span className="text-slate-700 dark:text-slate-300">Comune domicilio fiscale</span>
+              <input
+                value={String(itForm.taxDomicileMunicipalityIt ?? "")}
+                onChange={(e) => setItForm({ ...itForm, taxDomicileMunicipalityIt: e.target.value.slice(0, 120) })}
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              />
+            </label>
+          ) : null}
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Mensilità contrattuali</span>
+            <select
+              value={String(itForm.payMonthsPerYear ?? 13)}
+              onChange={(e) => setItForm({ ...itForm, payMonthsPerYear: Number(e.target.value) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            >
+              <option value={12}>12</option>
+              <option value={13}>13</option>
+              <option value={14}>14</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">RAL annua lorda (€)</span>
+            <input
+              type="number"
+              min={0}
+              step={100}
+              value={itForm.annualGrossSalary ?? ""}
+              onChange={(e) =>
+                setItForm({
+                  ...itForm,
+                  annualGrossSalary: e.target.value === "" ? null : Number(e.target.value)
+                })
+              }
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Categoria legale</span>
+            <select
+              value={String(itForm.legalCategory ?? "")}
+              onChange={(e) => setItForm({ ...itForm, legalCategory: e.target.value })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            >
+              <option value="">—</option>
+              <option value="operaio">Operaio</option>
+              <option value="impiegato">Impiegato</option>
+              <option value="quadro">Quadro</option>
+              <option value="dirigente">Dirigente</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Part-time (modalità)</span>
+            <select
+              value={String(itForm.partTimeModality ?? "")}
+              onChange={(e) => setItForm({ ...itForm, partTimeModality: e.target.value })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            >
+              <option value="">—</option>
+              <option value="full">Full time equivalent</option>
+              <option value="horizontal">Orizzontale</option>
+              <option value="vertical">Verticale</option>
+              <option value="mixed">Misto</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">CCNL (codice / testo)</span>
+            <input
+              value={String(itForm.ccnlCode ?? "")}
+              onChange={(e) => setItForm({ ...itForm, ccnlCode: e.target.value.slice(0, 64) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Livello CCNL</span>
+            <input
+              value={String(itForm.ccnlLevel ?? "")}
+              onChange={(e) => setItForm({ ...itForm, ccnlLevel: e.target.value.slice(0, 64) })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Fine contratto (YYYY-MM-DD)</span>
+            <input
+              type="date"
+              value={String(itForm.contractEndDate ?? "")}
+              onChange={(e) => setItForm({ ...itForm, contractEndDate: e.target.value })}
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Integrazione fissa mensile (€)</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={itForm.fixedSupplementMonthly ?? ""}
+              onChange={(e) =>
+                setItForm({
+                  ...itForm,
+                  fixedSupplementMonthly: e.target.value === "" ? null : Number(e.target.value)
+                })
+              }
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-700 dark:text-slate-300">Trattenute stimate mensili (€)</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={itForm.garnishmentMonthlyEstimate ?? ""}
+              onChange={(e) =>
+                setItForm({
+                  ...itForm,
+                  garnishmentMonthlyEstimate: e.target.value === "" ? null : Number(e.target.value)
+                })
+              }
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-slate-700 dark:text-slate-300">Fringe benefit YTD (€)</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={itForm.fringeBenefitYtdEuros ?? ""}
+              onChange={(e) =>
+                setItForm({
+                  ...itForm,
+                  fringeBenefitYtdEuros: e.target.value === "" ? null : Number(e.target.value)
+                })
+              }
+              className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button type="button" size="sm" disabled={itBusy} onClick={() => void onSaveItProfile()}>
+            {itBusy ? "Salvataggio…" : "Salva profilo IT"}
+          </Button>
+          {itOk ? <span className="text-xs text-emerald-600 dark:text-emerald-400">{itOk}</span> : null}
         </div>
       </GlassCard>
 
