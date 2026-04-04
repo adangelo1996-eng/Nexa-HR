@@ -541,6 +541,14 @@ export async function patchMyPayrollProfileIt(
   return user;
 }
 
+/** Risposta motore Hebb (simulazione cedolino IT, senza persistenza). */
+export type HebbSimulatePayrollLine = { code: string; description: string; amount: number };
+export type HebbSimulatePayrollResult = {
+  lines: HebbSimulatePayrollLine[];
+  grossAdjusted: number;
+  netSalary: number;
+};
+
 export async function postHebbSimulateIt(
   token: string,
   body: {
@@ -549,7 +557,7 @@ export async function postHebbSimulateIt(
     grossMonthlySalaryOverride?: number;
     usePreviousMonthVariables?: boolean;
   }
-): Promise<unknown> {
+): Promise<HebbSimulatePayrollResult> {
   const response = await fetch(buildApiUrl("/ai/hebb-hr/simulate-it"), {
     method: "POST",
     headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
@@ -558,7 +566,7 @@ export async function postHebbSimulateIt(
   if (!response.ok) {
     await parseError(response);
   }
-  return response.json();
+  return (await response.json()) as HebbSimulatePayrollResult;
 }
 
 export type PayrollBatchRowResult = {

@@ -160,11 +160,36 @@ export default function PayrollBatchPage(): React.JSX.Element {
         </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         {publishMsg ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{publishMsg}</p> : null}
+        {loadingBatch ? (
+          <div className="space-y-2 pt-2">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Elaborazione batch in corso sul server: attendere il completamento (può richiedere alcuni minuti per
+              molti dipendenti).
+            </p>
+            <progress className="h-2 w-full accent-slate-700 dark:accent-slate-300" />
+          </div>
+        ) : null}
       </section>
 
       {batchResults && batchResults.length > 0 ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Esito elaborazione</h2>
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span>Avanzamento visualizzazione</span>
+              <span>
+                {visibleCount} / {batchResults.length}
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+              <div
+                className="h-full rounded-full bg-emerald-600 transition-[width] duration-300 ease-out dark:bg-emerald-500"
+                style={{
+                  width: `${Math.min(100, (visibleCount / Math.max(batchResults.length, 1)) * 100)}%`
+                }}
+              />
+            </div>
+          </div>
           <ul className="space-y-2">
             {batchResults.slice(0, visibleCount).map((r) => (
               <li
