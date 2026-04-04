@@ -1,0 +1,49 @@
+﻿# Dependencies & package manager
+node_modules/
+.pnpm-store/
+
+# Framework & build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+
+# Test & coverage
+coverage/
+
+# Deploy & task caches
+.vercel/
+.turbo/
+
+# Supabase CLI local state
+infra/supabase/.branches/
+infra/supabase/.temp/
+
+# Env & secrets (template resta indicizzato)
+.env
+.env.*
+!.env.example
+
+# Certificati locali (Apple Wallet / backend)
+apps/backend/certs/*.pem
+apps/backend/certs/*.p12
+apps/backend/certs/*.cer
+apps/backend/certs/*.key
+apps/backend/certs/*.der
+
+# Dump / chunk SQL e JSON temporanei in root
+.tmp-*
+.tmp-sql-chunks/
+
+# Repository Git (oggetti voluminosi)
+.git/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
