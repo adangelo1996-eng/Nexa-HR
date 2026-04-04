@@ -165,13 +165,13 @@ export class PersonnelBudgetController {
     private readonly permissions: PermissionsService
   ) {}
 
-  /** Budget personale in UI: solo amministratori console (oltre al permesso catalogo). */
+  /** Budget personale: superuser, Synapse admin, o ruolo con `nexa.admin_users:read` (HR esteso). */
   private async assertNexaAdminPersonnelBudget(auth: AuthContext): Promise<void> {
     if (auth.role === "superuser") {
       return;
     }
     const me = await this.store.getUser(auth.userId);
-    const ok = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, me.email);
+    const ok = await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
     if (!ok) {
       throw new ForbiddenException("Budget personale riservato agli amministratori");
     }

@@ -10,6 +10,7 @@ import { ImportService } from "./import.service";
 import { NexaPermissionGuard } from "./nexa-permission.guard";
 import { PermissionsService } from "./permissions.service";
 import { SearchController } from "./search.controller";
+import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
 
 @Global()
 @Module({
@@ -20,8 +21,16 @@ import { SearchController } from "./search.controller";
     AuthService,
     PermissionsService,
     NexaPermissionGuard,
+    SynapseAdminConsoleGuard,
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor }
   ],
-  exports: [HrDataStore, ImportService, AuthService, PermissionsService, NexaPermissionGuard]
+  exports: [
+    HrDataStore,
+    ImportService,
+    AuthService,
+    PermissionsService,
+    NexaPermissionGuard,
+    SynapseAdminConsoleGuard
+  ]
 })
 export class PlatformModule {}

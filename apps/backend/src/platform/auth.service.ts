@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { sign } from "jsonwebtoken";
 import type { AuthRole } from "./auth";
+import { userCanManageTeamAttendance } from "./hr-attendance-access.util";
 import { HrDataStore } from "./hr-data.store";
 import { PermissionsService } from "./permissions.service";
 import crypto from "node:crypto";
@@ -13,6 +14,9 @@ interface LoginUser {
   tenantId: string;
   companyId?: string;
   canNexaAdmin: boolean;
+  canAccessHrExtendedConsole: boolean;
+  canAccessHrWorkflowExtras: boolean;
+  canExportAttendanceReports: boolean;
   canAccessPayrollArea: boolean;
   canAccessPersonnelBudgetArea: boolean;
 }
@@ -31,6 +35,56 @@ export class AuthService {
     private readonly store: HrDataStore,
     private readonly permissions: PermissionsService
   ) {}
+
+  private async buildLoginCapabilityFlags(user: {
+    id: string;
+    role: AuthRole;
+    email: string;
+  }): Promise<
+    Pick<
+      LoginUser,
+      | "canNexaAdmin"
+      | "canAccessHrExtendedConsole"
+      | "canAccessHrWorkflowExtras"
+      | "canExportAttendanceReports"
+      | "canAccessPayrollArea"
+      | "canAccessPersonnelBudgetArea"
+    >
+  > {
+    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
+    const canAccessHrExtendedConsole = await this.permissions.canAccessHrExtendedConsole(
+      user.id,
+      user.role,
+      user.email
+    );
+    const canManageTeamAttendance = await userCanManageTeamAttendance(this.store, user.id);
+    const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(user.id);
+    const canAccessHrWorkflowExtras = await this.permissions.canAccessHrWorkflowExtras(
+      user.id,
+      user.role,
+      user.email,
+      workTeamIdsWhereLead.length > 0
+    );
+    const canExportAttendanceReports = await this.permissions.canExportAttendanceReports(
+      user.id,
+      user.role,
+      user.email,
+      canManageTeamAttendance
+    );
+    const canAccessPayrollArea = user.role === "superuser" || canAccessHrExtendedConsole;
+    const canAccessPersonnelBudgetArea =
+      user.role === "superuser" ||
+      canAccessHrExtendedConsole ||
+      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
+    return {
+      canNexaAdmin,
+      canAccessHrExtendedConsole,
+      canAccessHrWorkflowExtras,
+      canExportAttendanceReports,
+      canAccessPayrollArea,
+      canAccessPersonnelBudgetArea
+    };
+  }
 
   async login(email: string, password: string): Promise<{ token: string; user: LoginUser }> {
     const user = (await this.store.findUserByEmail(email)) as LoginUser | null;
@@ -55,12 +109,7 @@ export class AuthService {
 
     const tenantId = user.companyId || "synapse-default";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
-    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
-    const canAccessPayrollArea = user.role === "superuser" || canNexaAdmin;
-    const canAccessPersonnelBudgetArea =
-      user.role === "superuser" ||
-      canNexaAdmin ||
-      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
+    const caps = await this.buildLoginCapabilityFlags(user);
     return {
       token,
       user: {
@@ -70,9 +119,7 @@ export class AuthService {
         role: user.role,
         tenantId,
         companyId: user.companyId,
-        canNexaAdmin,
-        canAccessPayrollArea,
-        canAccessPersonnelBudgetArea
+        ...caps
       }
     };
   }
@@ -96,12 +143,7 @@ export class AuthService {
 
     const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
-    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
-    const canAccessPayrollArea = user.role === "superuser" || canNexaAdmin;
-    const canAccessPersonnelBudgetArea =
-      user.role === "superuser" ||
-      canNexaAdmin ||
-      (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
+    const caps = await this.buildLoginCapabilityFlags(user);
     return {
       token,
       user: {
@@ -111,9 +153,7 @@ export class AuthService {
         role: user.role,
         tenantId,
         companyId: user.companyId,
-        canNexaAdmin,
-        canAccessPayrollArea,
-        canAccessPersonnelBudgetArea
+        ...caps
       }
     };
   }

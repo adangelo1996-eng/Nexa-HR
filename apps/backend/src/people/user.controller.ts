@@ -371,18 +371,38 @@ export class UserController {
   async me(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
+    const canAccessHrExtendedConsole = await this.permissions.canAccessHrExtendedConsole(
+      auth.userId,
+      auth.role,
+      user.email
+    );
     const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
     const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
-    /** Calcolo/simulazione cedolino (`/payroll-calc`): solo superuser o console admin (non centro HR da solo). */
-    const canAccessPayrollArea = auth.role === "superuser" || canNexaAdmin;
+    const canAccessHrWorkflowExtras = await this.permissions.canAccessHrWorkflowExtras(
+      auth.userId,
+      auth.role,
+      user.email,
+      workTeamIdsWhereLead.length > 0
+    );
+    const canExportAttendanceReports = await this.permissions.canExportAttendanceReports(
+      auth.userId,
+      auth.role,
+      user.email,
+      canManageTeamAttendance
+    );
+    /** Calcolo/simulazione cedolino: superuser, Synapse admin, o `nexa.admin_users:read`. */
+    const canAccessPayrollArea = auth.role === "superuser" || canAccessHrExtendedConsole;
     const canAccessPersonnelBudgetArea =
       auth.role === "superuser" ||
-      canNexaAdmin ||
+      canAccessHrExtendedConsole ||
       (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
       canNexaAdmin,
+      canAccessHrExtendedConsole,
+      canAccessHrWorkflowExtras,
+      canExportAttendanceReports,
       canManageTeamAttendance,
       isTeamResponsible: workTeamIdsWhereLead.length > 0,
       workTeamIdsWhereLead,

@@ -3,17 +3,12 @@ import ExcelJS from "exceljs";
 import type { TimeEntry, User } from "@payday/domain";
 import type { AuthRole } from "../platform/auth";
 import type { AttendanceDayBoardResponse } from "../platform/hr-data.store";
+import { userCanManageTeamAttendance } from "../platform/hr-attendance-access.util";
 import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
-
-/** Codici centro di costo (es. HR) abilitati alla gestione timbrature di squadra. */
-function teamManageCostCenterCodes(): Set<string> {
-  const raw = process.env.NEXA_HR_TEAM_ATTENDANCE_COST_CENTER_CODES?.trim() || "HR";
-  return new Set(raw.split(",").map((c) => c.trim().toUpperCase()).filter(Boolean));
-}
 
 @Injectable()
 export class AttendanceTeamService {
@@ -35,7 +30,7 @@ export class AttendanceTeamService {
   }
 
   /**
-   * Lettura/export vista giornaliera e export mensile: centro HR oppure console admin Nexa.
+   * Lettura/export vista giornaliera e export mensile: centro HR oppure HR esteso (`nexa.admin_users:read` / Synapse).
    * La modifica timbrature altrui resta solo su {@link assertCanManageTeam}.
    */
   async assertHrOrNexaAdminForAttendanceExports(
@@ -46,7 +41,7 @@ export class AttendanceTeamService {
       return;
     }
     const user = await this.store.getUser(viewerId);
-    const ok = await this.permissions.canAccessNexaAdminUi(viewerId, jwtRole, user.email);
+    const ok = await this.permissions.canAccessHrExtendedConsole(viewerId, jwtRole, user.email);
     if (!ok) {
       throw new ForbiddenException(
         "Operazione riservata agli amministratori Nexa o al centro di costo HR"
@@ -156,30 +151,7 @@ export class AttendanceTeamService {
   }
 
   async canManageTeamAttendance(userId: string): Promise<boolean> {
-    const user = await this.store.getUser(userId);
-    if (user.role === "superuser") {
-      return true;
-    }
-    if (isSynapseSuperuserEmail(user.email)) {
-      return true;
-    }
-    return this.costCenterIsHrTeam(user.costCenterId);
-  }
-
-  private async costCenterIsHrTeam(costCenterId: string | undefined): Promise<boolean> {
-    if (!costCenterId) {
-      return false;
-    }
-    const center = await this.store.getCostCenterById(costCenterId);
-    if (!center) {
-      return false;
-    }
-    const codes = teamManageCostCenterCodes();
-    if (codes.has(center.code.trim().toUpperCase())) {
-      return true;
-    }
-    const name = center.name.trim().toLowerCase();
-    return name.includes("risorse umane");
+    return userCanManageTeamAttendance(this.store, userId);
   }
 
   async assertCanManageTeam(viewerId: string): Promise<void> {

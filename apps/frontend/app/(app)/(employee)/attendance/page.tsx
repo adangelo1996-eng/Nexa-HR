@@ -32,7 +32,7 @@ import {
   clearSession,
   getToken,
   sessionCanAccessPayrollArea,
-  sessionCanNexaAdmin,
+  sessionCanHrExtendedOrTeamAttendance,
   type SessionUser
 } from "@/lib/auth-session";
 import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
@@ -107,7 +107,7 @@ export default function AttendancePage(): React.JSX.Element {
   const [travelDates, setTravelDates] = useState<Set<string>>(() => new Set());
 
   const canHrExport = useMemo(
-    () => Boolean(user && (sessionCanNexaAdmin(user) || user.canManageTeamAttendance)),
+    () => Boolean(user && sessionCanHrExtendedOrTeamAttendance(user)),
     [user]
   );
   const canHrEdit = Boolean(user?.canManageTeamAttendance);

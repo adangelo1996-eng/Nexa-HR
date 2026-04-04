@@ -10,6 +10,7 @@ import {
   SOMA_PERMISSIONS
 } from "./permission-catalog";
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
+import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
 
 class CreateRoleDto {
   @IsString()
@@ -144,7 +145,7 @@ class UpdateCostCenterDto {
 }
 
 @Controller("admin")
-@UseGuards(RoleGuard, NexaPermissionGuard)
+@UseGuards(RoleGuard, NexaPermissionGuard, SynapseAdminConsoleGuard)
 export class AdminController {
   constructor(private readonly store: HrDataStore) {}
 

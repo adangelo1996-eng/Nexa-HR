@@ -1,4 +1,7 @@
-/** Allowlist server-side per operazioni riservate (import massivo, ecc.). */
+/**
+ * Allowlist account «Synapse Admin» (console `/admin`, import sensibili, ecc.).
+ * Variabile `SYNAPSE_SUPERUSER_EMAILS` (virgola-separata); default `admin@synapse.com`.
+ */
 export function isSynapseSuperuserEmail(email: string | undefined): boolean {
   if (!email) {
     return false;

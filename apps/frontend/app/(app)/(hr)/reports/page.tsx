@@ -5,14 +5,20 @@ import * as XLSX from "xlsx";
 import { FileSpreadsheet } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { fetchAttendanceReport, fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanNexaAdmin, type SessionUser } from "@/lib/auth-session";
+import { getToken, type SessionUser } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 
 function canExportHrReports(u: SessionUser | null): boolean {
   if (!u) {
     return false;
   }
-  return sessionCanNexaAdmin(u) || Boolean(u.canManageTeamAttendance);
+  if (u.canExportAttendanceReports === true) {
+    return true;
+  }
+  if (u.canExportAttendanceReports === false) {
+    return false;
+  }
+  return Boolean(u.canManageTeamAttendance) || u.canAccessHrExtendedConsole === true;
 }
 
 export default function ReportsPage(): React.JSX.Element {

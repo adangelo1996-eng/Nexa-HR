@@ -76,10 +76,18 @@ export class PermissionsService {
   }
 
   /**
-   * Chi può aprire l’area /admin (menu + route): superuser JWT, email Synapse superuser, oppure
-   * `nexa.admin_users:read` (tab principale «Utenti»). Ruoli/centri/import da soli non aprono la console.
+   * Console `/admin` (utenti, ruoli, centri di costo): solo email in `SYNAPSE_SUPERUSER_EMAILS`
+   * (default `admin@synapse.com`). Il permesso catalogo `nexa.admin_users:read` non apre più quest’area.
    */
-  async canAccessNexaAdminUi(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
+  async canAccessNexaAdminUi(_userId: string, _jwtRole: AuthRole, email: string): Promise<boolean> {
+    return isSynapseSuperuserEmail(email);
+  }
+
+  /**
+   * Strumenti HR «estesi» (calcolo cedolino, budget personale, export presenze oltre centro HR):
+   * superuser JWT, email Synapse allowlist, oppure `nexa.admin_users:read` sul ruolo catalogo.
+   */
+  async canAccessHrExtendedConsole(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
     if (jwtRole === "superuser") {
       return true;
     }
@@ -88,5 +96,43 @@ export class PermissionsService {
     }
     const expanded = await this.getExpandedPermissionsForUserId(userId);
     return this.hasKey(expanded, "nexa.admin_users:read");
+  }
+
+  /**
+   * Vista calendario lavoro / workflow con privilegi team (oltre al solo dipendente).
+   */
+  async canAccessHrWorkflowExtras(
+    userId: string,
+    jwtRole: AuthRole,
+    email: string,
+    isTeamResponsible: boolean
+  ): Promise<boolean> {
+    if (await this.canAccessHrExtendedConsole(userId, jwtRole, email)) {
+      return true;
+    }
+    if (isTeamResponsible) {
+      return true;
+    }
+    const expanded = await this.getExpandedPermissionsForUserId(userId);
+    return (
+      this.hasKey(expanded, "nexa.approvals:read") || this.hasKey(expanded, "nexa.approvals:write")
+    );
+  }
+
+  /** Pagina report presenze / export: centro HR, console HR estesa, o permesso report HR. */
+  async canExportAttendanceReports(
+    userId: string,
+    jwtRole: AuthRole,
+    email: string,
+    canManageTeamAttendance: boolean
+  ): Promise<boolean> {
+    if (canManageTeamAttendance) {
+      return true;
+    }
+    if (await this.canAccessHrExtendedConsole(userId, jwtRole, email)) {
+      return true;
+    }
+    const expanded = await this.getExpandedPermissionsForUserId(userId);
+    return this.hasKey(expanded, "nexa.reports_hr:read");
   }
 }

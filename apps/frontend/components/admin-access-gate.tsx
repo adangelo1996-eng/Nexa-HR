@@ -6,7 +6,7 @@ import { fetchCurrentUser } from "@/lib/api";
 import { getToken, sessionCanNexaAdmin } from "@/lib/auth-session";
 
 /**
- * Blocca l’area /admin se la sessione non ha `canNexaAdmin` dal backend (dopo refresh /users/me).
+ * Blocca `/admin` se la sessione non ha `canNexaAdmin` (solo account Synapse allowlist).
  */
 export function AdminAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();

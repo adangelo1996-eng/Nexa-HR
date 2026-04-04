@@ -26,8 +26,14 @@ export interface SessionUser {
   jurisdiction?: "CH" | "IT";
   /** Presente dopo GET /users/me */
   isSynapseSuperuser?: boolean;
-  /** Area /admin (ruoli, centri di costo, utenti con permessi adeguati) */
+  /** Console `/admin`: solo account Synapse (`SYNAPSE_SUPERUSER_EMAILS`, es. admin@synapse.com). */
   canNexaAdmin?: boolean;
+  /** HR esteso: payroll, budget, export presenze oltre centro HR (`nexa.admin_users:read`, superuser, Synapse admin). */
+  canAccessHrExtendedConsole?: boolean;
+  /** Calendario lavoro / workflow con privilegi team (approvazioni, lead, HR esteso). */
+  canAccessHrWorkflowExtras?: boolean;
+  /** Export report presenze dalla pagina Report HR. */
+  canExportAttendanceReports?: boolean;
   /** Export mensile e modifica timbrature altrui (admin / centro HR) */
   canManageTeamAttendance?: boolean;
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
@@ -50,25 +56,16 @@ function normalizeStoredRole(role: unknown): UserRole {
   return "user";
 }
 
-/** Accesso UI admin Nexa: flag dal backend o fallback ruolo `superuser`. */
+/** Console `/admin`: solo se il backend imposta `canNexaAdmin` (account Synapse allowlist). */
 export function sessionCanNexaAdmin(
-  u: Pick<SessionUser, "role" | "canNexaAdmin"> | null | undefined
+  u: Pick<SessionUser, "canNexaAdmin"> | null | undefined
 ): boolean {
-  if (!u) {
-    return false;
-  }
-  if (u.canNexaAdmin === true) {
-    return true;
-  }
-  if (u.canNexaAdmin === false) {
-    return false;
-  }
-  return normalizeStoredRole(u.role) === "superuser";
+  return u?.canNexaAdmin === true;
 }
 
-/** Vista HR (workflow, ecc.): superuser, console admin, o responsabile team. */
+/** Vista HR (workflow, calendario team): superuser, flag backend, o responsabile team (fallback se sessione vecchia). */
 export function sessionCanSeeApprovalsAndHrExtras(
-  u: Pick<SessionUser, "role" | "canNexaAdmin" | "isTeamResponsible"> | null | undefined
+  u: Pick<SessionUser, "role" | "canAccessHrWorkflowExtras" | "isTeamResponsible"> | null | undefined
 ): boolean {
   if (!u) {
     return false;
@@ -76,7 +73,7 @@ export function sessionCanSeeApprovalsAndHrExtras(
   if (normalizeStoredRole(u.role) === "superuser") {
     return true;
   }
-  if (u.canNexaAdmin) {
+  if (u.canAccessHrWorkflowExtras === true) {
     return true;
   }
   return u.isTeamResponsible === true;
@@ -89,17 +86,18 @@ export function sessionCanAccessPayrollArea(
   return u?.canAccessPayrollArea === true;
 }
 
-/** Budget personale: solo console admin (o superuser) con permesso `canAccessPersonnelBudgetArea` dal backend. */
+/** Budget personale: il backend imposta `canAccessPersonnelBudgetArea` (HR esteso o permesso catalogo budget). */
 export function sessionCanAccessPersonnelBudgetArea(
-  u: Pick<SessionUser, "role" | "canNexaAdmin" | "canAccessPersonnelBudgetArea"> | null | undefined
+  u: Pick<SessionUser, "canAccessPersonnelBudgetArea"> | null | undefined
 ): boolean {
-  if (!u) {
-    return false;
-  }
-  if (!sessionCanNexaAdmin(u)) {
-    return false;
-  }
-  return u.canAccessPersonnelBudgetArea === true;
+  return u?.canAccessPersonnelBudgetArea === true;
+}
+
+/** Timbrature altrui / azioni HR su presenze: HR esteso o centro HR (`canManageTeamAttendance`). */
+export function sessionCanHrExtendedOrTeamAttendance(
+  u: Pick<SessionUser, "canAccessHrExtendedConsole" | "canManageTeamAttendance"> | null | undefined
+): boolean {
+  return u?.canAccessHrExtendedConsole === true || u?.canManageTeamAttendance === true;
 }
 
 /** Solo 401 / token: non sloggare su 403 permessi o errori di rete. */

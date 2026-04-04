@@ -78,8 +78,8 @@ export class PayrollController {
       return;
     }
     const me = await this.store.getUser(auth.userId);
-    const canAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, me.email);
-    if (canAdmin) {
+    const canHr = await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+    if (canHr) {
       return;
     }
     throw new ForbiddenException("Calcolo cedolino riservato agli amministratori");
