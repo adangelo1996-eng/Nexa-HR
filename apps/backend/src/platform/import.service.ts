@@ -78,6 +78,8 @@ interface UserPayrollAnagraficaImportRow {
 }
 
 const MAX_IMPORT_ROWS = 5000;
+/** Limite righe per apply/validate (stesso tetto delle letture foglio). */
+export const IMPORT_MAX_ROWS = MAX_IMPORT_ROWS;
 /** Esportato per limiti multipart nel controller. */
 export const IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_BYTES = IMPORT_MAX_FILE_BYTES;

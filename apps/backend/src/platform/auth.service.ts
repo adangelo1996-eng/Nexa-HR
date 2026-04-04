@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { sign } from "jsonwebtoken";
 import type { AuthRole } from "./auth";
+import { getAuthJwtSecret } from "./auth-jwt-secret";
 import { userCanManageTeamAttendance } from "./hr-attendance-access.util";
 import { HrDataStore } from "./hr-data.store";
 import { PermissionsService } from "./permissions.service";
@@ -105,7 +106,7 @@ export class AuthService {
       }
     }
 
-    const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+    const secret = getAuthJwtSecret();
 
     const tenantId = user.companyId || "synapse-default";
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
@@ -141,7 +142,7 @@ export class AuthService {
     }
     const tenantId = userTenant || payloadTenant || "synapse-default";
 
-    const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+    const secret = getAuthJwtSecret();
     const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
     const caps = await this.buildLoginCapabilityFlags(user);
     return {

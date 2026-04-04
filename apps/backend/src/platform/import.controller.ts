@@ -19,6 +19,7 @@ import {
   assertImportSuperuser,
   ImportService,
   IMPORT_MAX_FILE_BYTES,
+  IMPORT_MAX_ROWS,
   type ImportCategory,
   type ImportCellError
 } from "./import.service";
@@ -154,6 +155,9 @@ export class ImportController {
     const rows = body.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       throw new BadRequestException("Nessuna riga da importare");
+    }
+    if (rows.length > IMPORT_MAX_ROWS) {
+      throw new BadRequestException(`Massimo ${IMPORT_MAX_ROWS} righe per richiesta apply`);
     }
     const actorUser = await this.store.getUser(auth.userId);
     const actor = { userId: auth.userId, email: actorUser.email };

@@ -17,6 +17,7 @@ import { Type } from "class-transformer";
 import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { sign } from "jsonwebtoken";
+import { getAuthJwtSecret } from "../platform/auth-jwt-secret";
 import { AttendanceTeamService } from "./attendance-team.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
@@ -136,7 +137,7 @@ export class AttendanceController {
   @Post("qr-token")
   @RequireNexaPermissions("nexa.attendance:write")
   mintQrToken(@CurrentAuth() auth: AuthContext): { token: string; expiresInSec: number } {
-    const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+    const secret = getAuthJwtSecret();
     const expiresInSec = 900;
     const token = sign(
       { sub: auth.userId, typ: "attendance_qr" },

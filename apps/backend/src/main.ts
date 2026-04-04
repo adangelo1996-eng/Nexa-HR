@@ -4,9 +4,12 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
+import { assertProductionAuthConfig } from "./platform/auth-jwt-secret";
 
 /** Carica `apps/backend/.env` anche se il processo è avviato con cwd diversa (es. root monorepo). */
 loadDotenv({ path: resolve(__dirname, "../.env"), quiet: true });
+
+assertProductionAuthConfig();
 
 async function bootstrap(): Promise<void> {
   const defaultOrigins = [
@@ -54,6 +57,7 @@ async function bootstrap(): Promise<void> {
       next: () => void
     ) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
       res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
       res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
       next();

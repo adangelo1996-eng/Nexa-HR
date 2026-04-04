@@ -21,5 +21,8 @@ schema_paths = ["./migrations/*.sql"]
 enabled = true
 port = 54323
 
+# Auth: la funzione valida manualmente Bearer (JWT app HS256 + fallback Supabase session)
+# in `functions/payday-attendance/index.ts` (`getAuthContext`). `verify_jwt = true` qui
+# accetterebbe solo JWT Supabase e righerebbe i client che inviano solo il JWT Nest.
 [functions.payday-attendance]
 verify_jwt = false

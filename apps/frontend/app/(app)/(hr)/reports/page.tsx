@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { FileSpreadsheet } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { fetchAttendanceReport, fetchCurrentUser } from "@/lib/api";
@@ -44,18 +44,28 @@ export default function ReportsPage(): React.JSX.Element {
       return;
     }
     const { rows } = await fetchAttendanceReport(token, from, to);
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("presenze");
     if (rows.length === 0) {
-      const ws = XLSX.utils.aoa_to_sheet([["Nessun dato nel periodo"]]);
-      XLSX.utils.book_append_sheet(wb, ws, "presenze");
+      ws.addRow(["Nessun dato nel periodo"]);
     } else {
       const keys = Object.keys(rows[0] as Record<string, unknown>);
-      const header = keys;
-      const dataRows = rows.map((r) => keys.map((k) => (r as Record<string, unknown>)[k] ?? ""));
-      const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-      XLSX.utils.book_append_sheet(wb, ws, "presenze");
+      ws.addRow(keys);
+      for (const r of rows) {
+        const rec = r as Record<string, unknown>;
+        ws.addRow(keys.map((k) => rec[k] ?? ""));
+      }
     }
-    XLSX.writeFile(wb, `nexa-presenze-${from}-${to}.xlsx`);
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nexa-presenze-${from}-${to}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function exportPdf(): Promise<void> {

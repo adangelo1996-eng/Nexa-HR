@@ -16,14 +16,14 @@
     "@supabase/supabase-js": "^2.49.1",
     "@xyflow/react": "^12.8.5",
     "dagre": "^0.8.5",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.11.17",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tesseract.js": "^7.0.0",
-    "xlsx": "^0.18.5"
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/dagre": "^0.7.54",

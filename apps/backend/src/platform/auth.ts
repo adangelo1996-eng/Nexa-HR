@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { verify } from "jsonwebtoken";
 import type { Request } from "express";
+import { getAuthJwtSecret } from "./auth-jwt-secret";
 
 export type AuthRole = "superuser" | "user";
 
@@ -67,7 +68,7 @@ function fromBearerToken(request: Request): AuthContext | undefined {
     return undefined;
   }
   const token = header.slice("Bearer ".length).trim();
-  const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+  const secret = getAuthJwtSecret();
   let payload: TokenPayload;
   try {
     payload = verify(token, secret, { algorithms: ["HS256"] }) as TokenPayload;

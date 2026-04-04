@@ -2,6 +2,7 @@ import { Body, Controller, Post, UnauthorizedException } from "@nestjs/common";
 import { IsIn, IsISO8601, IsOptional, IsString } from "class-validator";
 import { verify } from "jsonwebtoken";
 import { HrDataStore } from "../platform/hr-data.store";
+import { getAuthJwtSecret } from "../platform/auth-jwt-secret";
 
 class ClockQrDto {
   @IsString()
@@ -29,7 +30,7 @@ export class QrClockController {
 
   @Post("qr/clock")
   async clockFromQr(@Body() dto: ClockQrDto): Promise<unknown> {
-    const secret = process.env.AUTH_JWT_SECRET ?? "dev-payday-secret-change-me";
+    const secret = getAuthJwtSecret();
     let payload: QrPayload;
     try {
       payload = verify(dto.token, secret, { algorithms: ["HS256"] }) as QrPayload;
