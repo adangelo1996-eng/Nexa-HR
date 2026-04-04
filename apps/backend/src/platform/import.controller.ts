@@ -31,7 +31,8 @@ const IMPORT_CATEGORIES: ImportCategory[] = [
   "cost_centers",
   "roles",
   "leave_allowances",
-  "user_managers"
+  "user_managers",
+  "user_payroll_anagrafica"
 ];
 
 function parseCategory(raw: string): ImportCategory {
@@ -117,6 +118,9 @@ export class ImportController {
     } else if (cat === "leave_allowances") {
       const v = await this.importService.validateLeaveAllowances(file.buffer);
       out = { errors: v.errors, rows: v.rows };
+    } else if (cat === "user_payroll_anagrafica") {
+      const v = await this.importService.validateUserPayrollAnagrafica(file.buffer);
+      out = { errors: v.errors, rows: v.rows };
     } else {
       const v = await this.importService.validateUserManagers(file.buffer);
       out = { errors: v.errors, rows: v.rows };
@@ -166,6 +170,9 @@ export class ImportController {
     }
     if (category === "leave_allowances") {
       return this.importService.applyLeaveAllowances(rows as never, actor, ip);
+    }
+    if (category === "user_payroll_anagrafica") {
+      return this.importService.applyUserPayrollAnagrafica(rows as never, actor, ip);
     }
     return this.importService.applyUserManagers(rows as never, actor, ip);
   }

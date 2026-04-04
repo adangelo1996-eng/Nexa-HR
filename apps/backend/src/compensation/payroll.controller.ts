@@ -14,13 +14,10 @@ import {
 } from "@nestjs/common";
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 import type { User } from "@payday/domain";
-import { createChExportGenerator } from "@payday/payroll-adapters-ch";
 import { createItExportGenerator } from "@payday/payroll-adapters-it";
-import type { JurisdictionCode } from "@payday/payroll-core";
 import PDFDocument from "pdfkit";
 import { CurrentAuth, type AuthRole } from "../platform/auth";
 import { type CompanySettingsDto, HrDataStore } from "../platform/hr-data.store";
-import { isSwissPayrollFeatureEnabled } from "../platform/nexa-swiss-payroll-flag";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
 
@@ -34,22 +31,10 @@ class SimulateHireDto {
   period?: string;
 
   @IsOptional()
-  @IsString()
-  canton?: string;
-
-  @IsOptional()
-  @IsString()
-  municipality?: string;
-
-  @IsOptional()
   @IsInt()
   @Min(18)
   @Max(80)
   age?: number;
-
-  @IsOptional()
-  @IsIn(["CH", "IT"])
-  jurisdiction?: "CH" | "IT";
 
   @IsOptional()
   @IsString()
@@ -146,10 +131,7 @@ export class PayrollController {
     return this.store.simulateHirePayroll({
       grossMonthlySalary: dto.grossMonthlySalary,
       period: dto.period,
-      canton: dto.canton,
-      municipality: dto.municipality,
       age: dto.age,
-      jurisdiction: dto.jurisdiction,
       taxRegion: dto.taxRegion,
       taxMunicipalityIt: dto.taxMunicipalityIt,
       weeklyContractHours: dto.weeklyContractHours
@@ -160,17 +142,12 @@ export class PayrollController {
   @RequireNexaPermissions("nexa.payroll:read")
   async exportPreview(
     @CurrentAuth() auth: { userId: string; role: AuthRole },
-    @Query("jurisdiction") jurisdiction: string,
     @Query("period") period?: string
   ): Promise<unknown> {
     await this.assertPayrollCalcAccess(auth);
-    const j: JurisdictionCode = jurisdiction === "IT" ? "IT" : "CH";
-    if (j === "CH" && !isSwissPayrollFeatureEnabled()) {
-      throw new BadRequestException("Export payroll Svizzera temporaneamente disattivato.");
-    }
-    const gen = j === "IT" ? createItExportGenerator() : createChExportGenerator();
+    const gen = createItExportGenerator();
     const p = period?.trim() || new Date().toISOString().slice(0, 7);
-    return gen.buildExports({ companyId: "comp-1", period: p, jurisdiction: j });
+    return gen.buildExports({ companyId: "comp-1", period: p, jurisdiction: "IT" });
   }
 
   @Post(":userId/:period/generate")
@@ -183,8 +160,7 @@ export class PayrollController {
     await this.assertPayrollCalcAccess(auth);
     await this.assertSameCompanyUnlessSuperuser(auth, userId);
     return this.store.generatePayslip(userId, period, {
-      status: "published",
-      publishedByUserId: auth.userId
+      status: "draft"
     });
   }
 
@@ -305,15 +281,12 @@ export class PayrollController {
         throw new NotFoundException("Cedolino non disponibile");
       }
       payslip = await this.store.generatePayslip(userId, period, {
-        status: "published",
-        publishedByUserId: auth.userId
+        status: "draft"
       });
     }
     const employee = await this.store.getUser(userId);
     const company = await this.store.getCompanySettings(employee.companyId);
-    const isItaly =
-      !isSwissPayrollFeatureEnabled() || employee.jurisdiction === "IT";
-    const buffer = await this.buildOfficialPayslipPdf(employee, company, payslip, isItaly);
+    const buffer = await this.buildOfficialPayslipPdf(employee, company, payslip);
     return new StreamableFile(buffer, {
       disposition: `attachment; filename="nexa-hr-cedolino-${userId}-${period}.pdf"`,
       type: "application/pdf"
@@ -330,8 +303,7 @@ export class PayrollController {
       period: string;
       variablePeriod?: string | null;
       status?: string;
-    },
-    isItaly: boolean
+    }
   ): Promise<Buffer> {
     return new Promise((resolve) => {
       const doc = new PDFDocument({ size: "A4", margin: 40 });
@@ -339,10 +311,8 @@ export class PayrollController {
       doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-      const title = isItaly
-        ? "Nexa HR — Busta paga (Italia, simulazione)"
-        : "Nexa HR — Busta paga (Svizzera)";
-      const currency = isItaly ? "EUR" : "CHF";
+      const title = "Nexa HR — Busta paga (Italia, simulazione)";
+      const currency = "EUR";
       const generatedAt = new Date().toISOString();
 
       doc.fontSize(16).text(title, { align: "center" });

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { login } from "@/lib/api";
 import { saveSession } from "@/lib/auth-session";
+import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
 
@@ -77,6 +78,7 @@ export default function LoginForm(): React.JSX.Element {
     try {
       const session = await login(email, password);
       saveSession(session.token, session.user);
+      prefetchWorkCalendarInBackground(session.token);
       const supabase = getSupabaseBrowserClient();
       if (supabase) {
         await supabase.auth.signInWithPassword({ email: email.trim(), password }).catch(() => undefined);

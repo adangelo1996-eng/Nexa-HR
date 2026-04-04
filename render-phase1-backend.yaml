@@ -14,7 +14,7 @@ services:
     plan: free
     region: frankfurt
     branch: main
-    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && node scripts/supabase-remote-push.mjs --optional && pnpm run build:backend:render
     startCommand: pnpm --filter @payday/backend start
     healthCheckPath: /
     envVars:
@@ -29,4 +29,7 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Opzionale: migrazioni prima del build (Transaction/Direct URI dal dashboard).
+      - key: SUPABASE_DB_URL
         sync: false

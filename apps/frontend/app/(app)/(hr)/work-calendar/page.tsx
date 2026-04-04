@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/api";
 import { calendarEventAbbrev } from "@/lib/calendar-event-labels";
 import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
+import { takeWorkCalendarWarmPayload } from "@/lib/work-calendar-prefetch";
 import {
   clearSession,
   getToken,
@@ -167,6 +169,121 @@ function patchSmartworkingRequestInCalendar(
     else delete meta.note;
     return { ...ev, start: d, end: d, meta };
   });
+}
+
+const OPTIMISTIC_CLIENT_ID = "optimisticClientId";
+
+function removeOptimisticClientEvents(events: CalendarEventDto[], clientId: string): CalendarEventDto[] {
+  return events.filter((e) => String(e.meta?.[OPTIMISTIC_CLIENT_ID] ?? "") !== clientId);
+}
+
+function newClientOptimisticId(): string {
+  return `cli-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function appendOptimisticLeave(
+  events: CalendarEventDto[],
+  args: { userId: string; start: string; end: string; leaveKind: "annual" | "rol"; clientId: string }
+): CalendarEventDto[] {
+  const isRol = args.leaveKind === "rol";
+  const ev: CalendarEventDto = {
+    id: `opt-cal-leave-${args.clientId}`,
+    kind: isRol ? "rol" : "leave",
+    title: isRol ? "Permesso ROL (in attesa)" : "Ferie (in attesa)",
+    start: args.start.slice(0, 10),
+    end: args.end.slice(0, 10),
+    userId: args.userId,
+    meta: {
+      leaveId: `opt-leave-${args.clientId}`,
+      status: "pending",
+      kind: args.leaveKind,
+      [OPTIMISTIC_CLIENT_ID]: args.clientId
+    }
+  };
+  return [...events, ev];
+}
+
+function appendOptimisticSickness(
+  events: CalendarEventDto[],
+  args: { userId: string; from: string; to: string; clientId: string }
+): CalendarEventDto[] {
+  const ev: CalendarEventDto = {
+    id: `opt-cal-sk-${args.clientId}`,
+    kind: "sickness",
+    title: "Malattia (in attesa)",
+    start: args.from.slice(0, 10),
+    end: args.to.slice(0, 10),
+    userId: args.userId,
+    meta: {
+      sicknessId: `opt-sk-${args.clientId}`,
+      status: "pending",
+      [OPTIMISTIC_CLIENT_ID]: args.clientId
+    }
+  };
+  return [...events, ev];
+}
+
+function appendOptimisticSmartworking(
+  events: CalendarEventDto[],
+  args: { userId: string; day: string; note?: string; clientId: string }
+): CalendarEventDto[] {
+  const d = args.day.slice(0, 10);
+  const meta: Record<string, unknown> = {
+    swRequestId: `opt-sw-${args.clientId}`,
+    status: "pending",
+    [OPTIMISTIC_CLIENT_ID]: args.clientId
+  };
+  if (args.note?.trim()) meta.note = args.note.trim();
+  const ev: CalendarEventDto = {
+    id: `opt-cal-swr-${args.clientId}`,
+    kind: "smartworking",
+    title: "Smart working (in attesa)",
+    start: d,
+    end: d,
+    userId: args.userId,
+    meta
+  };
+  return [...events, ev];
+}
+
+function appendOptimisticTravel(
+  events: CalendarEventDto[],
+  args: { userId: string; day: string; note?: string; clientId: string }
+): CalendarEventDto[] {
+  const d = args.day.slice(0, 10);
+  const meta: Record<string, unknown> = {
+    travelRequestId: `opt-tr-${args.clientId}`,
+    status: "pending",
+    [OPTIMISTIC_CLIENT_ID]: args.clientId
+  };
+  if (args.note?.trim()) meta.note = args.note.trim();
+  const ev: CalendarEventDto = {
+    id: `opt-cal-tr-${args.clientId}`,
+    kind: "travel",
+    title: "Trasferta (in attesa)",
+    start: d,
+    end: d,
+    userId: args.userId,
+    meta
+  };
+  return [...events, ev];
+}
+
+function appendOptimisticOffice(
+  events: CalendarEventDto[],
+  args: { userId: string; day: string; clientId: string }
+): CalendarEventDto[] {
+  const d = args.day.slice(0, 10);
+  const ev: CalendarEventDto = {
+    id: `opt-cal-office-${args.clientId}`,
+    kind: "office",
+    title: "Sede",
+    start: d,
+    end: d,
+    userId: args.userId,
+    meta: { date: d, [OPTIMISTIC_CLIENT_ID]: args.clientId }
+  };
+  return [...events, ev];
 }
 
 /** Form/checkbox state: if a pending SW request exists for the user, it stays “on” while editing day (not only when that day matches events yet). */
@@ -485,6 +602,22 @@ export default function WorkCalendarPage(): React.JSX.Element {
     if (!silent) setLoading(true);
     try {
       const current = await fetchCurrentUser(t);
+      const fidEarly = userFilter.trim();
+      const warm = takeWorkCalendarWarmPayload(current.id, year, month, fidEarly);
+      if (warm && !silent) {
+        setMe(current);
+        setRowUsers(warm.rowUsers);
+        setGroupedRows(warm.groupedRows);
+        setAllUsersForSelect(warm.allUsersForSelect);
+        setEvents(warm.events);
+        setMyAnalyticsEvents(warm.myAnalyticsEvents);
+        setAnalyticsLeaveBalance(warm.analyticsLeaveBalance);
+        setCostCenterLabelById(warm.costCenterLabelById);
+        setTeamLabelById(warm.teamLabelById);
+        setLoading(false);
+        void load({ silent: true });
+        return;
+      }
       setMe(current);
       const { from, to } = monthRange(year, month);
       const yearFrom = `${year}-01-01`;
@@ -1082,8 +1215,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     if (next) {
       if (serverSwForm.on) return;
-      setSwOptimistic(true);
       const dayIso = (swPendingDay || modal.day).slice(0, 10);
+      const clientId = newClientOptimisticId();
+      flushSync(() => {
+        setEvents((prev) =>
+          appendOptimisticSmartworking(prev, {
+            userId: modal.row.id,
+            day: dayIso,
+            note: swNote.trim() || undefined,
+            clientId
+          })
+        );
+      });
       void createSmartworkingRequest(t, {
         day: dayIso,
         note: swNote.trim() || undefined,
@@ -1091,6 +1234,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       })
         .then(() => void load({ silent: true }))
         .catch((e) => {
+          setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
           setSwOptimistic(null);
           setError(e instanceof Error ? e.message : "Errore smart working");
         });
@@ -1121,11 +1265,22 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     if (next) {
       if (serverTravelForm.on) return;
-      setTravelOptimistic(true);
       const dayIso = (travelPendingDay || modal.day).slice(0, 10);
+      const clientId = newClientOptimisticId();
+      flushSync(() => {
+        setEvents((prev) =>
+          appendOptimisticTravel(prev, {
+            userId: modal.row.id,
+            day: dayIso,
+            note: travelNote.trim() || undefined,
+            clientId
+          })
+        );
+      });
       void createTravelRequest(t, { day: dayIso, note: travelNote.trim() || undefined })
         .then(() => void load({ silent: true }))
         .catch((e) => {
+          setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
           setTravelOptimistic(null);
           setError(e instanceof Error ? e.message : "Errore trasferta");
         });
@@ -1163,16 +1318,35 @@ export default function WorkCalendarPage(): React.JSX.Element {
           endDate: leaveEnd,
           kind: leaveKind
         });
+        closeModal();
+        await load();
       } else {
-        await createLeavePlan(t, {
-          startDate: leaveStart,
-          endDate: leaveEnd,
-          kind: leaveKind,
-          ...(adminCreatesForOther ? { userId: modal.row.id } : {})
+        const clientId = newClientOptimisticId();
+        flushSync(() => {
+          setEvents((prev) =>
+            appendOptimisticLeave(prev, {
+              userId: modal.row.id,
+              start: leaveStart,
+              end: leaveEnd,
+              leaveKind,
+              clientId
+            })
+          );
         });
+        closeModal();
+        try {
+          await createLeavePlan(t, {
+            startDate: leaveStart,
+            endDate: leaveEnd,
+            kind: leaveKind,
+            ...(adminCreatesForOther ? { userId: modal.row.id } : {})
+          });
+          await load();
+        } catch (inner) {
+          setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
+          setError(inner instanceof Error ? inner.message : "Errore invio ferie");
+        }
       }
-      closeModal();
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore invio ferie");
     } finally {
@@ -1193,19 +1367,37 @@ export default function WorkCalendarPage(): React.JSX.Element {
     try {
       if (editingSicknessId) {
         await updateSicknessEvent(t, editingSicknessId, { fromDate: sickFrom, toDate: sickTo });
+        closeModal();
+        await load();
       } else {
-        await reportSickness(
-          t,
-          {
-            fromDate: sickFrom,
-            toDate: sickTo,
-            ...(adminCreatesForOther ? { userId: modal.row.id } : {})
-          },
-          sickFile
-        );
+        const clientId = newClientOptimisticId();
+        flushSync(() => {
+          setEvents((prev) =>
+            appendOptimisticSickness(prev, {
+              userId: modal.row.id,
+              from: sickFrom,
+              to: sickTo,
+              clientId
+            })
+          );
+        });
+        closeModal();
+        try {
+          await reportSickness(
+            t,
+            {
+              fromDate: sickFrom,
+              toDate: sickTo,
+              ...(adminCreatesForOther ? { userId: modal.row.id } : {})
+            },
+            sickFile
+          );
+          await load();
+        } catch (inner) {
+          setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
+          setError(inner instanceof Error ? inner.message : "Errore malattia");
+        }
       }
-      closeModal();
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore malattia");
     } finally {
@@ -1235,13 +1427,16 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setError(null);
     setSubmitting("sw-save");
     try {
+      flushSync(() => {
+        setEvents((prev) => patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+      });
       await updateSmartworkingRequest(t, rid, {
         day: nextDay,
         note: nextNote ?? undefined
       });
-      setEvents((prev) => patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
       await load({ silent: true });
     } catch (e) {
+      await load({ silent: true });
       setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
     } finally {
       setSubmitting(null);
@@ -1262,13 +1457,17 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setError(null);
     setSubmitting("sw-save-approved");
     try {
+      flushSync(() => {
+        setEvents((prev) => patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+      });
+      closeModal();
       await updateSmartworkingRequest(t, rid, {
         day: nextDay,
         note: nextNote ?? undefined
       });
-      closeModal();
       await load();
     } catch (e) {
+      await load({ silent: true });
       setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
     } finally {
       setSubmitting(null);
@@ -1305,13 +1504,16 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setError(null);
     setSubmitting("tr-save");
     try {
+      flushSync(() => {
+        setEvents((prev) => patchTravelRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+      });
       await updateTravelRequest(t, rid, {
         day: nextDay,
         note: nextNote ?? undefined
       });
-      setEvents((prev) => patchTravelRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
       await load({ silent: true });
     } catch (e) {
+      await load({ silent: true });
       setError(e instanceof Error ? e.message : "Errore aggiornamento trasferta");
     } finally {
       setSubmitting(null);
@@ -1332,13 +1534,17 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setError(null);
     setSubmitting("tr-save-approved");
     try {
+      flushSync(() => {
+        setEvents((prev) => patchTravelRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+      });
+      closeModal();
       await updateTravelRequest(t, rid, {
         day: nextDay,
         note: nextNote ?? undefined
       });
-      closeModal();
       await load();
     } catch (e) {
+      await load({ silent: true });
       setError(e instanceof Error ? e.message : "Errore aggiornamento trasferta");
     } finally {
       setSubmitting(null);
@@ -1370,15 +1576,28 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     setSubmitting("travel-admin");
     setError(null);
+    const dayIso = (travelPendingDay || modal.day).slice(0, 10);
+    const clientId = newClientOptimisticId();
     try {
+      flushSync(() => {
+        setEvents((prev) =>
+          appendOptimisticTravel(prev, {
+            userId: modal.row.id,
+            day: dayIso,
+            note: travelNote.trim() || undefined,
+            clientId
+          })
+        );
+      });
+      closeModal();
       await createTravelRequest(t, {
-        day: (travelPendingDay || modal.day).slice(0, 10),
+        day: dayIso,
         note: travelNote.trim() || undefined,
         userId: modal.row.id
       });
-      closeModal();
       await load();
     } catch (e) {
+      setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
       setError(e instanceof Error ? e.message : "Errore creazione trasferta");
     } finally {
       setSubmitting(null);
@@ -1400,15 +1619,28 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     setSubmitting("sw-admin");
     setError(null);
+    const dayIsoSw = (swPendingDay || modal.day).slice(0, 10);
+    const clientIdSw = newClientOptimisticId();
     try {
+      flushSync(() => {
+        setEvents((prev) =>
+          appendOptimisticSmartworking(prev, {
+            userId: modal.row.id,
+            day: dayIsoSw,
+            note: swNote.trim() || undefined,
+            clientId: clientIdSw
+          })
+        );
+      });
+      closeModal();
       await createSmartworkingRequest(t, {
-        day: (swPendingDay || modal.day).slice(0, 10),
+        day: dayIsoSw,
         note: swNote.trim() || undefined,
         userId: modal.row.id
       });
-      closeModal();
       await load();
     } catch (e) {
+      setEvents((prev) => removeOptimisticClientEvents(prev, clientIdSw));
       setError(e instanceof Error ? e.message : "Errore creazione smart working");
     } finally {
       setSubmitting(null);
@@ -1421,11 +1653,19 @@ export default function WorkCalendarPage(): React.JSX.Element {
     if (menuDayHasOffice || menuDayHasLeave || menuDayHasSickness || menuDayHasTravel) return;
     setSubmitting("office");
     setError(null);
+    const officeDay = modal.day.slice(0, 10);
+    const officeClientId = newClientOptimisticId();
     try {
-      await setAttendanceWorkMode(t, modal.day.slice(0, 10), "office");
+      flushSync(() => {
+        setEvents((prev) =>
+          appendOptimisticOffice(prev, { userId: modal.row.id, day: officeDay, clientId: officeClientId })
+        );
+      });
       closeModal();
+      await setAttendanceWorkMode(t, officeDay, "office");
       await load({ silent: true });
     } catch (e) {
+      setEvents((prev) => removeOptimisticClientEvents(prev, officeClientId));
       setError(e instanceof Error ? e.message : "Impossibile impostare sede");
     } finally {
       setSubmitting(null);

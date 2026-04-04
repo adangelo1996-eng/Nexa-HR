@@ -8,12 +8,13 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { buildSyntheticItalianIban, demoPayrollItFields } from "./lib/italian-demo-payroll";
 
 const PASSWORD = "Synapse2026";
 
 type RoleName = "superuser" | "user";
 
-interface SeedPerson {
+export interface SeedPerson {
   firstName: string;
   lastName: string;
   role: RoleName;
@@ -21,7 +22,6 @@ interface SeedPerson {
   managerIndex: number | null;
   costCenterId: string;
   roleCatalogId: string;
-  baseSalaryMonthly: number;
   birthDate: string;
   hireDate: string;
   phone: string;
@@ -30,16 +30,10 @@ interface SeedPerson {
   weeklyContractHours: number;
   vacationAllowanceDays: number;
   avsNumber: string;
-  iban: string;
-  bankName: string;
-  bicSwift: string;
-  accountHolder: string;
-  taxCanton: string;
-  taxMunicipality: string;
 }
 
 /** Campi payroll / fisco IT per calcolo cedolino (allineati a migrazione 024 + 026). */
-function seedPayrollAnagrafica(): Record<string, unknown> {
+export function seedPayrollAnagrafica(): Record<string, unknown> {
   return {
     jurisdiction: "IT",
     taxRegion: "LOM",
@@ -53,86 +47,7 @@ function seedPayrollAnagrafica(): Record<string, unknown> {
   };
 }
 
-/** Comuni provincia Como (allineati a addizionali_como_2025.md). */
-const CO_COMUNI = [
-  "Como",
-  "Cantù",
-  "Cernobbio",
-  "Erba",
-  "Menaggio",
-  "Bellagio",
-  "Fino Mornasco",
-  "Olgiate Comasco",
-  "Lomazzo",
-  "Mariano Comense",
-  "Mozzate",
-  "Uggiate-Trevano",
-  "Campione D'Italia",
-  "Grandate",
-  "Montano Lucino",
-  "Veniano",
-  "Albavilla",
-  "Appiano Gentile",
-  "Bregnano",
-  "Guanzate"
-] as const;
-const IT_LEGAL = ["impiegato", "operaio", "quadro", "dirigente"] as const;
-
-function pseudoFiscalCode(seed: string): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let s = "";
-  for (let i = 0; i < 16; i += 1) {
-    s += chars[(seed.charCodeAt(i % seed.length) + i * 7) % chars.length];
-  }
-  return s;
-}
-
-/**
- * RAL credibile IT e campi anagrafica coerenti (deterministico per indice).
- * Sostituisce `baseSalaryMonthly` con RAL / payMonths.
- */
-function seedItPayrollExtensions(index: number): Record<string, unknown> {
-  const payMonths = index % 9 === 0 ? 14 : 13;
-  const mod5 = index % 5;
-  const band =
-    mod5 === 0
-      ? 28_000 + (index % 4) * 1_500
-      : mod5 === 1
-        ? 36_000 + (index % 4) * 2_000
-        : mod5 === 2
-          ? 48_000 + (index % 3) * 2_500
-          : mod5 === 3
-            ? 62_000 + (index % 4) * 2_800
-            : 80_000 + (index % 3) * 3_500;
-  const jitter = ((index * 17) % 2_400) - 800;
-  const ral = Math.max(24_000, Math.min(95_000, band + jitter));
-  const baseSalaryMonthly = Math.round((ral / payMonths) * 100) / 100;
-  return {
-    payMonthsPerYear: payMonths,
-    annualGrossSalary: ral,
-    baseSalaryMonthly,
-    taxRegion: "LOM",
-    taxMunicipalityIt: CO_COMUNI[index % CO_COMUNI.length],
-    taxDomicileSameAsResidence: index % 5 !== 0,
-    taxDomicileMunicipalityIt: index % 5 === 0 ? CO_COMUNI[(index + 2) % CO_COMUNI.length] : null,
-    fiscalCode: pseudoFiscalCode(`nexa-seed-${index}-${ral}`),
-    maritalStatus: index % 4 === 0 ? "married" : index % 4 === 1 ? "single" : "divorced",
-    dependentsChildren: index % 6,
-    dependentSpouse: index % 7 === 0,
-    disabilityFlag: index % 13 === 0,
-    legalCategory: IT_LEGAL[index % IT_LEGAL.length],
-    partTimeModality: index % 10 === 0 ? "horizontal" : "full",
-    ccnlCode: index % 3 === 0 ? "Commercio" : "Metalmeccanico",
-    ccnlLevel: `L${(index % 5) + 1}`,
-    contractFixedTerm: index % 11 === 0,
-    contractEndDate: index % 11 === 0 ? "2026-12-31" : null,
-    fixedSupplementMonthly: index % 8 === 0 ? 120 : null,
-    garnishmentMonthlyEstimate: index % 15 === 0 ? 50 : null,
-    fringeBenefitYtdEuros: index % 4 === 0 ? 400 : 0
-  };
-}
-
-function emailLocal(first: string, last: string): string {
+export function emailLocal(first: string, last: string): string {
   const f = first
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
@@ -146,7 +61,7 @@ function emailLocal(first: string, last: string): string {
   return `${f}.${l}`.replace(/^\.+|\.+$/g, "") || "utente";
 }
 
-const people: SeedPerson[] = [
+export const people: SeedPerson[] = [
   {
     firstName: "Giulia",
     lastName: "Ferrari",
@@ -154,21 +69,14 @@ const people: SeedPerson[] = [
     managerIndex: null,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-01",
-    baseSalaryMonthly: 9800,
     birthDate: "1982-04-12",
     hireDate: "2018-01-15",
-    phone: "+41 91 500 1101",
-    address: "Via Borghetto 4, 6900 Lugano",
+    phone: "+39 02 91 500 1101",
+    address: "Via Borghetto 4, 22100 Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "756.1234.5678.91",
-    iban: "CH93 0076 2011 6238 5295 7",
-    bankName: "UBS Switzerland AG",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Giulia Ferrari",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Marco",
@@ -177,21 +85,14 @@ const people: SeedPerson[] = [
     managerIndex: 0,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-09",
-    baseSalaryMonthly: 8900,
     birthDate: "1985-09-03",
     hireDate: "2019-03-01",
-    phone: "+41 91 500 1102",
-    address: "Via Pretorio 12, 6900 Lugano",
+    phone: "+39 02 91 500 1102",
+    address: "Via Pretorio 12, 22100 Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "756.2234.5678.12",
-    iban: "CH12 0483 5012 3456 7890 0",
-    bankName: "Credit Suisse",
-    bicSwift: "CRESCHZZ80A",
-    accountHolder: "Marco Bernasconi",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Elena",
@@ -200,21 +101,14 @@ const people: SeedPerson[] = [
     managerIndex: 0,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-02",
-    baseSalaryMonthly: 8600,
     birthDate: "1987-11-21",
     hireDate: "2019-06-10",
-    phone: "+41 91 500 1103",
-    address: "Riva Paradiso 3, Paradiso",
+    phone: "+39 02 91 500 1103",
+    address: "Riva Paradiso 3, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "756.3234.5678.23",
-    iban: "CH45 0900 0000 1234 5678 1",
-    bankName: "PostFinance",
-    bicSwift: "POFICHBEXXX",
-    accountHolder: "Elena Rossi",
-    taxCanton: "TI",
-    taxMunicipality: "Paradiso"
+    avsNumber: "",
   },
   {
     firstName: "Luca",
@@ -223,21 +117,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-10",
-    baseSalaryMonthly: 7200,
     birthDate: "1991-02-18",
     hireDate: "2020-01-20",
-    phone: "+41 78 200 3301",
-    address: "Via Industria 2, Mendrisio",
+    phone: "+39 02 78 200 3301",
+    address: "Via Industria 2, Erba",
     contractType: "indeterminato",
     weeklyContractHours: 42,
     vacationAllowanceDays: 22,
-    avsNumber: "756.4234.5678.34",
-    iban: "CH56 0070 0110 1234 5678 9",
-    bankName: "Raiffeisen",
-    bicSwift: "RAIFCH22",
-    accountHolder: "Luca Colombo",
-    taxCanton: "TI",
-    taxMunicipality: "Mendrisio"
+    avsNumber: "",
   },
   {
     firstName: "Sofia",
@@ -246,21 +133,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-11",
-    baseSalaryMonthly: 7100,
     birthDate: "1992-07-30",
     hireDate: "2020-09-01",
-    phone: "+41 78 200 3302",
-    address: "Corso Elvezia 8, Lugano",
+    phone: "+39 02 78 200 3302",
+    address: "Corso Elvezia 8, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.5234.5678.45",
-    iban: "CH67 0020 2200 1234 5678 0",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Sofia Marini",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Andrea",
@@ -269,21 +149,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-12",
-    baseSalaryMonthly: 6800,
     birthDate: "1993-01-05",
     hireDate: "2021-02-15",
-    phone: "+41 78 200 3303",
-    address: "Via Gaggiolo 14, Chiasso",
+    phone: "+39 02 78 200 3303",
+    address: "Via Gaggiolo 14, Cantù",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.6234.5678.56",
-    iban: "CH78 0483 5030 9876 5432 1",
-    bankName: "Credit Suisse",
-    bicSwift: "CRESCHZZ80A",
-    accountHolder: "Andrea Greco",
-    taxCanton: "TI",
-    taxMunicipality: "Chiasso"
+    avsNumber: "",
   },
   {
     firstName: "Chiara",
@@ -292,21 +165,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-13",
-    baseSalaryMonthly: 6500,
     birthDate: "1994-10-11",
     hireDate: "2021-11-08",
-    phone: "+41 78 200 3304",
-    address: "Via Campagna 9, Massagno",
+    phone: "+39 02 78 200 3304",
+    address: "Via Campagna 9, Mariano Comense",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.7234.5678.67",
-    iban: "CH89 0900 0000 9876 5432 0",
-    bankName: "PostFinance",
-    bicSwift: "POFICHBEXXX",
-    accountHolder: "Chiara Fontana",
-    taxCanton: "TI",
-    taxMunicipality: "Massagno"
+    avsNumber: "",
   },
   {
     firstName: "Davide",
@@ -315,21 +181,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-14",
-    baseSalaryMonthly: 7500,
     birthDate: "1989-05-22",
     hireDate: "2019-11-01",
-    phone: "+41 78 200 3305",
-    address: "Piazza Dante 1, Bellinzona",
+    phone: "+39 02 78 200 3305",
+    address: "Piazza Dante 1, Lomazzo",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 24,
-    avsNumber: "756.8234.5678.78",
-    iban: "CH90 0076 2000 1122 3344 5",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Davide Serra",
-    taxCanton: "TI",
-    taxMunicipality: "Bellinzona"
+    avsNumber: "",
   },
   {
     firstName: "Francesca",
@@ -338,21 +197,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-03",
-    baseSalaryMonthly: 6200,
     birthDate: "1995-03-17",
     hireDate: "2022-01-10",
-    phone: "+41 78 200 4401",
-    address: "Via Pretorio 30, Locarno",
+    phone: "+39 02 78 200 4401",
+    address: "Via Pretorio 30, Fino Mornasco",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.9234.5678.89",
-    iban: "CH01 0020 2200 9988 7766 5",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Francesca Vitale",
-    taxCanton: "TI",
-    taxMunicipality: "Locarno"
+    avsNumber: "",
   },
   {
     firstName: "Matteo",
@@ -361,21 +213,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-04",
-    baseSalaryMonthly: 7000,
     birthDate: "1990-08-08",
     hireDate: "2020-04-01",
-    phone: "+41 78 200 4402",
-    address: "Viale Stefano 6, Lugano",
+    phone: "+39 02 78 200 4402",
+    address: "Viale Stefano 6, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.1334.5678.90",
-    iban: "CH02 0483 5040 5566 7788 0",
-    bankName: "Credit Suisse",
-    bicSwift: "CRESCHZZ80A",
-    accountHolder: "Matteo Caruso",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Valentina",
@@ -384,21 +229,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-05",
-    baseSalaryMonthly: 6400,
     birthDate: "1993-12-01",
     hireDate: "2021-07-19",
-    phone: "+41 78 200 4403",
-    address: "Strada Regina 44, Melide",
+    phone: "+39 02 78 200 4403",
+    address: "Strada Regina 44, Mozzate",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.2334.5678.01",
-    iban: "CH03 0900 0000 4433 2211 0",
-    bankName: "PostFinance",
-    bicSwift: "POFICHBEXXX",
-    accountHolder: "Valentina Pellegrini",
-    taxCanton: "TI",
-    taxMunicipality: "Melide"
+    avsNumber: "",
   },
   {
     firstName: "Alessandro",
@@ -407,21 +245,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-18",
-    baseSalaryMonthly: 6900,
     birthDate: "1988-06-14",
     hireDate: "2019-09-15",
-    phone: "+41 78 200 4404",
-    address: "Via Zurigo 22, Rivera",
+    phone: "+39 02 78 200 4404",
+    address: "Via Zurigo 22, Lomazzo",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 23,
-    avsNumber: "756.3334.5678.12",
-    iban: "CH04 0076 2000 6677 8899 0",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Alessandro De Luca",
-    taxCanton: "TI",
-    taxMunicipality: "Rivera"
+    avsNumber: "",
   },
   {
     firstName: "Ilaria",
@@ -430,21 +261,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-5",
     roleCatalogId: "nexa-r-19",
-    baseSalaryMonthly: 6600,
     birthDate: "1992-04-25",
     hireDate: "2020-11-01",
-    phone: "+41 78 200 4405",
-    address: "Via Medici 7, Castel San Pietro",
+    phone: "+39 02 78 200 4405",
+    address: "Via Medici 7, Mozzate",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.4334.5678.23",
-    iban: "CH05 0020 2200 3344 5566 7",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Ilaria Romano",
-    taxCanton: "TI",
-    taxMunicipality: "Castel San Pietro"
+    avsNumber: "",
   },
   {
     firstName: "Paolo",
@@ -453,21 +277,14 @@ const people: SeedPerson[] = [
     managerIndex: 0,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-17",
-    baseSalaryMonthly: 9100,
     birthDate: "1984-01-29",
     hireDate: "2018-06-01",
-    phone: "+41 91 500 2201",
-    address: "Via Maggio 15, Lugano",
+    phone: "+39 02 91 500 2201",
+    address: "Via Maggio 15, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "756.5334.5678.34",
-    iban: "CH06 0483 5050 7788 9900 1",
-    bankName: "Credit Suisse",
-    bicSwift: "CRESCHZZ80A",
-    accountHolder: "Paolo Bianco",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Nadia",
@@ -476,21 +293,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-15",
-    baseSalaryMonthly: 6700,
     birthDate: "1991-09-09",
     hireDate: "2021-04-12",
-    phone: "+41 78 200 5501",
-    address: "Corso Pestalozzi 48, Lugano",
+    phone: "+39 02 78 200 5501",
+    address: "Corso Pestalozzi 48, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.6334.5678.45",
-    iban: "CH07 0900 0000 5566 4433 2",
-    bankName: "PostFinance",
-    bicSwift: "POFICHBEXXX",
-    accountHolder: "Nadia Costa",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Giorgio",
@@ -499,21 +309,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-16",
-    baseSalaryMonthly: 7300,
     birthDate: "1986-12-19",
     hireDate: "2019-02-01",
-    phone: "+41 78 200 5502",
-    address: "Via Borromini 3, Mendrisio",
+    phone: "+39 02 78 200 5502",
+    address: "Via Borromini 3, Erba",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 24,
-    avsNumber: "756.7334.5678.56",
-    iban: "CH08 0076 2000 8899 0011 2",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Giorgio Leone",
-    taxCanton: "TI",
-    taxMunicipality: "Mendrisio"
+    avsNumber: "",
   },
   {
     firstName: "Beatrice",
@@ -522,21 +325,14 @@ const people: SeedPerson[] = [
     managerIndex: 0,
     costCenterId: "nexa-cc-3",
     roleCatalogId: "nexa-r-06",
-    baseSalaryMonthly: 7800,
     birthDate: "1983-07-07",
     hireDate: "2018-09-01",
-    phone: "+41 91 500 2202",
-    address: "Via Cattedrale 2, Lugano",
+    phone: "+39 02 91 500 2202",
+    address: "Via Cattedrale 2, Como",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 25,
-    avsNumber: "756.8334.5678.67",
-    iban: "CH09 0483 5020 2233 4455 6",
-    bankName: "Credit Suisse",
-    bicSwift: "CRESCHZZ80A",
-    accountHolder: "Beatrice Galliani",
-    taxCanton: "TI",
-    taxMunicipality: "Lugano"
+    avsNumber: "",
   },
   {
     firstName: "Simone",
@@ -545,21 +341,14 @@ const people: SeedPerson[] = [
     managerIndex: 2,
     costCenterId: "nexa-cc-4",
     roleCatalogId: "nexa-r-07",
-    baseSalaryMonthly: 6000,
     birthDate: "1996-05-05",
     hireDate: "2022-09-01",
-    phone: "+41 78 200 5503",
-    address: "Via Franco Zorzi 11, Giubiasco",
+    phone: "+39 02 78 200 5503",
+    address: "Via Franco Zorzi 11, Lomazzo",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.9334.5678.78",
-    iban: "CH10 0020 2200 6677 8899 3",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Simone Parisi",
-    taxCanton: "TI",
-    taxMunicipality: "Giubiasco"
+    avsNumber: "",
   },
   {
     firstName: "Teresa",
@@ -568,21 +357,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-1",
     roleCatalogId: "nexa-r-08",
-    baseSalaryMonthly: 6550,
     birthDate: "1993-02-28",
     hireDate: "2021-01-11",
-    phone: "+41 78 200 5504",
-    address: "Piazza Indipendenza 5, Chiasso",
+    phone: "+39 02 78 200 5504",
+    address: "Piazza Indipendenza 5, Cantù",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.0434.5678.89",
-    iban: "CH11 0900 0000 7788 5566 4",
-    bankName: "PostFinance",
-    bicSwift: "POFICHBEXXX",
-    accountHolder: "Teresa Mancini",
-    taxCanton: "TI",
-    taxMunicipality: "Chiasso"
+    avsNumber: "",
   },
   {
     firstName: "Riccardo",
@@ -591,21 +373,14 @@ const people: SeedPerson[] = [
     managerIndex: 1,
     costCenterId: "nexa-cc-2",
     roleCatalogId: "nexa-r-20",
-    baseSalaryMonthly: 5900,
     birthDate: "1997-11-13",
     hireDate: "2023-03-01",
-    phone: "+41 78 200 5505",
-    address: "Via Dogana 9, Stabio",
+    phone: "+39 02 78 200 5505",
+    address: "Via Dogana 9, Lomazzo",
     contractType: "indeterminato",
     weeklyContractHours: 40,
     vacationAllowanceDays: 22,
-    avsNumber: "756.1434.5678.90",
-    iban: "CH12 0076 2000 3344 5566 8",
-    bankName: "UBS",
-    bicSwift: "UBSWCHZH80A",
-    accountHolder: "Riccardo Fabbri",
-    taxCanton: "TI",
-    taxMunicipality: "Stabio"
+    avsNumber: "",
   }
 ];
 
@@ -624,6 +399,7 @@ async function main(): Promise<void> {
     const email = `${emailLocal(p.firstName, p.lastName)}@${domain}`;
     const fullName = `${p.firstName} ${p.lastName}`;
     const managerId = p.managerIndex != null ? ids[p.managerIndex]! : null;
+    const banking = buildSyntheticItalianIban(i);
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
@@ -661,14 +437,12 @@ async function main(): Promise<void> {
             phone: p.phone,
             address: p.address,
             avsNumber: p.avsNumber,
-            iban: p.iban,
-            bankName: p.bankName,
-            bicSwift: p.bicSwift,
-            accountHolder: p.accountHolder,
-            taxCanton: p.taxCanton,
-            taxMunicipality: p.taxMunicipality,
+            iban: banking.iban,
+            bankName: banking.bankName,
+            bicSwift: banking.bicSwift,
+            accountHolder: fullName,
             ...seedPayrollAnagrafica(),
-            ...seedItPayrollExtensions(i)
+            ...demoPayrollItFields(i, p.roleCatalogId)
           },
           { onConflict: "id" }
         );
@@ -704,14 +478,12 @@ async function main(): Promise<void> {
       phone: p.phone,
       address: p.address,
       avsNumber: p.avsNumber,
-      iban: p.iban,
-      bankName: p.bankName,
-      bicSwift: p.bicSwift,
-      accountHolder: p.accountHolder,
-      taxCanton: p.taxCanton,
-      taxMunicipality: p.taxMunicipality,
+      iban: banking.iban,
+      bankName: banking.bankName,
+      bicSwift: banking.bicSwift,
+      accountHolder: fullName,
       ...seedPayrollAnagrafica(),
-      ...seedItPayrollExtensions(i)
+      ...demoPayrollItFields(i, p.roleCatalogId)
     });
     if (insErr) {
       // eslint-disable-next-line no-console
@@ -856,7 +628,10 @@ async function seedCalendarMockRows(
   }
 }
 
-void main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const runSeed = (process.argv[1] ?? "").includes("nexa-seed-demo-users");
+if (runSeed) {
+  void main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

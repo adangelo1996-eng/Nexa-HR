@@ -4,15 +4,14 @@
 #   A) SUPABASE_DB_URL — URI Postgres (consigliato in CI: secret "Transaction" o Direct dal dashboard)
 #   B) SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD — come per `supabase link` locale
 #
-# Avvio: push su main che tocca infra/supabase/migrations/, oppure "Run workflow" manuale.
+# Avvio: ogni push su main (migrazioni idempotenti; nessuna nuova migration = nessuna modifica DB),
+# oppure "Run workflow" manuale.
 
 name: Supabase DB push
 
 on:
   push:
     branches: [main]
-    paths:
-      - "infra/supabase/migrations/**"
   workflow_dispatch: {}
 
 concurrency:

@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { fetchPayrollForecast } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 export default function ForecastPage(): React.JSX.Element {
-  const [series, setSeries] = useState<Array<{ month: string; costChf: number }>>([]);
+  const [series, setSeries] = useState<Array<{ month: string; costEur: number }>>([]);
 
   useEffect(() => {
     const t = getToken();
@@ -19,8 +18,7 @@ export default function ForecastPage(): React.JSX.Element {
     })();
   }, []);
 
-  const max = Math.max(1, ...series.map((s) => s.costChf));
-  const unit = isSwissPayrollFeatureEnabled() ? "CHF" : "EUR";
+  const max = Math.max(1, ...series.map((s) => s.costEur));
 
   return (
     <div className="space-y-4">
@@ -30,8 +28,8 @@ export default function ForecastPage(): React.JSX.Element {
           <div key={s.month} className="flex flex-1 flex-col items-center gap-1">
             <div
               className="w-full rounded-t bg-[color-mix(in_srgb,var(--prom-gold)_40%,transparent)] transition-[height]"
-              style={{ height: `${(s.costChf / max) * 120}px` }}
-              title={`${s.costChf} ${unit}`}
+              style={{ height: `${(s.costEur / max) * 120}px` }}
+              title={`${s.costEur} EUR`}
             />
             <span className="text-[10px] text-[var(--prom-muted)]">{s.month}</span>
           </div>

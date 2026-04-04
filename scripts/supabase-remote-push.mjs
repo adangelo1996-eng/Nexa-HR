@@ -60,6 +60,9 @@ loadEnvFiles([
   join(root, "infra", "supabase", ".env")
 ]);
 
+/** Con `--optional`, se mancano le credenziali esce 0 (per CI/deploy senza DB URL). */
+const optionalMigrate = process.argv.includes("--optional");
+
 const token = process.env.SUPABASE_ACCESS_TOKEN?.trim();
 const dbPassword = process.env.SUPABASE_DB_PASSWORD?.trim();
 const dbUrl =
@@ -92,6 +95,12 @@ if (dbUrl) {
 }
 
 if (!token || !dbPassword) {
+  if (optionalMigrate) {
+    console.log(
+      "Supabase migrate: skip (--optional, nessuna di SUPABASE_DB_URL / DATABASE_URL né token+password)."
+    );
+    process.exit(0);
+  }
   console.error(
     "Imposta SUPABASE_DB_URL, oppure insieme SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD, poi rilancia."
   );

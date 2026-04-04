@@ -23,7 +23,7 @@ export interface SessionUser {
   vacationAllowanceDays?: number;
   /** Data assunzione (YYYY-MM-DD), da anagrafica */
   hireDate?: string;
-  jurisdiction?: "CH" | "IT";
+  jurisdiction?: "IT";
   /** Presente dopo GET /users/me */
   isSynapseSuperuser?: boolean;
   /** Console `/admin`: solo account Synapse (`SYNAPSE_SUPERUSER_EMAILS`, es. admin@synapse.com). */
@@ -62,7 +62,7 @@ export interface SessionUser {
   contractFixedTerm?: boolean;
   taxRegion?: string;
   taxMunicipalityIt?: string;
-  /** Permesso catalogo budget; in UI è usabile solo insieme alla console admin (vedi `sessionCanAccessPersonnelBudgetArea`). */
+  /** Permesso catalogo budget (backend); la sezione `/personnel-budget` in UI è mostrata solo con `canNexaAdmin`. */
   canAccessPersonnelBudgetArea?: boolean;
 }
 
@@ -107,7 +107,7 @@ export function sessionCanAccessPayrollArea(
   return u?.canAccessPayrollArea === true;
 }
 
-/** Budget personale: il backend imposta `canAccessPersonnelBudgetArea` (HR esteso o permesso catalogo budget). */
+/** Permesso catalogo budget dal backend; la sezione UI `/personnel-budget` è riservata alla console admin (`sessionCanNexaAdmin`). */
 export function sessionCanAccessPersonnelBudgetArea(
   u: Pick<SessionUser, "canAccessPersonnelBudgetArea"> | null | undefined
 ): boolean {

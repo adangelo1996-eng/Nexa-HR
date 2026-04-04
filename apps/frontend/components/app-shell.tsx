@@ -33,14 +33,12 @@ import {
   getSessionUser,
   getToken,
   sessionCanAccessPayrollArea,
-  sessionCanAccessPersonnelBudgetArea,
   sessionCanNexaAdmin,
   type SessionUser
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchCurrentUser } from "@/lib/api";
-import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
@@ -134,9 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const showPayrollNav = Boolean(
     user && !hideSensitiveHrBecausePreview && sessionCanAccessPayrollArea(user)
   );
-  const showBudgetNav = Boolean(
-    user && !hideSensitiveHrBecausePreview && sessionCanAccessPersonnelBudgetArea(user)
-  );
+  const showBudgetNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
   const showAdminNav = Boolean(isAdminUi && !hideSensitiveHrBecausePreview);
   const showHrSidebarSection = showPayrollNav || showBudgetNav || showAdminNav;
 
@@ -146,13 +142,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       return [];
     }
     let routes = SEARCH_ROUTES;
-    if (!isSwissPayrollFeatureEnabled()) {
-      routes = routes.filter((r) => r.href !== "/compensation/bench" && r.href !== "/forecast");
-    }
     if (!sessionCanAccessPayrollArea(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/payroll-hebb");
     }
-    if (!sessionCanAccessPersonnelBudgetArea(user ?? undefined)) {
+    if (!sessionCanNexaAdmin(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/personnel-budget");
     }
     if (!sessionCanNexaAdmin(user ?? undefined)) {

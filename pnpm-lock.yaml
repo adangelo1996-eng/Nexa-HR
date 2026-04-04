@@ -32,9 +32,6 @@ importers:
       '@payday/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@payday/payroll-adapters-ch':
-        specifier: workspace:*
-        version: link:../../packages/payroll-adapters-ch
       '@payday/payroll-adapters-it':
         specifier: workspace:*
         version: link:../../packages/payroll-adapters-it

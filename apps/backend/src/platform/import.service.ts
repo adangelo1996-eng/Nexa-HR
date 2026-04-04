@@ -9,7 +9,8 @@ export type ImportCategory =
   | "cost_centers"
   | "roles"
   | "leave_allowances"
-  | "user_managers";
+  | "user_managers"
+  | "user_payroll_anagrafica";
 
 export interface ImportCellError {
   row: number;
@@ -66,6 +67,16 @@ interface UserManagerImportRow {
   managerEmail: string;
 }
 
+/** Aggiornamento anagrafica / payroll su utenti già presenti (chiave = email). */
+interface UserPayrollAnagraficaImportRow {
+  email: string;
+  iban?: string;
+  annualGrossSalary?: number;
+  payMonthsPerYear?: number;
+  taxRegion?: string;
+  taxMunicipalityIt?: string;
+}
+
 const MAX_IMPORT_ROWS = 5000;
 /** Esportato per limiti multipart nel controller. */
 export const IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -102,6 +113,36 @@ export class ImportService {
     if (buffer.length > MAX_FILE_BYTES) {
       throw new BadRequestException(`Dimensione massima file ${MAX_FILE_BYTES / (1024 * 1024)} MB`);
     }
+  }
+
+  private readImportCellString(row: ExcelJS.Row, col: number): string {
+    const v = row.getCell(col).value;
+    if (v === null || v === undefined) {
+      return "";
+    }
+    if (typeof v === "object" && v !== null && "text" in v) {
+      return String((v as { text?: string }).text ?? "").trim();
+    }
+    if (typeof v === "number" && Number.isFinite(v)) {
+      return String(v).trim();
+    }
+    return String(v).trim();
+  }
+
+  private readImportCellOptionalNumber(row: ExcelJS.Row, col: number): number | undefined {
+    const v = row.getCell(col).value;
+    if (v === null || v === undefined) {
+      return undefined;
+    }
+    if (typeof v === "number" && Number.isFinite(v)) {
+      return v;
+    }
+    const s = this.readImportCellString(row, col);
+    if (!s) {
+      return undefined;
+    }
+    const n = Number(s.replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
   }
 
   async listHistory(): Promise<ImportHistoryRecord[]> {
@@ -340,14 +381,29 @@ export class ImportService {
       ];
       sheet.addRow({});
       help.addRow(["Entrambi devono essere utenti esistenti."]);
-    } else {
+    } else if (category === "user_payroll_anagrafica") {
       sheet.columns = [
-        { header: "Nome ruolo", key: "name", width: 24 },
-        { header: "Descrizione (opzionale)", key: "description", width: 32 },
-        { header: "Permessi (id separati da virgola)", key: "permissions", width: 48 }
+        { header: "Email (obbligatoria)", key: "email", width: 32 },
+        { header: "IBAN (opz.)", key: "iban", width: 36 },
+        { header: "RAL annua € (opz.)", key: "annualGrossSalary", width: 18 },
+        { header: "Mensilità 12/13/14 (opz.)", key: "payMonthsPerYear", width: 22 },
+        { header: "Regione fiscale IT es. LOM (opz.)", key: "taxRegion", width: 26 },
+        { header: "Comune fiscale IT (opz.)", key: "taxMunicipalityIt", width: 26 }
       ];
-      sheet.addRow({});
-      help.addRow(["Usa gli id del catalogo (es. nexa.attendance:read) o * per tutti."]);
+      sheet.addRow({
+        email: "mario.rossi@azienda.it",
+        iban: "IT60X0542811101000000123456",
+        annualGrossSalary: 45000,
+        payMonthsPerYear: 13,
+        taxRegion: "LOM",
+        taxMunicipalityIt: "Como"
+      });
+      help.addRow([
+        "Aggiorna solo utenti già presenti. Colonne opzionali vuote = non modificare il valore esistente."
+      ]);
+      help.addRow(["RAL + mensilità ricalcolano lo stipendio mensile. Ogni riga imposta giurisdizione IT e azzera eventuali campi fiscali legacy non italiani."]);
+    } else {
+      throw new BadRequestException(`Categoria template non supportata: ${String(category)}`);
     }
 
     const buf = await wb.xlsx.writeBuffer();
@@ -685,6 +741,86 @@ export class ImportService {
     return { errors, rows };
   }
 
+  async validateUserPayrollAnagrafica(
+    buffer: Buffer
+  ): Promise<{ errors: ImportCellError[]; rows: UserPayrollAnagraficaImportRow[] }> {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(buffer) as never);
+    const sheet = wb.worksheets[0];
+    if (!sheet) {
+      throw new BadRequestException("Foglio Excel vuoto");
+    }
+    const errors: ImportCellError[] = [];
+    const rows: UserPayrollAnagraficaImportRow[] = [];
+    let dataRows = 0;
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        return;
+      }
+      dataRows += 1;
+      if (dataRows > MAX_IMPORT_ROWS) {
+        return;
+      }
+      const emailRaw = this.readImportCellString(row, 1);
+      const email = emailRaw.trim().toLowerCase();
+      if (!email) {
+        errors.push({ row: rowNumber, field: "Email", message: "Obbligatorio" });
+        return;
+      }
+      const domErr = this.assertImportedEmailDomain(emailRaw, rowNumber);
+      if (domErr) {
+        errors.push(domErr);
+        return;
+      }
+
+      const ibanRaw = this.readImportCellString(row, 2).replace(/\s+/g, "");
+      const ral = this.readImportCellOptionalNumber(row, 3);
+      const payMonthsRaw = this.readImportCellOptionalNumber(row, 4);
+      const taxRegion = this.readImportCellString(row, 5);
+      const taxMunicipalityIt = this.readImportCellString(row, 6);
+
+      const hasAnyUpdate =
+        Boolean(ibanRaw) ||
+        ral !== undefined ||
+        payMonthsRaw !== undefined ||
+        Boolean(taxRegion) ||
+        Boolean(taxMunicipalityIt);
+      if (!hasAnyUpdate) {
+        errors.push({
+          row: rowNumber,
+          field: "Dati",
+          message: "Compila almeno un campo oltre all'email (IBAN, RAL, regione, giurisdizione, …)"
+        });
+        return;
+      }
+
+      if (ibanRaw && ibanRaw.length < 15) {
+        errors.push({ row: rowNumber, field: "IBAN", message: "IBAN troppo corto o non valido" });
+        return;
+      }
+      if (ral !== undefined && (ral <= 0 || ral > 9_999_999)) {
+        errors.push({ row: rowNumber, field: "RAL annua", message: "Numero non valido (1–9.999.999)" });
+        return;
+      }
+      if (payMonthsRaw !== undefined) {
+        const pm = Math.round(payMonthsRaw);
+        if (![12, 13, 14].includes(pm)) {
+          errors.push({ row: rowNumber, field: "Mensilità", message: "Valore atteso: 12, 13 o 14" });
+          return;
+        }
+      }
+
+      const out: UserPayrollAnagraficaImportRow = { email };
+      if (ibanRaw) out.iban = ibanRaw;
+      if (ral !== undefined) out.annualGrossSalary = ral;
+      if (payMonthsRaw !== undefined) out.payMonthsPerYear = Math.round(payMonthsRaw);
+      if (taxRegion) out.taxRegion = taxRegion;
+      if (taxMunicipalityIt) out.taxMunicipalityIt = taxMunicipalityIt;
+      rows.push(out);
+    });
+    return { errors, rows };
+  }
+
   async applyUsers(
     rows: UserImportRow[],
     actor: ImportActor,
@@ -849,6 +985,59 @@ export class ImportService {
     }
     await this.recordApplyAttempt({
       category: "user_managers",
+      actor,
+      rowCount: rows.length,
+      created,
+      errors,
+      clientIp
+    });
+    return { created, errors };
+  }
+
+  async applyUserPayrollAnagrafica(
+    rows: UserPayrollAnagraficaImportRow[],
+    actor: ImportActor,
+    clientIp?: string
+  ): Promise<{ created: number; errors: ImportCellError[] }> {
+    const errors: ImportCellError[] = [];
+    let created = 0;
+    let idx = 0;
+    for (const r of rows) {
+      idx += 1;
+      try {
+        const u = await this.store.findUserByEmail(r.email);
+        if (!u) {
+          throw new BadRequestException(`Utente non trovato: ${r.email}`);
+        }
+        const patch: Record<string, string | number> = {
+          jurisdiction: "IT",
+          taxCanton: "",
+          taxMunicipality: ""
+        };
+        if (r.iban !== undefined) {
+          patch.iban = r.iban;
+        }
+        if (r.annualGrossSalary !== undefined) {
+          patch.annualGrossSalary = r.annualGrossSalary;
+        }
+        if (r.payMonthsPerYear !== undefined) {
+          patch.payMonthsPerYear = r.payMonthsPerYear;
+        }
+        if (r.taxRegion !== undefined) {
+          patch.taxRegion = r.taxRegion.trim().toUpperCase();
+        }
+        if (r.taxMunicipalityIt !== undefined) {
+          patch.taxMunicipalityIt = r.taxMunicipalityIt.trim();
+        }
+        await this.store.updateUser(u.id, patch as never, { skipTeamLeadLinkValidation: true });
+        created += 1;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Errore aggiornamento";
+        errors.push({ row: idx, field: "—", message: msg });
+      }
+    }
+    await this.recordApplyAttempt({
+      category: "user_payroll_anagrafica",
       actor,
       rowCount: rows.length,
       created,

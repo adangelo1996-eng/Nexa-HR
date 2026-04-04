@@ -5,13 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
 import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 
 export default function ExpensesPage(): React.JSX.Element {
   const [items, setItems] = useState<ExpenseClaimDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("CHF");
+  const [currency, setCurrency] = useState("EUR");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
@@ -48,7 +47,7 @@ export default function ExpensesPage(): React.JSX.Element {
       if (amountMatch) {
         setAmount(amountMatch[1].replace(",", "."));
       }
-      if (!description.trim() && /km|km\.|chf|eur/i.test(text)) {
+      if (!description.trim() && /km|km\.|eur/i.test(text)) {
         setDescription("Spesa da scontrino");
       }
     } catch {
@@ -124,7 +123,6 @@ export default function ExpensesPage(): React.JSX.Element {
             className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
           >
             <option value="EUR">EUR</option>
-            {isSwissPayrollFeatureEnabled() ? <option value="CHF">CHF</option> : null}
           </select>
         </div>
         <input

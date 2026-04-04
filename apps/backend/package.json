@@ -14,7 +14,6 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@payday/domain": "workspace:*",
-    "@payday/payroll-adapters-ch": "workspace:*",
     "@payday/payroll-adapters-it": "workspace:*",
     "@payday/payroll-core": "workspace:*",
     "@supabase/supabase-js": "^2.49.4",

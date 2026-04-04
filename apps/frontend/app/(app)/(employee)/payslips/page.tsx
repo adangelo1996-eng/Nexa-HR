@@ -59,7 +59,7 @@ export default function PayslipsPage(): React.JSX.Element {
     }
   }
 
-  const payslipCurrency = payslipDisplayCurrency(user?.jurisdiction);
+  const payslipCurrency = payslipDisplayCurrency();
 
   const years = useMemo(() => {
     const ys = new Set(items.map((p) => p.period.slice(0, 4)));

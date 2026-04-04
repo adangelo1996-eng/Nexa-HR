@@ -3,7 +3,7 @@
 /** Ruolo accesso piattaforma (JWT / `users.role`). Il “responsabile team” non è un valore qui: vive in `work_teams.leadUserId`. */
 export type RoleName = "superuser" | "user";
 
-export type JurisdictionCode = "CH" | "IT";
+export type JurisdictionCode = "IT";
 
 export type ClockChannel = "app" | "web" | "qr";
 
@@ -54,7 +54,7 @@ export interface User {
   jurisdiction?: JurisdictionCode;
   /** Stipendio lordo mensile base per calcolo cedolino. */
   baseSalaryMonthly?: number;
-  /** Cantone fiscale dichiarativo (calcolo CH). */
+  /** Campi legacy anagrafica (non usati dal motore payroll Italia). */
   taxCanton?: string;
   taxMunicipality?: string;
   /** Regione IT (addizionale regionale). */

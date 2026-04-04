@@ -66,6 +66,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
   const [singleLoading, setSingleLoading] = useState(true);
   const [singleSubmitting, setSingleSubmitting] = useState(false);
   const [singleError, setSingleError] = useState<string | null>(null);
+  const [singleOkMsg, setSingleOkMsg] = useState<string | null>(null);
 
   const [batchPeriod, setBatchPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [batchPrevMonth, setBatchPrevMonth] = useState(true);
@@ -166,7 +167,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
     () => singleUsers.find((item) => item.id === singleUserId),
     [singleUsers, singleUserId]
   );
-  const payslipCurrency = payslipDisplayCurrency(selectedSingleUser?.jurisdiction);
+  const payslipCurrency = payslipDisplayCurrency();
 
   async function onSimulate(): Promise<void> {
     const t = getToken();
@@ -195,9 +196,18 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
     if (!t || !singleUserId || !singlePeriod) return;
     setSingleSubmitting(true);
     setSingleError(null);
+    setSingleOkMsg(null);
     try {
       const payslip = await generatePayslip(t, singleUserId, singlePeriod);
       setSingleResult(payslip);
+      if (singlePeriod === batchPeriod) {
+        await loadDrafts();
+        setSingleOkMsg("Bozza salvata. Compare nell’elenco sotto; usa «Pubblica su Nexa» quando sei pronto.");
+      } else {
+        setSingleOkMsg(
+          `Bozza salvata per ${singlePeriod}. Imposta lo stesso periodo nella sezione batch per vederla e pubblicarla.`
+        );
+      }
     } catch (e) {
       setSingleError(e instanceof Error ? e.message : "Errore calcolo cedolino");
     } finally {
@@ -297,7 +307,8 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
       <header className="space-y-2">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Hebb - Payroll</h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Unica area per simulazione Hebb, calcolo singolo (pubblicazione immediata) ed elaborazione batch in bozza.
+          Unica area per simulazione Hebb, calcolo singolo in bozza ed elaborazione batch in bozza; la pubblicazione ai
+          dipendenti è un passaggio separato.
           Valori da validare con il consulente del lavoro.
         </p>
         <p className="text-xs text-slate-500 dark:text-slate-500">
@@ -415,9 +426,9 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-50">Calcolo singolo dipendente</h2>
-        <p className="mb-4 text-xs text-amber-800 dark:text-amber-200/90">
-          Genera e <strong>pubblica subito</strong> il cedolino sul portale (non crea bozza). Usa il batch per preparare
-          bozze da rivedere prima della pubblicazione.
+        <p className="mb-4 text-xs text-slate-600 dark:text-slate-400">
+          Salva una <strong>bozza</strong> nel database (come il batch). Il dipendente vede il cedolino solo dopo{" "}
+          <strong>Pubblica su Nexa</strong> per quel periodo.
         </p>
         {singleLoading ? (
           <p className="text-sm text-slate-500">Caricamento elenco dipendenti…</p>
@@ -428,7 +439,10 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
                 Dipendente
                 <select
                   value={singleUserId}
-                  onChange={(e) => setSingleUserId(e.target.value)}
+                  onChange={(e) => {
+                    setSingleUserId(e.target.value);
+                    setSingleOkMsg(null);
+                  }}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   {singleUsers.map((item) => (
@@ -443,7 +457,10 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
                 <input
                   type="month"
                   value={singlePeriod}
-                  onChange={(e) => setSinglePeriod(e.target.value)}
+                  onChange={(e) => {
+                    setSinglePeriod(e.target.value);
+                    setSingleOkMsg(null);
+                  }}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-800"
                 />
               </label>
@@ -454,17 +471,23 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
                 disabled={singleSubmitting || !singleUserId || !singlePeriod}
                 onClick={() => void onSingleGenerate()}
               >
-                {singleSubmitting ? "Calcolo in corso…" : "Calcola e pubblica cedolino"}
+                {singleSubmitting ? "Calcolo in corso…" : "Calcola e salva bozza"}
               </Button>
               <Button type="button" variant="secondary" disabled={!singleResult} onClick={() => void onSinglePdf()}>
                 Esporta PDF
               </Button>
             </div>
             {singleError ? <p className="mt-3 text-sm text-rose-600">{singleError}</p> : null}
+            {singleOkMsg ? <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-400">{singleOkMsg}</p> : null}
             {singleResult ? (
               <div className="mt-6 space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
                   {selectedSingleUser?.fullName} — {singleResult.period}
+                  {singleResult.status === "draft" ? (
+                    <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                      Bozza
+                    </span>
+                  ) : null}
                 </p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>

@@ -40,7 +40,8 @@ const CAT_LABEL: Record<ImportCategory, string> = {
   cost_centers: "Centri di costo",
   roles: "Ruoli",
   leave_allowances: "Ferie (giorni annuali)",
-  user_managers: "Responsabili (email)"
+  user_managers: "Responsabili (email)",
+  user_payroll_anagrafica: "Anagrafica payroll (IBAN, RAL, fisco IT)"
 };
 
 const MONTHS_IT = [

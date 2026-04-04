@@ -9,7 +9,7 @@ export class AnalyticsController {
 
   @Get("hr-dashboard/summary")
   @RequireNexaPermissions("nexa.reports_hr:read")
-  async summary(): Promise<{ headcount: number; budgetChf: number; pendingExpenseCount: number }> {
+  async summary(): Promise<{ headcount: number; budgetEur: number; pendingExpenseCount: number }> {
     return this.store.getHrDashboardSummary();
   }
 

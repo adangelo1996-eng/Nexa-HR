@@ -13,7 +13,7 @@ import {
 import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
-  sessionCanAccessPersonnelBudgetArea,
+  sessionCanNexaAdmin,
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
@@ -54,7 +54,7 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
     try {
       const me = await fetchCurrentUser(t);
       setUser(me);
-      if (!sessionCanAccessPersonnelBudgetArea(me)) {
+      if (!sessionCanNexaAdmin(me)) {
         setLoading(false);
         return;
       }
@@ -141,7 +141,7 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
   if (loading) {
     return <p className="text-sm text-[var(--prom-muted)]">Caricamento matrice annuale…</p>;
   }
-  if (!user || !sessionCanAccessPersonnelBudgetArea(user)) {
+  if (!user || !sessionCanNexaAdmin(user)) {
     return null;
   }
 

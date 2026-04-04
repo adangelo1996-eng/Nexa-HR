@@ -35,8 +35,6 @@ import type {
   ClockChannel,
   GeoFix
 } from "@payday/domain";
-import { calculateSwissPayroll, employerBudgetBucketsFromGrossChf } from "@payday/payroll-adapters-ch";
-import { isSwissPayrollFeatureEnabled } from "./nexa-swiss-payroll-flag";
 import {
   calculateItalianPayroll,
   defaultItalianRuleSet2026,
@@ -1247,10 +1245,8 @@ export class HrDataStore {
       throw new BadRequestException("Nome e cognome sono obbligatori");
     }
     await this.validateReferenceIds(input.roleId, input.costCenterId);
-    if (!isSwissPayrollFeatureEnabled() && input.jurisdiction === "CH") {
-      throw new BadRequestException(
-        "La giurisdizione payroll Svizzera è temporaneamente disattivata (usa IT o imposta NEXA_SWISS_PAYROLL_ENABLED=true)."
-      );
+    if (input.jurisdiction != null && input.jurisdiction !== "IT") {
+      throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
     }
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
@@ -1283,7 +1279,7 @@ export class HrDataStore {
       baseSalaryMonthly: input.baseSalaryMonthly,
       taxCanton: input.taxCanton,
       taxMunicipality: input.taxMunicipality,
-      jurisdiction: input.jurisdiction ?? (isSwissPayrollFeatureEnabled() ? "CH" : "IT"),
+      jurisdiction: "IT",
       taxRegion: input.taxRegion,
       taxMunicipalityIt: input.taxMunicipalityIt,
       payrollItSector: input.payrollItSector ?? undefined,
@@ -1330,10 +1326,8 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
     const user = await this.getUser(userId);
     await this.validateReferenceIds(input.roleId, input.costCenterId);
-    if (!isSwissPayrollFeatureEnabled() && input.jurisdiction === "CH" && user.jurisdiction !== "CH") {
-      throw new BadRequestException(
-        "Non è possibile impostare la giurisdizione Svizzera finché NEXA_SWISS_PAYROLL_ENABLED non è attivo."
-      );
+    if (input.jurisdiction != null && input.jurisdiction !== "IT") {
+      throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
     }
     if (input.teamId !== undefined) {
       const tid = input.teamId === null || input.teamId === "" ? null : String(input.teamId).trim();
@@ -2940,14 +2934,6 @@ export class HrDataStore {
     );
   }
 
-  /** Giurisdizione effettiva per motori payroll e budget (CH ignorato se feature disattivata). */
-  private effectivePayrollJurisdiction(user: Pick<User, "jurisdiction">): "IT" | "CH" {
-    if (!isSwissPayrollFeatureEnabled()) {
-      return "IT";
-    }
-    return user.jurisdiction === "IT" ? "IT" : "CH";
-  }
-
   private async buildItalianPayrollInputForUser(
     user: User,
     period: string,
@@ -2970,7 +2956,7 @@ export class HrDataStore {
     const domicile =
       user.taxDomicileSameAsResidence === false && user.taxDomicileMunicipalityIt?.trim()
         ? user.taxDomicileMunicipalityIt.trim()
-        : user.taxMunicipalityIt?.trim() || user.taxMunicipality?.trim() || "Roma";
+        : user.taxMunicipalityIt?.trim() || "Roma";
     const payMonths = this.coercePayMonthsPerYear(user.payMonthsPerYear);
     const regionCode = user.taxRegion?.trim().toUpperCase() || "LAZ";
     const comoComunale = resolveComoMunicipalAddizionaleRate(domicile);
@@ -3048,13 +3034,11 @@ export class HrDataStore {
     if (user.birthDate?.trim()) {
       add("BIRTH", `Data di nascita: ${user.birthDate.trim()}`);
     }
-    if (user.jurisdiction) {
-      add("JUR", `Profilo payroll: ${user.jurisdiction}`);
-    }
+    add("JUR", "Profilo payroll: Italia");
     if (user.taxRegion?.trim() || user.taxMunicipalityIt?.trim()) {
       add(
         "TAXIT",
-        `Fisco IT: regione ${user.taxRegion?.trim() ?? "—"} · comune ${user.taxMunicipalityIt?.trim() ?? user.taxMunicipality?.trim() ?? "—"}`
+        `Fisco IT: regione ${user.taxRegion?.trim() ?? "—"} · comune ${user.taxMunicipalityIt?.trim() ?? "—"}`
       );
     }
     if (user.taxDomicileSameAsResidence === false && user.taxDomicileMunicipalityIt?.trim()) {
@@ -3080,12 +3064,6 @@ export class HrDataStore {
     }
     if (user.ccnlCode?.trim()) {
       add("CCNL", `CCNL: ${user.ccnlCode.trim().slice(0, 80)}`);
-    }
-    if (user.taxCanton?.trim()) {
-      add(
-        "TAXCH",
-        `Fisco CH: ${user.taxCanton.trim()} · ${user.taxMunicipality?.trim() ?? ""}`.trim()
-      );
     }
     if (user.payrollItSector?.trim()) {
       add("SECT", `Settore IVS (INPS): ${user.payrollItSector.trim()}`);
@@ -3169,42 +3147,11 @@ export class HrDataStore {
     const status = options?.status ?? "published";
     const varPer = options?.variablePeriod?.trim() || period;
     const user = await this.getUser(userId);
-    const grossMonthlySalary =
-      user.baseSalaryMonthly != null && Number(user.baseSalaryMonthly) > 0
-        ? Number(user.baseSalaryMonthly)
-        : 5800;
-    const overtimeAmount = await this.countMonthlyOvertimeAmount(userId, varPer, grossMonthlySalary);
-    const vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(userId, varPer);
-    const sicknessDays = await this.countSicknessDays(userId, varPer);
-    const smartworkingDays = await this.countSmartworkingDays(userId, varPer);
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
     const reimbursement =
       Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
-    const jurisdiction = this.effectivePayrollJurisdiction(user);
-    let result: { lines: Payslip["lines"]; grossAdjusted: number; netSalary: number };
-    if (jurisdiction === "IT") {
-      const input = await this.buildItalianPayrollInputForUser(user, period, varPer);
-      result = calculateItalianPayroll(input);
-    } else {
-      const canton = (user.taxCanton?.trim() || "TI").toUpperCase();
-      const municipality = user.taxMunicipality?.trim() || "Lugano";
-      result = calculateSwissPayroll({
-        period,
-        grossMonthlySalary,
-        age: this.ageFromBirthDate(user.birthDate),
-        vacationDaysUsed,
-        sicknessDays,
-        smartworkingDays,
-        overtimeAmount,
-        taxProfile: {
-          canton,
-          municipality,
-          permitType: "B" as const,
-          companyType: "commerciale",
-          companySite: `${canton}-SITE`
-        }
-      });
-    }
+    const itInput = await this.buildItalianPayrollInputForUser(user, period, varPer);
+    const result = calculateItalianPayroll(itInput);
     const extraLines = claims.map((c) => ({
       code: "RMB",
       description: `Rimborso spese: ${c.description}`.slice(0, 160),
@@ -3276,54 +3223,29 @@ export class HrDataStore {
   simulateHirePayroll(input: {
     grossMonthlySalary: number;
     period?: string;
-    canton?: string;
-    municipality?: string;
     age?: number;
-    jurisdiction?: "CH" | "IT";
     taxRegion?: string;
     taxMunicipalityIt?: string;
     weeklyContractHours?: number;
-  }): ReturnType<typeof calculateSwissPayroll> | ReturnType<typeof calculateItalianPayroll> {
+  }): ReturnType<typeof calculateItalianPayroll> {
     const period = input.period?.trim() || new Date().toISOString().slice(0, 7);
-    const j =
-      !isSwissPayrollFeatureEnabled() || input.jurisdiction === "IT" ? "IT" : "CH";
-    if (j === "IT") {
-      const mun = input.taxMunicipalityIt?.trim() || input.municipality?.trim() || "Roma";
-      const como = resolveComoMunicipalAddizionaleRate(mun);
-      return calculateItalianPayroll({
-        period,
-        grossMonthlySalary: input.grossMonthlySalary,
-        weeklyContractHours: input.weeklyContractHours ?? 40,
-        age: input.age ?? 30,
-        vacationDaysUsed: 0,
-        sicknessDays: 0,
-        smartworkingDays: 0,
-        overtimeAmount: 0,
-        taxProfile: {
-          regionCode: input.taxRegion?.trim() || "LAZ",
-          municipality: mun
-        },
-        vacationResidualDays: undefined,
-        ...(como != null ? { addizionaleComunaleRate: como } : {})
-      });
-    }
-    const canton = (input.canton?.trim() || "TI").toUpperCase();
-    const municipality = input.municipality?.trim() || "Lugano";
-    return calculateSwissPayroll({
+    const mun = input.taxMunicipalityIt?.trim() || "Roma";
+    const como = resolveComoMunicipalAddizionaleRate(mun);
+    return calculateItalianPayroll({
       period,
       grossMonthlySalary: input.grossMonthlySalary,
+      weeklyContractHours: input.weeklyContractHours ?? 40,
       age: input.age ?? 30,
       vacationDaysUsed: 0,
       sicknessDays: 0,
       smartworkingDays: 0,
       overtimeAmount: 0,
       taxProfile: {
-        canton,
-        municipality,
-        permitType: "B",
-        companyType: "commerciale",
-        companySite: `${canton}-SITE`
-      }
+        regionCode: input.taxRegion?.trim() || "LAZ",
+        municipality: mun
+      },
+      vacationResidualDays: undefined,
+      ...(como != null ? { addizionaleComunaleRate: como } : {})
     });
   }
 
@@ -3433,9 +3355,7 @@ export class HrDataStore {
       : period;
     const allUsers = await this.listUsers();
     const targets = allUsers.filter(
-      (u) =>
-        (requester.role === "superuser" || u.companyId === requester.companyId) &&
-        this.effectivePayrollJurisdiction(u) === "IT"
+      (u) => requester.role === "superuser" || u.companyId === requester.companyId
     );
     const out: Array<{ userId: string; payslipId?: string; ok: boolean; error?: string }> = [];
     for (const u of targets) {
@@ -4282,12 +4202,12 @@ export class HrDataStore {
 
   async getHrDashboardSummary(): Promise<{
     headcount: number;
-    budgetChf: number;
+    budgetEur: number;
     pendingExpenseCount: number;
   }> {
     const users = await this.listUsers();
     const headcount = users.length;
-    const budgetChf =
+    const budgetEur =
       Math.round(users.reduce((acc, u) => acc + (u.baseSalaryMonthly != null ? Number(u.baseSalaryMonthly) : 0), 0) * 100) /
       100;
     let pendingExpenseCount = 0;
@@ -4300,7 +4220,7 @@ export class HrDataStore {
     } else {
       pendingExpenseCount = this.expenseClaims.filter((c) => c.status === "submitted").length;
     }
-    return { headcount, budgetChf, pendingExpenseCount };
+    return { headcount, budgetEur, pendingExpenseCount };
   }
 
   private mapExpenseRow(r: Record<string, unknown>): ExpenseClaim {
@@ -5868,16 +5788,16 @@ export class HrDataStore {
     return { userId: targetUserId, checklist, accessDisabled: allDone };
   }
 
-  async payrollForecastNextMonths(months = 3): Promise<Array<{ month: string; costChf: number }>> {
+  async payrollForecastNextMonths(months = 3): Promise<Array<{ month: string; costEur: number }>> {
     const users = await this.listUsers();
     const base = users.reduce((acc, u) => acc + (Number(u.baseSalaryMonthly) || 5800), 0);
-    const out: Array<{ month: string; costChf: number }> = [];
+    const out: Array<{ month: string; costEur: number }> = [];
     const d = new Date();
     for (let m = 0; m < months; m += 1) {
       const x = new Date(d.getFullYear(), d.getMonth() + m, 1);
       const label = x.toISOString().slice(0, 7);
       const growth = 1 + m * 0.02;
-      out.push({ month: label, costChf: Math.round(base * growth) });
+      out.push({ month: label, costEur: Math.round(base * growth) });
     }
     return out;
   }
@@ -5918,7 +5838,7 @@ export class HrDataStore {
     return g != null ? g.amount : null;
   }
 
-  private async travelReimbursementActualChf(userId: string, period: string): Promise<number> {
+  private async travelReimbursementActualAmount(userId: string, period: string): Promise<number> {
     const month = period.slice(0, 7);
     const all = await this.fetchAllExpenseClaimsForUser(userId);
     let sum = 0;
@@ -6051,27 +5971,21 @@ export class HrDataStore {
       const payslip = await this.getPayslipForUserPeriodInternal(u.id, period);
       const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
       const overtime = await this.countMonthlyOvertimeAmount(u.id, period, base);
-      const travel = await this.travelReimbursementActualChf(u.id, period);
+      const travel = await this.travelReimbursementActualAmount(u.id, period);
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
-      const isIt = this.effectivePayrollJurisdiction(u) === "IT";
       const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-      const ratesIt = isIt ? this.italianEmployerRatesForUser(u, ccRow) : null;
-      const buckets = isIt
-        ? employerBudgetBucketsFromGrossIt(grossAdjusted, {
-            employerInpsRate: ratesIt!.employerInpsRate,
-            inailRate: ratesIt!.inailRate,
-            tfrDivisor: ratesIt!.tfrDivisor
-          })
-        : employerBudgetBucketsFromGrossChf(grossAdjusted, this.ageFromBirthDate(u.birthDate));
-      const sugB =
-        isIt && ratesIt
-          ? employerBudgetBucketsFromGrossIt(base, {
-              employerInpsRate: ratesIt.employerInpsRate,
-              inailRate: ratesIt.inailRate,
-              tfrDivisor: ratesIt.tfrDivisor
-            })
-          : null;
+      const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+      const buckets = employerBudgetBucketsFromGrossIt(grossAdjusted, {
+        employerInpsRate: ratesIt.employerInpsRate,
+        inailRate: ratesIt.inailRate,
+        tfrDivisor: ratesIt.tfrDivisor
+      });
+      const sugB = employerBudgetBucketsFromGrossIt(base, {
+        employerInpsRate: ratesIt.employerInpsRate,
+        inailRate: ratesIt.inailRate,
+        tfrDivisor: ratesIt.tfrDivisor
+      });
       const actual: PersonnelBudgetMoney = {
         ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
         overtime: Math.round(overtime * 100) / 100,
@@ -6470,27 +6384,16 @@ export class HrDataStore {
       for (const u of users) {
         const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
         const monthlyRal = Math.round(((base * pim) / 12) * 100) / 100;
-        const isIt = this.effectivePayrollJurisdiction(u) === "IT";
-        let inps = 0;
-        let inail = 0;
-        let tfr = 0;
-        if (isIt) {
-          const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-          const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
-          const buckets = employerBudgetBucketsFromGrossIt(monthlyRal, {
-            employerInpsRate: ratesIt.employerInpsRate,
-            inailRate: ratesIt.inailRate,
-            tfrDivisor: ratesIt.tfrDivisor
-          });
-          inps = buckets.employerInpsLike;
-          inail = buckets.employerInailLike;
-          tfr = buckets.employerTfrLike;
-        } else {
-          const buckets = employerBudgetBucketsFromGrossChf(monthlyRal, this.ageFromBirthDate(u.birthDate));
-          inps = buckets.employerInpsLike;
-          inail = buckets.employerInailLike;
-          tfr = buckets.employerTfrLike;
-        }
+        const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
+        const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+        const buckets = employerBudgetBucketsFromGrossIt(monthlyRal, {
+          employerInpsRate: ratesIt.employerInpsRate,
+          inailRate: ratesIt.inailRate,
+          tfrDivisor: ratesIt.tfrDivisor
+        });
+        const inps = buckets.employerInpsLike;
+        const inail = buckets.employerInailLike;
+        const tfr = buckets.employerTfrLike;
         cells.push({
           userId: u.id,
           budgetRal: monthlyRal,

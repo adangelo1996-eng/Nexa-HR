@@ -22,7 +22,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 import {
   fetchPersonnelBudget,
   fetchCurrentUser,
@@ -37,7 +36,7 @@ import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
   getSessionUser,
-  sessionCanAccessPersonnelBudgetArea,
+  sessionCanNexaAdmin,
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
@@ -110,7 +109,7 @@ function deptSortId(d: PersonnelBudgetDepartment): string {
   return d.costCenterId ?? "__none__";
 }
 
-function parseChf(s: string): number | null {
+function parseBudgetNumber(s: string): number | null {
   const t = s.trim().replace(",", ".");
   if (t === "") return null;
   const n = Number(t);
@@ -147,12 +146,12 @@ function budgetRowTotal(b: Partial<PersonnelBudgetMoney> | undefined): number {
 
 function mergedBudgetForRow(row: PersonnelBudgetRow, dr: BudgetDraft): Partial<PersonnelBudgetMoney> {
   return {
-    ral: parseChf(dr.ral ?? "") ?? row.budget.ral,
-    overtime: parseChf(dr.overtime ?? "") ?? row.budget.overtime,
-    travel: parseChf(dr.travel ?? "") ?? row.budget.travel,
-    inps: parseChf(dr.inps ?? "") ?? row.budget.inps,
-    inail: parseChf(dr.inail ?? "") ?? row.budget.inail,
-    tfr: parseChf(dr.tfr ?? "") ?? row.budget.tfr
+    ral: parseBudgetNumber(dr.ral ?? "") ?? row.budget.ral,
+    overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.budget.overtime,
+    travel: parseBudgetNumber(dr.travel ?? "") ?? row.budget.travel,
+    inps: parseBudgetNumber(dr.inps ?? "") ?? row.budget.inps,
+    inail: parseBudgetNumber(dr.inail ?? "") ?? row.budget.inail,
+    tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.budget.tfr
   };
 }
 
@@ -546,7 +545,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       const me = await fetchCurrentUser(t).catch(() => getSessionUser() as SessionUser);
       const u = me ?? getSessionUser();
       setUser(u);
-      if (!sessionCanAccessPersonnelBudgetArea(u)) {
+      if (!sessionCanNexaAdmin(u)) {
         router.replace("/");
         return;
       }
@@ -664,12 +663,12 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
         const dr = draftByUser[r.userId] ?? {};
         cells.push({
           userId: r.userId,
-          budgetRal: parseChf(dr.ral ?? ""),
-          budgetOvertime: parseChf(dr.overtime ?? ""),
-          budgetTravel: parseChf(dr.travel ?? ""),
-          budgetInps: parseChf(dr.inps ?? ""),
-          budgetInail: parseChf(dr.inail ?? ""),
-          budgetTfr: parseChf(dr.tfr ?? "")
+          budgetRal: parseBudgetNumber(dr.ral ?? ""),
+          budgetOvertime: parseBudgetNumber(dr.overtime ?? ""),
+          budgetTravel: parseBudgetNumber(dr.travel ?? ""),
+          budgetInps: parseBudgetNumber(dr.inps ?? ""),
+          budgetInail: parseBudgetNumber(dr.inail ?? ""),
+          budgetTfr: parseBudgetNumber(dr.tfr ?? "")
         });
       }
     }
@@ -690,7 +689,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   if (loading) {
     return <p className="text-sm text-[var(--prom-muted)]">Caricamento budget…</p>;
   }
-  if (!user || !sessionCanAccessPersonnelBudgetArea(user)) {
+  if (!user || !sessionCanNexaAdmin(user)) {
     return null;
   }
 
@@ -751,9 +750,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       {snap ? (
         <p className="text-xs text-[var(--prom-muted)]">
           Periodo consuntivo: <strong>{snap.period}</strong> —{" "}
-          {isSwissPayrollFeatureEnabled()
-            ? "importi in EUR per profilo IT, CHF per profilo CH dove applicabile."
-            : "importi in EUR (payroll Svizzera disattivato: consuntivo e stime da motore IT). "}
+          importi in EUR (profilo payroll Italia).{" "}
           Colonne: <strong>B</strong> = budget (editabile), <strong>C</strong> = consuntivo da cedolino /
           competenze. Per dipendenti <strong>IT</strong>, le celle budget INPS, INAIL e TFR si precompilano con le
           stime da anagrafica quando il budget non è ancora valorizzato (verificare sempre con il consulente).
@@ -786,7 +783,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
       <p className="text-xs text-[var(--prom-muted)]">
         ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:
         settore IVS, premio INAIL in permille, divisore TFR)
-        {isSwissPayrollFeatureEnabled() ? " oppure modello CH," : ""} più trasferte. Valori normativi vanno
+        più trasferte. Valori normativi vanno
         allineati annualmente con consulenza del lavoro e tabella INAIL reale.
       </p>
 

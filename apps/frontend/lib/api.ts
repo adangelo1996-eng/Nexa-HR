@@ -44,7 +44,7 @@ export interface User {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
-  jurisdiction?: "CH" | "IT";
+  jurisdiction?: "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
   profilePhotoPath?: string;
@@ -320,7 +320,7 @@ export interface CreateUserPayload {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
-  jurisdiction?: "CH" | "IT";
+  jurisdiction?: "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
   payrollItSector?: string | null;
@@ -357,7 +357,7 @@ export interface UpdateUserPayload {
   baseSalaryMonthly?: number;
   taxCanton?: string;
   taxMunicipality?: string;
-  jurisdiction?: "CH" | "IT";
+  jurisdiction?: "IT";
   taxRegion?: string;
   taxMunicipalityIt?: string;
   payrollItSector?: string | null;
@@ -1303,7 +1303,8 @@ export type ImportCategory =
   | "cost_centers"
   | "roles"
   | "leave_allowances"
-  | "user_managers";
+  | "user_managers"
+  | "user_payroll_anagrafica";
 
 export async function downloadImportTemplate(token: string, category: ImportCategory): Promise<Blob> {
   const response = await fetch(buildApiUrl(`/admin/import/template?category=${encodeURIComponent(category)}`), {
@@ -1921,13 +1922,13 @@ export async function fetchPeopleInsights(
 export async function fetchPayrollForecast(
   token: string,
   months?: number
-): Promise<{ series: Array<{ month: string; costChf: number }> }> {
+): Promise<{ series: Array<{ month: string; costEur: number }> }> {
   const q = months != null ? `?months=${months}` : "";
   const response = await fetch(buildApiUrl(`/analytics/forecast-payroll${q}`), {
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
-  return (await response.json()) as { series: Array<{ month: string; costChf: number }> };
+  return (await response.json()) as { series: Array<{ month: string; costEur: number }> };
 }
 
 export async function fetchAttendanceReport(

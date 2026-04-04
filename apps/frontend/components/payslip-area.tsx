@@ -16,8 +16,6 @@ interface Props {
   role: UserRole;
   currentUserId: string;
   currentUserName: string;
-  /** Da profilo utente per valuta; se assente si assume IT quando payroll CH è disattivato. */
-  payrollJurisdiction?: "CH" | "IT" | null;
   payslips: Payslip[];
   onExportPdf: (userId: string, period: string) => Promise<void>;
 }
@@ -26,13 +24,12 @@ export function PayslipArea({
   role,
   currentUserId,
   currentUserName,
-  payrollJurisdiction,
   payslips,
   onExportPdf
 }: Props): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const payslipCurrency = payslipDisplayCurrency(payrollJurisdiction);
+  const payslipCurrency = payslipDisplayCurrency();
 
   async function handleExport(userId: string, period: string, id: string): Promise<void> {
     setError(null);

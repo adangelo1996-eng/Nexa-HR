@@ -133,18 +133,8 @@ class CreateUserDto {
   baseSalaryMonthly?: number;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(8)
-  taxCanton?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  taxMunicipality?: string;
-
-  @IsOptional()
-  @IsIn(["CH", "IT"])
-  jurisdiction?: "CH" | "IT";
+  @IsIn(["IT"])
+  jurisdiction?: "IT";
 
   @IsOptional()
   @IsString()
@@ -377,18 +367,8 @@ class UpdateUserDto {
   baseSalaryMonthly?: number;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(8)
-  taxCanton?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  taxMunicipality?: string;
-
-  @IsOptional()
-  @IsIn(["CH", "IT"])
-  jurisdiction?: "CH" | "IT";
+  @IsIn(["IT"])
+  jurisdiction?: "IT";
 
   @IsOptional()
   @IsString()

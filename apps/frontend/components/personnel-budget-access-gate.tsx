@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanAccessPersonnelBudgetArea } from "@/lib/auth-session";
+import { getToken, sessionCanNexaAdmin } from "@/lib/auth-session";
 
-/** Blocca /personnel-budget se il backend non concede accesso (console admin + permesso catalogo). */
+/** Blocca /personnel-budget agli utenti che non sono amministratori console Nexa. */
 export function PersonnelBudgetAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -22,7 +22,7 @@ export function PersonnelBudgetAccessGate({ children }: { children: React.ReactN
         if (cancelled) {
           return;
         }
-        if (!sessionCanAccessPersonnelBudgetArea(u)) {
+        if (!sessionCanNexaAdmin(u)) {
           router.replace("/");
           return;
         }

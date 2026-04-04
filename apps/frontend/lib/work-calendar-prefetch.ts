@@ -1,0 +1,176 @@
+/**
+ * Precarica i dati del calendario lavoro dopo il login e li mette in cache in memoria.
+ * La pagina /work-calendar consuma la cache al primo load (stesso mese / filtro) e poi aggiorna in silent.
+ */
+
+import {
+  fetchCurrentUser,
+  fetchHrWorkCalendar,
+  fetchLeaveBalance,
+  fetchMeTeamWorkCalendar,
+  fetchUserCalendar,
+  fetchUsers,
+  type CalendarEventDto,
+  type LeaveBalance,
+  type User
+} from "@/lib/api";
+import { sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+
+export type WorkCalendarWarmRowUser = { id: string; fullName: string };
+
+const WARM_MAX_AGE_MS = 120_000;
+
+export type WorkCalendarWarmPayload = {
+  userId: string;
+  year: number;
+  month: number;
+  userFilter: string;
+  prefetchedAt: number;
+  rowUsers: WorkCalendarWarmRowUser[];
+  groupedRows: null;
+  allUsersForSelect: User[];
+  events: CalendarEventDto[];
+  myAnalyticsEvents: CalendarEventDto[];
+  analyticsLeaveBalance: LeaveBalance | null;
+  costCenterLabelById: Record<string, string>;
+  teamLabelById: Record<string, string>;
+};
+
+let warmPayload: WorkCalendarWarmPayload | null = null;
+
+function monthRange(year: number, month: number): { from: string; to: string } {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    from: `${year}-${pad(month)}-01`,
+    to: `${year}-${pad(month)}-${pad(last)}`
+  };
+}
+
+function filterManagerRows(me: SessionUser, allUsers: User[]): WorkCalendarWarmRowUser[] {
+  if (me.role === "superuser") {
+    return allUsers
+      .map((u) => ({ id: u.id, fullName: u.fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+  }
+  const leadTeams = new Set(me.workTeamIdsWhereLead ?? []);
+  return allUsers
+    .filter((u) => {
+      if (u.id === me.id) return true;
+      if (u.managerId === me.id) return true;
+      const tid = u.teamId?.trim();
+      return Boolean(tid && leadTeams.has(tid));
+    })
+    .map((u) => ({ id: u.id, fullName: u.fullName }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+}
+
+function setWarm(p: WorkCalendarWarmPayload): void {
+  warmPayload = p;
+}
+
+/**
+ * Se userId / periodo / filtro coincidono con il prefetch, restituisce il payload e svuota la cache (uso singolo).
+ */
+export function takeWorkCalendarWarmPayload(
+  userId: string,
+  year: number,
+  month: number,
+  userFilter: string
+): WorkCalendarWarmPayload | null {
+  if (!warmPayload) {
+    return null;
+  }
+  if (Date.now() - warmPayload.prefetchedAt > WARM_MAX_AGE_MS) {
+    warmPayload = null;
+    return null;
+  }
+  const f = userFilter.trim();
+  if (
+    warmPayload.userId !== userId ||
+    warmPayload.year !== year ||
+    warmPayload.month !== month ||
+    warmPayload.userFilter !== f
+  ) {
+    return null;
+  }
+  const out = warmPayload;
+  warmPayload = null;
+  return out;
+}
+
+/**
+ * Avvia in background il caricamento dati calendario (mese corrente). Non attendere.
+ * Per superuser: solo warm delle API (nessuna cache strutturata) per ridurre latenza TCP/cache browser.
+ */
+export function prefetchWorkCalendarInBackground(token: string): void {
+  void (async () => {
+    try {
+      const me = await fetchCurrentUser(token);
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth() + 1;
+      const { from, to } = monthRange(y, m);
+      const yearFrom = `${y}-01-01`;
+
+      if (me.role === "superuser") {
+        await Promise.all([
+          fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
+          fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null),
+          fetchUsers(token).catch(() => [] as User[]),
+          fetchHrWorkCalendar(token, { from, to }).catch(() => [] as CalendarEventDto[])
+        ]);
+        return;
+      }
+
+      const analyticsP = Promise.all([
+        fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
+        fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null)
+      ]);
+
+      if (!sessionCanSeeApprovalsAndHrExtras(me)) {
+        const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
+          fetchMeTeamWorkCalendar(token, from, to),
+          analyticsP
+        ]);
+        setWarm({
+          userId: me.id,
+          year: y,
+          month: m,
+          userFilter: "",
+          prefetchedAt: Date.now(),
+          rowUsers: rows,
+          groupedRows: null,
+          allUsersForSelect: [],
+          events: ev,
+          myAnalyticsEvents: myEv,
+          analyticsLeaveBalance: leaveBal,
+          costCenterLabelById: {},
+          teamLabelById: {}
+        });
+        return;
+      }
+
+      const usersList = await fetchUsers(token);
+      const rows = filterManagerRows(me, usersList);
+      const [ev, [myEv, leaveBal]] = await Promise.all([fetchHrWorkCalendar(token, { from, to }), analyticsP]);
+      setWarm({
+        userId: me.id,
+        year: y,
+        month: m,
+        userFilter: "",
+        prefetchedAt: Date.now(),
+        rowUsers: rows,
+        groupedRows: null,
+        allUsersForSelect: usersList,
+        events: ev,
+        myAnalyticsEvents: myEv,
+        analyticsLeaveBalance: leaveBal,
+        costCenterLabelById: {},
+        teamLabelById: {}
+      });
+    } catch {
+      /* prefetch best-effort */
+    }
+  })();
+}

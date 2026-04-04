@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { saveSession } from "@/lib/auth-session";
 import { loginWithSynapseSso } from "@/lib/api";
+import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -42,6 +43,7 @@ function AuthSsoContent(): React.JSX.Element {
     loginWithSynapseSso(token)
       .then((session) => {
         saveSession(session.token, session.user);
+        prefetchWorkCalendarInBackground(session.token);
         window.location.replace(nextPath);
       })
       .catch((ssoError) => {

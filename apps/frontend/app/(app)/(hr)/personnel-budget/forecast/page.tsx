@@ -13,7 +13,7 @@ import {
 import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
-  sessionCanAccessPersonnelBudgetArea,
+  sessionCanNexaAdmin,
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
@@ -27,7 +27,7 @@ type ForecastDraft = Partial<{
   tfr: string;
 }>;
 
-function parseChf(s: string): number | null {
+function parseBudgetNumber(s: string): number | null {
   const t = s.trim().replace(",", ".");
   if (t === "") return null;
   const n = Number(t);
@@ -71,7 +71,7 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
     try {
       const me = await fetchCurrentUser(t);
       setUser(me);
-      if (!sessionCanAccessPersonnelBudgetArea(me)) {
+      if (!sessionCanNexaAdmin(me)) {
         setLoading(false);
         return;
       }
@@ -133,12 +133,12 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
         const dr = draftByUser[r.userId] ?? {};
         cells.push({
           userId: r.userId,
-          forecastRal: parseChf(dr.ral ?? ""),
-          forecastOvertime: parseChf(dr.overtime ?? ""),
-          forecastTravel: parseChf(dr.travel ?? ""),
-          forecastInps: parseChf(dr.inps ?? ""),
-          forecastInail: parseChf(dr.inail ?? ""),
-          forecastTfr: parseChf(dr.tfr ?? "")
+          forecastRal: parseBudgetNumber(dr.ral ?? ""),
+          forecastOvertime: parseBudgetNumber(dr.overtime ?? ""),
+          forecastTravel: parseBudgetNumber(dr.travel ?? ""),
+          forecastInps: parseBudgetNumber(dr.inps ?? ""),
+          forecastInail: parseBudgetNumber(dr.inail ?? ""),
+          forecastTfr: parseBudgetNumber(dr.tfr ?? "")
         });
       }
     }
@@ -159,7 +159,7 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
   if (loading) {
     return <p className="text-sm text-[var(--prom-muted)]">Caricamento forecast…</p>;
   }
-  if (!user || !sessionCanAccessPersonnelBudgetArea(user)) {
+  if (!user || !sessionCanNexaAdmin(user)) {
     return null;
   }
 
@@ -274,19 +274,19 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                   {dept.rows.map((row: PersonnelBudgetForecastRow) => {
                     const dr = draftByUser[row.userId] ?? {};
                     const fMerged: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number } = {
-                      ral: parseChf(dr.ral ?? "") ?? row.forecast.ral,
-                      overtime: parseChf(dr.overtime ?? "") ?? row.forecast.overtime,
-                      travel: parseChf(dr.travel ?? "") ?? row.forecast.travel,
-                      inps: parseChf(dr.inps ?? "") ?? row.forecast.inps,
-                      inail: parseChf(dr.inail ?? "") ?? row.forecast.inail,
-                      tfr: parseChf(dr.tfr ?? "") ?? row.forecast.tfr,
+                      ral: parseBudgetNumber(dr.ral ?? "") ?? row.forecast.ral,
+                      overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.forecast.overtime,
+                      travel: parseBudgetNumber(dr.travel ?? "") ?? row.forecast.travel,
+                      inps: parseBudgetNumber(dr.inps ?? "") ?? row.forecast.inps,
+                      inail: parseBudgetNumber(dr.inail ?? "") ?? row.forecast.inail,
+                      tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.forecast.tfr,
                       totalCompanyCost: rowForecastTotal({
-                        ral: parseChf(dr.ral ?? "") ?? row.forecast.ral,
-                        overtime: parseChf(dr.overtime ?? "") ?? row.forecast.overtime,
-                        travel: parseChf(dr.travel ?? "") ?? row.forecast.travel,
-                        inps: parseChf(dr.inps ?? "") ?? row.forecast.inps,
-                        inail: parseChf(dr.inail ?? "") ?? row.forecast.inail,
-                        tfr: parseChf(dr.tfr ?? "") ?? row.forecast.tfr
+                        ral: parseBudgetNumber(dr.ral ?? "") ?? row.forecast.ral,
+                        overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.forecast.overtime,
+                        travel: parseBudgetNumber(dr.travel ?? "") ?? row.forecast.travel,
+                        inps: parseBudgetNumber(dr.inps ?? "") ?? row.forecast.inps,
+                        inail: parseBudgetNumber(dr.inail ?? "") ?? row.forecast.inail,
+                        tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.forecast.tfr
                       })
                     };
                     const b = row.budget;
