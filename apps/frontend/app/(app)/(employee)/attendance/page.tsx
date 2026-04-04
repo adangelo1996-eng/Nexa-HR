@@ -519,7 +519,7 @@ export default function AttendancePage(): React.JSX.Element {
             .
           </p>
           {user && sessionCanAccessPayrollArea(user) ? (
-            <Link href="/payroll-calc" className="synapse-nav-link-compact mt-2 inline-block">
+            <Link href="/payroll-hebb" className="synapse-nav-link-compact mt-2 inline-block">
               Vai a Calcolo Cedolino
             </Link>
           ) : null}

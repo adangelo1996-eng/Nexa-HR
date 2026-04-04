@@ -39,7 +39,7 @@ export interface SessionUser {
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
   isTeamResponsible?: boolean;
   workTeamIdsWhereLead?: string[];
-  /** Area calcolo cedolino (/payroll-calc): solo superuser o console admin (`canAccessPayrollArea` da backend). */
+  /** Area payroll Hebb (/payroll-hebb): solo superuser o console admin (`canAccessPayrollArea` da backend). */
   canAccessPayrollArea?: boolean;
 
   fiscalCode?: string | null;
@@ -100,7 +100,7 @@ export function sessionCanSeeApprovalsAndHrExtras(
   return u.isTeamResponsible === true;
 }
 
-/** Calcolo/simulazione cedolino (`/payroll-calc`): solo se il backend ha `canAccessPayrollArea` (superuser o console admin). */
+/** Calcolo/simulazione cedolino (`/payroll-hebb`): solo se il backend ha `canAccessPayrollArea` (superuser o console admin). */
 export function sessionCanAccessPayrollArea(
   u: Pick<SessionUser, "canAccessPayrollArea"> | null | undefined
 ): boolean {

@@ -17,10 +17,10 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { isSwissPayrollFeatureEnabled } from "@/lib/nexa-swiss-payroll-flag";
 import {
@@ -33,6 +33,7 @@ import {
   type PersonnelBudgetRow,
   type PersonnelBudgetSnapshot
 } from "@/lib/api";
+import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
   getSessionUser,
@@ -50,6 +51,61 @@ type BudgetDraft = Partial<{
   tfr: string;
 }>;
 
+type BudgetColTotals = {
+  bRal: number;
+  cRal: number;
+  bOvertime: number;
+  cOvertime: number;
+  bTravel: number;
+  cTravel: number;
+  bInps: number;
+  cInps: number;
+  bInail: number;
+  cInail: number;
+  bTfr: number;
+  cTfr: number;
+  bCompany: number;
+  cCompany: number;
+};
+
+function emptyColTotals(): BudgetColTotals {
+  return {
+    bRal: 0,
+    cRal: 0,
+    bOvertime: 0,
+    cOvertime: 0,
+    bTravel: 0,
+    cTravel: 0,
+    bInps: 0,
+    cInps: 0,
+    bInail: 0,
+    cInail: 0,
+    bTfr: 0,
+    cTfr: 0,
+    bCompany: 0,
+    cCompany: 0
+  };
+}
+
+function addColTotals(a: BudgetColTotals, b: BudgetColTotals): BudgetColTotals {
+  return {
+    bRal: a.bRal + b.bRal,
+    cRal: a.cRal + b.cRal,
+    bOvertime: a.bOvertime + b.bOvertime,
+    cOvertime: a.cOvertime + b.cOvertime,
+    bTravel: a.bTravel + b.bTravel,
+    cTravel: a.cTravel + b.cTravel,
+    bInps: a.bInps + b.bInps,
+    cInps: a.cInps + b.cInps,
+    bInail: a.bInail + b.bInail,
+    cInail: a.cInail + b.cInail,
+    bTfr: a.bTfr + b.bTfr,
+    cTfr: a.cTfr + b.cTfr,
+    bCompany: a.bCompany + b.bCompany,
+    cCompany: a.cCompany + b.cCompany
+  };
+}
+
 function deptSortId(d: PersonnelBudgetDepartment): string {
   return d.costCenterId ?? "__none__";
 }
@@ -59,10 +115,6 @@ function parseChf(s: string): number | null {
   if (t === "") return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-}
-
-function formatNum(n: number): string {
-  return Number.isFinite(n) ? n.toFixed(2) : "—";
 }
 
 function pickBudgetInputStr(
@@ -93,12 +145,58 @@ function budgetRowTotal(b: Partial<PersonnelBudgetMoney> | undefined): number {
   );
 }
 
+function mergedBudgetForRow(row: PersonnelBudgetRow, dr: BudgetDraft): Partial<PersonnelBudgetMoney> {
+  return {
+    ral: parseChf(dr.ral ?? "") ?? row.budget.ral,
+    overtime: parseChf(dr.overtime ?? "") ?? row.budget.overtime,
+    travel: parseChf(dr.travel ?? "") ?? row.budget.travel,
+    inps: parseChf(dr.inps ?? "") ?? row.budget.inps,
+    inail: parseChf(dr.inail ?? "") ?? row.budget.inail,
+    tfr: parseChf(dr.tfr ?? "") ?? row.budget.tfr
+  };
+}
+
+function computeDeptColTotals(dept: PersonnelBudgetDepartment, draftByUser: Record<string, BudgetDraft>): BudgetColTotals {
+  const t = emptyColTotals();
+  for (const row of dept.rows) {
+    const dr = draftByUser[row.userId] ?? {};
+    const merged = mergedBudgetForRow(row, dr);
+    t.bRal += Number(merged.ral ?? 0);
+    t.cRal += row.actual.ral;
+    t.bOvertime += Number(merged.overtime ?? 0);
+    t.cOvertime += row.actual.overtime;
+    t.bTravel += Number(merged.travel ?? 0);
+    t.cTravel += row.actual.travel;
+    t.bInps += Number(merged.inps ?? 0);
+    t.cInps += row.actual.inps;
+    t.bInail += Number(merged.inail ?? 0);
+    t.cInail += row.actual.inail;
+    t.bTfr += Number(merged.tfr ?? 0);
+    t.cTfr += row.actual.tfr;
+    t.bCompany += budgetRowTotal(merged);
+    t.cCompany += row.actual.totalCompanyCost;
+  }
+  return t;
+}
+
 function SortableDeptSection({
   dept,
-  children
+  expanded,
+  onToggle,
+  draftByUser,
+  colTotals,
+  updateDraft,
+  th,
+  td
 }: {
   dept: PersonnelBudgetDepartment;
-  children: React.ReactNode;
+  expanded: boolean;
+  onToggle: () => void;
+  draftByUser: Record<string, BudgetDraft>;
+  colTotals: BudgetColTotals;
+  updateDraft: (userId: string, field: keyof BudgetDraft, value: string) => void;
+  th: string;
+  td: string;
 }): React.JSX.Element {
   const id = deptSortId(dept);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -113,7 +211,7 @@ function SortableDeptSection({
       style={style}
       className="mb-8 rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] shadow-[var(--card-shadow)] backdrop-blur-md"
     >
-      <div className="flex items-center gap-2 border-b border-[var(--prom-line)] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--prom-line)] px-3 py-2">
         <button
           type="button"
           className="cursor-grab touch-none rounded p-1 text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] active:cursor-grabbing"
@@ -123,9 +221,296 @@ function SortableDeptSection({
         >
           <GripVertical className="h-5 w-5" />
         </button>
-        <h2 className="text-lg font-semibold text-[var(--prom-text)]">{dept.costCenterName}</h2>
+        <button
+          type="button"
+          className="flex flex-1 flex-wrap items-center gap-2 text-left min-w-0"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={`dept-table-${id}`}
+        >
+          {expanded ? (
+            <ChevronDown className="h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          ) : (
+            <ChevronRight className="h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          )}
+          <h2 className="text-lg font-semibold text-[var(--prom-text)]">{dept.costCenterName}</h2>
+          {!expanded ? (
+            <span className="text-sm text-[var(--prom-muted)] tabular-nums">
+              Budget tot. az. {formatPersonnelBudgetAmount(colTotals.bCompany)} · Actual{" "}
+              {formatPersonnelBudgetAmount(colTotals.cCompany)}
+            </span>
+          ) : null}
+        </button>
       </div>
-      <div className="overflow-x-auto p-3">{children}</div>
+      {expanded ? (
+        <div className="overflow-x-auto p-3">
+          <table id={`dept-table-${id}`} className="min-w-[1100px] w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className={th}>Dipendente</th>
+                <th className={th} colSpan={2}>
+                  RAL
+                </th>
+                <th className={th} colSpan={2}>
+                  Straordinari
+                </th>
+                <th className={th} colSpan={2}>
+                  Trasferte
+                </th>
+                <th className={th} colSpan={2}>
+                  INPS (stima datore)
+                </th>
+                <th className={th} colSpan={2}>
+                  INAIL (stima datore)
+                </th>
+                <th className={th} colSpan={2}>
+                  TFR (accanton.)
+                </th>
+                <th className={th} colSpan={2}>
+                  Tot. costo az.**
+                </th>
+              </tr>
+              <tr>
+                <th className={th} />
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+                <th className={th}>B</th>
+                <th className={th}>C</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dept.rows.map((row: PersonnelBudgetRow) => {
+                const dr = draftByUser[row.userId] ?? {};
+                const merged = mergedBudgetForRow(row, dr);
+                const bDraftTot = budgetRowTotal(merged);
+                return (
+                  <tr key={row.userId}>
+                    <td className={td}>
+                      <span className="font-medium">{row.fullName}</span>
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.ral ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.ral)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.overtime ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.overtime)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.travel ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.travel)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.inps ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.inps)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.inail ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.inail)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.tfr ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.tfr)}
+                    </td>
+                    <td className={`${td} font-medium tabular-nums`}>
+                      {bDraftTot > 0 || Object.keys(row.budget).length > 0
+                        ? formatPersonnelBudgetAmount(bDraftTot)
+                        : "—"}
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.totalCompanyCost)}
+                    </td>
+                  </tr>
+                );
+              })}
+              {dept.rows.length > 0 ? (
+                <tr className="bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)] font-medium">
+                  <td className={td}>Totale centro di costo</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bRal)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cRal)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bOvertime)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cOvertime)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTravel)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cTravel)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInps)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cInps)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInail)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cInail)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTfr)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cTfr)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bCompany)}</td>
+                  <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                    {formatPersonnelBudgetAmount(colTotals.cCompany)}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+          {dept.rows.length === 0 ? (
+            <p className="text-sm text-[var(--prom-muted)]">Nessun dipendente in questo reparto.</p>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function GrandTotalTable({
+  totals,
+  th,
+  td
+}: {
+  totals: BudgetColTotals;
+  th: string;
+  td: string;
+}): React.JSX.Element {
+  return (
+    <section className="rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-3 shadow-[var(--card-shadow)]">
+      <h2 className="mb-3 text-lg font-semibold text-[var(--prom-text)]">Totale budget (tutti i centri di costo)</h2>
+      <div className="overflow-x-auto">
+        <table className="min-w-[1100px] w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className={th} />
+              <th className={th} colSpan={2}>
+                RAL
+              </th>
+              <th className={th} colSpan={2}>
+                Straordinari
+              </th>
+              <th className={th} colSpan={2}>
+                Trasferte
+              </th>
+              <th className={th} colSpan={2}>
+                INPS
+              </th>
+              <th className={th} colSpan={2}>
+                INAIL
+              </th>
+              <th className={th} colSpan={2}>
+                TFR
+              </th>
+              <th className={th} colSpan={2}>
+                Tot. costo az.
+              </th>
+            </tr>
+            <tr>
+              <th className={th} />
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+              <th className={th}>B</th>
+              <th className={th}>C</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="font-semibold">
+              <td className={td}>Totali</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bRal)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cRal)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bOvertime)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cOvertime)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTravel)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cTravel)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInps)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cInps)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInail)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cInail)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTfr)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cTfr)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bCompany)}</td>
+              <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
+                {formatPersonnelBudgetAmount(totals.cCompany)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -139,6 +524,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   const [month, setMonth] = useState(() => new Date().getMonth() + 1);
   const [departments, setDepartments] = useState<PersonnelBudgetDepartment[]>([]);
   const [draftByUser, setDraftByUser] = useState<Record<string, BudgetDraft>>({});
+  const [expandedByDeptId, setExpandedByDeptId] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -203,6 +589,28 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const { deptTotalsMap, pageTotals } = useMemo(() => {
+    const deptTotalsMap: Record<string, BudgetColTotals> = {};
+    let page = emptyColTotals();
+    for (const dept of departments) {
+      const t = computeDeptColTotals(dept, draftByUser);
+      deptTotalsMap[deptSortId(dept)] = t;
+      page = addColTotals(page, t);
+    }
+    return { deptTotalsMap, pageTotals: page };
+  }, [departments, draftByUser]);
+
+  function isDeptExpanded(id: string): boolean {
+    return expandedByDeptId[id] !== false;
+  }
+
+  const toggleDept = (id: string): void => {
+    setExpandedByDeptId((prev) => ({
+      ...prev,
+      [id]: !(prev[id] !== false)
+    }));
+  };
 
   const onDragEnd = async (event: DragEndEvent): Promise<void> => {
     const { active, over } = event;
@@ -299,7 +707,8 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
           <h1 className="text-xl font-semibold text-[var(--prom-text)]">Budget mensile</h1>
           <p className="text-sm text-[var(--prom-muted)]">
             Pianificazione per mese; consuntivo da cedolini, straordinari e note spese. Trascina i reparti per
-            riordinare. Usa le altre schede per annuale, forecast e analysis.
+            riordinare; chiudi un centro di costo per vedere il riepilogo sul titolo. Usa le altre schede per
+            annuale, forecast e analysis.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -353,150 +762,26 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onDragEnd(e)}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-          {departments.map((dept) => (
-            <SortableDeptSection key={deptSortId(dept)} dept={dept}>
-              <table className="min-w-[1100px] w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th className={th}>Dipendente</th>
-                    <th className={th} colSpan={2}>
-                      RAL
-                    </th>
-                    <th className={th} colSpan={2}>
-                      Straordinari
-                    </th>
-                    <th className={th} colSpan={2}>
-                      Trasferte
-                    </th>
-                    <th className={th} colSpan={2}>
-                      INPS (stima datore)
-                    </th>
-                    <th className={th} colSpan={2}>
-                      INAIL (stima datore)
-                    </th>
-                    <th className={th} colSpan={2}>
-                      TFR (accanton.)
-                    </th>
-                    <th className={th} colSpan={2}>
-                      Tot. costo az.**
-                    </th>
-                  </tr>
-                  <tr>
-                    <th className={th} />
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                    <th className={th}>B</th>
-                    <th className={th}>C</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dept.rows.map((row: PersonnelBudgetRow) => {
-                    const dr = draftByUser[row.userId] ?? {};
-                    const merged: Partial<PersonnelBudgetMoney> = {
-                      ral: parseChf(dr.ral ?? "") ?? row.budget.ral,
-                      overtime: parseChf(dr.overtime ?? "") ?? row.budget.overtime,
-                      travel: parseChf(dr.travel ?? "") ?? row.budget.travel,
-                      inps: parseChf(dr.inps ?? "") ?? row.budget.inps,
-                      inail: parseChf(dr.inail ?? "") ?? row.budget.inail,
-                      tfr: parseChf(dr.tfr ?? "") ?? row.budget.tfr
-                    };
-                    const bDraftTot = budgetRowTotal(merged);
-                    return (
-                      <tr key={row.userId}>
-                        <td className={td}>
-                          <span className="font-medium">{row.fullName}</span>
-                        </td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.ral ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.ral)}</td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.overtime ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.overtime)}</td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.travel ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.travel)}</td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.inps ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.inps)}</td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.inail ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.inail)}</td>
-                        <td className={td}>
-                          <input
-                            className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                            value={dr.tfr ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
-                            inputMode="decimal"
-                          />
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(row.actual.tfr)}</td>
-                        <td className={`${td} font-medium`}>
-                          {bDraftTot > 0 || Object.keys(row.budget).length > 0
-                            ? formatNum(
-                                (merged.ral ?? 0) +
-                                  (merged.overtime ?? 0) +
-                                  (merged.travel ?? 0) +
-                                  (merged.inps ?? 0) +
-                                  (merged.inail ?? 0) +
-                                  (merged.tfr ?? 0)
-                              )
-                            : "—"}
-                        </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>
-                          {formatNum(row.actual.totalCompanyCost)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {dept.rows.length === 0 ? (
-                <p className="text-sm text-[var(--prom-muted)]">Nessun dipendente in questo reparto.</p>
-              ) : null}
-            </SortableDeptSection>
-          ))}
+          {departments.map((dept) => {
+            const sid = deptSortId(dept);
+            return (
+              <SortableDeptSection
+                key={sid}
+                dept={dept}
+                expanded={isDeptExpanded(sid)}
+                onToggle={() => toggleDept(sid)}
+                draftByUser={draftByUser}
+                colTotals={deptTotalsMap[sid] ?? emptyColTotals()}
+                updateDraft={updateDraft}
+                th={th}
+                td={td}
+              />
+            );
+          })}
         </SortableContext>
       </DndContext>
+
+      {departments.length > 0 ? <GrandTotalTable totals={pageTotals} th={th} td={td} /> : null}
 
       <p className="text-xs text-[var(--prom-muted)]">
         ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:

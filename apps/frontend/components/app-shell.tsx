@@ -5,13 +5,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Calculator,
   Calendar,
   Clock3,
   ChevronDown,
   FileText,
   LayoutDashboard,
-  Layers,
   LogOut,
   Menu,
   Moon,
@@ -69,9 +67,7 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/smartworking", label: "Smartworking" },
   { href: "/workflow/approvals", label: "Approvazioni team" },
   { href: "/reports", label: "Report HR" },
-  { href: "/payroll-calc", label: "Payroll" },
-  { href: "/payroll-batch", label: "Elaborazione batch" },
-  { href: "/payroll-hebb", label: "Hebb (motore)" },
+  { href: "/payroll-hebb", label: "Hebb - Payroll" },
   { href: "/admin", label: "Admin" },
   { href: "/insights", label: "People insights" },
   { href: "/scheduling", label: "Turni" },
@@ -154,9 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       routes = routes.filter((r) => r.href !== "/compensation/bench" && r.href !== "/forecast");
     }
     if (!sessionCanAccessPayrollArea(user ?? undefined)) {
-      routes = routes.filter(
-        (r) => r.href !== "/payroll-calc" && r.href !== "/payroll-hebb" && r.href !== "/payroll-batch"
-      );
+      routes = routes.filter((r) => r.href !== "/payroll-hebb");
     }
     if (!sessionCanAccessPersonnelBudgetArea(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/personnel-budget");
@@ -216,44 +210,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         <>
           <div className="my-2 border-t border-[var(--prom-line)]" />
           {showPayrollNav ? (
-            <>
-              <Link
-                href="/payroll-calc"
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/payroll-calc")
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <Calculator className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Payroll
-              </Link>
-              <Link
-                href="/payroll-batch"
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/payroll-batch")
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <Layers className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Batch payroll
-              </Link>
-              <Link
-                href="/payroll-hebb"
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/payroll-hebb")
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <Sparkles className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Hebb (motore)
-              </Link>
-            </>
+            <Link
+              href="/payroll-hebb"
+              onClick={() => setMobileOpen(false)}
+              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                pathname.startsWith("/payroll-hebb")
+                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+              }`}
+            >
+              <Sparkles className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+              Hebb - Payroll
+            </Link>
           ) : null}
           {showBudgetNav ? (
             <Link

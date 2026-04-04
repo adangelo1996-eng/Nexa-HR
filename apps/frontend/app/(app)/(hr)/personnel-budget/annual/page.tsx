@@ -10,6 +10,7 @@ import {
   postPersonnelBudgetYearApprove,
   type PersonnelBudgetAnnualMatrixRow
 } from "@/lib/api";
+import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
   sessionCanAccessPersonnelBudgetArea,
@@ -27,11 +28,6 @@ const METRIC_LABEL: Record<MetricKey, string> = {
   inail: "INAIL",
   tfr: "TFR"
 };
-
-function fmt(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return "—";
-  return Number(n).toFixed(2);
-}
 
 export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
   const router = useRouter();
@@ -278,7 +274,7 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
                 <td className={`${td} text-[var(--prom-muted)]`}>{row.teamName ?? "—"}</td>
                 {row.months.map((m) => (
                   <td key={m.month} className={`${td} text-right tabular-nums`}>
-                    {fmt(m.budget[metric])}
+                    {formatPersonnelBudgetAmount(m.budget[metric])}
                   </td>
                 ))}
               </tr>

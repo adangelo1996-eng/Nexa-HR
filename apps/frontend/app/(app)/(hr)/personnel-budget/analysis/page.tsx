@@ -9,6 +9,7 @@ import {
   patchPersonnelBudgetAnalysisNote,
   type PersonnelBudgetAnalysisCategory
 } from "@/lib/api";
+import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
   sessionCanAccessPersonnelBudgetArea,
@@ -38,10 +39,6 @@ const NOTE_CATEGORIES: PersonnelBudgetAnalysisCategory[] = [
 
 function noteKey(category: string, subjectUserId: string): string {
   return `${category}::${subjectUserId}`;
-}
-
-function fmt(n: number): string {
-  return Number.isFinite(n) ? n.toFixed(2) : "—";
 }
 
 export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null {
@@ -240,9 +237,9 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
               {totalsByCat.map((row) => (
                 <tr key={row.k}>
                   <td className={td}>{row.label}</td>
-                  <td className={`${td} text-right tabular-nums`}>{fmt(row.actual)}</td>
-                  <td className={`${td} text-right tabular-nums`}>{fmt(row.budget)}</td>
-                  <td className={`${td} text-right tabular-nums`}>{fmt(row.forecast)}</td>
+                  <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.actual)}</td>
+                  <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.budget)}</td>
+                  <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.forecast)}</td>
                 </tr>
               ))}
             </tbody>
@@ -280,10 +277,10 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
                     <tr key={`${v.userId ?? ""}-${v.category}-${i}`}>
                       <td className={td}>{CAT_LABEL[v.category]}</td>
                       <td className={td}>{v.fullName ?? "—"}</td>
-                      <td className={`${td} text-right tabular-nums`}>{fmt(v.actual)}</td>
-                      <td className={`${td} text-right tabular-nums`}>{fmt(v.budget)}</td>
-                      <td className={`${td} text-right tabular-nums`}>{fmt(v.forecast)}</td>
-                      <td className={`${td} text-right tabular-nums`}>{fmt(v.varianceBf)}</td>
+                      <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.actual)}</td>
+                      <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.budget)}</td>
+                      <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.forecast)}</td>
+                      <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.varianceBf)}</td>
                       <td className={`${td} text-right tabular-nums`}>
                         {v.variancePct == null ? "—" : `${v.variancePct.toFixed(1)}%`}
                       </td>

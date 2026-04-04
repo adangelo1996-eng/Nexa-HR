@@ -10,6 +10,7 @@ import {
   type PersonnelBudgetForecastRow,
   type PersonnelBudgetMoney
 } from "@/lib/api";
+import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
 import {
   getToken,
   sessionCanAccessPersonnelBudgetArea,
@@ -31,11 +32,6 @@ function parseChf(s: string): number | null {
   if (t === "") return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-}
-
-function formatNum(n: number | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return "—";
-  return Number(n).toFixed(2);
 }
 
 function rowForecastTotal(f: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number }): number {
@@ -308,9 +304,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           <span className="font-medium">{row.fullName}</span>
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.ral)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.ral)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.ral)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.ral)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -320,9 +316,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.overtime)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.overtime)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.overtime)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.overtime)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -332,9 +328,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.travel)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.travel)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.travel)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.travel)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -344,9 +340,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.inps)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.inps)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.inps)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.inps)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -356,9 +352,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.inail)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.inail)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.inail)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.inail)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -368,9 +364,9 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(row.actual.tfr)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(row.actual.tfr)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(b.tfr)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.tfr)}</td>
                         <td className={td}>
                           <input
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
@@ -380,10 +376,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
-                          {isFutureMonth ? "—" : formatNum(at)}
+                          {isFutureMonth ? "—" : formatPersonnelBudgetAmount(at)}
                         </td>
-                        <td className={`${td} text-[var(--prom-muted)]`}>{formatNum(bt)}</td>
-                        <td className={`${td} font-medium`}>{formatNum(fMerged.totalCompanyCost ?? 0)}</td>
+                        <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(bt)}</td>
+                        <td className={`${td} font-medium`}>{formatPersonnelBudgetAmount(fMerged.totalCompanyCost ?? 0)}</td>
                       </tr>
                     );
                   })}
