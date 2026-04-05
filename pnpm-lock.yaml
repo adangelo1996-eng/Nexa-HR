@@ -10,6 +10,13 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@payday/domain':
+        specifier: workspace:*
+        version: link:packages/domain
+      '@payday/user-pii-crypto':
+        specifier: workspace:*
+        version: link:packages/user-pii-crypto
     devDependencies:
       '@supabase/supabase-js':
         specifier: ^2.49.4
