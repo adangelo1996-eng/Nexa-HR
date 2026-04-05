@@ -14,8 +14,8 @@ const labelById = new Map(
 );
 
 /** ExcelJS `xlsx.load` typings expect a legacy Buffer shape; Node 22 uses `Buffer<ArrayBufferLike>`. */
-function loadXlsxBuffer(wb: ExcelJS.Workbook, data: Buffer): Promise<void> {
-  return wb.xlsx.load(data as never);
+async function loadXlsxBuffer(wb: ExcelJS.Workbook, data: Buffer): Promise<void> {
+  await wb.xlsx.load(data as never);
 }
 
 function fillCompleteNewUserRow(sheet: ExcelJS.Worksheet, rowNum: number): void {

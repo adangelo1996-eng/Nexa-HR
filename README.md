@@ -95,7 +95,7 @@ Override opzionale:
 
 Due **Web Service** sulla root del monorepo, comandi pnpm con `--filter` (vedi [`render.yaml`](render.yaml) e [guida Render](docs/deploy/BACKEND_RENDER_DEPLOY.md)):
 
-- **Backend**: build `@payday/backend`, start `pnpm --filter @payday/backend start`
+- **Backend**: build `@payday/backend`, start `pnpm --filter @payday/backend start` (su Render il blueprint usa `corepack` prima di `pnpm`, vedi [`render.yaml`](render.yaml))
 - **Frontend**: build `@payday/frontend`, start `pnpm --filter @payday/frontend start`
 
 Dopo il deploy, allinea `CORS_ORIGIN` (backend) e `NEXT_PUBLIC_API_BASE_URL` (frontend) agli URL pubblici dei due servizi.

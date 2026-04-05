@@ -35,9 +35,9 @@ Questa guida spiega come mettere online il backend NestJS su **Render** così ch
      ```bash
      corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
      ```
-   - **Start Command**:
+   - **Start Command** (su Render serve `corepack` anche qui: in avvio `pnpm` non è sempre nel `PATH`):
      ```bash
-     pnpm --filter @payday/backend start
+     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/backend start
      ```
 
 **2. Variabili d’ambiente** (tab *Environment* del servizio)
@@ -101,9 +101,9 @@ Dalla dashboard Supabase (Settings → API):
      ```bash
      corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm run build:backend:render
      ```
-   - **Start Command**:
+   - **Start Command** (su Render serve `corepack` anche qui: in avvio `pnpm` non è sempre nel `PATH`):
      ```bash
-     pnpm --filter @payday/backend start
+     corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/backend start
      ```
 
 Render imposta `PORT` automaticamente; Nest la legge già da `process.env.PORT`.

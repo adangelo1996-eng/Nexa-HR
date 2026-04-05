@@ -26,7 +26,8 @@ services:
     region: frankfurt
     branch: main
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && node scripts/supabase-remote-push.mjs --optional && pnpm run build:backend:render
-    startCommand: pnpm --filter @payday/backend start
+    # corepack: su Render la fase start non eredita sempre il PATH della build; senza pnpm il servizio va in crash.
+    startCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/backend start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
@@ -61,7 +62,7 @@ services:
     region: frankfurt
     branch: main
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
-    startCommand: pnpm --filter @payday/frontend start
+    startCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/frontend start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
