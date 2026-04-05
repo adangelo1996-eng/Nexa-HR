@@ -77,6 +77,7 @@ type OpenCvMatVector = {
   delete: () => void;
 };
 
+/** CDN ufficiale; per reti restrittive si può copiare `opencv.js` (e WASM) in `public/vendor/opencv/` e puntare qui a `/vendor/opencv/opencv.js`. */
 const OPENCV_SRC = "https://docs.opencv.org/4.8.0/opencv.js";
 const WASM_INIT_TIMEOUT_MS = 90_000;
 

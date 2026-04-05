@@ -6,6 +6,74 @@ import { loadOpenCv, type OpenCvRuntime } from "@/lib/opencv-loader";
 type Point = { x: number; y: number };
 
 const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
+/** JPEG minimo plausibile (header + pochi byte); sotto = probabile frame vuoto. */
+const MIN_CAPTURE_BLOB_BYTES = 900;
+const HANDLE_RADIUS_CSS = 22;
+
+/** Mapping object-fit: cover — stesso calcolo per overlay e per hit-test maniglie. */
+function getObjectCoverMapping(video: HTMLVideoElement): {
+  vw: number;
+  vh: number;
+  dispW: number;
+  dispH: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+} {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const rect = video.getBoundingClientRect();
+  const dispW = rect.width;
+  const dispH = rect.height;
+  if (vw < 2 || vh < 2 || dispW < 2 || dispH < 2) {
+    return { vw, vh, dispW, dispH, scale: 1, offsetX: 0, offsetY: 0 };
+  }
+  const scale = Math.max(dispW / vw, dispH / vh);
+  const offsetX = (dispW - vw * scale) / 2;
+  const offsetY = (dispH - vh * scale) / 2;
+  return { vw, vh, dispW, dispH, scale, offsetX, offsetY };
+}
+
+function videoToDisplayPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
+  return { x: p.x * m.scale + m.offsetX, y: p.y * m.scale + m.offsetY };
+}
+
+function displayToVideoPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
+  return { x: (p.x - m.offsetX) / m.scale, y: (p.y - m.offsetY) / m.scale };
+}
+
+function clampVideoPt(p: Point, vw: number, vh: number, pad = 4): Point {
+  return {
+    x: Math.min(Math.max(pad, p.x), vw - pad),
+    y: Math.min(Math.max(pad, p.y), vh - pad)
+  };
+}
+
+async function waitForVideoFrameOrRaf(video: HTMLVideoElement): Promise<void> {
+  const rvfc = video.requestVideoFrameCallback?.bind(video);
+  if (rvfc) {
+    await new Promise<void>((resolve) => {
+      rvfc(() => resolve());
+    });
+    return;
+  }
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+}
+
+async function waitUntilVideoReadyForCapture(
+  video: HTMLVideoElement,
+  maxAttempts = 20,
+  delayMs = 50
+): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 32 && video.videoHeight > 32) {
+      await waitForVideoFrameOrRaf(video);
+      return true;
+    }
+    await new Promise<void>((r) => setTimeout(r, delayMs));
+  }
+  return false;
+}
 
 function secureCameraContextMessage(): string | null {
   if (typeof window === "undefined") {
@@ -185,6 +253,47 @@ function smoothQuad(prev: Point[] | null, next: Point[], alpha: number): Point[]
   }));
 }
 
+/** Estrae 4 vertici da approxPolyDP (layout variabile in OpenCV.js). */
+function extractQuadFromApproxMat(approx: {
+  rows: number;
+  cols: number;
+  data32S?: Int32Array;
+  data32F?: Float32Array;
+}): Point[] | null {
+  const dS = approx.data32S;
+  const dF = approx.data32F;
+  const read4 = (get: (i: number) => number): Point[] => {
+    const pts: Point[] = [];
+    for (let j = 0; j < 4; j++) {
+      pts.push({ x: get(j * 2), y: get(j * 2 + 1) });
+    }
+    return pts;
+  };
+  if (approx.rows === 4) {
+    if (dS && dS.length >= 8) {
+      return read4((i) => dS[i]!);
+    }
+    if (dF && dF.length >= 8) {
+      return read4((i) => dF[i]!);
+    }
+  }
+  if (approx.rows === 1 && approx.cols === 4) {
+    if (dS && dS.length >= 8) {
+      return read4((i) => dS[i]!);
+    }
+    if (dF && dF.length >= 8) {
+      return read4((i) => dF[i]!);
+    }
+  }
+  if (approx.rows === 4 && approx.cols === 1 && dS && dS.length >= 8) {
+    return read4((i) => dS[i]!);
+  }
+  if (approx.rows === 4 && approx.cols === 1 && dF && dF.length >= 8) {
+    return read4((i) => dF[i]!);
+  }
+  return null;
+}
+
 /** Rileva il più grande quadrilatero convesso (probabile scontrino) su frame ridimensionato. */
 function findReceiptQuad(
   cv: OpenCvRuntime,
@@ -235,27 +344,16 @@ function findReceiptQuad(
       cv.approxPolyDP(c, approx, 0.035 * peri, true);
       c.delete();
 
-      if (approx.rows !== 4 || !cv.isContourConvex(approx)) {
+      if (!cv.isContourConvex(approx)) {
         approx.delete();
         continue;
       }
 
-      const pts: Point[] = [];
-      const dS = approx.data32S;
-      const dF = approx.data32F;
-      if (dS && dS.length >= 8) {
-        for (let j = 0; j < 4; j++) {
-          pts.push({ x: dS[j * 2]!, y: dS[j * 2 + 1]! });
-        }
-      } else if (dF && dF.length >= 8) {
-        for (let j = 0; j < 4; j++) {
-          pts.push({ x: dF[j * 2]!, y: dF[j * 2 + 1]! });
-        }
-      } else {
-        approx.delete();
+      const pts = extractQuadFromApproxMat(approx);
+      approx.delete();
+      if (!pts || pts.length !== 4) {
         continue;
       }
-      approx.delete();
 
       if (area > bestArea) {
         bestArea = area;
@@ -428,11 +526,16 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   const rafRef = useRef<number>(0);
   const lastDetectRef = useRef(0);
   const quadVideoRef = useRef<Point[] | null>(null);
+  /** Indice vertice 0–3 trascinato dall’utente, o null. */
+  const dragCornerRef = useRef<number | null>(null);
+  /** Sospende smoothing CV mentre si muove una maniglia. */
+  const manualQuadRef = useRef(false);
 
   const [phase, setPhase] = useState<"idle" | "starting" | "camera" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cvProgress, setCvProgress] = useState<string>("");
   const [cvLoadState, setCvLoadState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  const [capturing, setCapturing] = useState(false);
   /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
 
@@ -454,6 +557,9 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       quadVideoRef.current = null;
       setCvLoadState("idle");
       setCameraRetryNonce(0);
+      setCapturing(false);
+      dragCornerRef.current = null;
+      manualQuadRef.current = false;
       return;
     }
 
@@ -464,6 +570,9 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
       setCvLoadState("loading");
+      cvRef.current = null;
+      manualQuadRef.current = false;
+      dragCornerRef.current = null;
 
       const insecureHint = secureCameraContextMessage();
       if (insecureHint) {
@@ -474,21 +583,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         }
         return;
       }
-
-      void loadOpenCv()
-        .then((cv) => {
-          if (cancelled) {
-            return;
-          }
-          cvRef.current = cv;
-          setCvLoadState("ready");
-        })
-        .catch(() => {
-          if (cancelled) {
-            return;
-          }
-          setCvLoadState("failed");
-        });
 
       try {
         const stream = await acquireCameraStream();
@@ -549,6 +643,25 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       if (cancelled) {
         return;
       }
+
+      setCvProgress("Caricamento rilevamento bordi (OpenCV)…");
+      try {
+        const cv = await loadOpenCv();
+        if (cancelled) {
+          return;
+        }
+        cvRef.current = cv;
+        setCvLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          cvRef.current = null;
+          setCvLoadState("failed");
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
       setPhase("camera");
       setCvProgress("");
     }
@@ -600,6 +713,11 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       return;
     }
 
+    const coarsePointer =
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+    const detectEveryMs = coarsePointer ? 220 : 130;
+    const procMax = coarsePointer ? 360 : 400;
+
     const tick = (now: number): void => {
       if (!open || phase !== "camera") {
         return;
@@ -618,12 +736,12 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         return;
       }
 
-      const procMax = 520;
-      const scale = Math.min(procMax / vw, procMax / vh, 1);
-      const procW = Math.max(160, Math.round(vw * scale));
-      const procH = Math.max(160, Math.round(vh * scale));
+      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
+      const procW = Math.max(160, Math.round(vw * scaleProc));
+      const procH = Math.max(160, Math.round(vh * scaleProc));
 
-      if (now - lastDetectRef.current > 90) {
+      const dragging = dragCornerRef.current !== null;
+      if (!dragging && now - lastDetectRef.current > detectEveryMs) {
         lastDetectRef.current = now;
         const cv = cvRef.current;
         if (cv) {
@@ -631,19 +749,28 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
             const procPts = findReceiptQuad(cv, video, procW, procH);
             if (procPts) {
               const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
-              smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
-              quadVideoRef.current = smoothRef.current;
-            } else {
+              if (!manualQuadRef.current) {
+                smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
+                quadVideoRef.current = smoothRef.current;
+              }
+            } else if (!manualQuadRef.current) {
               quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
               smoothRef.current = quadVideoRef.current;
             }
           } catch {
-            quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
+            if (!manualQuadRef.current) {
+              quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
+            }
           }
-        } else {
+        } else if (!manualQuadRef.current) {
           quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
           smoothRef.current = quadVideoRef.current;
         }
+      }
+
+      if (!quadVideoRef.current) {
+        quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.1);
+        smoothRef.current = quadVideoRef.current;
       }
 
       layoutOverlay();
@@ -653,24 +780,34 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, overlay.width, overlay.height);
         ctx.scale(dpr, dpr);
-        const rect = video.getBoundingClientRect();
-        const dispW = rect.width;
-        const dispH = rect.height;
-        const scaleX = dispW / vw;
-        const scaleY = dispH / vh;
+        const map = getObjectCoverMapping(video);
         const q = quadVideoRef.current;
         if (q && q.length === 4) {
           ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.moveTo(q[0]!.x * scaleX, q[0]!.y * scaleY);
+          const p0 = videoToDisplayPt(q[0]!, map);
+          ctx.moveTo(p0.x, p0.y);
           for (let i = 1; i < 4; i++) {
-            ctx.lineTo(q[i]!.x * scaleX, q[i]!.y * scaleY);
+            const p = videoToDisplayPt(q[i]!, map);
+            ctx.lineTo(p.x, p.y);
           }
           ctx.closePath();
           ctx.stroke();
           ctx.fillStyle = "rgba(34, 197, 94, 0.12)";
           ctx.fill();
+
+          const hr = HANDLE_RADIUS_CSS * 0.5;
+          for (let i = 0; i < 4; i++) {
+            const p = videoToDisplayPt(q[i]!, map);
+            ctx.beginPath();
+            ctx.fillStyle = "rgba(255,255,255,0.95)";
+            ctx.arc(p.x, p.y, hr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(34, 197, 94, 0.98)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
         }
       }
 
@@ -685,55 +822,181 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
     };
   }, [open, phase, layoutOverlay]);
 
-  const handleCapture = useCallback(async () => {
+  const handleOverlayPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    const overlay = overlayRef.current;
     const video = videoRef.current;
-    if (!video || video.readyState < 2) {
+    if (!overlay || !video || phase !== "camera") {
       return;
     }
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const cap = document.createElement("canvas");
-    cap.width = vw;
-    cap.height = vh;
-    const cx = cap.getContext("2d");
-    if (!cx) {
+    const rect = overlay.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const m = getObjectCoverMapping(video);
+    const q = quadVideoRef.current ?? fallbackCenterQuad(m.vw, m.vh, 0.1);
+    let hit = -1;
+    let best = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const d = videoToDisplayPt(q[i]!, m);
+      const dist = Math.hypot(d.x - mx, d.y - my);
+      if (dist < best) {
+        best = dist;
+        hit = i;
+      }
+    }
+    if (hit < 0 || best > HANDLE_RADIUS_CSS) {
       return;
     }
-    cx.drawImage(video, 0, 0, vw, vh);
-    const quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
+    e.preventDefault();
+    e.stopPropagation();
+    dragCornerRef.current = hit;
+    manualQuadRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }, [phase]);
 
-    let cv = cvRef.current;
-    if (!cv) {
-      try {
-        cv = await loadOpenCv();
-        cvRef.current = cv;
-        setCvLoadState("ready");
-      } catch {
-        try {
-          const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-          onCapture(blob);
-          onClose();
-        } catch {
-          setErrorMsg("Motore di scansione non disponibile e ritaglio di fallback fallito. Controlla la connessione.");
-        }
+  const handleOverlayPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dragCornerRef.current === null) {
+      return;
+    }
+    const overlay = overlayRef.current;
+    const video = videoRef.current;
+    if (!overlay || !video) {
+      return;
+    }
+    const rect = overlay.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const m = getObjectCoverMapping(video);
+    const idx = dragCornerRef.current;
+    const next = clampVideoPt(displayToVideoPt({ x: mx, y: my }, m), m.vw, m.vh, 8);
+    const base = quadVideoRef.current ?? fallbackCenterQuad(m.vw, m.vh, 0.1);
+    const q = base.map((p, i) => (i === idx ? next : p));
+    quadVideoRef.current = q;
+    smoothRef.current = q;
+    e.preventDefault();
+  }, []);
+
+  const handleOverlayPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dragCornerRef.current === null) {
+      return;
+    }
+    dragCornerRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleCapture = useCallback(async () => {
+    if (capturing) {
+      return;
+    }
+    setErrorMsg(null);
+    const video = videoRef.current;
+    if (!video) {
+      setErrorMsg("Video non disponibile. Riapri lo scanner.");
+      return;
+    }
+
+    setCapturing(true);
+    try {
+      const ok = await waitUntilVideoReadyForCapture(video);
+      if (!ok) {
+        setErrorMsg("Il video non è ancora pronto. Attendi un secondo e riprova.");
         return;
       }
-    }
 
-    try {
-      const blob = await warpQuadToBlob(cv, cap, quad, "image/jpeg");
-      onCapture(blob);
-      onClose();
-    } catch {
-      try {
-        const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw < 32 || vh < 32) {
+        setErrorMsg("Risoluzione video non valida. Riprova.");
+        return;
+      }
+
+      const cap = document.createElement("canvas");
+      cap.width = vw;
+      cap.height = vh;
+      const cx = cap.getContext("2d");
+      if (!cx) {
+        setErrorMsg("Canvas non disponibile in questo browser.");
+        return;
+      }
+      cx.drawImage(video, 0, 0, vw, vh);
+
+      const imageData = cx.getImageData(0, 0, Math.min(32, vw), Math.min(32, vh));
+      const data = imageData.data;
+      let nonZero = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i]! + data[i + 1]! + data[i + 2]! > 8) {
+          nonZero++;
+        }
+      }
+      if (nonZero < 12) {
+        setErrorMsg(
+          "Il fotogramma sembra vuoto (spesso su Safari). Muovi leggermente la camera e riprova a catturare."
+        );
+        return;
+      }
+
+      const quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
+
+      const tryFinalize = (blob: Blob): boolean => {
+        if (blob.size < MIN_CAPTURE_BLOB_BYTES) {
+          return false;
+        }
         onCapture(blob);
         onClose();
-      } catch {
-        setErrorMsg("Elaborazione immagine fallita. Riprova.");
+        return true;
+      };
+
+      let cv = cvRef.current;
+      if (!cv) {
+        try {
+          cv = await loadOpenCv();
+          cvRef.current = cv;
+          setCvLoadState("ready");
+        } catch {
+          try {
+            const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+            if (!tryFinalize(blob)) {
+              setErrorMsg("Immagine catturata troppo piccola o vuota. Riprova.");
+            }
+          } catch {
+            setErrorMsg(
+              "OpenCV non disponibile e ritaglio fallito. Controlla la connessione o usa Carica foto."
+            );
+          }
+          return;
+        }
       }
+
+      try {
+        const blob = await warpQuadToBlob(cv, cap, quad, "image/jpeg");
+        if (tryFinalize(blob)) {
+          return;
+        }
+      } catch {
+        /* fallback sotto */
+      }
+      try {
+        const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+        if (tryFinalize(blob)) {
+          return;
+        }
+        setErrorMsg(
+          "Immagine troppo piccola dopo il ritaglio. Allarga il rettangolo o migliora la luce e riprova."
+        );
+      } catch {
+        setErrorMsg("Elaborazione immagine fallita. Regola i vertici bianchi/verdi e riprova.");
+      }
+    } finally {
+      setCapturing(false);
     }
-  }, [onCapture, onClose]);
+  }, [capturing, onCapture, onClose]);
 
   if (!open) {
     return null;
@@ -745,7 +1008,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         <div>
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
-            Inquadra lo scontrino: il rettangolo verde si aggiorna in tempo reale seguendo i bordi rilevati.
+            Inquadra lo scontrino: il rettangolo segue i bordi (OpenCV). Trascina i punti bianchi per correggere
+            manualmente. Tocca &quot;Segui automatico&quot; per tornare al rilevamento continuo.
           </p>
         </div>
         <button
@@ -772,7 +1036,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           <div
             className={
               phase === "camera"
-                ? "relative inline-block max-h-full max-w-full overflow-hidden rounded-lg border border-white/10"
+                ? "relative mx-auto flex h-[min(72vh,920px)] w-full max-w-full overflow-hidden rounded-lg border border-white/10 sm:max-w-lg"
                 : "relative block h-[2px] w-[2px]"
             }
           >
@@ -780,7 +1044,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
               ref={videoRef}
               className={
                 phase === "camera"
-                  ? "block max-h-[min(72vh,920px)] w-auto max-w-full"
+                  ? "h-full w-full object-cover"
                   : "block h-[2px] min-h-[2px] w-[2px] min-w-[2px] object-cover"
               }
               autoPlay
@@ -790,8 +1054,13 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
             {phase === "camera" ? (
               <canvas
                 ref={overlayRef}
-                className="pointer-events-none absolute left-0 top-0"
+                className="absolute left-0 top-0 touch-none"
+                style={{ touchAction: "none" }}
                 aria-hidden
+                onPointerDown={handleOverlayPointerDown}
+                onPointerMove={handleOverlayPointerMove}
+                onPointerUp={handleOverlayPointerUp}
+                onPointerCancel={handleOverlayPointerUp}
               />
             ) : null}
           </div>
@@ -833,33 +1102,43 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       {phase === "camera" ? (
         <>
-          {cvLoadState === "loading" ? (
-            <p className="px-4 py-1 text-center text-xs text-white/50">
-              Caricamento rilevamento bordi in background… la fotocamera è già attiva.
-            </p>
-          ) : null}
           {cvLoadState === "failed" ? (
             <p className="px-4 py-1 text-center text-xs text-amber-300/90">
-              Rilevamento automatico non disponibile (rete o blocco script). Usa il rettangolo centrale e cattura: verrà
-              applicato un ritaglio rettangolare.
+              Rilevamento automatico non disponibile (rete o blocco script). Trascina i quattro punti bianchi sull’angolo
+              dello scontrino, poi cattura: verrà applicato un ritaglio rettangolare.
             </p>
           ) : null}
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
-          <footer className="flex shrink-0 justify-center gap-3 border-t border-white/10 px-4 py-4">
+          <footer className="flex shrink-0 flex-col items-center gap-3 border-t border-white/10 px-4 py-4">
             <button
               type="button"
-              className="rounded-lg border border-white/25 px-5 py-2.5 text-sm font-medium hover:bg-white/10"
-              onClick={onClose}
+              className="text-xs text-white/60 underline decoration-white/30 underline-offset-2 hover:text-white/90"
+              onClick={() => {
+                manualQuadRef.current = false;
+                dragCornerRef.current = null;
+                smoothRef.current = null;
+              }}
             >
-              Annulla
+              Segui automatico (OpenCV)
             </button>
-            <button
-              type="button"
-              className="rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-emerald-400"
-              onClick={() => void handleCapture()}
-            >
-              Cattura scontrino
-            </button>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                className="rounded-lg border border-white/25 px-5 py-2.5 text-sm font-medium hover:bg-white/10"
+                onClick={onClose}
+                disabled={capturing}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:opacity-50"
+                disabled={capturing}
+                onClick={() => void handleCapture()}
+              >
+                {capturing ? "Elaborazione…" : "Cattura scontrino"}
+              </button>
+            </div>
           </footer>
         </>
       ) : null}
