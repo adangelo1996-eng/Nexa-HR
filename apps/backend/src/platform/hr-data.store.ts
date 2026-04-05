@@ -668,6 +668,11 @@ export class HrDataStore {
     return Boolean(this.supabase);
   }
 
+  /** True se le letture/scritture utenti passano da Supabase (serve per transazioni SQL dirette). */
+  usesDatabase(): boolean {
+    return this.useDb;
+  }
+
   private async ensureSeedUsers(): Promise<void> {
     if (!this.useDb || this.seeded) return;
     await this.ensureSeedReferenceData();
@@ -1243,25 +1248,17 @@ export class HrDataStore {
     }
   }
 
-  async createUser(input: UserCreateInput, options?: UserWriteOptions): Promise<User> {
+  private buildUserRecordForInsert(input: UserCreateInput, resolvedEmail: string, id: string): User {
     const firstName = input.firstName.trim();
     const lastName = input.lastName.trim();
-    if (!firstName || !lastName) {
-      throw new BadRequestException("Nome e cognome sono obbligatori");
-    }
-    await this.validateReferenceIds(input.roleId, input.costCenterId);
-    if (input.jurisdiction != null && input.jurisdiction !== "IT") {
-      throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
-    }
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
     const fullName = this.computeFullName(firstName, lastName);
-    const email = await this.resolveCreateEmail(firstName, lastName, input.email);
     const user: User = {
-      id: `u-${Date.now()}`,
+      id,
       firstName,
       lastName,
       fullName,
-      email,
+      email: resolvedEmail,
       role: input.role,
       managerId: input.managerId,
       companyId: input.companyId,
@@ -1320,16 +1317,74 @@ export class HrDataStore {
       user.baseSalaryMonthly =
         Math.round((Number(user.annualGrossSalary) / user.payMonthsPerYear) * 100) / 100;
     }
-    if (this.useDb) {
-      await this.supabase!.from("users").insert(user);
-      return user;
-    }
-    this.users.push(user);
     return user;
   }
 
-  async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
-    const user = await this.getUser(userId);
+  /**
+   * Alloca email univoca per una riga di creazione in un import batch (insieme a `takenLower`).
+   */
+  async allocateBatchCreateEmail(input: UserCreateInput, takenLower: Set<string>): Promise<string> {
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    const explicit = input.email?.trim();
+    if (explicit) {
+      if (!this.simpleEmailRegex().test(explicit)) {
+        throw new BadRequestException("Formato email non valido");
+      }
+      const low = explicit.toLowerCase();
+      if (takenLower.has(low)) {
+        throw new BadRequestException("Email duplicata nel file di import");
+      }
+      const users = await this.listUsers();
+      if (users.some((item) => item.email.toLowerCase() === low)) {
+        throw new BadRequestException("Esiste gia un utente con questa email");
+      }
+      takenLower.add(low);
+      return explicit;
+    }
+    const users = await this.listUsers();
+    const domain = this.emailDomain();
+    const base = this.composeEmail(firstName, lastName);
+    let suffix = 0;
+    const used = (e: string) =>
+      takenLower.has(e.toLowerCase()) || users.some((item) => item.email.toLowerCase() === e.toLowerCase());
+    let candidate = base;
+    while (suffix < 5000) {
+      if (!used(candidate)) {
+        takenLower.add(candidate.toLowerCase());
+        return candidate;
+      }
+      suffix += 1;
+      const [local] = base.split("@");
+      candidate = `${local}${suffix}@${domain}`;
+    }
+    throw new BadRequestException("Impossibile generare una email univoca");
+  }
+
+  /** Riga utente per INSERT transazione Postgres (email già risolta, id esplicito). */
+  async materializeUserRowForPgInsert(input: UserCreateInput, id: string): Promise<User> {
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException("Nome e cognome sono obbligatori");
+    }
+    const em = input.email?.trim();
+    if (!em) {
+      throw new BadRequestException("Email mancante per materializzazione utente");
+    }
+    await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (input.jurisdiction != null && input.jurisdiction !== "IT") {
+      throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
+    }
+    return this.buildUserRecordForInsert(input, em, id);
+  }
+
+  private async mergePatchIntoUserRecord(
+    user: User,
+    input: UserUpdateInput,
+    _options?: UserWriteOptions,
+    reservedEmailsLower?: Set<string>
+  ): Promise<User> {
     await this.validateReferenceIds(input.roleId, input.costCenterId);
     if (input.jurisdiction != null && input.jurisdiction !== "IT") {
       throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
@@ -1360,9 +1415,12 @@ export class HrDataStore {
         throw new BadRequestException("Formato email non valido");
       }
       const lower = trimmed.toLowerCase();
-      const others = (await this.listUsers()).filter((item) => item.id !== userId);
+      const others = (await this.listUsers()).filter((item) => item.id !== user.id);
       if (others.some((item) => item.email.toLowerCase() === lower)) {
         throw new BadRequestException("Esiste gia un utente con questa email");
+      }
+      if (reservedEmailsLower?.has(lower) && lower !== user.email.toLowerCase()) {
+        throw new BadRequestException("Email gia assegnata in questo import");
       }
     }
     const weeklyContractHours =
@@ -1398,6 +1456,71 @@ export class HrDataStore {
         }
       }
     }
+    void _options;
+    if (reservedEmailsLower != null && input.email !== undefined) {
+      const oldLow = user.email.toLowerCase();
+      const newLow = nextEmail.toLowerCase();
+      if (oldLow !== newLow) {
+        reservedEmailsLower.add(newLow);
+      }
+    }
+    return payload;
+  }
+
+  private async mergeUserRecordForUpdate(
+    userId: string,
+    input: UserUpdateInput,
+    options?: UserWriteOptions
+  ): Promise<User> {
+    const user = await this.getUser(userId);
+    return this.mergePatchIntoUserRecord(user, input, options);
+  }
+
+  /**
+   * Merge patch su una copia utente già nota (stesso ordine del apply sequenziale).
+   * `reservedEmailsLower` opzionale: email già riservate nello stesso import (create o update precedenti).
+   */
+  async mergeUserUpdateIntoRecord(
+    baseUser: User,
+    input: UserUpdateInput,
+    options?: UserWriteOptions,
+    reservedEmailsLower?: Set<string>
+  ): Promise<User> {
+    return this.mergePatchIntoUserRecord(baseUser, input, options, reservedEmailsLower);
+  }
+
+  /** Record utente completo dopo merge (per UPDATE transazione Postgres). */
+  async materializeUserRowForPgUpdate(
+    userId: string,
+    input: UserUpdateInput,
+    options?: UserWriteOptions
+  ): Promise<User> {
+    return this.mergeUserRecordForUpdate(userId, input, options);
+  }
+
+  async createUser(input: UserCreateInput, options?: UserWriteOptions): Promise<User> {
+    void options;
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException("Nome e cognome sono obbligatori");
+    }
+    await this.validateReferenceIds(input.roleId, input.costCenterId);
+    if (input.jurisdiction != null && input.jurisdiction !== "IT") {
+      throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
+    }
+    const email = await this.resolveCreateEmail(firstName, lastName, input.email);
+    const user = this.buildUserRecordForInsert(input, email, `u-${Date.now()}`);
+    if (this.useDb) {
+      await this.supabase!.from("users").insert(user);
+      return user;
+    }
+    this.users.push(user);
+    return user;
+  }
+
+  async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
+    const payload = await this.mergeUserRecordForUpdate(userId, input, options);
     if (this.useDb) {
       const { data } = await this.supabase!
         .from("users")
@@ -1411,6 +1534,7 @@ export class HrDataStore {
       const u = data as User;
       return { ...u, role: coercePlatformRole(u.role) };
     }
+    const user = await this.getUser(userId);
     Object.assign(user, payload);
     user.role = coercePlatformRole(payload.role);
     return user;
@@ -7154,46 +7278,6 @@ export class HrDataStore {
     }
     const columns = fields.map((id) => ({ id, label: labelById.get(id) ?? id }));
     return { columnIds: fields, columns, rows };
-  }
-
-  /** Elimina utente creato durante import massivo, in caso di rollback batch. */
-  async deleteUserForBatchRollback(userId: string): Promise<void> {
-    const id = userId.trim();
-    if (!id) {
-      return;
-    }
-    if (!this.useDb) {
-      const i = this.users.findIndex((u) => u.id === id);
-      if (i >= 0) {
-        this.users.splice(i, 1);
-      }
-      return;
-    }
-    const { error } = await this.supabase!.from("users").delete().eq("id", id);
-    if (error) {
-      throw new InternalServerErrorException(`Eliminazione utente (rollback import): ${error.message}`);
-    }
-  }
-
-  /** Ripristina riga utente dopo fallimento apply (snapshot da lettura pre-update). */
-  async restoreUserSnapshot(userId: string, snapshot: User): Promise<void> {
-    const id = userId.trim();
-    if (!id) {
-      return;
-    }
-    const payload = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
-    if (!this.useDb) {
-      const i = this.users.findIndex((u) => u.id === id);
-      if (i >= 0) {
-        const restored = { ...(payload as unknown as User), role: coercePlatformRole((payload as { role?: string }).role) };
-        this.users[i] = restored;
-      }
-      return;
-    }
-    const { error } = await this.supabase!.from("users").update(payload).eq("id", id);
-    if (error) {
-      throw new InternalServerErrorException(`Ripristino utente (rollback import): ${error.message}`);
-    }
   }
 
   private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {

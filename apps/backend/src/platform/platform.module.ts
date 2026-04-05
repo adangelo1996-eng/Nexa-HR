@@ -5,6 +5,7 @@ import { AdminEmployeeExcelService } from "./admin-employee-excel.service";
 import { AuditInterceptor } from "./audit.interceptor";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { DatabasePoolService } from "./database-pool.service";
 import { HrDataStore } from "./hr-data.store";
 import { ImportController } from "./import.controller";
 import { ImportService } from "./import.service";
@@ -18,6 +19,7 @@ import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
   controllers: [AuthController, AdminController, ImportController, SearchController],
   providers: [
     HrDataStore,
+    DatabasePoolService,
     AdminEmployeeExcelService,
     ImportService,
     AuthService,

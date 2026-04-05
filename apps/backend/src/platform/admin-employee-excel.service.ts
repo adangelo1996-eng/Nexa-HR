@@ -7,8 +7,10 @@ import {
   ADMIN_EMPLOYEE_EXCEL_READONLY_IDS,
   ADMIN_EXPORT_FIELD_CATALOG
 } from "./admin-export.catalog";
+import { DatabasePoolService } from "./database-pool.service";
 import { HrDataStore, type NexaImportEventRow } from "./hr-data.store";
 import type { ImportCellError } from "./import.service";
+import { insertUserRowPg, updateUserFullRowPg } from "./user-pg-writer";
 
 export const EMPLOYEE_EXCEL_MAX_ROWS = 2000;
 export const EMPLOYEE_EXCEL_MAX_BYTES = 10 * 1024 * 1024;
@@ -94,7 +96,10 @@ export interface EmployeeExcelApplyResult {
 export class AdminEmployeeExcelService {
   private readonly logger = new Logger(AdminEmployeeExcelService.name);
 
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly dbPool: DatabasePoolService
+  ) {}
 
   assertXlsxMagic(buffer: Buffer): void {
     if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
@@ -188,47 +193,92 @@ export class AdminEmployeeExcelService {
     }
 
     const log: string[] = [];
-    const updateSnapshots = new Map<string, User>();
-    const createdIds: string[] = [];
     let updated = 0;
     let created = 0;
 
-    try {
+    if (!this.store.usesDatabase()) {
       for (const op of ops) {
         if (op.kind === "update") {
-          if (!updateSnapshots.has(op.userId)) {
-            updateSnapshots.set(op.userId, op.before);
-          }
           await this.store.updateUser(op.userId, op.patch, { skipTeamLeadLinkValidation: true });
           updated += 1;
           log.push(`Riga ${op.row}: aggiornato ${op.before.fullName} (${op.userId})`);
         } else {
           const u = await this.store.createUser(op.payload);
-          createdIds.push(u.id);
           created += 1;
           log.push(`Riga ${op.row}: creato ${u.fullName} (${u.id}) — ${u.email}`);
         }
       }
+      await this.recordApplyEvent(actor, ops.length, created, log);
+      return { applied: ops.length, created, updated, log, errors: [] };
+    }
+
+    if (!this.dbPool.isConfigured()) {
+      throw new BadRequestException(
+        "Import transazionale: configurare DATABASE_URL con la connection string PostgreSQL del progetto Supabase (URI, utente postgres, SSL). Senza di essa il batch non può essere applicato in un’unica transazione."
+      );
+    }
+
+    const takenLower = new Set((await this.store.listUsers()).map((u) => u.email.trim().toLowerCase()));
+
+    type Mat =
+      | { kind: "create"; row: number; user: User }
+      | { kind: "update"; row: number; user: User };
+
+    const materialized: Mat[] = [];
+    const updateWorking = new Map<string, User>();
+    let seq = 0;
+
+    for (const op of ops) {
+      if (op.kind === "create") {
+        const payload = { ...op.payload };
+        const email = await this.store.allocateBatchCreateEmail(payload, takenLower);
+        payload.email = email;
+        const id = `u-${Date.now()}-${seq}-${Math.random().toString(36).slice(2, 10)}`;
+        const user = await this.store.materializeUserRowForPgInsert(payload, id);
+        materialized.push({ kind: "create", row: op.row, user });
+      } else {
+        let base = updateWorking.get(op.userId);
+        if (!base) {
+          base = await this.store.getUser(op.userId);
+        }
+        const user = await this.store.mergeUserUpdateIntoRecord(
+          base,
+          op.patch,
+          { skipTeamLeadLinkValidation: true },
+          takenLower
+        );
+        updateWorking.set(op.userId, user);
+        materialized.push({ kind: "update", row: op.row, user });
+      }
+      seq += 1;
+    }
+
+    try {
+      await this.dbPool.withTransaction(async (client) => {
+        for (const m of materialized) {
+          if (m.kind === "create") {
+            await insertUserRowPg(client, m.user);
+          } else {
+            await updateUserFullRowPg(client, m.user);
+          }
+        }
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Errore sconosciuto";
-      this.logger.warn(`employee-excel apply rollback: ${msg}`);
-      for (const id of [...createdIds].reverse()) {
-        try {
-          await this.store.deleteUserForBatchRollback(id);
-        } catch (delErr) {
-          this.logger.error(`Rollback delete ${id}: ${delErr instanceof Error ? delErr.message : delErr}`);
-        }
-      }
-      for (const [uid, snap] of updateSnapshots) {
-        try {
-          await this.store.restoreUserSnapshot(uid, snap);
-        } catch (rsErr) {
-          this.logger.error(`Rollback restore ${uid}: ${rsErr instanceof Error ? rsErr.message : rsErr}`);
-        }
-      }
+      this.logger.warn(`employee-excel apply transaction failed: ${msg}`);
       throw new BadRequestException(
-        `Elaborazione interrotta: nessuna modifica è stata confermata. Dettaglio: ${msg}`
+        `Transazione annullata: nessuna modifica è stata confermata sul database. Dettaglio: ${msg}`
       );
+    }
+
+    for (const m of materialized) {
+      if (m.kind === "create") {
+        created += 1;
+        log.push(`Riga ${m.row}: creato ${m.user.fullName} (${m.user.id}) — ${m.user.email}`);
+      } else {
+        updated += 1;
+        log.push(`Riga ${m.row}: aggiornato ${m.user.fullName} (${m.user.id})`);
+      }
     }
 
     await this.recordApplyEvent(actor, ops.length, created, log);
