@@ -1897,6 +1897,11 @@ export interface ExpenseClaimDto {
   amountCents: number;
   currency: string;
   description: string;
+  expenseType?: string;
+  hasReceipt?: boolean;
+  receiptSha256?: string | null;
+  ocrSuggestedCents?: number | null;
+  legalArchivalAt?: string | null;
   kmDistance?: number;
   status: string;
   createdAt: string;
@@ -2021,7 +2026,17 @@ export async function fetchExpenseClaims(
 
 export async function createExpenseClaim(
   token: string,
-  payload: { amountCents: number; currency: string; description: string; kmDistance?: number }
+  payload: {
+    amountCents: number;
+    currency: string;
+    description: string;
+    expenseType: string;
+    receiptBase64?: string;
+    receiptMime?: "image/jpeg" | "image/png" | "image/webp";
+    ocrRawText?: string;
+    ocrSuggestedCents?: number;
+    kmDistance?: number;
+  }
 ): Promise<ExpenseClaimDto> {
   const response = await fetch(buildApiUrl(`/expenses`), {
     method: "POST",

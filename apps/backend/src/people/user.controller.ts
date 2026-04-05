@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -496,7 +497,7 @@ class UpdateUserDto {
   contractFixedTerm?: boolean;
 }
 
-/** Anagrafica / profilo fisco-contratto IT: aggiornabile dal dipendente su se stesso. */
+/** Anagrafica / profilo fisco-contratto IT: aggiornabile solo da admin/HR (non dal dipendente). */
 class PatchMePayrollProfileItDto {
   @IsOptional()
   @IsString()
@@ -618,6 +619,15 @@ export class UserController {
     @CurrentAuth() auth: AuthContext,
     @Body() dto: PatchMePayrollProfileItDto
   ): Promise<unknown> {
+    const user = await this.store.getUser(auth.userId);
+    const canEdit =
+      auth.role === "superuser" ||
+      (await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, user.email));
+    if (!canEdit) {
+      throw new ForbiddenException(
+        "Il profilo fiscale e contrattuale è gestito solo da amministratori o HR. Contatta l'ufficio HR per modifiche."
+      );
+    }
     return this.store.updateUser(auth.userId, dto);
   }
 
@@ -650,11 +660,13 @@ export class UserController {
       auth.role === "superuser" ||
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
+    const canEditSelfPayrollProfileIt = auth.role === "superuser" || canAccessHrExtendedConsole;
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
       canNexaAdmin,
       canAccessHrExtendedConsole,
+      canEditSelfPayrollProfileIt,
       canAccessHrWorkflowExtras,
       canExportAttendanceReports,
       canManageTeamAttendance,

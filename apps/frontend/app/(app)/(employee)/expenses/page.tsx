@@ -3,8 +3,30 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
+import { ExpenseReceiptCropDialog } from "@/components/expense-receipt-crop-dialog";
 import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
+import { guessAmountEurStringFromReceiptOcr } from "@/lib/expense-ocr";
 import { getToken } from "@/lib/auth-session";
+
+const EXPENSE_TYPES = [
+  { id: "ristorante", label: "Ristorante / pasti" },
+  { id: "autostrada", label: "Autostrada / pedaggio" },
+  { id: "hotel", label: "Hotel / pernottamento" },
+  { id: "carburante", label: "Carburante" },
+  { id: "trasporti", label: "Trasporti (taxi, treno, volo)" },
+  { id: "parcheggio", label: "Parcheggio" },
+  { id: "materiale", label: "Materiale / cancelleria" },
+  { id: "altro", label: "Altro" }
+] as const;
+
+function base64ToBlob(base64: string, mime: string): Blob {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
 
 export default function ExpensesPage(): React.JSX.Element {
   const [items, setItems] = useState<ExpenseClaimDto[]>([]);
@@ -12,8 +34,15 @@ export default function ExpensesPage(): React.JSX.Element {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("EUR");
   const [description, setDescription] = useState("");
+  const [expenseType, setExpenseType] = useState<string>("ristorante");
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
+  const [receiptMime, setReceiptMime] = useState<"image/jpeg" | "image/png" | "image/webp" | null>(null);
+  const [ocrRawText, setOcrRawText] = useState<string | null>(null);
+  const [ocrSuggestedCents, setOcrSuggestedCents] = useState<number | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -31,27 +60,47 @@ export default function ExpensesPage(): React.JSX.Element {
     void load();
   }, [load]);
 
-  async function onReceiptSelected(file: File | null): Promise<void> {
-    if (!file) {
+  useEffect(() => {
+    return () => {
+      if (cropSrc?.startsWith("blob:")) {
+        URL.revokeObjectURL(cropSrc);
+      }
+    };
+  }, [cropSrc]);
+
+  function onFileChosen(file: File | null): void {
+    if (!file || !file.type.startsWith("image/")) {
       return;
     }
+    if (cropSrc?.startsWith("blob:")) {
+      URL.revokeObjectURL(cropSrc);
+    }
+    const url = URL.createObjectURL(file);
+    setCropSrc(url);
+    setCropOpen(true);
+  }
+
+  async function runOcrOnReceipt(base64: string, mime: string): Promise<void> {
     setOcrBusy(true);
     setError(null);
     try {
       const worker = await createWorker("ita+eng");
+      const blob = base64ToBlob(base64, mime);
       const {
         data: { text }
-      } = await worker.recognize(file);
+      } = await worker.recognize(blob);
       await worker.terminate();
-      const amountMatch = text.match(/(\d+[.,]\d{2})/);
-      if (amountMatch) {
-        setAmount(amountMatch[1].replace(",", "."));
-      }
-      if (!description.trim() && /km|km\.|eur/i.test(text)) {
-        setDescription("Spesa da scontrino");
+      setOcrRawText(text);
+      const guessed = guessAmountEurStringFromReceiptOcr(text);
+      if (guessed) {
+        setAmount(guessed);
+        const euros = Number(guessed);
+        if (Number.isFinite(euros)) {
+          setOcrSuggestedCents(Math.round(euros * 100));
+        }
       }
     } catch {
-      setError("OCR non disponibile");
+      setError("OCR non disponibile o lettura fallita");
     } finally {
       setOcrBusy(false);
     }
@@ -61,21 +110,39 @@ export default function ExpensesPage(): React.JSX.Element {
     e.preventDefault();
     const token = getToken();
     if (!token) return;
-    const euros = Number(amount.replace(",", "."));
-    if (!Number.isFinite(euros) || euros < 0 || !description.trim()) {
-      setError("Importo e descrizione obbligatori");
+    if (!receiptBase64 || !receiptMime) {
+      setError("Scansiona lo scontrino (ritaglio obbligatorio per archiviazione)");
       return;
     }
+    const euros = Number(amount.replace(",", "."));
+    if (!Number.isFinite(euros) || euros < 0) {
+      setError("Importo non valido");
+      return;
+    }
+    const desc = description.trim() || `Nota spese — ${EXPENSE_TYPES.find((t) => t.id === expenseType)?.label ?? expenseType}`;
     setBusy(true);
     setError(null);
     try {
       await createExpenseClaim(token, {
         amountCents: Math.round(euros * 100),
         currency,
-        description: description.trim()
+        description: desc,
+        expenseType,
+        receiptBase64,
+        receiptMime,
+        ocrRawText: ocrRawText ?? undefined,
+        ocrSuggestedCents: ocrSuggestedCents ?? undefined
       });
       setAmount("");
       setDescription("");
+      setReceiptBase64(null);
+      setReceiptMime(null);
+      setOcrRawText(null);
+      setOcrSuggestedCents(null);
+      if (cropSrc?.startsWith("blob:")) {
+        URL.revokeObjectURL(cropSrc);
+      }
+      setCropSrc(null);
       await load();
     } catch {
       setError("Invio nota spesa fallito");
@@ -84,8 +151,32 @@ export default function ExpensesPage(): React.JSX.Element {
     }
   }
 
+  const typeLabel = (id: string) => EXPENSE_TYPES.find((t) => t.id === id)?.label ?? id;
+
   return (
     <main className="mx-auto max-w-lg space-y-6 p-6">
+      <ExpenseReceiptCropDialog
+        open={cropOpen}
+        imageSrc={cropSrc}
+        onClose={() => {
+          setCropOpen(false);
+          if (cropSrc?.startsWith("blob:")) {
+            URL.revokeObjectURL(cropSrc);
+          }
+          setCropSrc(null);
+        }}
+        onConfirm={({ base64, mime }) => {
+          setReceiptBase64(base64);
+          setReceiptMime(mime);
+          setCropOpen(false);
+          if (cropSrc?.startsWith("blob:")) {
+            URL.revokeObjectURL(cropSrc);
+          }
+          setCropSrc(null);
+          void runOcrOnReceipt(base64, mime);
+        }}
+      />
+
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Note spese</h1>
         <Link
@@ -95,24 +186,52 @@ export default function ExpensesPage(): React.JSX.Element {
           Dashboard
         </Link>
       </div>
+
       <form onSubmit={(ev) => void submit(ev)} className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-700">
         <div className="text-sm font-medium">Nuova richiesta</div>
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          Ritaglia lo scontrino nell&apos;inquadratura. L&apos;immagine viene conservata in modo inalterabile (hash
+          crittografico) a fini di tracciabilità. Per adeguamenti normativi (es. conservazione sostitutiva) integrare con
+          il DMS aziendale.
+        </p>
         <label className="block text-xs text-slate-500 dark:text-slate-400">
-          Scontrino (OCR)
+          Scontrino — foto o scansione
           <input
             type="file"
             accept="image/*"
+            capture="environment"
             disabled={ocrBusy}
             className="mt-1 block w-full text-sm"
-            onChange={(ev) => void onReceiptSelected(ev.target.files?.[0] ?? null)}
+            onChange={(ev) => onFileChosen(ev.target.files?.[0] ?? null)}
           />
         </label>
-        {ocrBusy ? <p className="text-xs text-slate-500">Lettura immagine…</p> : null}
+        {receiptBase64 ? (
+          <p className="text-xs text-emerald-600 dark:text-emerald-400">
+            Scansione pronta per l&apos;invio. Puoi cambiare foto per sostituirla.
+          </p>
+        ) : null}
+        {ocrBusy ? <p className="text-xs text-slate-500">OCR in corso sull&apos;area ritagliata…</p> : null}
+
+        <label className="block text-xs text-slate-500 dark:text-slate-400">
+          Tipologia spesa
+          <select
+            value={expenseType}
+            onChange={(ev) => setExpenseType(ev.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+          >
+            {EXPENSE_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="flex gap-2">
           <input
             type="text"
             inputMode="decimal"
-            placeholder="Importo"
+            placeholder="Importo (€)"
             value={amount}
             onChange={(ev) => setAmount(ev.target.value)}
             className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -125,16 +244,22 @@ export default function ExpensesPage(): React.JSX.Element {
             <option value="EUR">EUR</option>
           </select>
         </div>
+        {ocrSuggestedCents != null ? (
+          <p className="text-xs text-slate-500">
+            Suggerimento OCR: {(ocrSuggestedCents / 100).toFixed(2)} € — verifica sempre prima di inviare.
+          </p>
+        ) : null}
+
         <input
           type="text"
-          placeholder="Descrizione"
+          placeholder="Note aggiuntive (opzionale)"
           value={description}
           onChange={(ev) => setDescription(ev.target.value)}
           className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
         />
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || !receiptBase64}
           className="rounded bg-synapse-gold/90 px-3 py-1.5 text-sm font-medium text-slate-900 disabled:opacity-50"
         >
           {busy ? "Invio…" : "Invia"}
@@ -147,8 +272,15 @@ export default function ExpensesPage(): React.JSX.Element {
           <li key={r.id} className="rounded border border-slate-200 p-3 dark:border-slate-700">
             <div className="font-medium">{r.description}</div>
             <div className="text-slate-600 dark:text-slate-400">
-              {(r.amountCents / 100).toFixed(2)} {r.currency} — {r.status}
+              {typeLabel(r.expenseType ?? "altro")} — {(r.amountCents / 100).toFixed(2)} {r.currency} — {r.status}
             </div>
+            {r.hasReceipt ? (
+              <div className="mt-1 text-xs text-slate-500">
+                Documento archiviato
+                {r.receiptSha256 ? ` · integrità SHA-256 ${r.receiptSha256.slice(0, 12)}…` : ""}
+                {r.legalArchivalAt ? ` · registrato ${new Date(r.legalArchivalAt).toLocaleString("it-IT")}` : ""}
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

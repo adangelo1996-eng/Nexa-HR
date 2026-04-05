@@ -2085,12 +2085,13 @@ export class HrDataStore {
   ): Promise<TimeEntry> {
     const atIso = at ?? new Date().toISOString();
     const day = atIso.slice(0, 10);
+    const sourceResolved = meta?.source ?? "web";
     const entry: TimeEntry = {
       id: `te-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       userId,
       type,
       at: atIso,
-      ...(meta?.source ? { source: meta.source } : {}),
+      source: sourceResolved,
       ...(meta?.geo ? { geo: meta.geo } : {}),
       ...(meta?.deviceId ? { deviceId: meta.deviceId } : {})
     };
@@ -4397,15 +4398,22 @@ export class HrDataStore {
   }
 
   private mapExpenseRow(r: Record<string, unknown>): ExpenseClaim {
+    const receiptB64 = r.receiptBodyBase64 != null ? String(r.receiptBodyBase64) : "";
+    const sha = r.receiptSha256 != null ? String(r.receiptSha256) : null;
     return {
       id: String(r.id),
       userId: String(r.userId),
       amountCents: Number(r.amountCents ?? 0),
       currency: String(r.currency),
       description: String(r.description),
+      expenseType: r.expenseType != null ? String(r.expenseType) : "altro",
+      hasReceipt: Boolean(receiptB64.length > 0 && sha),
+      receiptSha256: sha,
+      ocrSuggestedCents: r.ocrSuggestedCents != null ? Number(r.ocrSuggestedCents) : null,
       kmDistance: r.kmDistance != null ? Number(r.kmDistance) : undefined,
       status: r.status as ExpenseClaim["status"],
       createdAt: String(r.createdAt),
+      legalArchivalAt: r.legalArchivalAt != null ? String(r.legalArchivalAt) : null,
       payslipPeriod: r.payslipPeriod ? String(r.payslipPeriod) : undefined,
       appliedPayslipId: r.appliedPayslipId ? String(r.appliedPayslipId) : undefined
     };
@@ -4491,7 +4499,19 @@ export class HrDataStore {
 
   async createExpenseClaim(
     userId: string,
-    input: { amountCents: number; currency: string; description: string; kmDistance?: number }
+    input: {
+      amountCents: number;
+      currency: string;
+      description: string;
+      expenseType: string;
+      kmDistance?: number;
+      receiptMime?: string | null;
+      receiptSha256?: string | null;
+      receiptBodyBase64?: string | null;
+      ocrRawText?: string | null;
+      ocrSuggestedCents?: number | null;
+      legalArchivalAt?: string | null;
+    }
   ): Promise<ExpenseClaim> {
     const claim: ExpenseClaim = {
       id: `exp-${Date.now()}`,
@@ -4499,9 +4519,14 @@ export class HrDataStore {
       amountCents: input.amountCents,
       currency: input.currency,
       description: input.description,
+      expenseType: input.expenseType,
+      hasReceipt: Boolean(input.receiptBodyBase64 && input.receiptSha256),
+      receiptSha256: input.receiptSha256 ?? null,
+      ocrSuggestedCents: input.ocrSuggestedCents ?? null,
       kmDistance: input.kmDistance,
       status: "submitted",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      legalArchivalAt: input.legalArchivalAt ?? null
     };
     if (this.useDb) {
       const { error } = await this.supabase!.from("expense_claims").insert({
@@ -4510,11 +4535,18 @@ export class HrDataStore {
         amountCents: claim.amountCents,
         currency: claim.currency,
         description: claim.description,
+        expenseType: input.expenseType,
         kmDistance: claim.kmDistance ?? null,
         status: claim.status,
         createdAt: claim.createdAt,
         payslipPeriod: null,
-        appliedPayslipId: null
+        appliedPayslipId: null,
+        receiptMime: input.receiptMime ?? null,
+        receiptSha256: input.receiptSha256 ?? null,
+        receiptBodyBase64: input.receiptBodyBase64 ?? null,
+        ocrRawText: input.ocrRawText ?? null,
+        ocrSuggestedCents: input.ocrSuggestedCents ?? null,
+        legalArchivalAt: input.legalArchivalAt ?? null
       });
       if (error) {
         throw new InternalServerErrorException(`Creazione nota spesa fallita: ${error.message}`);

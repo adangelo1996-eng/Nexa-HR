@@ -23,7 +23,8 @@ import {
   clearSession,
   getToken,
   sessionCanNexaAdmin,
-  shouldClearSessionOnUnauthorizedApiError
+  shouldClearSessionOnUnauthorizedApiError,
+  type SessionUser
 } from "@/lib/auth-session";
 import {
   readNexaHrPrefs,
@@ -81,6 +82,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [history, setHistory] = useState<ImportHistoryItem[]>([]);
   const [itBusy, setItBusy] = useState(false);
   const [itOk, setItOk] = useState<string | null>(null);
+  const [profileUser, setProfileUser] = useState<SessionUser | null>(null);
+  const [canEditItProfile, setCanEditItProfile] = useState(false);
   const [itForm, setItForm] = useState<PayrollProfileItPatch>({
     fiscalCode: "",
     maritalStatus: "",
@@ -115,6 +118,8 @@ export default function SettingsPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const me = await fetchCurrentUser(tokenValue);
+        setProfileUser(me);
+        setCanEditItProfile(me.canEditSelfPayrollProfileIt === true);
         setIsSuperuser(Boolean(me.isSynapseSuperuser));
         setItForm({
           fiscalCode: me.fiscalCode ?? "",
@@ -271,7 +276,7 @@ export default function SettingsPage(): React.JSX.Element {
   }
 
   async function onSaveItProfile(): Promise<void> {
-    if (!token) return;
+    if (!token || !canEditItProfile) return;
     setItOk(null);
     setError(null);
     setItBusy(true);
@@ -427,8 +432,30 @@ export default function SettingsPage(): React.JSX.Element {
 
       <GlassCard
         title="Profilo fiscale e contratto (Italia)"
-        description="Dati per simulazioni cedolino e detrazioni. RAL e mensilità aggiornano lo stipendio mensile usato dal motore (RAL ÷ mensilità)."
+        description={
+          canEditItProfile
+            ? "Dati per simulazioni cedolino e detrazioni. RAL e mensilità aggiornano lo stipendio mensile usato dal motore (RAL ÷ mensilità)."
+            : "Sola lettura: le modifiche sono gestite solo da amministratori o HR tramite anagrafica dipendente."
+        }
       >
+        {!canEditItProfile && profileUser ? (
+          <div className="mb-4 rounded-lg border border-slate-700/50 bg-slate-950/40 p-3 text-sm text-slate-300">
+            <div className="font-medium text-slate-200">Contratto (anagrafica)</div>
+            <p className="mt-1 text-xs text-slate-400">
+              Tipologia: {profileUser.contractType?.trim() || "—"} · Ore settimanali:{" "}
+              {profileUser.weeklyContractHours != null ? `${profileUser.weeklyContractHours} h` : "—"} · Retribuzione
+              base mensile:{" "}
+              {profileUser.baseSalaryMonthly != null ? `${profileUser.baseSalaryMonthly.toFixed(2)} €` : "—"}
+            </p>
+          </div>
+        ) : null}
+        <div
+          className={
+            !canEditItProfile
+              ? "pointer-events-none select-none opacity-[0.92]"
+              : undefined
+          }
+        >
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-slate-700 dark:text-slate-300">Codice fiscale</span>
@@ -657,12 +684,15 @@ export default function SettingsPage(): React.JSX.Element {
             />
           </label>
         </div>
+        </div>
+        {canEditItProfile ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button type="button" size="sm" disabled={itBusy} onClick={() => void onSaveItProfile()}>
             {itBusy ? "Salvataggio…" : "Salva profilo IT"}
           </Button>
           {itOk ? <span className="text-xs text-emerald-600 dark:text-emerald-400">{itOk}</span> : null}
         </div>
+        ) : null}
       </GlassCard>
 
       {canCompanySettings && companyLoadFailed && !companyDraft ? (

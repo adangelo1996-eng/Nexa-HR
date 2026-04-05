@@ -14,6 +14,8 @@ export interface SessionUser {
   costCenterId?: string;
   contractType?: string;
   weeklyContractHours?: number;
+  /** Retribuzione base mensile da anagrafica (sola lettura per dipendente). */
+  baseSalaryMonthly?: number;
   iban?: string;
   bankName?: string;
   bicSwift?: string;
@@ -40,6 +42,8 @@ export interface SessionUser {
   workTeamIdsWhereLead?: string[];
   /** Area payroll Hebb (/payroll-hebb): solo superuser o console admin (`canAccessPayrollArea` da backend). */
   canAccessPayrollArea?: boolean;
+  /** Modifica profilo fiscale/contratto IT da `/settings`: solo superuser o HR esteso. */
+  canEditSelfPayrollProfileIt?: boolean;
 
   fiscalCode?: string | null;
   maritalStatus?: string | null;

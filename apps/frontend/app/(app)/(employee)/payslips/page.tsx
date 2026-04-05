@@ -71,7 +71,10 @@ export default function PayslipsPage(): React.JSX.Element {
     <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
-        <p className="text-sm text-[var(--prom-muted)]">Ultimi 12 mesi</p>
+        <p className="text-sm text-[var(--prom-muted)]">
+          Ultimi 12 mesi. Vedi solo i cedolini che l&apos;HR ha pubblicato per te (le bozze restano nella console
+          payroll).
+        </p>
       </header>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm text-[var(--prom-muted)]">

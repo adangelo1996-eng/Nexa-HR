@@ -257,9 +257,17 @@ export interface ExpenseClaim {
   amountCents: number;
   currency: string;
   description: string;
+  /** Tipologia spesa (ristorante, autostrada, …). */
+  expenseType?: string;
+  /** True se è stato archiviato un documento (immagine) con hash integrità. */
+  hasReceipt?: boolean;
+  receiptSha256?: string | null;
+  ocrSuggestedCents?: number | null;
   kmDistance?: number;
   status: ExpenseStatus;
   createdAt: string;
+  /** Timestamp ISO server: tracciabilità conservazione documentale. */
+  legalArchivalAt?: string | null;
   payslipPeriod?: string;
   appliedPayslipId?: string;
 }

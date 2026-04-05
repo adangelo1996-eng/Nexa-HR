@@ -256,7 +256,7 @@ export class AttendanceController {
     await this.team.assertCanManageTeam(auth.userId);
     await this.team.assertCanViewUserAttendance(auth.userId, dto.userId);
     return this.store.addTimeEntryAdmin(dto.userId, dto.type, dto.at, {
-      source: dto.source,
+      source: dto.source ?? "web",
       geo: dto.geo,
       deviceId: dto.deviceId
     });
