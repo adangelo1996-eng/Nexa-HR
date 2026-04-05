@@ -5,7 +5,7 @@ import { HrDataStore } from "./hr-data.store";
 describe("HrDataStore", () => {
   it("genera cedolino e lo rende disponibile", async () => {
     const store = new HrDataStore();
-    const payslip = await store.generatePayslip("u-employee", "2026-03");
+    const payslip = await store.generatePayslip("u-employee", "2022-06");
     assert.equal(payslip.userId, "u-employee");
     assert.ok(payslip.netSalary > 0);
     const list = await store.listPayslips("u-employee");
@@ -28,7 +28,7 @@ describe("HrDataStore", () => {
       taxRegion: "LAZ",
       taxMunicipalityIt: "Roma"
     });
-    const payslip = await store.generatePayslip(created.id, "2026-04");
+    const payslip = await store.generatePayslip(created.id, "2022-07");
     assert.ok(payslip.lines.some((l) => l.code === "INPS"));
     assert.ok(payslip.lines.some((l) => l.code === "IRPEF"));
     assert.ok(payslip.lines.some((l) => l.code === "DAT_INPS" && l.amount > 0));

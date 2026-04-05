@@ -67,6 +67,7 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/reports", label: "Report HR" },
   { href: "/payroll-hebb", label: "Hebb - Payroll" },
   { href: "/admin", label: "Admin" },
+  { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
   { href: "/insights", label: "People insights" },
   { href: "/scheduling", label: "Turni" },
   { href: "/work-calendar", label: "Calendario lavoro" },
@@ -149,7 +150,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       routes = routes.filter((r) => r.href !== "/personnel-budget");
     }
     if (!sessionCanNexaAdmin(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== "/admin");
+      routes = routes.filter(
+        (r) => r.href !== "/admin" && r.href !== ("/admin/data-export" as Route)
+      );
     }
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
   }, [searchQ, user]);
@@ -231,18 +234,32 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             </Link>
           ) : null}
           {showAdminNav ? (
-            <Link
-              href="/admin"
-              onClick={() => setMobileOpen(false)}
-              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                pathname.startsWith("/admin")
-                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-              }`}
-            >
-              <UserCog className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-              Admin
-            </Link>
+            <>
+              <Link
+                href="/admin"
+                onClick={() => setMobileOpen(false)}
+                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                  pathname.startsWith("/admin") && pathname === "/admin"
+                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+                }`}
+              >
+                <UserCog className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                Admin
+              </Link>
+              <Link
+                href={"/admin/data-export" as Route}
+                onClick={() => setMobileOpen(false)}
+                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                  pathname.startsWith("/admin/data-export")
+                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+                }`}
+              >
+                <FileText className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                Export Excel
+              </Link>
+            </>
           ) : null}
         </>
       ) : null}

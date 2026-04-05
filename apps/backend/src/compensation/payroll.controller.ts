@@ -13,7 +13,11 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
-import type { User } from "@payday/domain";
+import {
+  type User,
+  isPayrollCompetencePeriodCalculableTodayRome,
+  payrollCompetenceCalculationFirstDateIsoRome
+} from "@payday/domain";
 import { createItExportGenerator } from "@payday/payroll-adapters-it";
 import PDFDocument from "pdfkit";
 import { CurrentAuth, type AuthRole } from "../platform/auth";
@@ -119,6 +123,20 @@ export class PayrollController {
     }
     const me = await this.store.getUser(auth.userId);
     return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+  }
+
+  @Get("competence-unlock")
+  @RequireNexaPermissions("nexa.payroll:read")
+  async competenceUnlock(@Query("period") period?: string): Promise<unknown> {
+    const p = period?.trim();
+    if (!p || !/^\d{4}-\d{2}$/.test(p)) {
+      throw new BadRequestException("Query period (YYYY-MM) obbligatorio");
+    }
+    return {
+      period: p,
+      firstCalculableDate: payrollCompetenceCalculationFirstDateIsoRome(p),
+      calculableToday: isPayrollCompetencePeriodCalculableTodayRome(p)
+    };
   }
 
   @Post("simulate-hire")
@@ -365,6 +383,7 @@ export class PayrollController {
         "ADD_REG",
         "ADD_COM",
         "GARN",
+        "FERIE_G",
         "NET"
       ];
       const info = payslip.lines.filter(

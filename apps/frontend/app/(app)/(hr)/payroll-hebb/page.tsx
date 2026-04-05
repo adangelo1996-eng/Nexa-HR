@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   downloadPayslipPdf,
   fetchCurrentUser,
+  fetchPayrollCompetenceUnlock,
   fetchPayslipDrafts,
   fetchUsers,
   generatePayslip,
@@ -17,6 +18,7 @@ import {
   type Payslip,
   type User
 } from "@/lib/api";
+import { defaultPayrollCompetencePeriodRome, previousPayrollMonthIso } from "@/lib/payroll-competence";
 import {
   clearSession,
   getToken,
@@ -52,8 +54,8 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  const [simPeriod, setSimPeriod] = useState(() => new Date().toISOString().slice(0, 7));
-  const [simPrevMonth, setSimPrevMonth] = useState(false);
+  const [simPeriod, setSimPeriod] = useState(() => defaultPayrollCompetencePeriodRome());
+  const [simPrevMonth, setSimPrevMonth] = useState(true);
   const [simResult, setSimResult] = useState<HebbSimulatePayrollResult | null>(null);
   const [simShowJson, setSimShowJson] = useState(false);
   const [simLoading, setSimLoading] = useState(false);
@@ -61,14 +63,14 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
 
   const [singleUsers, setSingleUsers] = useState<User[]>([]);
   const [singleUserId, setSingleUserId] = useState("");
-  const [singlePeriod, setSinglePeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [singlePeriod, setSinglePeriod] = useState(() => defaultPayrollCompetencePeriodRome());
   const [singleResult, setSingleResult] = useState<Payslip | null>(null);
   const [singleLoading, setSingleLoading] = useState(true);
   const [singleSubmitting, setSingleSubmitting] = useState(false);
   const [singleError, setSingleError] = useState<string | null>(null);
   const [singleOkMsg, setSingleOkMsg] = useState<string | null>(null);
 
-  const [batchPeriod, setBatchPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [batchPeriod, setBatchPeriod] = useState(() => defaultPayrollCompetencePeriodRome());
   const [batchPrevMonth, setBatchPrevMonth] = useState(true);
   const [batchResults, setBatchResults] = useState<PayrollBatchRowResult[] | null>(null);
   const [drafts, setDrafts] = useState<Payslip[]>([]);
@@ -81,6 +83,13 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
   const [previewDraft, setPreviewDraft] = useState<Payslip | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [unlockSim, setUnlockSim] = useState<{ firstCalculableDate: string; calculableToday: boolean } | null>(null);
+  const [unlockSingle, setUnlockSingle] = useState<{ firstCalculableDate: string; calculableToday: boolean } | null>(
+    null
+  );
+  const [unlockBatch, setUnlockBatch] = useState<{ firstCalculableDate: string; calculableToday: boolean } | null>(
+    null
+  );
 
   useEffect(() => {
     const t = getToken();
@@ -162,6 +171,38 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
     if (!sessionUser || !sessionCanAccessPayrollArea(sessionUser)) return;
     void loadDrafts();
   }, [loadDrafts, sessionUser]);
+
+  useEffect(() => {
+    const t = getToken();
+    if (!t || !sessionUser || !sessionCanAccessPayrollArea(sessionUser)) {
+      return;
+    }
+    void fetchPayrollCompetenceUnlock(t, simPeriod)
+      .then((r) => setUnlockSim({ firstCalculableDate: r.firstCalculableDate, calculableToday: r.calculableToday }))
+      .catch(() => setUnlockSim(null));
+  }, [simPeriod, sessionUser]);
+
+  useEffect(() => {
+    const t = getToken();
+    if (!t || !sessionUser || !sessionCanAccessPayrollArea(sessionUser)) {
+      return;
+    }
+    void fetchPayrollCompetenceUnlock(t, singlePeriod)
+      .then((r) =>
+        setUnlockSingle({ firstCalculableDate: r.firstCalculableDate, calculableToday: r.calculableToday })
+      )
+      .catch(() => setUnlockSingle(null));
+  }, [singlePeriod, sessionUser]);
+
+  useEffect(() => {
+    const t = getToken();
+    if (!t || !sessionUser || !sessionCanAccessPayrollArea(sessionUser)) {
+      return;
+    }
+    void fetchPayrollCompetenceUnlock(t, batchPeriod)
+      .then((r) => setUnlockBatch({ firstCalculableDate: r.firstCalculableDate, calculableToday: r.calculableToday }))
+      .catch(() => setUnlockBatch(null));
+  }, [batchPeriod, sessionUser]);
 
   const selectedSingleUser = useMemo(
     () => singleUsers.find((item) => item.id === singleUserId),
@@ -316,6 +357,13 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
           <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">addizionali_como_2025.md</code> /{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">scripts/gen-como-rates.mjs</code>.
         </p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          Il calcolo cedolino per una competenza <strong>YYYY-MM</strong> è consentito dal{" "}
+          <strong>5° giorno di calendario</strong> dopo l’ultimo giorno di quel mese. In generazione bozza/PDF il
+          backend usa le <strong>variabili (straordinari, ferie, malattia, smart working)</strong> dal{" "}
+          <strong>mese precedente</strong> rispetto al periodo di competenza, salvo impostazioni diverse nel batch; le{" "}
+          <strong>note spese approvate</strong> della competenza sono incluse nel netto come rimborsi.
+        </p>
         <Link href="/" className="text-sm text-slate-600 underline hover:text-slate-900 dark:hover:text-slate-200">
           Torna alla dashboard
         </Link>
@@ -324,8 +372,22 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-50">Simulazione rapida (anagrafica)</h2>
         <p className="mb-4 text-xs text-slate-500">
-          Anteprima senza salvare cedolino; usa i dati del tuo profilo.
+          Anteprima senza salvare cedolino; usa i dati del tuo profilo. Mese variabili:{" "}
+          <strong>{simPrevMonth ? previousPayrollMonthIso(simPeriod) : simPeriod}</strong>
+          {simPrevMonth ? (
+            <>
+              {" "}
+              (competenza <strong>{simPeriod}</strong>)
+            </>
+          ) : null}
+          .
         </p>
+        {unlockSim && !unlockSim.calculableToday ? (
+          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            Per competenza <strong>{simPeriod}</strong> il calcolo sarà disponibile dal{" "}
+            <strong>{unlockSim.firstCalculableDate}</strong>.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <label className="flex flex-col gap-1 text-sm">
             Periodo (YYYY-MM)
@@ -428,8 +490,15 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-50">Calcolo singolo dipendente</h2>
         <p className="mb-4 text-xs text-slate-600 dark:text-slate-400">
           Salva una <strong>bozza</strong> nel database (come il batch). Il dipendente vede il cedolino solo dopo{" "}
-          <strong>Pubblica su Nexa</strong> per quel periodo.
+          <strong>Pubblica su Nexa</strong> per quel periodo. Variabili predefinite dal mese{" "}
+          <strong>{previousPayrollMonthIso(singlePeriod)}</strong> (competenza <strong>{singlePeriod}</strong>).
         </p>
+        {unlockSingle && !unlockSingle.calculableToday ? (
+          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            Calcolo non ancora consentito per <strong>{singlePeriod}</strong>: dal{" "}
+            <strong>{unlockSingle.firstCalculableDate}</strong>.
+          </p>
+        ) : null}
         {singleLoading ? (
           <p className="text-sm text-slate-500">Caricamento elenco dipendenti…</p>
         ) : (
@@ -525,8 +594,16 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Elaborazione batch (bozze)</h2>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Genera cedolini in <strong>bozza</strong> per tutti i dipendenti IT; pubblica quando sei pronto. I dipendenti
-          vedono i cedolini solo dopo la pubblicazione.
+          vedono i cedolini solo dopo la pubblicazione. Con «Variabili da mese precedente» le assenze/straordinari
+          provengono da <strong>{previousPayrollMonthIso(batchPeriod)}</strong>; altrimenti dal periodo di competenza{" "}
+          <strong>{batchPeriod}</strong>.
         </p>
+        {unlockBatch && !unlockBatch.calculableToday ? (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            Calcolo batch non ancora consentito per competenza <strong>{batchPeriod}</strong>: dal{" "}
+            <strong>{unlockBatch.firstCalculableDate}</strong>.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <label className="flex flex-col gap-1 text-sm">
             Periodo competenza (YYYY-MM)

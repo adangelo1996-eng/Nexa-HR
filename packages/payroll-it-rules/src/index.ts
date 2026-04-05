@@ -368,6 +368,7 @@ export function calculateItalianPayroll(
   const datoreInailMese = g * inailRate;
   const ferieGodute = input.vacationDaysUsed;
   const ferieResid = input.vacationResidualDays;
+  const ferieStimaEuro = round(ferieGodute * ruleSet.deductionVacationPerDay);
 
   const lines: PayslipLine[] = [
     { code: "BASE", description: "Retribuzione base (orario contrattuale)", amount: round(base) },
@@ -445,8 +446,11 @@ export function calculateItalianPayroll(
     },
     {
       code: "FERIE_G",
-      description: `Ferie — giorni goduti nel periodo: ${ferieGodute}`,
-      amount: 0
+      description:
+        ferieGodute > 0
+          ? `Ferie — giorni goduti: ${ferieGodute} · stima trattenuta su competenze: ${ferieStimaEuro} € (già inclusa nel lordo GROSS; modello semplificato)`
+          : `Ferie — giorni goduti nel periodo: ${ferieGodute}`,
+      amount: ferieGodute > 0 ? -ferieStimaEuro : 0
     },
     {
       code: "FERIE_R",

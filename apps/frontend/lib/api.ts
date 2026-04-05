@@ -1367,6 +1367,81 @@ export async function fetchImportHistory(token: string): Promise<ImportHistoryIt
   return (await response.json()) as ImportHistoryItem[];
 }
 
+export type AdminExportFieldDef = { id: string; label: string; requires?: string[] };
+
+export async function fetchAdminExportFields(token: string): Promise<{ fields: AdminExportFieldDef[] }> {
+  const response = await fetch(buildApiUrl("/admin/export/fields"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { fields: AdminExportFieldDef[] };
+}
+
+export type AdminExportPreview = {
+  columnIds: string[];
+  columns: Array<{ id: string; label: string }>;
+  rows: Array<Record<string, string | number | null>>;
+};
+
+export async function postAdminExportPreview(
+  token: string,
+  body: { fields: string[]; competencePeriod?: string }
+): Promise<AdminExportPreview> {
+  const response = await fetch(buildApiUrl("/admin/export/preview"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as AdminExportPreview;
+}
+
+export async function downloadAdminExportXlsx(
+  token: string,
+  body: { fields: string[]; competencePeriod?: string }
+): Promise<void> {
+  const response = await fetch(buildApiUrl("/admin/export/xlsx"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "nexa-hr-export-dipendenti.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function fetchPayrollCompetenceUnlock(
+  token: string,
+  period: string
+): Promise<{ period: string; firstCalculableDate: string; calculableToday: boolean }> {
+  const response = await fetch(
+    buildApiUrl(`/payroll/competence-unlock?period=${encodeURIComponent(period)}`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as {
+    period: string;
+    firstCalculableDate: string;
+    calculableToday: boolean;
+  };
+}
+
 export async function createLeavePlan(
   token: string,
   payload: Pick<LeavePlan, "startDate" | "endDate"> & { kind?: "annual" | "rol"; userId?: string }

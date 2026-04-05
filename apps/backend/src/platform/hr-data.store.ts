@@ -7,33 +7,35 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type {
-  ApprovalView,
-  CalendarEvent,
-  CompanyHoliday,
-  EmployeeDocument,
-  EmployeeDocumentKind,
-  ExpenseClaim,
-  InnovationJob,
-  InnovationJobStatus,
-  LeaveBalance,
-  LeavePlan,
-  LeavePlanKind,
-  OnboardingChecklistItem,
-  OnboardingStatus,
-  Payslip,
-  SicknessEvent,
-  Shift,
-  TimeEntry,
-  User,
-  UserNotification,
-  WorkMode,
-  WorkdaySummary,
-  Role,
-  CostCenter,
-  WorkTeam,
-  ClockChannel,
-  GeoFix
+import {
+  type ApprovalView,
+  type CalendarEvent,
+  type CompanyHoliday,
+  type EmployeeDocument,
+  type EmployeeDocumentKind,
+  type ExpenseClaim,
+  type InnovationJob,
+  type InnovationJobStatus,
+  type LeaveBalance,
+  type LeavePlan,
+  type LeavePlanKind,
+  type OnboardingChecklistItem,
+  type OnboardingStatus,
+  type Payslip,
+  type SicknessEvent,
+  type Shift,
+  type TimeEntry,
+  type User,
+  type UserNotification,
+  type WorkMode,
+  type WorkdaySummary,
+  type Role,
+  type CostCenter,
+  type WorkTeam,
+  type ClockChannel,
+  type GeoFix,
+  isPayrollCompetencePeriodCalculableTodayRome,
+  payrollCompetenceCalculationFirstDateIsoRome
 } from "@payday/domain";
 import {
   calculateItalianPayroll,
@@ -46,6 +48,11 @@ import {
   type PayrollItSector
 } from "@payday/payroll-adapters-it";
 import type { AuthRole } from "./auth";
+import {
+  ADMIN_EXPORT_FIELD_CATALOG,
+  ADMIN_EXPORT_VARIABLE_FIELD_IDS,
+  assertAdminExportFieldSelection
+} from "./admin-export.catalog";
 
 interface ApprovalRecord {
   id: string;
@@ -3006,13 +3013,34 @@ export class HrDataStore {
     period: string,
     options?: { overrides?: Partial<ItalianPayrollInput>; variablePeriod?: string }
   ): Promise<ReturnType<typeof calculateItalianPayroll>> {
+    if (!isPayrollCompetencePeriodCalculableTodayRome(period)) {
+      throw new BadRequestException(
+        `Calcolo cedolino per competenza ${period} disponibile dal ${payrollCompetenceCalculationFirstDateIsoRome(
+          period
+        )} (dal 5° giorno dopo la fine del mese).`
+      );
+    }
     const user = await this.getUser(userId);
-    const base = await this.buildItalianPayrollInputForUser(
-      user,
-      period,
-      options?.variablePeriod
-    );
-    return calculateItalianPayroll({ ...base, ...options?.overrides });
+    const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
+    const reimbursement =
+      Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
+    const varResolved =
+      options?.variablePeriod != null && options.variablePeriod.trim().length > 0
+        ? options.variablePeriod.trim()
+        : this.previousPayrollVariableMonth(period);
+    const base = await this.buildItalianPayrollInputForUser(user, period, varResolved);
+    const result = calculateItalianPayroll({ ...base, ...options?.overrides });
+    const extraLines = claims.map((c) => ({
+      code: "RMB",
+      description: `Rimborso spese: ${c.description}`.slice(0, 160),
+      amount: Math.round(c.amountCents) / 100
+    }));
+    const netSalary = Math.round((result.netSalary + reimbursement) * 100) / 100;
+    return {
+      ...result,
+      lines: [...result.lines, ...extraLines],
+      netSalary
+    };
   }
 
   /** Righe informative da anagrafica dipendente (importo 0), incluse nel cedolino/PDF. */
@@ -3140,8 +3168,18 @@ export class HrDataStore {
       publishedByUserId?: string;
     }
   ): Promise<Payslip> {
+    if (!isPayrollCompetencePeriodCalculableTodayRome(period)) {
+      throw new BadRequestException(
+        `Calcolo cedolino per competenza ${period} disponibile dal ${payrollCompetenceCalculationFirstDateIsoRome(
+          period
+        )} (dal 5° giorno dopo la fine del mese).`
+      );
+    }
     const status = options?.status ?? "published";
-    const varPer = options?.variablePeriod?.trim() || period;
+    const varPer =
+      options?.variablePeriod != null && String(options.variablePeriod).trim().length > 0
+        ? String(options.variablePeriod).trim()
+        : this.previousPayrollVariableMonth(period);
     const user = await this.getUser(userId);
     const claims = await this.listApprovedExpenseClaimsForPayslip(userId, period);
     const reimbursement =
@@ -6958,6 +6996,164 @@ export class HrDataStore {
       throw new InternalServerErrorException(`Salvataggio impostazioni azienda: ${error.message}`);
     }
     return { companyId: id, ...nextStored };
+  }
+
+  async buildAdminExportPreview(
+    requesterId: string,
+    selectedFields: string[],
+    competencePeriod?: string
+  ): Promise<{
+    columnIds: string[];
+    columns: Array<{ id: string; label: string }>;
+    rows: Array<Record<string, string | number | null>>;
+  }> {
+    const { fields, competencePeriod: cp } = assertAdminExportFieldSelection(
+      selectedFields,
+      competencePeriod
+    );
+    const requester = await this.getUser(requesterId);
+    const allUsers = await this.listUsers();
+    const inCompany = allUsers.filter(
+      (u) => requester.role === "superuser" || u.companyId === requester.companyId
+    );
+    const idToUser = new Map(inCompany.map((u) => [u.id, u] as const));
+    const labelById = new Map(ADMIN_EXPORT_FIELD_CATALOG.map((d) => [d.id, d.label] as const));
+    const rows: Array<Record<string, string | number | null>> = [];
+    for (const u of inCompany) {
+      const row: Record<string, string | number | null> = {};
+      let cc: CostCenter | null = null;
+      if (u.costCenterId?.trim()) {
+        cc = await this.getCostCenterById(u.costCenterId.trim());
+      }
+      let teamName: string | null = null;
+      if (u.teamId?.trim()) {
+        try {
+          const wt = await this.getWorkTeam(u.teamId.trim());
+          teamName = wt.name;
+        } catch {
+          teamName = null;
+        }
+      }
+      const manager = u.managerId?.trim() ? idToUser.get(u.managerId.trim()) : undefined;
+      const grossMonthly =
+        u.baseSalaryMonthly != null && Number(u.baseSalaryMonthly) > 0
+          ? Number(u.baseSalaryMonthly)
+          : 5800;
+      const vp = cp ?? "";
+      let vacationDaysUsed = 0;
+      let sicknessDays = 0;
+      let smartworkingDays = 0;
+      let overtimeAmount = 0;
+      let expenseEuro = 0;
+      if (vp && fields.some((f) => ADMIN_EXPORT_VARIABLE_FIELD_IDS.has(f))) {
+        if (fields.includes("vacationDaysUsed")) {
+          vacationDaysUsed = await this.countAnnualLeaveDaysInPeriod(u.id, vp);
+        }
+        if (fields.includes("sicknessDays")) {
+          sicknessDays = await this.countSicknessDays(u.id, vp);
+        }
+        if (fields.includes("smartworkingDays")) {
+          smartworkingDays = await this.countSmartworkingDays(u.id, vp);
+        }
+        if (fields.includes("overtimeAmountEuro")) {
+          overtimeAmount = await this.countMonthlyOvertimeAmount(u.id, vp, grossMonthly);
+        }
+        if (fields.includes("approvedExpenseReimbursementEuro")) {
+          const claims = await this.listApprovedExpenseClaimsForPayslip(u.id, vp);
+          expenseEuro = Math.round(claims.reduce((s, c) => s + c.amountCents, 0)) / 100;
+        }
+      }
+      for (const fid of fields) {
+        switch (fid) {
+          case "userId":
+            row[fid] = u.id;
+            break;
+          case "email":
+            row[fid] = u.email;
+            break;
+          case "fullName":
+            row[fid] = u.fullName;
+            break;
+          case "firstName":
+            row[fid] = u.firstName ?? "";
+            break;
+          case "lastName":
+            row[fid] = u.lastName ?? "";
+            break;
+          case "fiscalCode":
+            row[fid] = u.fiscalCode?.trim() ?? "";
+            break;
+          case "phone":
+            row[fid] = u.phone?.trim() ?? "";
+            break;
+          case "address":
+            row[fid] = u.address?.trim() ?? "";
+            break;
+          case "taxMunicipalityIt":
+            row[fid] = u.taxMunicipalityIt?.trim() ?? "";
+            break;
+          case "taxRegion":
+            row[fid] = u.taxRegion?.trim() ?? "";
+            break;
+          case "hireDate":
+            row[fid] = u.hireDate?.trim() ?? "";
+            break;
+          case "birthDate":
+            row[fid] = u.birthDate?.trim() ?? "";
+            break;
+          case "contractType":
+            row[fid] = u.contractType?.trim() ?? "";
+            break;
+          case "weeklyContractHours":
+            row[fid] = u.weeklyContractHours ?? null;
+            break;
+          case "baseSalaryMonthly":
+            row[fid] = u.baseSalaryMonthly ?? null;
+            break;
+          case "annualGrossSalary":
+            row[fid] = u.annualGrossSalary ?? null;
+            break;
+          case "vacationAllowanceDays":
+            row[fid] = u.vacationAllowanceDays ?? null;
+            break;
+          case "costCenterCode":
+            row[fid] = cc?.code ?? "";
+            break;
+          case "costCenterName":
+            row[fid] = cc?.name ?? "";
+            break;
+          case "teamName":
+            row[fid] = teamName ?? "";
+            break;
+          case "managerFullName":
+            row[fid] = manager?.fullName ?? "";
+            break;
+          case "competencePeriod":
+            row[fid] = vp || null;
+            break;
+          case "vacationDaysUsed":
+            row[fid] = vacationDaysUsed;
+            break;
+          case "sicknessDays":
+            row[fid] = sicknessDays;
+            break;
+          case "smartworkingDays":
+            row[fid] = smartworkingDays;
+            break;
+          case "overtimeAmountEuro":
+            row[fid] = Math.round(overtimeAmount * 100) / 100;
+            break;
+          case "approvedExpenseReimbursementEuro":
+            row[fid] = expenseEuro;
+            break;
+          default:
+            break;
+        }
+      }
+      rows.push(row);
+    }
+    const columns = fields.map((id) => ({ id, label: labelById.get(id) ?? id }));
+    return { columnIds: fields, columns, rows };
   }
 
   private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {

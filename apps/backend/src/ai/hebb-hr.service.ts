@@ -58,7 +58,7 @@ export class HebbHrService {
     const variablePeriod =
       body.usePreviousMonthVariables === true
         ? this.store.previousPayrollVariableMonth(period)
-        : undefined;
+        : period;
     const overrides =
       body.grossMonthlySalaryOverride != null && Number.isFinite(body.grossMonthlySalaryOverride)
         ? { grossMonthlySalary: Number(body.grossMonthlySalaryOverride) }

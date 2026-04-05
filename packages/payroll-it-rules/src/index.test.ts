@@ -88,6 +88,24 @@ test("resolveComoMunicipalAddizionaleRate matches addizionali_como_2025", () => 
   assert.ok(near(resolveComoMunicipalAddizionaleRate("Campione D'Italia") ?? 0, 0.008));
 });
 
+test("FERIE_G shows estimated euro impact when vacation days used (informative line)", () => {
+  const r = calculateItalianPayroll({
+    period: "2026-03",
+    grossMonthlySalary: 3500,
+    weeklyContractHours: 40,
+    age: 35,
+    vacationDaysUsed: 2,
+    sicknessDays: 0,
+    smartworkingDays: 0,
+    overtimeAmount: 0,
+    taxProfile: { regionCode: "LAZ", municipality: "Roma" }
+  });
+  const ferie = r.lines.find((l) => l.code === "FERIE_G");
+  assert.ok(ferie);
+  assert.equal(ferie!.amount, -50);
+  assert.ok(ferie!.description.includes("2"));
+});
+
 test("addizionaleComunaleRate override affects ADD_COM line", () => {
   const r = calculateItalianPayroll({
     period: "2026-03",

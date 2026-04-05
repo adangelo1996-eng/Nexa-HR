@@ -340,3 +340,45 @@ export interface CompanyHoliday {
   day: string;
   name: string;
 }
+
+function addCalendarDaysIsoUtc(isoYmd: string, deltaDays: number): string {
+  const [y, mo, d] = isoYmd.split("-").map((x) => Number(x));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+    throw new Error(`Data non valida: ${isoYmd}`);
+  }
+  const ms = Date.UTC(y, mo - 1, d + deltaDays);
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * Ultimo giorno del mese di competenza `period` (YYYY-MM) come YYYY-MM-DD (UTC date-only, giorni civili).
+ */
+export function payrollCompetenceLastDayIso(period: string): string {
+  const trimmed = period.trim();
+  const m = /^(\d{4})-(\d{2})$/.exec(trimmed);
+  if (!m) {
+    throw new Error(`Periodo non valido: ${period}`);
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (!Number.isFinite(y) || mo < 1 || mo > 12) {
+    throw new Error(`Periodo non valido: ${period}`);
+  }
+  return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * Prima data (YYYY-MM-DD) in cui è consentito il calcolo cedolino per competenza `period` (YYYY-MM):
+ * 5° giorno di calendario dopo l’ultimo giorno del mese di competenza (conteggio su date civili UTC).
+ */
+export function payrollCompetenceCalculationFirstDateIsoRome(period: string): string {
+  const last = payrollCompetenceLastDayIso(period);
+  return addCalendarDaysIsoUtc(last, 5);
+}
+
+/** True se oggi (Europe/Rome) è ≥ della prima data consentita per il calcolo. */
+export function isPayrollCompetencePeriodCalculableTodayRome(period: string): boolean {
+  const unlock = payrollCompetenceCalculationFirstDateIsoRome(period);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  return today >= unlock;
+}

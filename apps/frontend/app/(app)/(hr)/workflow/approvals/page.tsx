@@ -291,7 +291,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Cose da approvare</h2>
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Approvazioni in sospeso</h2>
         {toApprove.length === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa dal team.</p>
         ) : (
@@ -320,7 +320,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Cose richieste</h2>
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Le mie richieste in corso</h2>
         <p className="text-sm text-[var(--prom-muted)]">Le tue richieste ancora in sospeso.</p>
         {mine.length === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta aperta da te.</p>

@@ -189,6 +189,9 @@ export default function AdminPage(): React.JSX.Element {
   const [teamsNested, setTeamsNested] = useState<Array<{ cc: CostCenter; teams: WorkTeamDto[] }>>([]);
   const [userSearch, setUserSearch] = useState("");
   const [adminModal, setAdminModal] = useState<"closed" | "edit" | "create">("closed");
+  const [editUserTab, setEditUserTab] = useState<"anagrafica" | "contratto" | "organizzazione" | "pagamento">(
+    "anagrafica"
+  );
 
   const selectedUser = users.find((item) => item.id === selectedUserId) ?? null;
 
@@ -592,6 +595,7 @@ export default function AdminPage(): React.JSX.Element {
                         onClick={() => {
                           setCreatingUser(false);
                           setSelectedUserId(item.id);
+                          setEditUserTab("anagrafica");
                           setAdminModal("edit");
                         }}
                       >
@@ -997,9 +1001,34 @@ export default function AdminPage(): React.JSX.Element {
                     Risorse umane e anagrafica
                   </h3>
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-500">
-                    Contatti, organizzazione e dati utili a payroll e presenze.
+                    Contatti, organizzazione e dati utili a payroll e presenze. Usa le schede per compilare per
+                    sezioni.
                   </p>
                 </div>
+                <div className="mb-3 flex flex-wrap gap-2 md:col-span-2">
+                  {(
+                    [
+                      ["anagrafica", "Anagrafica e domicilio"],
+                      ["contratto", "Fiscale, contratto e retribuzione"],
+                      ["organizzazione", "Organizzazione"],
+                      ["pagamento", "Pagamento"]
+                    ] as const
+                  ).map(([tid, lbl]) => (
+                    <button
+                      key={tid}
+                      type="button"
+                      onClick={() => setEditUserTab(tid)}
+                      className={
+                        editUserTab === tid
+                          ? "rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white dark:bg-slate-200 dark:text-slate-900"
+                          : "rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                      }
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <div className={editUserTab !== "anagrafica" ? "hidden" : "contents"}>
                 <label className="md:col-span-2 flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Email *</span>
                   <input
@@ -1092,6 +1121,71 @@ export default function AdminPage(): React.JSX.Element {
                     <p className="text-[10px] text-slate-500">JPEG, PNG o WebP — max ~2,5 MB (richiede Supabase Storage).</p>
                   </div>
                 </div>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Codice fiscale</span>
+                  <input
+                    value={selectedUser ? selectedUser.fiscalCode ?? "" : ""}
+                    onChange={(event) => {
+                      const value = event.target.value || undefined;
+                      if (selectedUser) updateSelectedUser({ fiscalCode: value ?? null });
+                    }}
+                    maxLength={16}
+                    autoCapitalize="characters"
+                    placeholder="16 caratteri"
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Telefono</span>
+                  <input
+                    value={selectedUser ? selectedUser.phone ?? "" : ""}
+                    onChange={(event) => {
+                      const value = event.target.value || undefined;
+                      if (selectedUser) updateSelectedUser({ phone: value });
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Data di nascita</span>
+                  <input
+                    type="date"
+                    value={selectedUser ? selectedUser.birthDate ?? "" : ""}
+                    onChange={(event) => {
+                      const value = event.target.value || undefined;
+                      if (selectedUser) updateSelectedUser({ birthDate: value });
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="md:col-span-2 flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Indirizzo (via e numero civico)</span>
+                  <input
+                    value={selectedUser ? selectedUser.address ?? "" : ""}
+                    onChange={(event) => {
+                      const value = event.target.value || undefined;
+                      if (selectedUser) updateSelectedUser({ address: value });
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
+                <label className="md:col-span-2 flex flex-col gap-1 text-xs">
+                  <span className="text-slate-700 dark:text-slate-300">Comune di residenza</span>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-500">
+                    Deve coincidere con il comune di domicilio fiscale; l’indirizzo sopra contiene solo via e numero.
+                  </p>
+                  <input
+                    value={selectedUser?.taxMunicipalityIt ?? ""}
+                    onChange={(event) => {
+                      if (selectedUser) {
+                        updateSelectedUser({ taxMunicipalityIt: event.target.value || undefined });
+                      }
+                    }}
+                    className={inputOptionalClass}
+                  />
+                </label>
+                </div>
+                <div className={editUserTab !== "organizzazione" ? "hidden" : "contents"}>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ruolo accesso *</span>
                   <select
@@ -1190,6 +1284,8 @@ export default function AdminPage(): React.JSX.Element {
                     ))}
                   </select>
                 </label>
+                </div>
+                <div className={editUserTab !== "contratto" ? "hidden" : "contents"}>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ore contrattuali settimanali *</span>
                   <input
@@ -1249,18 +1345,6 @@ export default function AdminPage(): React.JSX.Element {
                       if (selectedUser) updateSelectedUser({ taxRegion: event.target.value || undefined });
                     }}
                     placeholder="es. LAZ"
-                    className={inputOptionalClass}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Comune residenza (IT)</span>
-                  <input
-                    value={selectedUser?.taxMunicipalityIt ?? ""}
-                    onChange={(event) => {
-                      if (selectedUser) {
-                        updateSelectedUser({ taxMunicipalityIt: event.target.value || undefined });
-                      }
-                    }}
                     className={inputOptionalClass}
                   />
                 </label>
@@ -1380,16 +1464,14 @@ export default function AdminPage(): React.JSX.Element {
                   </div>
                 </div>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Codice fiscale</span>
+                  <span className="text-slate-700 dark:text-slate-300">Data di assunzione</span>
                   <input
-                    value={selectedUser ? selectedUser.fiscalCode ?? "" : ""}
+                    type="date"
+                    value={selectedUser ? selectedUser.hireDate ?? "" : ""}
                     onChange={(event) => {
                       const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ fiscalCode: value ?? null });
+                      if (selectedUser) updateSelectedUser({ hireDate: value });
                     }}
-                    maxLength={16}
-                    autoCapitalize="characters"
-                    placeholder="16 caratteri"
                     className={inputOptionalClass}
                   />
                 </label>
@@ -1407,6 +1489,8 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
+                </div>
+                <div className={editUserTab !== "pagamento" ? "hidden" : "contents"}>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">IBAN (Italia)</span>
                   <input
@@ -1451,52 +1535,7 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Telefono</span>
-                  <input
-                    value={selectedUser ? selectedUser.phone ?? "" : ""}
-                    onChange={(event) => {
-                      const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ phone: value });
-                    }}
-                    className={inputOptionalClass}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Data di nascita</span>
-                  <input
-                    type="date"
-                    value={selectedUser ? selectedUser.birthDate ?? "" : ""}
-                    onChange={(event) => {
-                      const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ birthDate: value });
-                    }}
-                    className={inputOptionalClass}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Data di assunzione</span>
-                  <input
-                    type="date"
-                    value={selectedUser ? selectedUser.hireDate ?? "" : ""}
-                    onChange={(event) => {
-                      const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ hireDate: value });
-                    }}
-                    className={inputOptionalClass}
-                  />
-                </label>
-                <label className="md:col-span-2 flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Indirizzo</span>
-                  <input
-                    value={selectedUser ? selectedUser.address ?? "" : ""}
-                    onChange={(event) => {
-                      const value = event.target.value || undefined;
-                      if (selectedUser) updateSelectedUser({ address: value });
-                    }}
-                    className={inputOptionalClass}
-                  />
-                </label>
+                </div>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">

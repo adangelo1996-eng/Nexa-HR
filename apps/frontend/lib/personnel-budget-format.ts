@@ -1,4 +1,5 @@
 const personnelBudgetAmountFormatter = new Intl.NumberFormat("it-IT", {
+  useGrouping: true,
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });

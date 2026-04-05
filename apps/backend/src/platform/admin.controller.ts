@@ -1,7 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  StreamableFile,
+  UseGuards
+} from "@nestjs/common";
+import ExcelJS from "exceljs";
 import { Transform } from "class-transformer";
 import { IsArray, IsIn, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
-import { RoleGuard } from "./auth";
+import { CurrentAuth, RoleGuard } from "./auth";
 import { HrDataStore } from "./hr-data.store";
 import {
   HUB_PERMISSIONS,
@@ -11,6 +22,7 @@ import {
 } from "./permission-catalog";
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
+import { ADMIN_EXPORT_FIELD_CATALOG } from "./admin-export.catalog";
 
 class CreateRoleDto {
   @IsString()
@@ -113,6 +125,16 @@ class SetWorkTeamLeadDto {
 
   @IsString()
   roleId!: string;
+}
+
+class AdminExportBodyDto {
+  @IsArray()
+  @IsString({ each: true })
+  fields!: string[];
+
+  @IsOptional()
+  @IsString()
+  competencePeriod?: string;
 }
 
 class UpdateCostCenterDto {
@@ -239,5 +261,40 @@ export class AdminController {
   @RequireNexaPermissions("nexa.admin_cost_centers:write")
   setWorkTeamLead(@Param("teamId") teamId: string, @Body() dto: SetWorkTeamLeadDto): unknown {
     return this.store.setTeamLead(teamId, dto.userId, dto.roleId);
+  }
+
+  @Get("export/fields")
+  @RequireNexaPermissions("nexa.admin_users:read")
+  adminExportFieldCatalog(): unknown {
+    return { fields: ADMIN_EXPORT_FIELD_CATALOG };
+  }
+
+  @Post("export/preview")
+  @RequireNexaPermissions("nexa.admin_users:read")
+  async adminExportPreview(
+    @CurrentAuth() auth: { userId: string },
+    @Body() dto: AdminExportBodyDto
+  ): Promise<unknown> {
+    return this.store.buildAdminExportPreview(auth.userId, dto.fields, dto.competencePeriod);
+  }
+
+  @Post("export/xlsx")
+  @RequireNexaPermissions("nexa.admin_users:read")
+  async adminExportXlsx(
+    @CurrentAuth() auth: { userId: string },
+    @Body() dto: AdminExportBodyDto
+  ): Promise<StreamableFile> {
+    const preview = await this.store.buildAdminExportPreview(auth.userId, dto.fields, dto.competencePeriod);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Export");
+    ws.addRow(preview.columns.map((c) => c.label));
+    for (const r of preview.rows) {
+      ws.addRow(preview.columnIds.map((id) => r[id] ?? ""));
+    }
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    return new StreamableFile(buf, {
+      disposition: 'attachment; filename="nexa-hr-export-dipendenti.xlsx"',
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
   }
 }
