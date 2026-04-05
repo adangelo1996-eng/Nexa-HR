@@ -255,11 +255,15 @@ function coercePlatformRole(role: string | undefined | null): User["role"] {
 /** Opzioni scrittura utente: riservate a chiamate console (API Nest). */
 interface UserWriteOptions {
   skipTeamLeadLinkValidation?: boolean;
+  /** Import Excel template: usa l’ID preassegnato (es. u-tpl-…) invece di generarne uno nuovo. */
+  forcedUserId?: string;
 }
 
 interface UserCreateInput {
   firstName: string;
   lastName: string;
+  /** Se valorizzato, sostituisce la concatenazione nome+cognome in anagrafica. */
+  fullName?: string;
   /** Se valorizzata, ha priorità sulla generazione automatica da nome/cognome */
   email?: string;
   role: User["role"];
@@ -579,6 +583,12 @@ export class HrDataStore {
       costCenterId: "cc-1",
       name: "Team HR demo",
       leadUserId: "u-manager"
+    },
+    {
+      id: "wt-demo-fin",
+      costCenterId: "cc-2",
+      name: "Team Contabilità demo",
+      leadUserId: undefined
     }
   ];
   /** Memoria dev: celle budget key `${year}|${month}|${userId}` */
@@ -1252,7 +1262,8 @@ export class HrDataStore {
     const firstName = input.firstName.trim();
     const lastName = input.lastName.trim();
     const weeklyContractHours = this.normalizeWeeklyContractHours(input.weeklyContractHours);
-    const fullName = this.computeFullName(firstName, lastName);
+    const fullName =
+      input.fullName?.trim().replace(/\s+/g, " ").trim() || this.computeFullName(firstName, lastName);
     const user: User = {
       id,
       firstName,
@@ -1499,7 +1510,6 @@ export class HrDataStore {
   }
 
   async createUser(input: UserCreateInput, options?: UserWriteOptions): Promise<User> {
-    void options;
     const firstName = input.firstName.trim();
     const lastName = input.lastName.trim();
     if (!firstName || !lastName) {
@@ -1510,7 +1520,12 @@ export class HrDataStore {
       throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
     }
     const email = await this.resolveCreateEmail(firstName, lastName, input.email);
-    const user = this.buildUserRecordForInsert(input, email, `u-${Date.now()}`);
+    const forced = options?.forcedUserId?.trim();
+    const id = forced && forced.length > 0 ? forced : `u-${Date.now()}`;
+    if (!this.useDb && this.users.some((u) => u.id === id)) {
+      throw new BadRequestException(`ID utente già in uso: ${id}`);
+    }
+    const user = this.buildUserRecordForInsert(input, email, id);
     if (this.useDb) {
       await this.supabase!.from("users").insert(user);
       return user;

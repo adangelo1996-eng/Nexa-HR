@@ -31,6 +31,63 @@ export const ADMIN_EMPLOYEE_EXCEL_EXTRA_FIELDS: AdminExportFieldDefinition[] = [
   { id: "platformRole", label: "Ruolo piattaforma (superuser/user)" }
 ];
 
+/** Prefisso ID riga nei template nuovi utenti (import crea con questo id esplicito). */
+export const EMPLOYEE_EXCEL_TEMPLATE_USER_ID_PREFIX = "u-tpl-";
+
+/** Codici regione fiscale IT (3 lettere, come in anagrafica / addizionali). */
+export const ITALIAN_TAX_REGION_CODES: readonly string[] = [
+  "ABR",
+  "BAS",
+  "CAL",
+  "CAM",
+  "EMR",
+  "FVG",
+  "LAZ",
+  "LIG",
+  "LOM",
+  "MAR",
+  "MOL",
+  "PIE",
+  "PUG",
+  "SAR",
+  "SIC",
+  "TOS",
+  "TAA",
+  "UMB",
+  "VEN",
+  "VDA"
+];
+
+/**
+ * Colonne foglio «Export» per import dipendenti (nessuna colonna variabili mensili).
+ * Ordine stabile: intestazioni template = stesso ordine.
+ */
+export const EMPLOYEE_EXCEL_IMPORT_FIELD_IDS: string[] = [
+  "userId",
+  "email",
+  "fullName",
+  "firstName",
+  "lastName",
+  "fiscalCode",
+  "phone",
+  "address",
+  "taxMunicipalityIt",
+  "taxRegion",
+  "hireDate",
+  "birthDate",
+  "contractType",
+  "weeklyContractHours",
+  "baseSalaryMonthly",
+  "annualGrossSalary",
+  "vacationAllowanceDays",
+  "costCenterCode",
+  "costCenterName",
+  "teamName",
+  "managerFullName",
+  "roleId",
+  "platformRole"
+];
+
 export const ADMIN_EXPORT_FIELD_CATALOG: AdminExportFieldDefinition[] = [
   { id: "userId", label: "ID utente" },
   { id: "email", label: "Email" },

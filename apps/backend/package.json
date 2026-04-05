@@ -7,7 +7,7 @@
     "build": "corepack pnpm --dir ../.. run build:backend:render",
     "start": "node dist/main.js",
     "lint": "echo \"no lint configured\"",
-    "test": "echo \"api tests to be expanded in phase 2\""
+    "test": "corepack pnpm exec tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^11.1.18",
