@@ -73,6 +73,21 @@ export default function WorkflowPage(): React.JSX.Element {
   useEffect(() => {
     const currentToken = getToken();
     if (!currentToken) {
+      // #region agent log
+      fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0acd48" },
+        body: JSON.stringify({
+          sessionId: "0acd48",
+          runId: "pre-fix",
+          hypothesisId: "H4",
+          location: "workflow/page.tsx:useEffect:noToken",
+          message: "no token — redirect login",
+          data: {},
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       router.replace("/login");
       return;
     }
@@ -82,14 +97,62 @@ export default function WorkflowPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const me = await fetchCurrentUser(tokenValue);
-        if (!sessionCanSeeApprovalsAndHrExtras(me)) {
-          router.replace("/");
-          return;
-        }
+        // #region agent log
+        const canSee = sessionCanSeeApprovalsAndHrExtras(me);
+        fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0acd48" },
+          body: JSON.stringify({
+            sessionId: "0acd48",
+            runId: "post-fix",
+            hypothesisId: "H1-H2",
+            location: "workflow/page.tsx:load:afterMe",
+            message: "workflow load (no dashboard redirect on guard)",
+            data: {
+              canSee,
+              role: me.role,
+              canAccessHrWorkflowExtras: me.canAccessHrWorkflowExtras === true,
+              isTeamResponsible: me.isTeamResponsible === true,
+              isSynapseSuperuser: me.isSynapseSuperuser === true
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
         const list = await fetchApprovals(tokenValue);
         setUser(me);
         setApprovals(list);
+        // #region agent log
+        fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0acd48" },
+          body: JSON.stringify({
+            sessionId: "0acd48",
+            runId: "post-fix",
+            hypothesisId: "verify",
+            location: "workflow/page.tsx:load:success",
+            message: "workflow data loaded",
+            data: { approvalCount: list.length },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
       } catch (loadError) {
+        // #region agent log
+        fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0acd48" },
+          body: JSON.stringify({
+            sessionId: "0acd48",
+            runId: "pre-fix",
+            hypothesisId: "H3",
+            location: "workflow/page.tsx:load:catch",
+            message: "load failed — redirect login",
+            data: { errName: loadError instanceof Error ? loadError.name : "unknown" },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
         clearSession();
         router.replace("/login");
         setError(loadError instanceof Error ? loadError.message : "Errore caricamento workflow");

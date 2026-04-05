@@ -22,8 +22,8 @@ class RejectApprovalBody {
 export class ApprovalsController {
   constructor(private readonly store: HrDataStore) {}
 
+  /** Lista scoped in store (`listApprovalsForUser`): niente esposizione oltre self / riporti / team; non richiede catalogo Nexa. */
   @Get()
-  @RequireNexaPermissions("nexa.approvals:read")
   async list(
     @CurrentAuth() auth: { userId: string },
     @Query() query: ApprovalListQuery
