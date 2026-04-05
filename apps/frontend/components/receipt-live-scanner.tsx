@@ -11,18 +11,23 @@ const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
 
 // #region agent log
-function dbgScanner(ev: string, hypothesisId: string, data: Record<string, unknown> = {}): void {
+function dbgScanner(
+  ev: string,
+  hypothesisId: string,
+  data: Record<string, unknown> = {},
+  location = "receipt-live-scanner.tsx:start"
+): void {
   fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "647b89" },
     body: JSON.stringify({
       sessionId: "647b89",
       hypothesisId,
-      location: "receipt-live-scanner.tsx:start",
+      location,
       message: ev,
       data,
       timestamp: Date.now(),
-      runId: "camera-first"
+      runId: "mobile-layout-v2"
     })
   }).catch(() => {});
 }
@@ -339,7 +344,7 @@ function findReceiptQuad(
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     const ksize = new cv.Size(5, 5);
     cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
-    cv.Canny(blurred, edges, 50, 150);
+    cv.Canny(blurred, edges, 40, 120);
 
     const frameArea = procW * procH;
     const minA = frameArea * 0.06;
@@ -556,6 +561,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   const [capturing, setCapturing] = useState(false);
   /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
+  const footerRef = useRef<HTMLElement | null>(null);
+  const lastDbgDetectRef = useRef(0);
 
   const stopCamera = useCallback((): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -788,6 +795,16 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         if (cv) {
           try {
             const procPts = findReceiptQuad(cv, video, procW, procH);
+            const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+            if (nowMs - lastDbgDetectRef.current > 2600) {
+              lastDbgDetectRef.current = nowMs;
+              dbgScanner(
+                "detect_sample",
+                "R1",
+                { foundQuad: !!procPts, manualQuad: manualQuadRef.current, procW, procH },
+                "receipt-live-scanner.tsx:tick"
+              );
+            }
             if (procPts) {
               const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
               if (!manualQuadRef.current) {
@@ -862,6 +879,29 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
     };
   }, [open, phase, layoutOverlay]);
+
+  useEffect(() => {
+    if (!open || phase !== "camera") {
+      return;
+    }
+    const id = window.setInterval(() => {
+      const footer = footerRef.current?.getBoundingClientRect();
+      const ih = window.innerHeight;
+      dbgScanner(
+        "layout_footer_metrics",
+        "B1",
+        {
+          innerHeight: ih,
+          footerTop: footer?.top ?? null,
+          footerBottom: footer?.bottom ?? null,
+          footerOffscreen: footer ? footer.bottom > ih + 1 : null,
+          headerChiudiVisible: true
+        },
+        "receipt-live-scanner.tsx:layout"
+      );
+    }, 2800);
+    return () => window.clearInterval(id);
+  }, [open, phase]);
 
   const handleOverlayPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const overlay = overlayRef.current;
@@ -1044,9 +1084,9 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black text-white">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
-        <div>
+    <div className="fixed inset-0 z-[60] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black text-white">
+      <header className="relative z-40 flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
             Inquadra lo scontrino: il rettangolo segue i bordi (OpenCV). Trascina i punti bianchi per correggere
@@ -1055,7 +1095,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         </div>
         <button
           type="button"
-          className="rounded-lg border border-white/20 px-3 py-1.5 text-sm hover:bg-white/10"
+          className="touch-manipulation rounded-lg border border-white/20 px-3 py-1.5 text-sm hover:bg-white/10"
           onClick={onClose}
         >
           Chiudi
@@ -1066,18 +1106,18 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         Il <video> deve restare nel DOM durante "starting"/"idle": altrimenti videoRef è null,
         lo stream non si collega e su molti mobile getUserMedia non completa bene senza elemento video.
       */}
-      <div className="relative flex min-h-0 flex-1 flex-col bg-black">
+      <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black">
         <div
           className={
             phase === "camera"
-              ? "relative flex min-h-0 flex-1 items-center justify-center p-2"
+              ? "relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-2"
               : "pointer-events-none absolute left-0 top-0 z-[1] h-[2px] w-[2px] overflow-hidden opacity-[0.01]"
           }
         >
           <div
             className={
               phase === "camera"
-                ? "relative mx-auto flex h-[min(72vh,920px)] w-full max-w-full overflow-hidden rounded-lg border border-white/10 sm:max-w-lg"
+                ? "relative mx-auto flex aspect-[3/4] h-auto max-h-[min(52dvh,calc(100dvh-12rem))] w-full max-w-full min-h-0 overflow-hidden rounded-lg border border-white/10 sm:max-w-lg"
                 : "relative block h-[2px] w-[2px]"
             }
           >
@@ -1102,6 +1142,10 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
                 onPointerMove={handleOverlayPointerMove}
                 onPointerUp={handleOverlayPointerUp}
                 onPointerCancel={handleOverlayPointerUp}
+                onLostPointerCapture={() => {
+                  dragCornerRef.current = null;
+                  dbgScanner("lost_pointer_capture", "B2", {}, "receipt-live-scanner.tsx:pointer");
+                }}
               />
             ) : null}
           </div>
@@ -1155,10 +1199,13 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
             </p>
           ) : null}
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
-          <footer className="flex shrink-0 flex-col items-center gap-3 border-t border-white/10 px-4 py-4">
+          <footer
+            ref={footerRef}
+            className="relative z-40 flex shrink-0 flex-col items-center gap-3 border-t border-white/10 bg-black px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
+          >
             <button
               type="button"
-              className="text-xs text-white/60 underline decoration-white/30 underline-offset-2 hover:text-white/90"
+              className="touch-manipulation text-xs text-white/60 underline decoration-white/30 underline-offset-2 hover:text-white/90"
               onClick={() => {
                 manualQuadRef.current = false;
                 dragCornerRef.current = null;
@@ -1170,7 +1217,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border border-white/25 px-5 py-2.5 text-sm font-medium hover:bg-white/10"
+                className="touch-manipulation rounded-lg border border-white/25 px-5 py-2.5 text-sm font-medium hover:bg-white/10"
                 onClick={onClose}
                 disabled={capturing}
               >
@@ -1178,7 +1225,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:opacity-50"
+                className="touch-manipulation rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:opacity-50"
                 disabled={capturing}
                 onClick={() => void handleCapture()}
               >
