@@ -89,14 +89,27 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+const SCRIPT_LOAD_TIMEOUT_MS = 35_000;
+
 function injectOpenCvScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.async = true;
     script.dataset.opencv = "1";
     script.src = OPENCV_SRC;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Impossibile caricare OpenCV.js (rete o blocco script)"));
+    const tid = window.setTimeout(() => {
+      script.onload = null;
+      script.onerror = null;
+      reject(new Error("Timeout caricamento script OpenCV (rete lenta o blocco)"));
+    }, SCRIPT_LOAD_TIMEOUT_MS);
+    script.onload = (): void => {
+      window.clearTimeout(tid);
+      resolve();
+    };
+    script.onerror = (): void => {
+      window.clearTimeout(tid);
+      reject(new Error("Impossibile caricare OpenCV.js (rete o blocco script)"));
+    };
     document.head.appendChild(script);
   });
 }

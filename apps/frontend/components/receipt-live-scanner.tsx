@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { loadOpenCv, type OpenCvRuntime } from "@/lib/opencv-loader";
 
 type Point = { x: number; y: number };
@@ -9,6 +10,22 @@ const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 /** JPEG minimo plausibile (header + pochi byte); sotto = probabile frame vuoto. */
 const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error(label)), ms);
+    promise.then(
+      (v) => {
+        window.clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        window.clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
 
 /** Mapping object-fit: cover — stesso calcolo per overlay e per hit-test maniglie. */
 function getObjectCoverMapping(video: HTMLVideoElement): {
@@ -549,6 +566,12 @@ export function ReceiptLiveScanner({
   /** Cleanup listener document-level per drag maniglie (evita setPointerCapture su iOS). */
   const docDragCleanupRef = useRef<(() => void) | null>(null);
 
+  /** Montaggio su document.body: fuori da main/header/footer AppShell che intercettano i tap (z-index). */
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setPortalRoot(document.body);
+  }, []);
+
   const stopCamera = useCallback((): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -572,6 +595,10 @@ export function ReceiptLiveScanner({
       manualQuadRef.current = false;
       docDragCleanupRef.current?.();
       docDragCleanupRef.current = null;
+      return;
+    }
+
+    if (!portalRoot) {
       return;
     }
 
@@ -660,7 +687,8 @@ export function ReceiptLiveScanner({
       setPhase("camera");
       setCvProgress("");
 
-      void loadOpenCv()
+      const CV_LOAD_RACE_MS = 75_000;
+      void withTimeout(loadOpenCv(), CV_LOAD_RACE_MS, "OpenCV: timeout caricamento")
         .then((cv) => {
           if (cancelled) {
             return;
@@ -686,7 +714,7 @@ export function ReceiptLiveScanner({
       dragCornerRef.current = null;
       stopCamera();
     };
-  }, [open, stopCamera, cameraRetryNonce]);
+  }, [open, portalRoot, stopCamera, cameraRetryNonce]);
 
   const layoutOverlay = useCallback(() => {
     const v = videoRef.current;
@@ -738,17 +766,16 @@ export function ReceiptLiveScanner({
       }
       const video = videoRef.current;
       const overlay = overlayRef.current;
-      if (!video || !overlay || video.readyState < 2) {
+      const vwEarly = video?.videoWidth ?? 0;
+      const vhEarly = video?.videoHeight ?? 0;
+      /* Su alcuni mobile readyState resta < HAVE_CURRENT_DATA a lungo: basta metadata + dimensioni per disegnare quad/maniglie. */
+      if (!video || !overlay || vwEarly < 32 || vhEarly < 32) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
 
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      if (vw < 32 || vh < 32) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
 
       const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
       const procW = Math.max(160, Math.round(vw * scaleProc));
@@ -1022,8 +1049,15 @@ export function ReceiptLiveScanner({
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black text-white">
+  if (!portalRoot) {
+    return null;
+  }
+
+  const shell = (
+    <div
+      className="fixed inset-0 z-[200000] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black text-white"
+      style={{ isolation: "isolate" }}
+    >
       <header className="relative z-40 flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
@@ -1122,7 +1156,8 @@ export function ReceiptLiveScanner({
         <>
           {cvLoadState === "loading" ? (
             <p className="px-4 py-1 text-center text-xs text-white/50">
-              Caricamento rilevamento bordi in background… l’anteprima fotocamera è già attiva.
+              Caricamento OpenCV in background (può richiedere fino a circa un minuto su rete lenta). Il riquadro verde e
+              le maniglie bianche funzionano comunque; se resta così a lungo, al termine passerà alla modalità solo manuale.
             </p>
           ) : null}
           {cvLoadState === "failed" ? (
@@ -1143,6 +1178,7 @@ export function ReceiptLiveScanner({
                 manualQuadRef.current = false;
                 dragCornerRef.current = null;
                 smoothRef.current = null;
+                lastDetectRef.current = 0;
               }}
             >
               Segui automatico (OpenCV)
@@ -1170,4 +1206,6 @@ export function ReceiptLiveScanner({
       ) : null}
     </div>
   );
+
+  return createPortal(shell, portalRoot);
 }
