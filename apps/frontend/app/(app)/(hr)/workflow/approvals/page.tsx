@@ -1,23 +1,52 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { approveApproval, fetchApprovals, rejectApproval, type ApprovalItem } from "@/lib/api";
+import { approveApproval, fetchApprovals, fetchCurrentUser, rejectApproval, type ApprovalItem } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { subscribePostgresTable } from "@/lib/supabase-realtime";
 import { Button } from "@/components/ui/button";
+import {
+  groupHistoryByRequestDayAndType,
+  isHighPriorityPending,
+  partitionForWorkflow,
+  sortMine,
+  sortToApprove
+} from "@/lib/workflow-approval-groups";
 
 function requestTypeLabel(item: ApprovalItem): string {
   if (item.type === "leave") {
     return item.leaveKind === "rol" ? "ROL" : "Ferie annuali";
   }
-  if (item.type === "sickness") return "Malattia";
-  if (item.type === "travel") return "Trasferta";
+  if (item.type === "sickness") {
+    return "Malattia";
+  }
+  if (item.type === "travel") {
+    return "Trasferta";
+  }
+  return "Smart working";
+}
+
+function historyTypeHeading(typeKey: string): string {
+  if (typeKey === "leave:annual") {
+    return "Ferie annuali";
+  }
+  if (typeKey === "leave:rol") {
+    return "ROL";
+  }
+  if (typeKey === "sickness") {
+    return "Malattia";
+  }
+  if (typeKey === "travel") {
+    return "Trasferta";
+  }
   return "Smart working";
 }
 
 function periodLabel(item: ApprovalItem): string {
-  if (!item.startDate) return "—";
+  if (!item.startDate) {
+    return "—";
+  }
   if (item.endDate && item.endDate !== item.startDate) {
     return `${item.startDate} → ${item.endDate}`;
   }
@@ -25,10 +54,150 @@ function periodLabel(item: ApprovalItem): string {
 }
 
 function initials(name: string | undefined): string {
-  if (!name?.trim()) return "?";
+  if (!name?.trim()) {
+    return "?";
+  }
   const p = name.trim().split(/\s+/);
-  if (p.length === 1) return p[0]!.slice(0, 2).toUpperCase();
+  if (p.length === 1) {
+    return p[0]!.slice(0, 2).toUpperCase();
+  }
   return `${p[0]!.charAt(0)}${p[p.length - 1]!.charAt(0)}`.toUpperCase();
+}
+
+type RowVariant = "full" | "mine" | "history";
+
+function ApprovalRow(props: {
+  item: ApprovalItem;
+  variant: RowVariant;
+  focused: boolean;
+  rowRef?: (el: HTMLDivElement | null) => void;
+  reasons: Record<string, string>;
+  setReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}): React.JSX.Element {
+  const { item, variant, focused, rowRef, reasons, setReasons, onApprove, onReject } = props;
+  const urgent = variant !== "history" && isHighPriorityPending(item);
+  const showAvatar = variant !== "history";
+  const showMetrics = variant === "full";
+
+  const shellClass = [
+    "rounded-lg border border-[var(--prom-line)] p-4",
+    variant === "history"
+      ? "bg-[color-mix(in_srgb,var(--prom-surface-soft)_50%,transparent)]"
+      : "bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)]",
+    focused ? "ring-2 ring-[var(--prom-gold)] ring-offset-2 ring-offset-[var(--prom-surface)]" : "",
+    urgent ? "border-amber-500/70 ring-1 ring-amber-500/40" : ""
+  ].join(" ");
+
+  return (
+    <div ref={rowRef} className={shellClass}>
+      <div className="flex flex-wrap items-start gap-3">
+        {showAvatar ? (
+          item.requesterPhotoUrl ? (
+            <img src={item.requesterPhotoUrl} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+          ) : (
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-muted)_18%,transparent)] text-xs font-semibold text-[var(--prom-text)]"
+              aria-hidden
+            >
+              {initials(item.requesterName)}
+            </div>
+          )
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium text-[var(--prom-text)]">{item.requesterName ?? item.requestedBy}</p>
+            {urgent ? (
+              <span className="rounded bg-amber-200/90 px-2 py-0.5 text-xs font-medium text-amber-950 dark:bg-amber-800/80 dark:text-amber-100">
+                Priorità alta
+              </span>
+            ) : null}
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${
+                item.status === "approved"
+                  ? "bg-emerald-100/90 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200"
+                  : item.status === "rejected"
+                    ? "bg-rose-100/90 text-rose-900 dark:bg-rose-900/50 dark:text-rose-200"
+                    : "bg-[color-mix(in_srgb,var(--prom-muted)_25%,transparent)] text-[var(--prom-text)]"
+              }`}
+            >
+              {item.status}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--prom-muted)]">
+            <span className="font-medium text-[var(--prom-text)]">{requestTypeLabel(item)}</span>
+            <span className="mx-1.5 text-[var(--prom-line)]">·</span>
+            <span>{periodLabel(item)}</span>
+          </p>
+          {showMetrics && item.type === "leave" && item.leaveKind === "annual" && item.residualAnnualLeaveDays != null ? (
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Saldo ferie annuali (anno della richiesta):{" "}
+              <span className="font-medium text-[var(--prom-text)]">{item.residualAnnualLeaveDays} giorni residui</span>
+              {item.requestedCalendarDays != null ? <> · richiesta: {item.requestedCalendarDays} giorni calendario</> : null}
+            </p>
+          ) : null}
+          {showMetrics && item.type === "leave" && item.leaveKind === "rol" && item.requestedCalendarDays != null ? (
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">Richiesta ROL: {item.requestedCalendarDays} giorni calendario</p>
+          ) : null}
+          {showMetrics && item.type === "sickness" && item.requestedCalendarDays != null ? (
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">Durata: {item.requestedCalendarDays} giorni calendario</p>
+          ) : null}
+          {showMetrics && item.type === "travel" && item.requestedCalendarDays != null ? (
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Giorni calendario: {item.requestedCalendarDays} (trasferta su singola data).
+            </p>
+          ) : null}
+          {showMetrics && item.type === "smartworking" ? (
+            <p
+              className="mt-1 text-xs text-[var(--prom-muted)]"
+              title="Il conteggio settimanale usa la settimana da lunedì a domenica in UTC (può differire di un giorno rispetto al fuso locale). Contano solo richieste non rifiutate (pending o approvate), inclusa questa in valutazione."
+            >
+              Settimana della data richiesta (lun–dom,{" "}
+              <abbr
+                title="Coordinated Universal Time: il confine della settimana segue il calendario UTC, non il fuso italiano."
+                className="cursor-help underline decoration-dotted"
+              >
+                UTC
+              </abbr>
+              ):{" "}
+              <span className="font-medium text-[var(--prom-text)]">
+                {item.smartworkingWeekUsed ?? "—"} usati / {item.smartworkingWeekQuota ?? "—"} ammessi
+              </span>{" "}
+              nello smart working (pending o approvati; i rifiutati non contano). {" · "}
+              Mese (stesso criterio):{" "}
+              <span className="font-medium text-[var(--prom-text)]">
+                {item.smartworkingMonthUsed ?? "—"} / {item.smartworkingMonthQuota ?? "—"}
+              </span>{" "}
+              giorni con SW (max mensile).
+            </p>
+          ) : null}
+          {item.note ? <p className="mt-1 text-xs italic text-[var(--prom-muted)]">{item.note}</p> : null}
+          {variant === "history" ? (
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">{new Date(item.at).toLocaleString("it-CH")}</p>
+          ) : null}
+        </div>
+      </div>
+      {variant === "full" ? (
+        <>
+          <input
+            placeholder="Motivo rifiuto (opz.)"
+            value={reasons[item.id] ?? ""}
+            onChange={(e) => setReasons((r) => ({ ...r, [item.id]: e.target.value }))}
+            className="mt-3 w-full max-w-md rounded border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm text-[var(--prom-text)]"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => onApprove(item.id)}>
+              Approva
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => onReject(item.id)}>
+              Rifiuta
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 function WorkflowApprovalsContent(): React.JSX.Element {
@@ -36,6 +205,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   const focusApprovalId = searchParams.get("approvalId");
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -46,12 +216,25 @@ function WorkflowApprovalsContent(): React.JSX.Element {
     }
     setLoading(true);
     try {
-      const a = await fetchApprovals(token, "pending");
+      const [me, a] = await Promise.all([fetchCurrentUser(token), fetchApprovals(token)]);
+      setCurrentUserId(me.id);
       setApprovals(a);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const { toApprove, mine, historyGrouped } = useMemo(() => {
+    if (!currentUserId) {
+      return { toApprove: [] as ApprovalItem[], mine: [] as ApprovalItem[], historyGrouped: [] };
+    }
+    const { toApprove: rawA, mine: rawM, history } = partitionForWorkflow(approvals, currentUserId);
+    return {
+      toApprove: sortToApprove(rawA),
+      mine: sortMine(rawM),
+      historyGrouped: groupHistoryByRequestDayAndType(history)
+    };
+  }, [approvals, currentUserId]);
 
   useEffect(() => {
     void load();
@@ -97,133 +280,114 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni team</h1>
         <p className="text-sm text-[var(--prom-muted)]">
-          Ferie, ROL, malattia, smart working e trasferte in un unico flusso. Ogni riga mostra saldo ferie (fino
-          all&apos;anno della richiesta) e, per lo smart working, utilizzo per settimana e mese della data richiesta.
+          Ferie, ROL, malattia, smart working e trasferte: da approvare, le tue richieste aperte e lo storico per giorno
+          di inizio richiesta e tipologia. Priorità alta se la data richiesta è entro due giorni o è già passata.
         </p>
       </header>
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
       <section className="space-y-3">
-        {approvals.length === 0 ? (
-          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa.</p>
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Cose da approvare</h2>
+        {toApprove.length === 0 ? (
+          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa dal team.</p>
         ) : (
           <ul className="space-y-3">
-            {approvals.map((item) => {
+            {toApprove.map((item) => {
               const focused = focusApprovalId === item.id;
               return (
                 <li key={item.id}>
-                  <div
-                    ref={(el) => {
+                  <ApprovalRow
+                    item={item}
+                    variant="full"
+                    focused={focused}
+                    rowRef={(el) => {
                       rowRefs.current[item.id] = el;
                     }}
-                    className={[
-                      "rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] p-4",
-                      focused ? "ring-2 ring-[var(--prom-gold)] ring-offset-2 ring-offset-[var(--prom-surface)]" : ""
-                    ].join(" ")}
-                  >
-                    <div className="flex flex-wrap items-start gap-3">
-                      {item.requesterPhotoUrl ? (
-                        <img
-                          src={item.requesterPhotoUrl}
-                          alt=""
-                          className="h-11 w-11 shrink-0 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-muted)_18%,transparent)] text-xs font-semibold text-[var(--prom-text)]"
-                          aria-hidden
-                        >
-                          {initials(item.requesterName)}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-[var(--prom-text)]">
-                          {item.requesterName ?? item.requestedBy}
-                        </p>
-                        <p className="text-sm text-[var(--prom-muted)]">
-                          <span className="font-medium text-[var(--prom-text)]">{requestTypeLabel(item)}</span>
-                          <span className="mx-1.5 text-[var(--prom-line)]">·</span>
-                          <span>{periodLabel(item)}</span>
-                        </p>
-                        {item.type === "leave" && item.leaveKind === "annual" && item.residualAnnualLeaveDays != null ? (
-                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                            Saldo ferie annuali (anno della richiesta):{" "}
-                            <span className="font-medium text-[var(--prom-text)]">
-                              {item.residualAnnualLeaveDays} giorni residui
-                            </span>
-                            {item.requestedCalendarDays != null ? (
-                              <>
-                                {" "}
-                                · richiesta: {item.requestedCalendarDays} giorni calendario
-                              </>
-                            ) : null}
-                          </p>
-                        ) : null}
-                        {item.type === "leave" && item.leaveKind === "rol" && item.requestedCalendarDays != null ? (
-                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                            Richiesta ROL: {item.requestedCalendarDays} giorni calendario
-                          </p>
-                        ) : null}
-                        {item.type === "sickness" && item.requestedCalendarDays != null ? (
-                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                            Durata: {item.requestedCalendarDays} giorni calendario
-                          </p>
-                        ) : null}
-                        {item.type === "travel" && item.requestedCalendarDays != null ? (
-                          <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                            Giorni calendario: {item.requestedCalendarDays} (trasferta su singola data).
-                          </p>
-                        ) : null}
-                        {item.type === "smartworking" ? (
-                          <p
-                            className="mt-1 text-xs text-[var(--prom-muted)]"
-                            title="Il conteggio settimanale usa la settimana da lunedì a domenica in UTC (può differire di un giorno rispetto al fuso locale). Contano solo richieste non rifiutate (pending o approvate), inclusa questa in valutazione."
-                          >
-                            Settimana della data richiesta (lun–dom,{" "}
-                            <abbr title="Coordinated Universal Time: il confine della settimana segue il calendario UTC, non il fuso italiano." className="cursor-help underline decoration-dotted">
-                              UTC
-                            </abbr>
-                            ):{" "}
-                            <span className="font-medium text-[var(--prom-text)]">
-                              {item.smartworkingWeekUsed ?? "—"} usati / {item.smartworkingWeekQuota ?? "—"} ammessi
-                            </span>{" "}
-                            nello smart working (pending o approvati; i rifiutati non contano).
-                            {" · "}
-                            Mese (stesso criterio):{" "}
-                            <span className="font-medium text-[var(--prom-text)]">
-                              {item.smartworkingMonthUsed ?? "—"} / {item.smartworkingMonthQuota ?? "—"}
-                            </span>{" "}
-                            giorni con SW (max mensile).
-                          </p>
-                        ) : null}
-                        {item.note ? (
-                          <p className="mt-1 text-xs italic text-[var(--prom-muted)]">{item.note}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <input
-                      placeholder="Motivo rifiuto (opz.)"
-                      value={reasons[item.id] ?? ""}
-                      onChange={(e) => setReasons((r) => ({ ...r, [item.id]: e.target.value }))}
-                      className="mt-3 w-full max-w-md rounded border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm text-[var(--prom-text)]"
-                    />
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button type="button" size="sm" onClick={() => void onApproveA(item.id)}>
-                        Approva
-                      </Button>
-                      <Button type="button" size="sm" variant="secondary" onClick={() => void onRejectA(item.id)}>
-                        Rifiuta
-                      </Button>
-                    </div>
-                  </div>
+                    reasons={reasons}
+                    setReasons={setReasons}
+                    onApprove={(id) => void onApproveA(id)}
+                    onReject={(id) => void onRejectA(id)}
+                  />
                 </li>
               );
             })}
           </ul>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Cose richieste</h2>
+        <p className="text-sm text-[var(--prom-muted)]">Le tue richieste ancora in sospeso.</p>
+        {mine.length === 0 ? (
+          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta aperta da te.</p>
+        ) : (
+          <ul className="space-y-3">
+            {mine.map((item) => (
+              <li key={item.id}>
+                <ApprovalRow
+                  item={item}
+                  variant="mine"
+                  focused={focusApprovalId === item.id}
+                  rowRef={(el) => {
+                    rowRefs.current[item.id] = el;
+                  }}
+                  reasons={reasons}
+                  setReasons={setReasons}
+                  onApprove={(id) => void onApproveA(id)}
+                  onReject={(id) => void onRejectA(id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Storico</h2>
+        <p className="text-sm text-[var(--prom-muted)]">
+          Approvate e rifiutate, raggruppate per giorno di inizio richiesta e tipologia.
+        </p>
+        {historyGrouped.length === 0 ? (
+          <p className="text-sm text-[var(--prom-muted)]">Nessuno storico disponibile.</p>
+        ) : (
+          <div className="space-y-8">
+            {historyGrouped.map(({ day, typeGroups }) => (
+              <div key={day}>
+                <h3 className="border-b border-[var(--prom-line)] pb-1 text-base font-medium text-[var(--prom-text)]">
+                  {day === "—" ? "Senza data" : day}
+                </h3>
+                <div className="mt-3 space-y-6">
+                  {typeGroups.map(({ typeKey, items }) => (
+                    <div key={`${day}-${typeKey}`}>
+                      <h4 className="text-sm font-medium text-[var(--prom-muted)]">{historyTypeHeading(typeKey)}</h4>
+                      <ul className="mt-2 space-y-2">
+                        {items.map((item) => (
+                          <li key={item.id}>
+                            <ApprovalRow
+                              item={item}
+                              variant="history"
+                              focused={focusApprovalId === item.id}
+                              rowRef={(el) => {
+                                rowRefs.current[item.id] = el;
+                              }}
+                              reasons={reasons}
+                              setReasons={setReasons}
+                              onApprove={(id) => void onApproveA(id)}
+                              onReject={(id) => void onRejectA(id)}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </div>

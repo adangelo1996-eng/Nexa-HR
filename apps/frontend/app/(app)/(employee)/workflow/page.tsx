@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,18 +12,63 @@ import {
   type ApprovalItem
 } from "@/lib/api";
 import { clearSession, getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+import {
+  groupHistoryByRequestDayAndType,
+  isHighPriorityPending,
+  partitionForWorkflow,
+  sortMine,
+  sortToApprove
+} from "@/lib/workflow-approval-groups";
 
-type StatusFilter = "all" | "pending" | "approved" | "rejected";
+function requestTypeLabel(item: ApprovalItem): string {
+  if (item.type === "leave") {
+    return item.leaveKind === "rol" ? "Richiesta ROL" : "Richiesta ferie";
+  }
+  if (item.type === "sickness") {
+    return "Comunicazione malattia";
+  }
+  if (item.type === "travel") {
+    return "Trasferta";
+  }
+  return "Smart working";
+}
+
+function historyTypeHeading(typeKey: string): string {
+  if (typeKey === "leave:annual") {
+    return "Ferie annuali";
+  }
+  if (typeKey === "leave:rol") {
+    return "ROL";
+  }
+  if (typeKey === "sickness") {
+    return "Malattia";
+  }
+  if (typeKey === "travel") {
+    return "Trasferta";
+  }
+  return "Smart working";
+}
 
 export default function WorkflowPage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
-  const [filter, setFilter] = useState<StatusFilter>("pending");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const { toApprove, mine, historyGrouped } = useMemo(() => {
+    if (!user?.id) {
+      return { toApprove: [] as ApprovalItem[], mine: [] as ApprovalItem[], historyGrouped: [] };
+    }
+    const { toApprove: rawA, mine: rawM, history } = partitionForWorkflow(approvals, user.id);
+    return {
+      toApprove: sortToApprove(rawA),
+      mine: sortMine(rawM),
+      historyGrouped: groupHistoryByRequestDayAndType(history)
+    };
+  }, [approvals, user?.id]);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -41,7 +86,7 @@ export default function WorkflowPage(): React.JSX.Element {
           router.replace("/");
           return;
         }
-        const list = await fetchApprovals(tokenValue, "pending");
+        const list = await fetchApprovals(tokenValue);
         setUser(me);
         setApprovals(list);
       } catch (loadError) {
@@ -56,11 +101,11 @@ export default function WorkflowPage(): React.JSX.Element {
     void load();
   }, [router]);
 
-  async function refresh(selectedFilter: StatusFilter = filter): Promise<void> {
+  async function refresh(): Promise<void> {
     if (!token) {
       return;
     }
-    const list = await fetchApprovals(token, selectedFilter === "all" ? undefined : selectedFilter);
+    const list = await fetchApprovals(token);
     setApprovals(list);
   }
 
@@ -84,9 +129,74 @@ export default function WorkflowPage(): React.JSX.Element {
     }
   }
 
-  async function onFilterChange(nextFilter: StatusFilter): Promise<void> {
-    setFilter(nextFilter);
-    await refresh(nextFilter);
+  function renderCard(
+    item: ApprovalItem,
+    opts: { showActions: boolean; showPriority: boolean; compact?: boolean }
+  ): React.JSX.Element {
+    const urgent = opts.showPriority && isHighPriorityPending(item);
+    return (
+      <article
+        className={`rounded-lg border p-3 dark:border-slate-700 ${
+          urgent
+            ? "border-amber-400 bg-amber-50/80 dark:border-amber-600/60 dark:bg-amber-950/25"
+            : "border-slate-200 dark:border-slate-700"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-medium text-slate-900 dark:text-slate-100">{requestTypeLabel(item)}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {urgent ? (
+              <span className="rounded bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-950 dark:bg-amber-800/80 dark:text-amber-100">
+                Priorità alta
+              </span>
+            ) : null}
+            <span
+              className={`rounded px-2 py-1 text-xs ${
+                item.status === "approved"
+                  ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200"
+                  : item.status === "rejected"
+                    ? "bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-200"
+                    : "bg-slate-200 text-slate-800 dark:bg-[#2a3f4d]/70 dark:text-[#c5dde8]"
+              }`}
+            >
+              {item.status}
+            </span>
+          </div>
+        </div>
+        {!opts.compact ? (
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+            Richiedente: {item.requesterName ?? item.requestedBy}
+          </p>
+        ) : null}
+        {item.startDate ? (
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            Periodo: {item.startDate}
+            {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
+          </p>
+        ) : null}
+        <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</p>
+        {opts.showActions ? (
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => void onAction(item.id, "approve")}
+              disabled={busyId === item.id}
+              className="bg-emerald-400 text-slate-900 hover:bg-emerald-300"
+            >
+              Approva
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void onAction(item.id, "reject")}
+              disabled={busyId === item.id}
+              className="bg-rose-300 text-slate-900 hover:bg-rose-200"
+            >
+              Nega
+            </Button>
+          </div>
+        ) : null}
+      </article>
+    );
   }
 
   if (loading) {
@@ -111,82 +221,75 @@ export default function WorkflowPage(): React.JSX.Element {
         </Link>
       </header>
 
-      <section className="card">
-        <div className="flex flex-wrap gap-2">
-          {(["all", "pending", "approved", "rejected"] as const).map((item) => (
-            <Button
-              key={item}
-              variant={filter === item ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => void onFilterChange(item)}
-            >
-              {item}
-            </Button>
-          ))}
-        </div>
-        <div className="mt-4 space-y-3">
-          {approvals.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna autorizzazione disponibile.</p>
-          ) : null}
-          {approvals.map((item) => (
-            <article key={item.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {item.type === "leave"
-                    ? item.leaveKind === "rol"
-                      ? "Richiesta ROL"
-                      : "Richiesta ferie"
-                    : item.type === "sickness"
-                      ? "Comunicazione malattia"
-                      : "Smart working"}
-                </p>
-                <span
-                  className={`rounded px-2 py-1 text-xs ${
-                    item.status === "approved"
-                      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200"
-                      : item.status === "rejected"
-                        ? "bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-200"
-                        : "bg-slate-200 text-slate-800 dark:bg-[#2a3f4d]/70 dark:text-[#c5dde8]"
-                  }`}
-                >
-                  {item.status}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                Richiedente: {item.requesterName ?? item.requestedBy}
-              </p>
-              {item.startDate ? (
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  Periodo: {item.startDate}
-                  {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
-                </p>
-              ) : null}
-              <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</p>
-              {item.status === "pending" ? (
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => void onAction(item.id, "approve")}
-                    disabled={busyId === item.id}
-                    className="bg-emerald-400 text-slate-900 hover:bg-emerald-300"
-                  >
-                    Approva
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => void onAction(item.id, "reject")}
-                    disabled={busyId === item.id}
-                    className="bg-rose-300 text-slate-900 hover:bg-rose-200"
-                  >
-                    Nega
-                  </Button>
+      <div className="space-y-10">
+        <section className="card">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Cose da approvare</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Richieste del team in attesa della tua decisione. Priorità alta se la data richiesta è entro due giorni o
+            è già passata.
+          </p>
+          <div className="mt-4 space-y-3">
+            {toApprove.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta in attesa.</p>
+            ) : (
+              toApprove.map((item) => (
+                <Fragment key={item.id}>{renderCard(item, { showActions: true, showPriority: true })}</Fragment>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="card">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Cose richieste</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Le tue richieste ancora in sospeso.</p>
+          <div className="mt-4 space-y-3">
+            {mine.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta aperta da te.</p>
+            ) : (
+              mine.map((item) => (
+                <Fragment key={item.id}>{renderCard(item, { showActions: false, showPriority: true, compact: true })}</Fragment>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="card">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Approvate e rifiutate, raggruppate per giorno di inizio richiesta e tipologia.
+          </p>
+          <div className="mt-4 space-y-8">
+            {historyGrouped.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">Nessuno storico disponibile.</p>
+            ) : (
+              historyGrouped.map(({ day, typeGroups }) => (
+                <div key={day}>
+                  <h3 className="border-b border-slate-200 pb-1 text-base font-medium text-slate-800 dark:border-slate-600 dark:text-slate-200">
+                    {day === "—" ? "Senza data" : day}
+                  </h3>
+                  <div className="mt-3 space-y-6">
+                    {typeGroups.map(({ typeKey, items }) => (
+                      <div key={`${day}-${typeKey}`}>
+                        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {historyTypeHeading(typeKey)}
+                        </h4>
+                        <div className="mt-2 space-y-2">
+                          {items.map((item) => (
+                            <Fragment key={item.id}>
+                              {renderCard(item, { showActions: false, showPriority: false, compact: true })}
+                            </Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
-        {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
-      </section>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+      {error ? <p className="mt-6 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
     </main>
   );
 }
