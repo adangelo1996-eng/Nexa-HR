@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
 import { ExpenseReceiptCropDialog } from "@/components/expense-receipt-crop-dialog";
+import { ReceiptLiveScanner } from "@/components/receipt-live-scanner";
 import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
 import { guessAmountEurStringFromReceiptOcr } from "@/lib/expense-ocr";
 import { getToken } from "@/lib/auth-session";
@@ -28,6 +29,23 @@ function base64ToBlob(base64: string, mime: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = (): void => {
+      const r = reader.result;
+      if (typeof r !== "string") {
+        reject(new Error("readAsDataURL fallito"));
+        return;
+      }
+      const comma = r.indexOf(",");
+      resolve(comma >= 0 ? r.slice(comma + 1) : r);
+    };
+    reader.onerror = (): void => reject(reader.error ?? new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function ExpensesPage(): React.JSX.Element {
   const [items, setItems] = useState<ExpenseClaimDto[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +56,7 @@ export default function ExpensesPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [receiptMime, setReceiptMime] = useState<"image/jpeg" | "image/png" | "image/webp" | null>(null);
@@ -177,6 +196,24 @@ export default function ExpensesPage(): React.JSX.Element {
         }}
       />
 
+      <ReceiptLiveScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onCapture={(blob) => {
+          void (async (): Promise<void> => {
+            try {
+              const b64 = await blobToBase64(blob);
+              setReceiptBase64(b64);
+              setReceiptMime("image/jpeg");
+              setScannerOpen(false);
+              void runOcrOnReceipt(b64, "image/jpeg");
+            } catch {
+              setError("Lettura immagine dalla fotocamera fallita");
+            }
+          })();
+        }}
+      />
+
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Note spese</h1>
         <Link
@@ -194,17 +231,27 @@ export default function ExpensesPage(): React.JSX.Element {
           crittografico) a fini di tracciabilità. Per adeguamenti normativi (es. conservazione sostitutiva) integrare con
           il DMS aziendale.
         </p>
-        <label className="block text-xs text-slate-500 dark:text-slate-400">
-          Scontrino — foto o scansione
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
+        <div className="space-y-2">
+          <label className="block text-xs text-slate-500 dark:text-slate-400">
+            Scontrino — foto o scansione
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={ocrBusy}
+              className="mt-1 block w-full text-sm"
+              onChange={(ev) => onFileChosen(ev.target.files?.[0] ?? null)}
+            />
+          </label>
+          <button
+            type="button"
             disabled={ocrBusy}
-            className="mt-1 block w-full text-sm"
-            onChange={(ev) => onFileChosen(ev.target.files?.[0] ?? null)}
-          />
-        </label>
+            onClick={() => setScannerOpen(true)}
+            className="w-full rounded border border-synapse-gold/40 bg-synapse-gold/15 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-synapse-gold/25 disabled:opacity-50 dark:border-synapse-gold/30 dark:text-white"
+          >
+            Scansiona con fotocamera (rettangolo dinamico)
+          </button>
+        </div>
         {receiptBase64 ? (
           <p className="text-xs text-emerald-600 dark:text-emerald-400">
             Scansione pronta per l&apos;invio. Puoi cambiare foto per sostituirla.
