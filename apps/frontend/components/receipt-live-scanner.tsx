@@ -54,6 +54,81 @@ async function acquireCameraStream(): Promise<MediaStream> {
   }
 }
 
+/**
+ * Collega lo stream al video e avvia la riproduzione. Su mobile il `<video>` deve essere già nel DOM
+ * prima di `getUserMedia`; `play()` a volte non basta finché non arrivano frame — aspettiamo eventi + timeout.
+ */
+async function attachStreamAndPlayVideo(video: HTMLVideoElement, stream: MediaStream): Promise<void> {
+  video.srcObject = stream;
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+
+  try {
+    await video.play();
+  } catch {
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await video.play();
+  }
+
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("loadeddata", onLoaded);
+      video.removeEventListener("loadedmetadata", onMeta);
+      video.removeEventListener("error", onError);
+    };
+    const resolveOk = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const rejectFail = (err: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const onPlaying = (): void => resolveOk();
+    const onLoaded = (): void => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        resolveOk();
+      }
+    };
+    const onMeta = (): void => {
+      if (video.videoWidth > 0 && video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        resolveOk();
+      }
+    };
+    const onError = (): void => rejectFail(new Error("video_error"));
+
+    const timer = window.setTimeout(() => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        resolveOk();
+      } else {
+        rejectFail(new Error("play_timeout"));
+      }
+    }, 12000);
+
+    video.addEventListener("playing", onPlaying, { once: true });
+    video.addEventListener("loadeddata", onLoaded, { once: true });
+    video.addEventListener("loadedmetadata", onMeta, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
 function formatGetUserMediaError(err: unknown): string {
   if (err instanceof Error && err.message === NO_GET_USER_MEDIA) {
     return "Questo browser non espone getUserMedia (fotocamera). Aggiorna il browser o usa Carica foto.";
@@ -423,35 +498,45 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         }
         streamRef.current = stream;
         const v = videoRef.current;
-        if (v) {
-          v.srcObject = stream;
-          try {
-            await v.play();
-          } catch {
-            await new Promise<void>((r) => {
-              requestAnimationFrame(() => r());
-            });
-            try {
-              await v.play();
-            } catch (playErr) {
-              stream.getTracks().forEach((t) => t.stop());
-              streamRef.current = null;
-              v.srcObject = null;
-              if (!cancelled) {
-                const pn =
-                  playErr && typeof playErr === "object" && "name" in playErr
-                    ? String((playErr as { name: string }).name)
-                    : "";
-                setErrorMsg(
-                  pn === "NotAllowedError"
-                    ? "Riproduzione video bloccata dal browser. Tocca Riprova o interagisci con la pagina, poi riapri lo scanner."
-                    : "Impossibile avviare l’anteprima video. Tocca Riprova."
-                );
-                setPhase("error");
-              }
-              return;
-            }
+        if (!v) {
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          if (!cancelled) {
+            setErrorMsg(
+              "Anteprima video non inizializzata. Chiudi e riapri lo scanner, poi riprova."
+            );
+            setPhase("error");
+            setCvLoadState("idle");
           }
+          return;
+        }
+        try {
+          await attachStreamAndPlayVideo(v, stream);
+        } catch (playErr) {
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          v.srcObject = null;
+          if (!cancelled) {
+            const msg = playErr instanceof Error ? playErr.message : "";
+            const pn =
+              playErr && typeof playErr === "object" && "name" in playErr
+                ? String((playErr as { name: string }).name)
+                : "";
+            if (msg === "play_timeout") {
+              setErrorMsg(
+                "L’anteprima della fotocamera non si è avviata in tempo. Tocca Riprova, assicurati che nessun’altra app usi la camera e che la connessione sia stabile."
+              );
+            } else if (pn === "NotAllowedError") {
+              setErrorMsg(
+                "Riproduzione video bloccata dal browser. Tocca Riprova o interagisci con la pagina, poi riapri lo scanner."
+              );
+            } else {
+              setErrorMsg("Impossibile avviare l’anteprima video. Tocca Riprova.");
+            }
+            setPhase("error");
+            setCvLoadState("idle");
+          }
+          return;
         }
       } catch (camErr) {
         if (!cancelled) {
@@ -672,57 +757,82 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         </button>
       </header>
 
-      {phase === "starting" || phase === "idle" ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/70">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-          {cvProgress || "Preparazione…"}
-        </div>
-      ) : null}
-
-      {phase === "error" ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <p className="max-w-md text-sm text-red-300">{errorMsg}</p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-              onClick={() => {
-                setErrorMsg(null);
-                setPhase("idle");
-                setCameraRetryNonce((n) => n + 1);
-              }}
-            >
-              Riprova fotocamera
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
-              onClick={onClose}
-            >
-              Chiudi
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {phase === "camera" ? (
-        <>
-          <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black p-2">
-            <div className="relative inline-block max-h-full max-w-full overflow-hidden rounded-lg border border-white/10">
-              <video
-                ref={videoRef}
-                className="block max-h-[min(72vh,920px)] w-auto max-w-full"
-                autoPlay
-                playsInline
-                muted
-              />
+      {/*
+        Il <video> deve restare nel DOM durante "starting"/"idle": altrimenti videoRef è null,
+        lo stream non si collega e su molti mobile getUserMedia non completa bene senza elemento video.
+      */}
+      <div className="relative flex min-h-0 flex-1 flex-col bg-black">
+        <div
+          className={
+            phase === "camera"
+              ? "relative flex min-h-0 flex-1 items-center justify-center p-2"
+              : "pointer-events-none absolute left-0 top-0 z-[1] h-[2px] w-[2px] overflow-hidden opacity-[0.01]"
+          }
+        >
+          <div
+            className={
+              phase === "camera"
+                ? "relative inline-block max-h-full max-w-full overflow-hidden rounded-lg border border-white/10"
+                : "relative block h-[2px] w-[2px]"
+            }
+          >
+            <video
+              ref={videoRef}
+              className={
+                phase === "camera"
+                  ? "block max-h-[min(72vh,920px)] w-auto max-w-full"
+                  : "block h-[2px] min-h-[2px] w-[2px] min-w-[2px] object-cover"
+              }
+              autoPlay
+              playsInline
+              muted
+            />
+            {phase === "camera" ? (
               <canvas
                 ref={overlayRef}
                 className="pointer-events-none absolute left-0 top-0"
                 aria-hidden
               />
+            ) : null}
+          </div>
+        </div>
+
+        {phase === "starting" || phase === "idle" ? (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black px-6 text-center text-sm text-white/70">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+            {cvProgress || "Preparazione…"}
+          </div>
+        ) : null}
+
+        {phase === "error" ? (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black px-6 text-center">
+            <p className="max-w-md text-sm text-red-300">{errorMsg}</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+                onClick={() => {
+                  setErrorMsg(null);
+                  setPhase("idle");
+                  setCameraRetryNonce((n) => n + 1);
+                }}
+              >
+                Riprova fotocamera
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+                onClick={onClose}
+              >
+                Chiudi
+              </button>
             </div>
           </div>
+        ) : null}
+      </div>
+
+      {phase === "camera" ? (
+        <>
           {cvLoadState === "loading" ? (
             <p className="px-4 py-1 text-center text-xs text-white/50">
               Caricamento rilevamento bordi in background… la fotocamera è già attiva.
