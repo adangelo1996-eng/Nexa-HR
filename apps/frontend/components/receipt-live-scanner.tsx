@@ -11,13 +11,14 @@ const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
 
-/** OpenCV sul main thread: mai dentro requestAnimationFrame (blocca la pagina). */
-const CV_DETECT_INTERVAL_MS_DESKTOP = 950;
-const CV_DETECT_INTERVAL_MS_TOUCH = 1300;
-const CV_PROC_MAX_DESKTOP = 300;
-const CV_PROC_MAX_TOUCH = 240;
+/**
+ * OpenCV solo al momento della cattura (frame fermo), mai in anteprima live.
+ * Risoluzione ridotta per limitare il tempo sul main thread.
+ */
+const CV_SNAPSHOT_PROC_MAX_DESKTOP = 280;
+const CV_SNAPSHOT_PROC_MAX_TOUCH = 220;
 /** Limite contorni analizzati con approxPolyDP (il costo è qui). */
-const CV_MAX_CONTOURS_TO_SCAN = 42;
+const CV_MAX_CONTOURS_TO_SCAN = 36;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -268,16 +269,6 @@ function orderQuadPoints(pts: Point[]): [Point, Point, Point, Point] {
   return [tl, tr, br, bl];
 }
 
-function smoothQuad(prev: Point[] | null, next: Point[], alpha: number): Point[] {
-  if (!prev || prev.length !== 4) {
-    return next;
-  }
-  return next.map((p, i) => ({
-    x: prev[i]!.x * alpha + p.x * (1 - alpha),
-    y: prev[i]!.y * alpha + p.y * (1 - alpha)
-  }));
-}
-
 /** Estrae 4 vertici da approxPolyDP (layout variabile in OpenCV.js). */
 function extractQuadFromApproxMat(approx: {
   rows: number;
@@ -319,10 +310,10 @@ function extractQuadFromApproxMat(approx: {
   return null;
 }
 
-/** Rileva il più grande quadrilatero convesso (probabile scontrino) su frame ridimensionato. */
-function findReceiptQuad(
+/** Rileva quadrilatero su fotogramma già catturato (canvas pieno risoluzione o video). */
+function findReceiptQuadFromSource(
   cv: OpenCvRuntime,
-  video: HTMLVideoElement,
+  source: HTMLCanvasElement | HTMLVideoElement,
   procW: number,
   procH: number
 ): Point[] | null {
@@ -330,10 +321,17 @@ function findReceiptQuad(
   canvas.width = procW;
   canvas.height = procH;
   const ctx = canvas.getContext("2d");
-  if (!ctx || video.readyState < 2) {
+  if (!ctx) {
     return null;
   }
-  ctx.drawImage(video, 0, 0, procW, procH);
+  if (source instanceof HTMLVideoElement) {
+    if (source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || source.videoWidth < 32) {
+      return null;
+    }
+  } else if (source.width < 32 || source.height < 32) {
+    return null;
+  }
+  ctx.drawImage(source, 0, 0, procW, procH);
 
   const src = cv.imread(canvas);
   const gray = new cv.Mat();
@@ -555,21 +553,16 @@ export function ReceiptLiveScanner({
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const cvRef = useRef<OpenCvRuntime | null>(null);
-  const smoothRef = useRef<Point[] | null>(null);
   const rafRef = useRef<number>(0);
-  /** Rilevamento OpenCV on-demand / su intervallo (mai nel loop rAF). */
-  const detectRunnerRef = useRef<(() => void) | null>(null);
   const quadVideoRef = useRef<Point[] | null>(null);
   /** Indice vertice 0–3 trascinato dall’utente, o null. */
   const dragCornerRef = useRef<number | null>(null);
-  /** Sospende smoothing CV mentre si muove una maniglia. */
+  /** Utente ha spostato le maniglie: non sovrascrivere il quad finché non centra di nuovo. */
   const manualQuadRef = useRef(false);
 
   const [phase, setPhase] = useState<"idle" | "starting" | "camera" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cvProgress, setCvProgress] = useState<string>("");
-  const [cvLoadState, setCvLoadState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const [capturing, setCapturing] = useState(false);
   /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
@@ -597,9 +590,7 @@ export function ReceiptLiveScanner({
       stopCamera();
       setPhase("idle");
       setErrorMsg(null);
-      smoothRef.current = null;
       quadVideoRef.current = null;
-      setCvLoadState("idle");
       setCameraRetryNonce(0);
       setCapturing(false);
       dragCornerRef.current = null;
@@ -619,8 +610,6 @@ export function ReceiptLiveScanner({
       setPhase("starting");
       setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
-      setCvLoadState("loading");
-      cvRef.current = null;
       manualQuadRef.current = false;
       dragCornerRef.current = null;
 
@@ -629,7 +618,6 @@ export function ReceiptLiveScanner({
         if (!cancelled) {
           setErrorMsg(insecureHint);
           setPhase("error");
-          setCvLoadState("idle");
         }
         return;
       }
@@ -650,7 +638,6 @@ export function ReceiptLiveScanner({
               "Anteprima video non inizializzata. Chiudi e riapri lo scanner, poi riprova."
             );
             setPhase("error");
-            setCvLoadState("idle");
           }
           return;
         }
@@ -678,7 +665,6 @@ export function ReceiptLiveScanner({
               setErrorMsg("Impossibile avviare l’anteprima video. Tocca Riprova.");
             }
             setPhase("error");
-            setCvLoadState("idle");
           }
           return;
         }
@@ -694,26 +680,9 @@ export function ReceiptLiveScanner({
         return;
       }
 
-      /* Mostra subito l’anteprima: OpenCV può richiedere decine di secondi su mobile e non deve bloccare getUserMedia/play. */
+      /* Anteprima leggera: niente OpenCV finché non tocchi Cattura (evita freeze del main thread). */
       setPhase("camera");
       setCvProgress("");
-
-      const CV_LOAD_RACE_MS = 75_000;
-      void withTimeout(loadOpenCv(), CV_LOAD_RACE_MS, "OpenCV: timeout caricamento")
-        .then((cv) => {
-          if (cancelled) {
-            return;
-          }
-          cvRef.current = cv;
-          setCvLoadState("ready");
-        })
-        .catch(() => {
-          if (cancelled) {
-            return;
-          }
-          cvRef.current = null;
-          setCvLoadState("failed");
-        });
     }
 
     void start();
@@ -781,7 +750,6 @@ export function ReceiptLiveScanner({
 
       if (!quadVideoRef.current) {
         quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.1);
-        smoothRef.current = quadVideoRef.current;
       }
 
       layoutOverlay();
@@ -833,67 +801,6 @@ export function ReceiptLiveScanner({
     };
   }, [open, phase, layoutOverlay]);
 
-  useEffect(() => {
-    if (!open || phase !== "camera") {
-      detectRunnerRef.current = null;
-      return;
-    }
-
-    function runDetect(): void {
-      if (manualQuadRef.current || dragCornerRef.current !== null) {
-        return;
-      }
-      const cv = cvRef.current;
-      const video = videoRef.current;
-      if (!cv || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        return;
-      }
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (vw < 32 || vh < 32) {
-        return;
-      }
-      const coarse =
-        typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-      const procMax = coarse ? CV_PROC_MAX_TOUCH : CV_PROC_MAX_DESKTOP;
-      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
-      const procW = Math.max(120, Math.round(vw * scaleProc));
-      const procH = Math.max(120, Math.round(vh * scaleProc));
-      try {
-        const procPts = findReceiptQuad(cv, video, procW, procH);
-        if (procPts) {
-          const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
-          if (!manualQuadRef.current) {
-            smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
-            quadVideoRef.current = smoothRef.current;
-          }
-        } else if (!manualQuadRef.current) {
-          quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
-          smoothRef.current = quadVideoRef.current;
-        }
-      } catch {
-        if (!manualQuadRef.current) {
-          quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
-          smoothRef.current = quadVideoRef.current;
-        }
-      }
-    }
-
-    detectRunnerRef.current = runDetect;
-
-    const coarse =
-      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-    const ms = coarse ? CV_DETECT_INTERVAL_MS_TOUCH : CV_DETECT_INTERVAL_MS_DESKTOP;
-    const id = window.setInterval(runDetect, ms);
-    const firstTid = window.setTimeout(runDetect, 250);
-
-    return () => {
-      window.clearInterval(id);
-      window.clearTimeout(firstTid);
-      detectRunnerRef.current = null;
-    };
-  }, [open, phase]);
-
   const handleOverlayPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const overlay = overlayRef.current;
     const video = videoRef.current;
@@ -943,7 +850,6 @@ export function ReceiptLiveScanner({
       const next = clampVideoPt(displayToVideoPt({ x: mmx, y: mmy }, map), map.vw, map.vh, 8);
       const base = quadVideoRef.current ?? fallbackCenterQuad(map.vw, map.vh, 0.1);
       quadVideoRef.current = base.map((p, i) => (i === idx ? next : p));
-      smoothRef.current = quadVideoRef.current;
       ev.preventDefault();
     };
 
@@ -982,6 +888,9 @@ export function ReceiptLiveScanner({
 
     setCapturing(true);
     try {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
       const ok = await waitUntilVideoReadyForCapture(video);
       if (!ok) {
         setErrorMsg("Il video non è ancora pronto. Attendi un secondo e riprova.");
@@ -1020,7 +929,8 @@ export function ReceiptLiveScanner({
         return;
       }
 
-      const quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
+      let quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
+      const userAdjustedCorners = manualQuadRef.current;
 
       const tryFinalize = async (blob: Blob): Promise<boolean> => {
         if (blob.size < MIN_CAPTURE_BLOB_BYTES) {
@@ -1031,25 +941,43 @@ export function ReceiptLiveScanner({
         return true;
       };
 
-      let cv = cvRef.current;
+      const coarse =
+        typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+      const procMax = coarse ? CV_SNAPSHOT_PROC_MAX_TOUCH : CV_SNAPSHOT_PROC_MAX_DESKTOP;
+      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
+      const procW = Math.max(96, Math.round(vw * scaleProc));
+      const procH = Math.max(96, Math.round(vh * scaleProc));
+
+      let cv: OpenCvRuntime | null = null;
+      try {
+        cv = await withTimeout(loadOpenCv(), 60_000, "OpenCV: timeout");
+      } catch {
+        cv = null;
+      }
+
+      if (cv && !userAdjustedCorners) {
+        try {
+          const procPts = findReceiptQuadFromSource(cv, cap, procW, procH);
+          if (procPts) {
+            quad = mapProcToVideo(procPts, vw, vh, procW, procH);
+          }
+        } catch {
+          /* mantieni quad predefinito / centro */
+        }
+      }
+
       if (!cv) {
         try {
-          cv = await loadOpenCv();
-          cvRef.current = cv;
-          setCvLoadState("ready");
-        } catch {
-          try {
-            const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-            if (!(await tryFinalize(blob))) {
-              setErrorMsg("Immagine catturata troppo piccola o vuota. Riprova.");
-            }
-          } catch {
-            setErrorMsg(
-              "OpenCV non disponibile e ritaglio fallito. Controlla la connessione o usa Carica foto."
-            );
+          const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+          if (!(await tryFinalize(blob))) {
+            setErrorMsg("Immagine catturata troppo piccola o vuota. Riprova.");
           }
-          return;
+        } catch {
+          setErrorMsg(
+            "OpenCV non disponibile e ritaglio fallito. Controlla la connessione o usa Carica foto."
+          );
         }
+        return;
       }
 
       try {
@@ -1094,8 +1022,8 @@ export function ReceiptLiveScanner({
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
             {variant === "page"
-              ? "Schermata dedicata alla scansione in tempo reale. Inquadra lo scontrino: il rettangolo segue i bordi quando OpenCV è attivo. Trascina i punti bianchi per correggere."
-              : "Inquadra lo scontrino: il rettangolo segue i bordi (OpenCV). Trascina i punti bianchi per correggere manualmente. Tocca \"Segui automatico\" per tornare al rilevamento continuo."}
+              ? "Inquadra lo scontrino e, se serve, sposta i quattro punti bianchi. Il bordo si adatta automaticamente allo scontrino solo al momento della cattura (non in anteprima)."
+              : "Inquadra lo scontrino; puoi regolare i punti bianchi. Alla cattura viene applicato il rilevamento bordi sulla foto ferma."}
           </p>
         </div>
         <button
@@ -1185,18 +1113,10 @@ export function ReceiptLiveScanner({
 
       {phase === "camera" ? (
         <>
-          {cvLoadState === "loading" ? (
-            <p className="px-4 py-1 text-center text-xs text-white/50">
-              Caricamento OpenCV in background (può richiedere fino a circa un minuto su rete lenta). Il riquadro verde e
-              le maniglie bianche funzionano comunque; se resta così a lungo, al termine passerà alla modalità solo manuale.
-            </p>
-          ) : null}
-          {cvLoadState === "failed" ? (
-            <p className="px-4 py-1 text-center text-xs text-amber-300/90">
-              Rilevamento automatico non disponibile (rete o blocco script). Trascina i quattro punti bianchi sull’angolo
-              dello scontrino, poi cattura: verrà applicato un ritaglio rettangolare.
-            </p>
-          ) : null}
+          <p className="px-4 py-1 text-center text-xs text-white/45">
+            Anteprima leggera: il rilevamento automatico parte solo dopo &quot;Cattura scontrino&quot; (pochi secondi di
+            elaborazione possibili).
+          </p>
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
           <footer
             ref={footerRef}
@@ -1206,15 +1126,15 @@ export function ReceiptLiveScanner({
               type="button"
               className="touch-manipulation text-xs text-white/60 underline decoration-white/30 underline-offset-2 hover:text-white/90"
               onClick={() => {
+                const vid = videoRef.current;
                 manualQuadRef.current = false;
                 dragCornerRef.current = null;
-                smoothRef.current = null;
-                window.setTimeout(() => {
-                  detectRunnerRef.current?.();
-                }, 0);
+                if (vid && vid.videoWidth >= 32 && vid.videoHeight >= 32) {
+                  quadVideoRef.current = fallbackCenterQuad(vid.videoWidth, vid.videoHeight, 0.1);
+                }
               }}
             >
-              Segui automatico (OpenCV)
+              Centra riquadro
             </button>
             <div className="flex flex-wrap justify-center gap-3">
               <button
@@ -1231,7 +1151,7 @@ export function ReceiptLiveScanner({
                 disabled={capturing}
                 onClick={() => void handleCapture()}
               >
-                {capturing ? "Elaborazione…" : "Cattura scontrino"}
+                {capturing ? "Elaborazione foto…" : "Cattura scontrino"}
               </button>
             </div>
           </footer>
