@@ -10,6 +10,24 @@ const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
 
+// #region agent log
+function dbgScanner(ev: string, hypothesisId: string, data: Record<string, unknown> = {}): void {
+  fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "647b89" },
+    body: JSON.stringify({
+      sessionId: "647b89",
+      hypothesisId,
+      location: "receipt-live-scanner.tsx:start",
+      message: ev,
+      data,
+      timestamp: Date.now(),
+      runId: "camera-first"
+    })
+  }).catch(() => {});
+}
+// #endregion
+
 /** Mapping object-fit: cover — stesso calcolo per overlay e per hit-test maniglie. */
 function getObjectCoverMapping(video: HTMLVideoElement): {
   vw: number;
@@ -566,6 +584,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
     let cancelled = false;
 
     async function start(): Promise<void> {
+      dbgScanner("start_begin", "H4", { cancelled });
       setPhase("starting");
       setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
@@ -576,6 +595,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       const insecureHint = secureCameraContextMessage();
       if (insecureHint) {
+        dbgScanner("blocked_insecure_context", "H5", {});
         if (!cancelled) {
           setErrorMsg(insecureHint);
           setPhase("error");
@@ -585,14 +605,18 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
 
       try {
+        dbgScanner("getUserMedia_before", "H2", {});
         const stream = await acquireCameraStream();
+        dbgScanner("getUserMedia_ok", "H2", { tracks: stream.getTracks().length });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
+          dbgScanner("cancelled_after_gum", "H4", {});
           return;
         }
         streamRef.current = stream;
         const v = videoRef.current;
         if (!v) {
+          dbgScanner("video_ref_null", "H4", {});
           stream.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
           if (!cancelled) {
@@ -605,8 +629,18 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           return;
         }
         try {
+          dbgScanner("attach_play_before", "H3", {});
           await attachStreamAndPlayVideo(v, stream);
+          dbgScanner("attach_play_ok", "H3", {
+            readyState: v.readyState,
+            videoWidth: v.videoWidth,
+            videoHeight: v.videoHeight
+          });
         } catch (playErr) {
+          dbgScanner("attach_play_err", "H3", {
+            name: playErr instanceof Error ? playErr.name : "?",
+            message: playErr instanceof Error ? playErr.message : String(playErr)
+          });
           stream.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
           v.srcObject = null;
@@ -633,6 +667,10 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           return;
         }
       } catch (camErr) {
+        dbgScanner("getUserMedia_err", "H2", {
+          name: camErr instanceof Error ? camErr.name : "?",
+          message: camErr instanceof Error ? camErr.message : String(camErr)
+        });
         if (!cancelled) {
           setErrorMsg(formatGetUserMediaError(camErr));
           setPhase("error");
@@ -641,29 +679,32 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
 
       if (cancelled) {
+        dbgScanner("cancelled_before_camera_phase", "H4", {});
         return;
       }
 
-      setCvProgress("Caricamento rilevamento bordi (OpenCV)…");
-      try {
-        const cv = await loadOpenCv();
-        if (cancelled) {
-          return;
-        }
-        cvRef.current = cv;
-        setCvLoadState("ready");
-      } catch {
-        if (!cancelled) {
-          cvRef.current = null;
-          setCvLoadState("failed");
-        }
-      }
-
-      if (cancelled) {
-        return;
-      }
+      /* Mostra subito l’anteprima: OpenCV può richiedere decine di secondi su mobile e non deve bloccare getUserMedia/play. */
+      dbgScanner("setPhase_camera_immediate", "H1", {});
       setPhase("camera");
       setCvProgress("");
+
+      void loadOpenCv()
+        .then((cv) => {
+          dbgScanner("opencv_loaded", "H1", { ok: true });
+          if (cancelled) {
+            return;
+          }
+          cvRef.current = cv;
+          setCvLoadState("ready");
+        })
+        .catch(() => {
+          dbgScanner("opencv_failed", "H1", { ok: false });
+          if (cancelled) {
+            return;
+          }
+          cvRef.current = null;
+          setCvLoadState("failed");
+        });
     }
 
     void start();
@@ -1102,6 +1143,11 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       {phase === "camera" ? (
         <>
+          {cvLoadState === "loading" ? (
+            <p className="px-4 py-1 text-center text-xs text-white/50">
+              Caricamento rilevamento bordi in background… l’anteprima fotocamera è già attiva.
+            </p>
+          ) : null}
           {cvLoadState === "failed" ? (
             <p className="px-4 py-1 text-center text-xs text-amber-300/90">
               Rilevamento automatico non disponibile (rete o blocco script). Trascina i quattro punti bianchi sull’angolo
