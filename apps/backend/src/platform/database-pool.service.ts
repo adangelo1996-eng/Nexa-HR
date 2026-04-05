@@ -3,7 +3,7 @@ import { Pool, type PoolClient } from "pg";
 
 /**
  * Pool Postgres diretto (URI Supabase) per transazioni multi-statement.
- * Opzionale: se `DATABASE_URL` manca, il pool non è disponibile.
+ * Usa `DATABASE_URL` oppure, in assenza, `SUPABASE_DB_URL` (stesso URI usato da `supabase-remote-push` su Render).
  */
 @Injectable()
 export class DatabasePoolService implements OnModuleDestroy {
@@ -11,7 +11,9 @@ export class DatabasePoolService implements OnModuleDestroy {
   private readonly pool: Pool | null;
 
   constructor() {
-    const url = process.env.DATABASE_URL?.trim();
+    const url =
+      process.env.DATABASE_URL?.trim() ||
+      process.env.SUPABASE_DB_URL?.trim();
     this.pool = url ? new Pool({ connectionString: url, max: 8, idleTimeoutMillis: 30_000 }) : null;
     if (this.pool) {
       this.logger.log("Pool Postgres diretto inizializzato (transazioni import)");
@@ -28,7 +30,9 @@ export class DatabasePoolService implements OnModuleDestroy {
 
   async withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
     if (!this.pool) {
-      throw new InternalServerErrorException("DATABASE_URL non configurato");
+      throw new InternalServerErrorException(
+        "URI Postgres non configurato: impostare DATABASE_URL o SUPABASE_DB_URL (session mode consigliato, porta 5432)"
+      );
     }
     const client = await this.pool.connect();
     try {

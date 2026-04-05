@@ -13,6 +13,11 @@ const labelById = new Map(
   [...ADMIN_EXPORT_FIELD_CATALOG, ...ADMIN_EMPLOYEE_EXCEL_EXTRA_FIELDS].map((x) => [x.id, x.label] as const)
 );
 
+/** ExcelJS `xlsx.load` typings expect a legacy Buffer shape; Node 22 uses `Buffer<ArrayBufferLike>`. */
+function loadXlsxBuffer(wb: ExcelJS.Workbook, data: Buffer): Promise<void> {
+  return wb.xlsx.load(data as never);
+}
+
 function fillCompleteNewUserRow(sheet: ExcelJS.Worksheet, rowNum: number): void {
   const data: Record<string, string | number> = {
     email: "import.test.user@nexa-hr.example.com",
@@ -62,7 +67,7 @@ describe("AdminEmployeeExcelService", () => {
     const svc = new AdminEmployeeExcelService(store, pool);
     const buf = await svc.buildNewUsersTemplate("u-admin", 4);
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await loadXlsxBuffer(wb, buf);
     assert.ok(wb.getWorksheet("Export"));
     assert.ok(wb.getWorksheet("CentriDiCosto"));
     assert.ok(wb.getWorksheet("Team"));
@@ -87,7 +92,7 @@ describe("AdminEmployeeExcelService", () => {
     const svc = new AdminEmployeeExcelService(store, pool);
     const bufTwo = await svc.buildNewUsersTemplate("u-admin", 2);
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(bufTwo);
+    await loadXlsxBuffer(wb, bufTwo);
     const exp = wb.getWorksheet("Export")!;
     fillCompleteNewUserRow(exp, 2);
     fillCompleteNewUserRow(exp, 3);
@@ -98,7 +103,7 @@ describe("AdminEmployeeExcelService", () => {
 
     const bufOne = await svc.buildNewUsersTemplate("u-admin", 1);
     const wb2 = new ExcelJS.Workbook();
-    await wb2.xlsx.load(bufOne);
+    await loadXlsxBuffer(wb2, bufOne);
     const exp2 = wb2.getWorksheet("Export")!;
     fillCompleteNewUserRow(exp2, 2);
     const goodBuf = Buffer.from(await wb2.xlsx.writeBuffer());
@@ -139,7 +144,7 @@ describe("AdminEmployeeExcelService", () => {
     const svc = new AdminEmployeeExcelService(store, pool);
     const buf = await svc.buildNewUsersTemplate("u-admin", 2);
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await loadXlsxBuffer(wb, buf);
     const exp = wb.getWorksheet("Export")!;
     fillCompleteNewUserRow(exp, 2);
     exp.getRow(2).getCell(EMPLOYEE_EXCEL_IMPORT_FIELD_IDS.indexOf("email") + 1).value =

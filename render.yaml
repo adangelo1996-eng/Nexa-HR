@@ -43,8 +43,11 @@ services:
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
-      # Opzionale: applica infra/supabase/migrations prima del build (Transaction/Direct URI dal dashboard).
+      # Opzionale ma consigliata: URI Postgres session mode (5432) per migrazioni in build e, a runtime, pool transazioni import Excel (stesso valore se non imposti DATABASE_URL).
       - key: SUPABASE_DB_URL
+        sync: false
+      # Opzionale: sovrascrive solo il pool import se diversa dalla stringa migrazioni (raro).
+      - key: DATABASE_URL
         sync: false
       - key: APP_SSO_SHARED_KEY
         sync: false

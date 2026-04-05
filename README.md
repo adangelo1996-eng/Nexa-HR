@@ -113,13 +113,14 @@ Dopo il deploy, allinea `CORS_ORIGIN` (backend) e `NEXT_PUBLIC_API_BASE_URL` (fr
 1. **Repository** — commit e push su `main` (stesso remote collegato a Render).
 2. **Frontend online** — da [Render Blueprint](render.yaml) aggiungi il servizio `nexa-hr-frontend`, oppure deploy di `apps/frontend` su Vercel.
 3. **Variabili frontend** — `NEXT_PUBLIC_API_BASE_URL` = URL pubblico del backend (es. `https://nexa-hr-backend.onrender.com`). Opzionale: `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` se usi funzionalità che leggono Supabase dal browser.
-4. **Variabili backend** — `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` già necessarie per il DB; `CORS_ORIGIN` = URL del frontend (lista separata da virgole se hai più origini). Nota: in sviluppo il backend accetta anche origini `*.onrender.com` e `*.vercel.app` oltre a `localhost` (vedi `main.ts`).
+4. **Variabili backend** — `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` già necessarie per il DB; `CORS_ORIGIN` = URL del frontend (lista separata da virgole se hai più origini). Per migrazioni in build e import Excel in transazione: imposta **`SUPABASE_DB_URL`** (URI Postgres session mode 5432); opzionale **`DATABASE_URL`** se vuoi separarla (vedi [`BACKEND_RENDER_DEPLOY.md`](docs/deploy/BACKEND_RENDER_DEPLOY.md)). Nota: in sviluppo il backend accetta anche origini `*.onrender.com` e `*.vercel.app` oltre a `localhost` (vedi `main.ts`).
 5. **Smoke test** — apri il frontend, login con le credenziali demo, prova dashboard e una chiamata API (es. timbratura).
 
 ## Checklist operativa (Render + Supabase)
 
 - **Health check (frontend)** — Se `nexa-hr-frontend` è stato creato manualmente o via API, in [Render Dashboard](https://dashboard.render.com) apri il servizio → **Settings** → **Health Checks** e imposta **Health Check Path** su `/health` (risposta JSON da `apps/frontend/app/health/route.ts`). I servizi creati dal [blueprint `render.yaml`](render.yaml) hanno già questo valore.
 - **RLS e sicurezza DB** — Leggi [SUPABASE_RLS.md](docs/deploy/SUPABASE_RLS.md): i dati HR passano dal backend Nest con **service_role**; non esporre mai la service role al browser.
+- **Supabase Dashboard** — *Database → Advisors* per lint sicurezza/prestazioni (es. policy RLS, indici). Correggere in priorità gli avvisi **WARN**; molti **INFO** (FK senza indice, tabelle con RLS senza policy lato client) sono attesi se l’accesso dati è solo via service role.
 
 ## Deploy frontend su Vercel (opzionale)
 

@@ -291,7 +291,7 @@ export class AdminEmployeeExcelService {
 
     if (!this.dbPool.isConfigured()) {
       throw new BadRequestException(
-        "Import transazionale: configurare DATABASE_URL con la connection string PostgreSQL del progetto Supabase (URI, utente postgres, SSL). Senza di essa il batch non può essere applicato in un’unica transazione."
+        "Import transazionale: configurare DATABASE_URL oppure SUPABASE_DB_URL con la connection string PostgreSQL del progetto Supabase (session mode, porta 5432). Su Render di solito è già presente SUPABASE_DB_URL per le migrazioni in build."
       );
     }
 

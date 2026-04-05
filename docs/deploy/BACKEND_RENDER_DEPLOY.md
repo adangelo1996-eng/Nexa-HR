@@ -121,6 +121,14 @@ Nel servizio backend, **Environment Variables**:
 | `AUTH_SHARED_PASSWORD` | Opzionale: password legacy condivisa (default `Synapse2026`). |
 | `SUPABASE_URL` | URL progetto Supabase. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo server-side. |
+| `SUPABASE_ANON_KEY` | Opzionale: per `verifySupabasePassword` senza usare la service role sul client di sign-in. |
+| `SUPABASE_DB_URL` | Opzionale ma **consigliata** su Render: URI Postgres in **session mode** (porta **5432**, da *Settings → Database*). Serve al build (`supabase-remote-push.mjs --optional`) e, se `DATABASE_URL` è vuota, al **pool transazioni** dell’import Excel dipendenti. |
+| `DATABASE_URL` | Opzionale: stesso tipo di URI se vuoi una variabile dedicata solo al pool import (altrimenti basta `SUPABASE_DB_URL`). |
+
+### Verifica deploy Render
+
+- Dashboard: [Render](https://dashboard.render.com) → servizio `nexa-hr-backend` / `nexa-hr-frontend` → **Events** / **Logs** per ultimo deploy e errori di build.
+- Il plugin **Render MCP** in Cursor richiede workspace autenticato: se `list_services` risponde *unauthorized*, riapri le integrazioni MCP / account Render e seleziona il workspace corretto (non automatizzabile dal repo).
 
 ---
 
@@ -185,6 +193,7 @@ Per una definizione dichiarativa di due servizi sulla stessa piattaforma Render,
 | Health check backend | Sì: `GET /` → JSON (prima del prefisso `/api`) |
 | CORS: pattern `*.onrender.com` + `CORS_ORIGIN` esplicito consigliato | Sì (`main.ts`); imposta `CORS_ORIGIN` con l’URL **https** del frontend Render |
 | Supabase: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` solo backend | In `render.yaml` come `sync: false` |
+| Postgres URI per migrazioni build + import Excel transazionale | `SUPABASE_DB_URL` (e opz. `DATABASE_URL`) in `render.yaml` come `sync: false` |
 | Frontend: `NEXT_PUBLIC_SUPABASE_*` + `NEXT_PUBLIC_API_BASE_URL` (URL backend **senza** `/api`) | In `render.yaml` come `sync: false` |
 | Password demo login (`AUTH_*_PASSWORD`) se usi utenti seed | Opzionali; in blueprint come `sync: false` — valorizza al primo setup se servono |
 
