@@ -18,6 +18,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Upload,
   User,
   UserCog,
   Wallet2,
@@ -68,6 +69,7 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/payroll-hebb", label: "Hebb - Payroll" },
   { href: "/admin", label: "Admin" },
   { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
+  { href: "/admin/data-import" as Route, label: "Import Excel dipendenti" },
   { href: "/insights", label: "People insights" },
   { href: "/scheduling", label: "Turni" },
   { href: "/work-calendar", label: "Calendario lavoro" },
@@ -151,7 +153,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
     if (!sessionCanNexaAdmin(user ?? undefined)) {
       routes = routes.filter(
-        (r) => r.href !== "/admin" && r.href !== ("/admin/data-export" as Route)
+        (r) =>
+          r.href !== "/admin" &&
+          r.href !== ("/admin/data-export" as Route) &&
+          r.href !== ("/admin/data-import" as Route)
       );
     }
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
@@ -258,6 +263,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
               >
                 <FileText className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
                 Export Excel
+              </Link>
+              <Link
+                href={"/admin/data-import" as Route}
+                onClick={() => setMobileOpen(false)}
+                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                  pathname.startsWith("/admin/data-import")
+                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+                }`}
+              >
+                <Upload className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                Import Excel
               </Link>
             </>
           ) : null}

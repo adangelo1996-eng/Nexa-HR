@@ -1424,6 +1424,81 @@ export async function downloadAdminExportXlsx(
   URL.revokeObjectURL(url);
 }
 
+export type EmployeeExcelPreviewRow = {
+  row: number;
+  action: "create" | "update";
+  userLabel: string;
+  changes: string[];
+};
+
+export type EmployeeExcelValidateResponse = {
+  errors: ImportCellError[];
+  preview: EmployeeExcelPreviewRow[];
+};
+
+export type EmployeeExcelApplyResponse = {
+  applied: number;
+  created: number;
+  updated: number;
+  log: string[];
+  errors: ImportCellError[];
+};
+
+export async function downloadEmployeeExcelNewUsersTemplate(
+  token: string,
+  rows: number = 5
+): Promise<void> {
+  const req = new URL(buildApiUrl("/admin/employee-excel/new-users-template"));
+  req.searchParams.set("rows", String(Math.min(200, Math.max(1, rows))));
+  const response = await fetch(req.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "nexa-hr-template-nuovi-dipendenti.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function validateEmployeeExcel(
+  token: string,
+  file: File
+): Promise<EmployeeExcelValidateResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(buildApiUrl("/admin/employee-excel/validate"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as EmployeeExcelValidateResponse;
+}
+
+export async function applyEmployeeExcel(
+  token: string,
+  file: File
+): Promise<EmployeeExcelApplyResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(buildApiUrl("/admin/employee-excel/apply"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as EmployeeExcelApplyResponse;
+}
+
 export async function fetchPayrollCompetenceUnlock(
   token: string,
   period: string

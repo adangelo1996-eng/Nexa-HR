@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,9 +7,13 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   StreamableFile,
-  UseGuards
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import ExcelJS from "exceljs";
 import { Transform } from "class-transformer";
 import { IsArray, IsIn, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
@@ -23,6 +28,10 @@ import {
 import { NexaPermissionGuard, RequireNexaPermissions } from "./nexa-permission.guard";
 import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
 import { ADMIN_EXPORT_FIELD_CATALOG } from "./admin-export.catalog";
+import {
+  AdminEmployeeExcelService,
+  EMPLOYEE_EXCEL_MAX_BYTES
+} from "./admin-employee-excel.service";
 
 class CreateRoleDto {
   @IsString()
@@ -166,10 +175,15 @@ class UpdateCostCenterDto {
   payrollDefaultInailPermille?: number | null;
 }
 
+const ADMIN_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 @Controller("admin")
 @UseGuards(RoleGuard, NexaPermissionGuard, SynapseAdminConsoleGuard)
 export class AdminController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly employeeExcel: AdminEmployeeExcelService
+  ) {}
 
   @Get("permission-catalog")
   @RequireNexaPermissions("nexa.admin_roles:read")
@@ -294,7 +308,77 @@ export class AdminController {
     const buf = Buffer.from(await wb.xlsx.writeBuffer());
     return new StreamableFile(buf, {
       disposition: 'attachment; filename="nexa-hr-export-dipendenti.xlsx"',
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      type: ADMIN_XLSX_MIME
+    });
+  }
+
+  @Get("employee-excel/new-users-template")
+  @RequireNexaPermissions("nexa.admin_users:read")
+  async employeeExcelNewUsersTemplate(
+    @CurrentAuth() auth: { userId: string },
+    @Query("rows") rowsRaw?: string
+  ): Promise<StreamableFile> {
+    const rows = rowsRaw ? Number.parseInt(rowsRaw, 10) : 5;
+    const buf = await this.employeeExcel.buildNewUsersTemplate(auth.userId, Number.isFinite(rows) ? rows : 5);
+    return new StreamableFile(buf, {
+      disposition: 'attachment; filename="nexa-hr-template-nuovi-dipendenti.xlsx"',
+      type: ADMIN_XLSX_MIME
+    });
+  }
+
+  @Post("employee-excel/validate")
+  @RequireNexaPermissions("nexa.admin_users:read")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: EMPLOYEE_EXCEL_MAX_BYTES }
+    })
+  )
+  async employeeExcelValidate(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentAuth() auth: { userId: string }
+  ): Promise<unknown> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("File mancante");
+    }
+    if (
+      file.mimetype !== ADMIN_XLSX_MIME &&
+      !String(file.originalname ?? "")
+        .toLowerCase()
+        .endsWith(".xlsx")
+    ) {
+      throw new BadRequestException("Tipo file non consentito (solo .xlsx)");
+    }
+    this.employeeExcel.assertXlsxMagic(file.buffer);
+    return this.employeeExcel.validateWorkbook(file.buffer, auth.userId);
+  }
+
+  @Post("employee-excel/apply")
+  @RequireNexaPermissions("nexa.admin_users:write")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: EMPLOYEE_EXCEL_MAX_BYTES }
+    })
+  )
+  async employeeExcelApply(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentAuth() auth: { userId: string }
+  ): Promise<unknown> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("File mancante");
+    }
+    if (
+      file.mimetype !== ADMIN_XLSX_MIME &&
+      !String(file.originalname ?? "")
+        .toLowerCase()
+        .endsWith(".xlsx")
+    ) {
+      throw new BadRequestException("Tipo file non consentito (solo .xlsx)");
+    }
+    this.employeeExcel.assertXlsxMagic(file.buffer);
+    const actorUser = await this.store.getUser(auth.userId);
+    return this.employeeExcel.applyWorkbook(file.buffer, auth.userId, {
+      userId: auth.userId,
+      email: actorUser.email
     });
   }
 }

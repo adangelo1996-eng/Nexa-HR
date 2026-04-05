@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -153,9 +154,14 @@ export default function AdminDataExportPage(): React.JSX.Element | null {
             variabili correlate.
           </p>
         </div>
-        <Link href="/admin" className="synapse-nav-link text-sm">
-          Torna ad Admin
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link href={"/admin/data-import" as Route} className="synapse-nav-link text-sm">
+            Import Excel dipendenti
+          </Link>
+          <Link href="/admin" className="synapse-nav-link text-sm">
+            Torna ad Admin
+          </Link>
+        </div>
       </div>
 
       <GlassCard className="p-4">

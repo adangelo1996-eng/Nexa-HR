@@ -16,6 +16,21 @@ export const ADMIN_EXPORT_VARIABLE_FIELD_IDS = new Set([
   "approvedExpenseReimbursementEuro"
 ]);
 
+/** Colonne solo lettura nel foglio export (non si applicano a DB da import Excel dipendenti). */
+export const ADMIN_EMPLOYEE_EXCEL_READONLY_IDS = new Set<string>([
+  ...ADMIN_EXPORT_VARIABLE_FIELD_IDS,
+  "competencePeriod"
+]);
+
+/**
+ * Colonne extra per creazione utenti da template (non incluse nell’export standard).
+ * Devono avere `label` univoco rispetto a `ADMIN_EXPORT_FIELD_CATALOG`.
+ */
+export const ADMIN_EMPLOYEE_EXCEL_EXTRA_FIELDS: AdminExportFieldDefinition[] = [
+  { id: "roleId", label: "ID ruolo organizzativo" },
+  { id: "platformRole", label: "Ruolo piattaforma (superuser/user)" }
+];
+
 export const ADMIN_EXPORT_FIELD_CATALOG: AdminExportFieldDefinition[] = [
   { id: "userId", label: "ID utente" },
   { id: "email", label: "Email" },

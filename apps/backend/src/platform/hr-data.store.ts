@@ -7156,6 +7156,46 @@ export class HrDataStore {
     return { columnIds: fields, columns, rows };
   }
 
+  /** Elimina utente creato durante import massivo, in caso di rollback batch. */
+  async deleteUserForBatchRollback(userId: string): Promise<void> {
+    const id = userId.trim();
+    if (!id) {
+      return;
+    }
+    if (!this.useDb) {
+      const i = this.users.findIndex((u) => u.id === id);
+      if (i >= 0) {
+        this.users.splice(i, 1);
+      }
+      return;
+    }
+    const { error } = await this.supabase!.from("users").delete().eq("id", id);
+    if (error) {
+      throw new InternalServerErrorException(`Eliminazione utente (rollback import): ${error.message}`);
+    }
+  }
+
+  /** Ripristina riga utente dopo fallimento apply (snapshot da lettura pre-update). */
+  async restoreUserSnapshot(userId: string, snapshot: User): Promise<void> {
+    const id = userId.trim();
+    if (!id) {
+      return;
+    }
+    const payload = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    if (!this.useDb) {
+      const i = this.users.findIndex((u) => u.id === id);
+      if (i >= 0) {
+        const restored = { ...(payload as unknown as User), role: coercePlatformRole((payload as { role?: string }).role) };
+        this.users[i] = restored;
+      }
+      return;
+    }
+    const { error } = await this.supabase!.from("users").update(payload).eq("id", id);
+    if (error) {
+      throw new InternalServerErrorException(`Ripristino utente (rollback import): ${error.message}`);
+    }
+  }
+
   private mapImportEventRows(data: Record<string, unknown>[]): NexaImportEventRow[] {
     const rows = data as Record<string, unknown>[];
     return rows.map((r) => ({
