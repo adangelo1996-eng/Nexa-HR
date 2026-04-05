@@ -10,29 +10,6 @@ const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
 
-// #region agent log
-function dbgScanner(
-  ev: string,
-  hypothesisId: string,
-  data: Record<string, unknown> = {},
-  location = "receipt-live-scanner.tsx:start"
-): void {
-  fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "647b89" },
-    body: JSON.stringify({
-      sessionId: "647b89",
-      hypothesisId,
-      location,
-      message: ev,
-      data,
-      timestamp: Date.now(),
-      runId: "mobile-layout-v2"
-    })
-  }).catch(() => {});
-}
-// #endregion
-
 /** Mapping object-fit: cover — stesso calcolo per overlay e per hit-test maniglie. */
 function getObjectCoverMapping(video: HTMLVideoElement): {
   vw: number;
@@ -347,7 +324,7 @@ function findReceiptQuad(
     cv.Canny(blurred, edges, 40, 120);
 
     const frameArea = procW * procH;
-    const minA = frameArea * 0.06;
+    const minA = frameArea * 0.045;
     const maxA = frameArea * 0.92;
 
     cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
@@ -364,7 +341,7 @@ function findReceiptQuad(
       }
       const peri = cv.arcLength(c, true);
       const approx = new cv.Mat();
-      cv.approxPolyDP(c, approx, 0.035 * peri, true);
+      cv.approxPolyDP(c, approx, 0.048 * peri, true);
       c.delete();
 
       if (!cv.isContourConvex(approx)) {
@@ -537,10 +514,17 @@ export type ReceiptLiveScannerProps = {
   open: boolean;
   onClose: () => void;
   /** Immagine rettificata (JPEG) pronta per OCR / invio. */
-  onCapture: (blob: Blob) => void;
+  onCapture: (blob: Blob) => void | Promise<void>;
+  /** `page`: schermata dedicata (stile lettore documenti); `modal`: overlay sopra il form. */
+  variant?: "modal" | "page";
 };
 
-export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScannerProps): React.JSX.Element | null {
+export function ReceiptLiveScanner({
+  open,
+  onClose,
+  onCapture,
+  variant = "modal"
+}: ReceiptLiveScannerProps): React.JSX.Element | null {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -562,7 +546,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
   const footerRef = useRef<HTMLElement | null>(null);
-  const lastDbgDetectRef = useRef(0);
+  /** Cleanup listener document-level per drag maniglie (evita setPointerCapture su iOS). */
+  const docDragCleanupRef = useRef<(() => void) | null>(null);
 
   const stopCamera = useCallback((): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -585,13 +570,14 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       setCapturing(false);
       dragCornerRef.current = null;
       manualQuadRef.current = false;
+      docDragCleanupRef.current?.();
+      docDragCleanupRef.current = null;
       return;
     }
 
     let cancelled = false;
 
     async function start(): Promise<void> {
-      dbgScanner("start_begin", "H4", { cancelled });
       setPhase("starting");
       setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
@@ -602,7 +588,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       const insecureHint = secureCameraContextMessage();
       if (insecureHint) {
-        dbgScanner("blocked_insecure_context", "H5", {});
         if (!cancelled) {
           setErrorMsg(insecureHint);
           setPhase("error");
@@ -612,18 +597,14 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
 
       try {
-        dbgScanner("getUserMedia_before", "H2", {});
         const stream = await acquireCameraStream();
-        dbgScanner("getUserMedia_ok", "H2", { tracks: stream.getTracks().length });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
-          dbgScanner("cancelled_after_gum", "H4", {});
           return;
         }
         streamRef.current = stream;
         const v = videoRef.current;
         if (!v) {
-          dbgScanner("video_ref_null", "H4", {});
           stream.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
           if (!cancelled) {
@@ -636,18 +617,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           return;
         }
         try {
-          dbgScanner("attach_play_before", "H3", {});
           await attachStreamAndPlayVideo(v, stream);
-          dbgScanner("attach_play_ok", "H3", {
-            readyState: v.readyState,
-            videoWidth: v.videoWidth,
-            videoHeight: v.videoHeight
-          });
         } catch (playErr) {
-          dbgScanner("attach_play_err", "H3", {
-            name: playErr instanceof Error ? playErr.name : "?",
-            message: playErr instanceof Error ? playErr.message : String(playErr)
-          });
           stream.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
           v.srcObject = null;
@@ -674,10 +645,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           return;
         }
       } catch (camErr) {
-        dbgScanner("getUserMedia_err", "H2", {
-          name: camErr instanceof Error ? camErr.name : "?",
-          message: camErr instanceof Error ? camErr.message : String(camErr)
-        });
         if (!cancelled) {
           setErrorMsg(formatGetUserMediaError(camErr));
           setPhase("error");
@@ -686,18 +653,15 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
 
       if (cancelled) {
-        dbgScanner("cancelled_before_camera_phase", "H4", {});
         return;
       }
 
       /* Mostra subito l’anteprima: OpenCV può richiedere decine di secondi su mobile e non deve bloccare getUserMedia/play. */
-      dbgScanner("setPhase_camera_immediate", "H1", {});
       setPhase("camera");
       setCvProgress("");
 
       void loadOpenCv()
         .then((cv) => {
-          dbgScanner("opencv_loaded", "H1", { ok: true });
           if (cancelled) {
             return;
           }
@@ -705,7 +669,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           setCvLoadState("ready");
         })
         .catch(() => {
-          dbgScanner("opencv_failed", "H1", { ok: false });
           if (cancelled) {
             return;
           }
@@ -718,6 +681,9 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
     return () => {
       cancelled = true;
+      docDragCleanupRef.current?.();
+      docDragCleanupRef.current = null;
+      dragCornerRef.current = null;
       stopCamera();
     };
   }, [open, stopCamera, cameraRetryNonce]);
@@ -795,16 +761,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         if (cv) {
           try {
             const procPts = findReceiptQuad(cv, video, procW, procH);
-            const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
-            if (nowMs - lastDbgDetectRef.current > 2600) {
-              lastDbgDetectRef.current = nowMs;
-              dbgScanner(
-                "detect_sample",
-                "R1",
-                { foundQuad: !!procPts, manualQuad: manualQuadRef.current, procW, procH },
-                "receipt-live-scanner.tsx:tick"
-              );
-            }
             if (procPts) {
               const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
               if (!manualQuadRef.current) {
@@ -880,29 +836,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
     };
   }, [open, phase, layoutOverlay]);
 
-  useEffect(() => {
-    if (!open || phase !== "camera") {
-      return;
-    }
-    const id = window.setInterval(() => {
-      const footer = footerRef.current?.getBoundingClientRect();
-      const ih = window.innerHeight;
-      dbgScanner(
-        "layout_footer_metrics",
-        "B1",
-        {
-          innerHeight: ih,
-          footerTop: footer?.top ?? null,
-          footerBottom: footer?.bottom ?? null,
-          footerOffscreen: footer ? footer.bottom > ih + 1 : null,
-          headerChiudiVisible: true
-        },
-        "receipt-live-scanner.tsx:layout"
-      );
-    }, 2800);
-    return () => window.clearInterval(id);
-  }, [open, phase]);
-
   const handleOverlayPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const overlay = overlayRef.current;
     const video = videoRef.current;
@@ -928,49 +861,55 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       return;
     }
     e.preventDefault();
-    e.stopPropagation();
+    docDragCleanupRef.current?.();
+    docDragCleanupRef.current = null;
+
+    const pointerId = e.pointerId;
     dragCornerRef.current = hit;
     manualQuadRef.current = true;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+
+    const onMove = (ev: PointerEvent): void => {
+      if (ev.pointerId !== pointerId || dragCornerRef.current === null) {
+        return;
+      }
+      const ov = overlayRef.current;
+      const vid = videoRef.current;
+      if (!ov || !vid) {
+        return;
+      }
+      const r = ov.getBoundingClientRect();
+      const mmx = ev.clientX - r.left;
+      const mmy = ev.clientY - r.top;
+      const map = getObjectCoverMapping(vid);
+      const idx = dragCornerRef.current;
+      const next = clampVideoPt(displayToVideoPt({ x: mmx, y: mmy }, map), map.vw, map.vh, 8);
+      const base = quadVideoRef.current ?? fallbackCenterQuad(map.vw, map.vh, 0.1);
+      quadVideoRef.current = base.map((p, i) => (i === idx ? next : p));
+      smoothRef.current = quadVideoRef.current;
+      ev.preventDefault();
+    };
+
+    const onEnd = (ev: PointerEvent): void => {
+      if (ev.pointerId !== pointerId) {
+        return;
+      }
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
+      docDragCleanupRef.current = null;
+      dragCornerRef.current = null;
+    };
+
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onEnd);
+    document.addEventListener("pointercancel", onEnd);
+
+    docDragCleanupRef.current = (): void => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
+    };
   }, [phase]);
-
-  const handleOverlayPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (dragCornerRef.current === null) {
-      return;
-    }
-    const overlay = overlayRef.current;
-    const video = videoRef.current;
-    if (!overlay || !video) {
-      return;
-    }
-    const rect = overlay.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const m = getObjectCoverMapping(video);
-    const idx = dragCornerRef.current;
-    const next = clampVideoPt(displayToVideoPt({ x: mx, y: my }, m), m.vw, m.vh, 8);
-    const base = quadVideoRef.current ?? fallbackCenterQuad(m.vw, m.vh, 0.1);
-    const q = base.map((p, i) => (i === idx ? next : p));
-    quadVideoRef.current = q;
-    smoothRef.current = q;
-    e.preventDefault();
-  }, []);
-
-  const handleOverlayPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (dragCornerRef.current === null) {
-      return;
-    }
-    dragCornerRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   const handleCapture = useCallback(async () => {
     if (capturing) {
@@ -1025,11 +964,11 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       const quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
 
-      const tryFinalize = (blob: Blob): boolean => {
+      const tryFinalize = async (blob: Blob): Promise<boolean> => {
         if (blob.size < MIN_CAPTURE_BLOB_BYTES) {
           return false;
         }
-        onCapture(blob);
+        await Promise.resolve(onCapture(blob));
         onClose();
         return true;
       };
@@ -1043,7 +982,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         } catch {
           try {
             const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-            if (!tryFinalize(blob)) {
+            if (!(await tryFinalize(blob))) {
               setErrorMsg("Immagine catturata troppo piccola o vuota. Riprova.");
             }
           } catch {
@@ -1057,7 +996,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       try {
         const blob = await warpQuadToBlob(cv, cap, quad, "image/jpeg");
-        if (tryFinalize(blob)) {
+        if (await tryFinalize(blob)) {
           return;
         }
       } catch {
@@ -1065,7 +1004,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       }
       try {
         const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-        if (tryFinalize(blob)) {
+        if (await tryFinalize(blob)) {
           return;
         }
         setErrorMsg(
@@ -1084,13 +1023,14 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black text-white">
+    <div className="fixed inset-0 z-[9999] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black text-white">
       <header className="relative z-40 flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
-            Inquadra lo scontrino: il rettangolo segue i bordi (OpenCV). Trascina i punti bianchi per correggere
-            manualmente. Tocca &quot;Segui automatico&quot; per tornare al rilevamento continuo.
+            {variant === "page"
+              ? "Schermata dedicata alla scansione in tempo reale. Inquadra lo scontrino: il rettangolo segue i bordi quando OpenCV è attivo. Trascina i punti bianchi per correggere."
+              : "Inquadra lo scontrino: il rettangolo segue i bordi (OpenCV). Trascina i punti bianchi per correggere manualmente. Tocca \"Segui automatico\" per tornare al rilevamento continuo."}
           </p>
         </div>
         <button
@@ -1098,7 +1038,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           className="touch-manipulation rounded-lg border border-white/20 px-3 py-1.5 text-sm hover:bg-white/10"
           onClick={onClose}
         >
-          Chiudi
+          {variant === "page" ? "Indietro" : "Chiudi"}
         </button>
       </header>
 
@@ -1139,13 +1079,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
                 style={{ touchAction: "none" }}
                 aria-hidden
                 onPointerDown={handleOverlayPointerDown}
-                onPointerMove={handleOverlayPointerMove}
-                onPointerUp={handleOverlayPointerUp}
-                onPointerCancel={handleOverlayPointerUp}
-                onLostPointerCapture={() => {
-                  dragCornerRef.current = null;
-                  dbgScanner("lost_pointer_capture", "B2", {}, "receipt-live-scanner.tsx:pointer");
-                }}
               />
             ) : null}
           </div>
