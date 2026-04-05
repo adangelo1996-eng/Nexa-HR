@@ -54,6 +54,8 @@ export type OpenCvRuntime = {
   Scalar: new (v0: number, v1: number, v2: number, v3: number) => unknown;
   COLOR_RGBA2GRAY: number;
   RETR_LIST: number;
+  /** Contorni esterni soltanto — molto meno lavoro di RETR_LIST per findContours. */
+  RETR_EXTERNAL: number;
   CHAIN_APPROX_SIMPLE: number;
   CV_32FC2: number;
   INTER_LINEAR: number;

@@ -11,6 +11,14 @@ const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
 
+/** OpenCV sul main thread: mai dentro requestAnimationFrame (blocca la pagina). */
+const CV_DETECT_INTERVAL_MS_DESKTOP = 950;
+const CV_DETECT_INTERVAL_MS_TOUCH = 1300;
+const CV_PROC_MAX_DESKTOP = 300;
+const CV_PROC_MAX_TOUCH = 240;
+/** Limite contorni analizzati con approxPolyDP (il costo è qui). */
+const CV_MAX_CONTOURS_TO_SCAN = 42;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = window.setTimeout(() => reject(new Error(label)), ms);
@@ -336,20 +344,22 @@ function findReceiptQuad(
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    const ksize = new cv.Size(5, 5);
+    const ksize = new cv.Size(3, 3);
     cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
-    cv.Canny(blurred, edges, 40, 120);
+    cv.Canny(blurred, edges, 48, 128);
 
     const frameArea = procW * procH;
     const minA = frameArea * 0.045;
     const maxA = frameArea * 0.92;
 
-    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
     let best: Point[] | null = null;
     let bestArea = 0;
 
-    for (let i = 0; i < contours.size(); i++) {
+    const total = contours.size();
+    const cap = Math.min(total, CV_MAX_CONTOURS_TO_SCAN);
+    for (let i = 0; i < cap; i++) {
       const c = contours.get(i);
       const area = cv.contourArea(c);
       if (area < minA || area > maxA) {
@@ -548,7 +558,8 @@ export function ReceiptLiveScanner({
   const cvRef = useRef<OpenCvRuntime | null>(null);
   const smoothRef = useRef<Point[] | null>(null);
   const rafRef = useRef<number>(0);
-  const lastDetectRef = useRef(0);
+  /** Rilevamento OpenCV on-demand / su intervallo (mai nel loop rAF). */
+  const detectRunnerRef = useRef<(() => void) | null>(null);
   const quadVideoRef = useRef<Point[] | null>(null);
   /** Indice vertice 0–3 trascinato dall’utente, o null. */
   const dragCornerRef = useRef<number | null>(null);
@@ -750,17 +761,8 @@ export function ReceiptLiveScanner({
     if (!open || phase !== "camera") {
       return;
     }
-    const v = videoRef.current;
-    if (!v) {
-      return;
-    }
 
-    const coarsePointer =
-      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-    const detectEveryMs = coarsePointer ? 220 : 130;
-    const procMax = coarsePointer ? 360 : 400;
-
-    const tick = (now: number): void => {
+    const tick = (): void => {
       if (!open || phase !== "camera") {
         return;
       }
@@ -776,38 +778,6 @@ export function ReceiptLiveScanner({
 
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-
-      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
-      const procW = Math.max(160, Math.round(vw * scaleProc));
-      const procH = Math.max(160, Math.round(vh * scaleProc));
-
-      const dragging = dragCornerRef.current !== null;
-      if (!dragging && now - lastDetectRef.current > detectEveryMs) {
-        lastDetectRef.current = now;
-        const cv = cvRef.current;
-        if (cv) {
-          try {
-            const procPts = findReceiptQuad(cv, video, procW, procH);
-            if (procPts) {
-              const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
-              if (!manualQuadRef.current) {
-                smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
-                quadVideoRef.current = smoothRef.current;
-              }
-            } else if (!manualQuadRef.current) {
-              quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
-              smoothRef.current = quadVideoRef.current;
-            }
-          } catch {
-            if (!manualQuadRef.current) {
-              quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
-            }
-          }
-        } else if (!manualQuadRef.current) {
-          quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
-          smoothRef.current = quadVideoRef.current;
-        }
-      }
 
       if (!quadVideoRef.current) {
         quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.1);
@@ -862,6 +832,67 @@ export function ReceiptLiveScanner({
       }
     };
   }, [open, phase, layoutOverlay]);
+
+  useEffect(() => {
+    if (!open || phase !== "camera") {
+      detectRunnerRef.current = null;
+      return;
+    }
+
+    function runDetect(): void {
+      if (manualQuadRef.current || dragCornerRef.current !== null) {
+        return;
+      }
+      const cv = cvRef.current;
+      const video = videoRef.current;
+      if (!cv || !video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw < 32 || vh < 32) {
+        return;
+      }
+      const coarse =
+        typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+      const procMax = coarse ? CV_PROC_MAX_TOUCH : CV_PROC_MAX_DESKTOP;
+      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
+      const procW = Math.max(120, Math.round(vw * scaleProc));
+      const procH = Math.max(120, Math.round(vh * scaleProc));
+      try {
+        const procPts = findReceiptQuad(cv, video, procW, procH);
+        if (procPts) {
+          const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
+          if (!manualQuadRef.current) {
+            smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
+            quadVideoRef.current = smoothRef.current;
+          }
+        } else if (!manualQuadRef.current) {
+          quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
+          smoothRef.current = quadVideoRef.current;
+        }
+      } catch {
+        if (!manualQuadRef.current) {
+          quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
+          smoothRef.current = quadVideoRef.current;
+        }
+      }
+    }
+
+    detectRunnerRef.current = runDetect;
+
+    const coarse =
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+    const ms = coarse ? CV_DETECT_INTERVAL_MS_TOUCH : CV_DETECT_INTERVAL_MS_DESKTOP;
+    const id = window.setInterval(runDetect, ms);
+    const firstTid = window.setTimeout(runDetect, 250);
+
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(firstTid);
+      detectRunnerRef.current = null;
+    };
+  }, [open, phase]);
 
   const handleOverlayPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const overlay = overlayRef.current;
@@ -1178,7 +1209,9 @@ export function ReceiptLiveScanner({
                 manualQuadRef.current = false;
                 dragCornerRef.current = null;
                 smoothRef.current = null;
-                lastDetectRef.current = 0;
+                window.setTimeout(() => {
+                  detectRunnerRef.current?.();
+                }, 0);
               }}
             >
               Segui automatico (OpenCV)
