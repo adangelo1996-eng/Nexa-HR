@@ -5,8 +5,11 @@
  * Uso (root monorepo):
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SYNAPSE_EMAIL_DOMAIN=synapse.com \
  *     corepack pnpm exec tsx scripts/update-demo-users-iban-ral.ts
+ *
+ * Opzionale: USER_PII_ENCRYPTION_KEY (allineato al backend).
  */
 
+import { encryptPlainObjectFieldsForStorage, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 import { createClient } from "@supabase/supabase-js";
 import { buildSyntheticItalianIban, demoPayrollItFields } from "./lib/italian-demo-payroll";
 import { emailLocal, people, seedPayrollAnagrafica } from "./nexa-seed-demo-users";
@@ -19,6 +22,7 @@ async function main(): Promise<void> {
     throw new Error("SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY richiesti");
   }
   const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+  const piiKey = loadUserPiiKeyFromEnv();
 
   let updated = 0;
   let missing = 0;
@@ -28,14 +32,17 @@ async function main(): Promise<void> {
     const email = `${emailLocal(p.firstName, p.lastName)}@${domain}`.toLowerCase();
     const fullName = `${p.firstName} ${p.lastName}`;
     const banking = buildSyntheticItalianIban(i);
-    const patch = {
-      iban: banking.iban,
-      bankName: banking.bankName,
-      bicSwift: banking.bicSwift,
-      accountHolder: fullName,
-      ...seedPayrollAnagrafica(),
-      ...demoPayrollItFields(i, p.roleCatalogId)
-    };
+    const patch: Record<string, unknown> = encryptPlainObjectFieldsForStorage(
+      {
+        iban: banking.iban,
+        bankName: banking.bankName,
+        bicSwift: banking.bicSwift,
+        accountHolder: fullName,
+        ...seedPayrollAnagrafica(),
+        ...demoPayrollItFields(i, p.roleCatalogId)
+      },
+      piiKey
+    );
 
     const { data, error } = await supabase
       .from("users")

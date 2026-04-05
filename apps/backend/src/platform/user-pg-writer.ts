@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import type { User } from "@payday/domain";
+import { encryptUserForStorage, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 
 /**
  * Identificatori SQL colonne tabella `users` (Postgres, camelCase tra doppi apici).
@@ -68,7 +69,8 @@ function userToRow(u: User): Record<string, unknown> {
 }
 
 export async function insertUserRowPg(client: PoolClient, user: User): Promise<void> {
-  const flat = userToRow(user);
+  const sealed = encryptUserForStorage(user, loadUserPiiKeyFromEnv());
+  const flat = userToRow(sealed);
   const keys = Object.keys(flat).filter((k) => USER_COL_SQL[k] != null);
   if (!keys.includes("id")) {
     throw new Error("insertUserRowPg: id mancante");
@@ -80,7 +82,8 @@ export async function insertUserRowPg(client: PoolClient, user: User): Promise<v
 }
 
 export async function updateUserFullRowPg(client: PoolClient, user: User): Promise<void> {
-  const flat = userToRow(user);
+  const sealed = encryptUserForStorage(user, loadUserPiiKeyFromEnv());
+  const flat = userToRow(sealed);
   const id = flat.id;
   delete flat.id;
   const keys = Object.keys(flat).filter((k) => USER_COL_SQL[k] != null);

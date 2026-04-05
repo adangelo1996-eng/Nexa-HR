@@ -1,0 +1,19 @@
+{
+  "name": "@payday/user-pii-crypto",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "corepack pnpm exec tsc -p tsconfig.json",
+    "lint": "echo \"no lint configured\"",
+    "test": "corepack pnpm exec tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@payday/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.3"
+  }
+}

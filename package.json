@@ -16,7 +16,7 @@
     "update:demo-iban-ral": "corepack pnpm exec tsx scripts/update-demo-users-iban-ral.ts",
     "dev": "corepack pnpm --parallel --filter @payday/backend --filter @payday/frontend dev",
     "build:backend": "corepack pnpm --filter @payday/backend build",
-    "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-it-rules build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend exec nest build",
+    "build:backend:render": "corepack pnpm --filter @payday/domain build && corepack pnpm --filter @payday/user-pii-crypto build && corepack pnpm --filter @payday/payroll-core build && corepack pnpm --filter @payday/payroll-it-rules build && corepack pnpm --filter @payday/payroll-adapters-it build && corepack pnpm --filter @payday/backend exec nest build",
     "build:frontend": "corepack pnpm --filter @payday/frontend build",
     "start:backend": "corepack pnpm --filter @payday/backend start",
     "start:frontend": "corepack pnpm --filter @payday/frontend start",
@@ -31,6 +31,10 @@
     "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",
     "vercel:preview": "corepack pnpm dlx vercel --cwd apps/frontend",
     "vercel:prod": "corepack pnpm dlx vercel --prod --cwd apps/frontend"
+  },
+  "dependencies": {
+    "@payday/domain": "workspace:*",
+    "@payday/user-pii-crypto": "workspace:*"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.49.4",

@@ -47,6 +47,11 @@ import {
   type ItalianPayrollProfileEmployer,
   type PayrollItSector
 } from "@payday/payroll-adapters-it";
+import {
+  decryptUserFromStorage,
+  encryptUserForStorage,
+  loadUserPiiKeyFromEnv
+} from "@payday/user-pii-crypto";
 import type { AuthRole } from "./auth";
 import {
   ADMIN_EXPORT_FIELD_CATALOG,
@@ -473,6 +478,8 @@ export class HrDataStore {
   private seeded = false;
   /** Evita count+seed su roles/cost_centers a ogni list (molto lento su Supabase/Render). */
   private referenceDataEnsured = false;
+  /** Lazy: chiave AES-256 per colonne PII su `users` (`USER_PII_ENCRYPTION_KEY`); `null` = disabilitato. */
+  private userPiiKeyResolved: Buffer | null | undefined = undefined;
   private readonly users: User[] = [
     {
       id: "u-admin",
@@ -646,6 +653,29 @@ export class HrDataStore {
     }
   }
 
+  private resolveUserPiiKey(): Buffer | null {
+    if (this.userPiiKeyResolved !== undefined) {
+      return this.userPiiKeyResolved;
+    }
+    const key = loadUserPiiKeyFromEnv();
+    this.userPiiKeyResolved = key;
+    if (this.useDb && !key && process.env.NODE_ENV === "production") {
+      this.logger.warn(
+        "USER_PII_ENCRYPTION_KEY assente: i campi PII configurati su public.users restano in chiaro. Impostare la chiave in produzione."
+      );
+    }
+    return key;
+  }
+
+  private mapUserRowFromDatabase(row: User): User {
+    const decrypted = decryptUserFromStorage({ ...row } as User, this.resolveUserPiiKey());
+    return { ...decrypted, role: coercePlatformRole(decrypted.role) };
+  }
+
+  private mapUserRowToDatabase(user: User): User {
+    return encryptUserForStorage(user, this.resolveUserPiiKey());
+  }
+
   /**
    * Verifica email/password contro Supabase Auth (stesso progetto usato da Plasticity).
    * Usa un client dedicato: `signInWithPassword` sulla stessa istanza del client service_role
@@ -689,7 +719,8 @@ export class HrDataStore {
     const { data, error } = await this.supabase!.from("users").select("id").limit(1);
     if (error) return;
     if (!data || data.length === 0) {
-      await this.supabase!.from("users").insert(this.users);
+      const sealed = this.users.map((u) => this.mapUserRowToDatabase(u));
+      await this.supabase!.from("users").insert(sealed);
     }
     this.seeded = true;
   }
@@ -710,7 +741,7 @@ export class HrDataStore {
         return null;
       }
       const row = data?.[0] as User | undefined;
-      return row ? { ...row, role: coercePlatformRole(row.role) } : null;
+      return row ? this.mapUserRowFromDatabase(row) : null;
     }
     const mem = this.users.find((item) => item.email.toLowerCase() === normalized.toLowerCase());
     return mem ? { ...mem, role: coercePlatformRole(mem.role) } : null;
@@ -810,7 +841,7 @@ export class HrDataStore {
     await this.ensureSeedUsers();
     if (this.useDb) {
       const { data } = await this.supabase!.from("users").select("*").order("fullName", { ascending: true });
-      return ((data as User[]) ?? []).map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
+      return ((data as User[]) ?? []).map((u) => this.mapUserRowFromDatabase(u));
     }
     return this.users.map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
   }
@@ -826,7 +857,7 @@ export class HrDataStore {
         throw new NotFoundException("Utente non trovato");
       }
       const u = data as User;
-      return { ...u, role: coercePlatformRole(u.role) };
+      return this.mapUserRowFromDatabase(u);
     }
     const user = this.users.find((item) => item.id === userId);
     if (!user) {
@@ -858,7 +889,7 @@ export class HrDataStore {
       if (error) {
         throw new BadRequestException(`Lettura team utenti fallita: ${error.message}`);
       }
-      let rows = ((data as User[]) ?? []).map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
+      let rows = ((data as User[]) ?? []).map((u) => this.mapUserRowFromDatabase(u));
       try {
         const team = await this.getWorkTeam(teamId);
         const lid = team.leadUserId?.trim();
@@ -1527,7 +1558,7 @@ export class HrDataStore {
     }
     const user = this.buildUserRecordForInsert(input, email, id);
     if (this.useDb) {
-      await this.supabase!.from("users").insert(user);
+      await this.supabase!.from("users").insert(this.mapUserRowToDatabase(user));
       return user;
     }
     this.users.push(user);
@@ -1539,7 +1570,7 @@ export class HrDataStore {
     if (this.useDb) {
       const { data } = await this.supabase!
         .from("users")
-        .update(payload)
+        .update(this.mapUserRowToDatabase(payload))
         .eq("id", userId)
         .select("*")
         .single();
@@ -1547,7 +1578,7 @@ export class HrDataStore {
         throw new NotFoundException("Utente non trovato");
       }
       const u = data as User;
-      return { ...u, role: coercePlatformRole(u.role) };
+      return this.mapUserRowFromDatabase(u);
     }
     const user = await this.getUser(userId);
     Object.assign(user, payload);

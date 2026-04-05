@@ -38,6 +38,9 @@ importers:
       '@payday/payroll-core':
         specifier: workspace:*
         version: link:../../packages/payroll-core
+      '@payday/user-pii-crypto':
+        specifier: workspace:*
+        version: link:../../packages/user-pii-crypto
       '@supabase/supabase-js':
         specifier: ^2.49.4
         version: 2.99.0
@@ -233,6 +236,19 @@ importers:
         version: 5.9.3
 
   packages/payroll-it-rules:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/user-pii-crypto:
+    dependencies:
+      '@payday/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@types/node':
         specifier: ^22.10.1

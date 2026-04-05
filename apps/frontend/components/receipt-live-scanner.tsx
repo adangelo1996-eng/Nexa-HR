@@ -5,6 +5,91 @@ import { loadOpenCv, type OpenCvRuntime } from "@/lib/opencv-loader";
 
 type Point = { x: number; y: number };
 
+const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
+
+function secureCameraContextMessage(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  if (!window.isSecureContext) {
+    return "La fotocamera è disponibile solo in contesto sicuro: usa https:// oppure http://localhost (o 127.0.0.1). Aprendo il sito da un indirizzo LAN o da file locale il browser blocca getUserMedia.";
+  }
+  return null;
+}
+
+/**
+ * Prova più profili video: su desktop spesso non esiste `environment`, e vincoli troppo stretti
+ * producono OverconstrainedError con un solo tentativo.
+ */
+async function acquireCameraStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error(NO_GET_USER_MEDIA);
+  }
+
+  const strategies: MediaTrackConstraints[] = [
+    { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    { facingMode: { ideal: "environment" } },
+    { facingMode: { ideal: "user" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    { facingMode: { ideal: "user" } },
+    { width: { ideal: 1280 }, height: { ideal: 720 } },
+    { width: { ideal: 640 }, height: { ideal: 480 } },
+    {}
+  ];
+
+  let lastErr: unknown;
+  for (const video of strategies) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  } catch (e) {
+    throw lastErr ?? e;
+  }
+}
+
+function formatGetUserMediaError(err: unknown): string {
+  if (err instanceof Error && err.message === NO_GET_USER_MEDIA) {
+    return "Questo browser non espone getUserMedia (fotocamera). Aggiorna il browser o usa Carica foto.";
+  }
+  const secure = secureCameraContextMessage();
+  if (secure) {
+    return secure;
+  }
+  const name =
+    err && typeof err === "object" && "name" in err ? String((err as { name: string }).name) : "";
+  const message =
+    err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "";
+
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "Permesso fotocamera negato. Nelle impostazioni del sito consenti la fotocamera, poi tocca Riprova. Su aziende/VPN a volte serve un’eccezione per l’origine.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "Nessuna fotocamera trovata. Collega una webcam, abilita la camera integrata nelle impostazioni di Windows, oppure usa Carica foto.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "La fotocamera è occupata da un’altra applicazione o scheda. Chiudi Teams/Zoom/browser che usano la camera e tocca Riprova.";
+    case "OverconstrainedError":
+      return "Il browser non ha accettato i vincoli video richiesti. Abbiamo già provato profili alternativi: tocca Riprova o usa Carica foto.";
+    case "SecurityError":
+      return "Accesso fotocamera bloccato per sicurezza. Usa HTTPS o localhost.";
+    case "AbortError":
+      return "Richiesta fotocamera interrotta. Tocca Riprova.";
+    default:
+      return message
+        ? `Impossibile avviare la fotocamera (${name || "errore"}: ${message}). Tocca Riprova o usa Carica foto.`
+        : "Impossibile avviare la fotocamera. Tocca Riprova o usa Carica foto.";
+  }
+}
+
 function orderQuadPoints(pts: Point[]): [Point, Point, Point, Point] {
   const s = pts.map((p) => p.x + p.y);
   const d = pts.map((p) => p.x - p.y);
@@ -273,6 +358,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cvProgress, setCvProgress] = useState<string>("");
   const [cvLoadState, setCvLoadState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
+  const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
 
   const stopCamera = useCallback((): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -291,6 +378,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       smoothRef.current = null;
       quadVideoRef.current = null;
       setCvLoadState("idle");
+      setCameraRetryNonce(0);
       return;
     }
 
@@ -301,6 +389,16 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
       setCvLoadState("loading");
+
+      const insecureHint = secureCameraContextMessage();
+      if (insecureHint) {
+        if (!cancelled) {
+          setErrorMsg(insecureHint);
+          setPhase("error");
+          setCvLoadState("idle");
+        }
+        return;
+      }
 
       void loadOpenCv()
         .then((cv) => {
@@ -317,21 +415,8 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
           setCvLoadState("failed");
         });
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setErrorMsg("Fotocamera non disponibile in questo browser.");
-        setPhase("error");
-        return;
-      }
-
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        });
+        const stream = await acquireCameraStream();
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -340,11 +425,37 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         const v = videoRef.current;
         if (v) {
           v.srcObject = stream;
-          await v.play();
+          try {
+            await v.play();
+          } catch {
+            await new Promise<void>((r) => {
+              requestAnimationFrame(() => r());
+            });
+            try {
+              await v.play();
+            } catch (playErr) {
+              stream.getTracks().forEach((t) => t.stop());
+              streamRef.current = null;
+              v.srcObject = null;
+              if (!cancelled) {
+                const pn =
+                  playErr && typeof playErr === "object" && "name" in playErr
+                    ? String((playErr as { name: string }).name)
+                    : "";
+                setErrorMsg(
+                  pn === "NotAllowedError"
+                    ? "Riproduzione video bloccata dal browser. Tocca Riprova o interagisci con la pagina, poi riapri lo scanner."
+                    : "Impossibile avviare l’anteprima video. Tocca Riprova."
+                );
+                setPhase("error");
+              }
+              return;
+            }
+          }
         }
-      } catch {
+      } catch (camErr) {
         if (!cancelled) {
-          setErrorMsg("Permesso fotocamera negato o dispositivo non trovato.");
+          setErrorMsg(formatGetUserMediaError(camErr));
           setPhase("error");
         }
         return;
@@ -363,7 +474,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       cancelled = true;
       stopCamera();
     };
-  }, [open, stopCamera]);
+  }, [open, stopCamera, cameraRetryNonce]);
 
   const layoutOverlay = useCallback(() => {
     const v = videoRef.current;
@@ -570,14 +681,27 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       {phase === "error" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <p className="text-sm text-red-300">{errorMsg}</p>
-          <button
-            type="button"
-            className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
-            onClick={onClose}
-          >
-            OK
-          </button>
+          <p className="max-w-md text-sm text-red-300">{errorMsg}</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              onClick={() => {
+                setErrorMsg(null);
+                setPhase("idle");
+                setCameraRetryNonce((n) => n + 1);
+              }}
+            >
+              Riprova fotocamera
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+              onClick={onClose}
+            >
+              Chiudi
+            </button>
+          </div>
         </div>
       ) : null}
 

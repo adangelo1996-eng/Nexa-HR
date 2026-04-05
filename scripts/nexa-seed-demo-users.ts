@@ -5,8 +5,11 @@
  * Uso (dalla root del monorepo):
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SYNAPSE_EMAIL_DOMAIN=synapse.com \
  *     corepack pnpm exec tsx scripts/nexa-seed-demo-users.ts
+ *
+ * Opzionale (stesso valore del backend): USER_PII_ENCRYPTION_KEY — cifra campi PII su public.users.
  */
 
+import { encryptPlainObjectFieldsForStorage, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 import { createClient } from "@supabase/supabase-js";
 import { buildSyntheticItalianIban, demoPayrollItFields } from "./lib/italian-demo-payroll";
 
@@ -371,6 +374,7 @@ async function main(): Promise<void> {
     throw new Error("SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY richiesti");
   }
   const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+  const piiKey = loadUserPiiKeyFromEnv();
   const ids: string[] = [];
 
   for (let i = 0; i < people.length; i += 1) {
@@ -395,7 +399,7 @@ async function main(): Promise<void> {
         }
         ids.push(found.id);
         const uid = found.id;
-        const { error: upErr } = await supabase.from("users").upsert(
+        const row: Record<string, unknown> = encryptPlainObjectFieldsForStorage(
           {
             id: uid,
             email,
@@ -423,8 +427,9 @@ async function main(): Promise<void> {
             ...seedPayrollAnagrafica(),
             ...demoPayrollItFields(i, p.roleCatalogId)
           },
-          { onConflict: "id" }
+          piiKey
         );
+        const { error: upErr } = await supabase.from("users").upsert(row, { onConflict: "id" });
         if (upErr) {
           throw upErr;
         }
@@ -437,33 +442,37 @@ async function main(): Promise<void> {
     const uid = created.user!.id;
     ids.push(uid);
 
-    const { error: insErr } = await supabase.from("users").insert({
-      id: uid,
-      email,
-      fullName,
-      firstName: p.firstName,
-      lastName: p.lastName,
-      role: p.role,
-      managerId,
-      companyId: "comp-1",
-      roleId: p.roleCatalogId,
-      costCenterId: p.costCenterId,
-      contractType: p.contractType,
-      weeklyContractHours: p.weeklyContractHours,
-      vacationAllowanceDays: p.vacationAllowanceDays,
-      dailyTargetSeconds: Math.round((p.weeklyContractHours / 5) * 3600),
-      birthDate: p.birthDate,
-      hireDate: p.hireDate,
-      phone: p.phone,
-      address: p.address,
-      avsNumber: null,
-      iban: banking.iban,
-      bankName: banking.bankName,
-      bicSwift: banking.bicSwift,
-      accountHolder: fullName,
-      ...seedPayrollAnagrafica(),
-      ...demoPayrollItFields(i, p.roleCatalogId)
-    });
+    const insertRow: Record<string, unknown> = encryptPlainObjectFieldsForStorage(
+      {
+        id: uid,
+        email,
+        fullName,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        role: p.role,
+        managerId,
+        companyId: "comp-1",
+        roleId: p.roleCatalogId,
+        costCenterId: p.costCenterId,
+        contractType: p.contractType,
+        weeklyContractHours: p.weeklyContractHours,
+        vacationAllowanceDays: p.vacationAllowanceDays,
+        dailyTargetSeconds: Math.round((p.weeklyContractHours / 5) * 3600),
+        birthDate: p.birthDate,
+        hireDate: p.hireDate,
+        phone: p.phone,
+        address: p.address,
+        avsNumber: null,
+        iban: banking.iban,
+        bankName: banking.bankName,
+        bicSwift: banking.bicSwift,
+        accountHolder: fullName,
+        ...seedPayrollAnagrafica(),
+        ...demoPayrollItFields(i, p.roleCatalogId)
+      },
+      piiKey
+    );
+    const { error: insErr } = await supabase.from("users").insert(insertRow);
     if (insErr) {
       // eslint-disable-next-line no-console
       console.error(insErr);

@@ -1,0 +1,4 @@
+-- Nota: crittografia campi PII su public.users (AES-256-GCM lato applicazione Nest).
+-- Nessun cambiamento schema: le colonne restano text; i valori cifrati usano prefisso nexa1: (vedi @payday/user-pii-crypto).
+-- Campi tipicamente cifrati: codice fiscale, IBAN/dati bancari, telefono, indirizzo, date anagrafiche sensibili, stato civile, campi fiscali residenza/domicilio testuali.
+-- Email e nomi (fullName/firstName/lastName) restano in chiaro per policy RLS (auth.email()) e ordinamenti SQL.
