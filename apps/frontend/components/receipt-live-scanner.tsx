@@ -212,6 +212,46 @@ function warpQuadToBlob(
   });
 }
 
+/** Ritaglio asse-allineato (fallback se OpenCV non è disponibile o warp fallisce). */
+function cropQuadBoundingBoxToJpeg(sourceCanvas: HTMLCanvasElement, quad: Point[]): Promise<Blob> {
+  const xs = quad.map((p) => p.x);
+  const ys = quad.map((p) => p.y);
+  let x = Math.floor(Math.min(...xs));
+  let y = Math.floor(Math.min(...ys));
+  let x2 = Math.ceil(Math.max(...xs));
+  let y2 = Math.ceil(Math.max(...ys));
+  x = Math.max(0, x);
+  y = Math.max(0, y);
+  x2 = Math.min(sourceCanvas.width, x2);
+  y2 = Math.min(sourceCanvas.height, y2);
+  const w = Math.max(1, x2 - x);
+  const h = Math.max(1, y2 - y);
+  const maxOutW = 1200;
+  const outW = Math.min(maxOutW, w);
+  const outH = Math.max(1, Math.min(1800, Math.round((h / w) * outW)));
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+  const ctx = out.getContext("2d");
+  if (!ctx) {
+    return Promise.reject(new Error("Canvas 2D non disponibile"));
+  }
+  ctx.drawImage(sourceCanvas, x, y, w, h, 0, 0, outW, outH);
+  return new Promise((resolve, reject) => {
+    out.toBlob(
+      (b) => {
+        if (b) {
+          resolve(b);
+        } else {
+          reject(new Error("toBlob fallito"));
+        }
+      },
+      "image/jpeg",
+      0.92
+    );
+  });
+}
+
 export type ReceiptLiveScannerProps = {
   open: boolean;
   onClose: () => void;
@@ -229,9 +269,10 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
   const lastDetectRef = useRef(0);
   const quadVideoRef = useRef<Point[] | null>(null);
 
-  const [phase, setPhase] = useState<"idle" | "loading_cv" | "camera" | "error">("idle");
+  const [phase, setPhase] = useState<"idle" | "starting" | "camera" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cvProgress, setCvProgress] = useState<string>("");
+  const [cvLoadState, setCvLoadState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
 
   const stopCamera = useCallback((): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -249,26 +290,32 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       setErrorMsg(null);
       smoothRef.current = null;
       quadVideoRef.current = null;
+      setCvLoadState("idle");
       return;
     }
 
     let cancelled = false;
 
     async function start(): Promise<void> {
-      setPhase("loading_cv");
-      setCvProgress("Caricamento motore visione…");
+      setPhase("starting");
+      setCvProgress("Connessione alla fotocamera…");
       setErrorMsg(null);
-      try {
-        const cv = await loadOpenCv();
-        if (cancelled) return;
-        cvRef.current = cv;
-      } catch {
-        if (!cancelled) {
-          setErrorMsg("Impossibile caricare il motore di scansione. Usa HTTPS o riprova.");
-          setPhase("error");
-        }
-        return;
-      }
+      setCvLoadState("loading");
+
+      void loadOpenCv()
+        .then((cv) => {
+          if (cancelled) {
+            return;
+          }
+          cvRef.current = cv;
+          setCvLoadState("ready");
+        })
+        .catch(() => {
+          if (cancelled) {
+            return;
+          }
+          setCvLoadState("failed");
+        });
 
       if (!navigator.mediaDevices?.getUserMedia) {
         setErrorMsg("Fotocamera non disponibile in questo browser.");
@@ -276,7 +323,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         return;
       }
 
-      setCvProgress("Avvio fotocamera…");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -304,7 +350,9 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         return;
       }
 
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       setPhase("camera");
       setCvProgress("");
     }
@@ -356,11 +404,6 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
       return;
     }
 
-    const cv = cvRef.current;
-    if (!cv) {
-      return;
-    }
-
     const tick = (now: number): void => {
       if (!open || phase !== "camera") {
         return;
@@ -386,18 +429,24 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
       if (now - lastDetectRef.current > 90) {
         lastDetectRef.current = now;
-        try {
-          const procPts = findReceiptQuad(cv, video, procW, procH);
-          if (procPts) {
-            const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
-            smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
-            quadVideoRef.current = smoothRef.current;
-          } else {
-            quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
-            smoothRef.current = quadVideoRef.current;
+        const cv = cvRef.current;
+        if (cv) {
+          try {
+            const procPts = findReceiptQuad(cv, video, procW, procH);
+            if (procPts) {
+              const inVideo = mapProcToVideo(procPts, vw, vh, procW, procH);
+              smoothRef.current = smoothQuad(smoothRef.current, inVideo, 0.62);
+              quadVideoRef.current = smoothRef.current;
+            } else {
+              quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
+              smoothRef.current = quadVideoRef.current;
+            }
+          } catch {
+            quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
           }
-        } catch {
-          quadVideoRef.current = fallbackCenterQuad(vw, vh, 0.12);
+        } else {
+          quadVideoRef.current = smoothQuad(smoothRef.current, fallbackCenterQuad(vw, vh, 0.1), 0.75);
+          smoothRef.current = quadVideoRef.current;
         }
       }
 
@@ -442,8 +491,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
 
   const handleCapture = useCallback(async () => {
     const video = videoRef.current;
-    const cv = cvRef.current;
-    if (!video || !cv || video.readyState < 2) {
+    if (!video || video.readyState < 2) {
       return;
     }
     const vw = video.videoWidth;
@@ -457,12 +505,37 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
     }
     cx.drawImage(video, 0, 0, vw, vh);
     const quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
+
+    let cv = cvRef.current;
+    if (!cv) {
+      try {
+        cv = await loadOpenCv();
+        cvRef.current = cv;
+        setCvLoadState("ready");
+      } catch {
+        try {
+          const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+          onCapture(blob);
+          onClose();
+        } catch {
+          setErrorMsg("Motore di scansione non disponibile e ritaglio di fallback fallito. Controlla la connessione.");
+        }
+        return;
+      }
+    }
+
     try {
       const blob = await warpQuadToBlob(cv, cap, quad, "image/jpeg");
       onCapture(blob);
       onClose();
     } catch {
-      setErrorMsg("Elaborazione immagine fallita. Riprova.");
+      try {
+        const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
+        onCapture(blob);
+        onClose();
+      } catch {
+        setErrorMsg("Elaborazione immagine fallita. Riprova.");
+      }
     }
   }, [onCapture, onClose]);
 
@@ -488,7 +561,7 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
         </button>
       </header>
 
-      {phase === "loading_cv" || phase === "idle" ? (
+      {phase === "starting" || phase === "idle" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/70">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
           {cvProgress || "Preparazione…"}
@@ -526,6 +599,17 @@ export function ReceiptLiveScanner({ open, onClose, onCapture }: ReceiptLiveScan
               />
             </div>
           </div>
+          {cvLoadState === "loading" ? (
+            <p className="px-4 py-1 text-center text-xs text-white/50">
+              Caricamento rilevamento bordi in background… la fotocamera è già attiva.
+            </p>
+          ) : null}
+          {cvLoadState === "failed" ? (
+            <p className="px-4 py-1 text-center text-xs text-amber-300/90">
+              Rilevamento automatico non disponibile (rete o blocco script). Usa il rettangolo centrale e cattura: verrà
+              applicato un ritaglio rettangolare.
+            </p>
+          ) : null}
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
           <footer className="flex shrink-0 justify-center gap-3 border-t border-white/10 px-4 py-4">
             <button

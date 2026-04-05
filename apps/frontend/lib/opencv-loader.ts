@@ -1,6 +1,9 @@
 /**
  * Carica OpenCV.js da CDN (runtime WebAssembly). ~8 MB, una tantum per sessione.
  * Documentazione: https://docs.opencv.org/4.x/d5/d10/tutorial_js_root.html
+ *
+ * Nota: in molte build `onRuntimeInitialized` è inizialmente null; va sempre agganciato
+ * un listener (non solo fare poll quando è truthy), altrimenti l'inizializzazione WASM non completa mai.
  */
 
 declare global {
@@ -11,7 +14,7 @@ declare global {
 
 /** Tipi minimi per il flusso document detection (evita dipendenza @types). */
 export type OpenCvRuntime = {
-  onRuntimeInitialized?: () => void;
+  onRuntimeInitialized?: (() => void) | null;
   Mat: new () => OpenCvMat;
   MatVector: new () => OpenCvMatVector;
   matFromArray: (rows: number, cols: number, type: number, arr: number[]) => OpenCvMat;
@@ -75,8 +78,95 @@ type OpenCvMatVector = {
 };
 
 const OPENCV_SRC = "https://docs.opencv.org/4.8.0/opencv.js";
+const WASM_INIT_TIMEOUT_MS = 90_000;
 
 let loadPromise: Promise<OpenCvRuntime> | null = null;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function injectOpenCvScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.async = true;
+    script.dataset.opencv = "1";
+    script.src = OPENCV_SRC;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Impossibile caricare OpenCV.js (rete o blocco script)"));
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Attende che `cv.imread` sia utilizzabile (dopo init WASM), con timeout.
+ */
+function waitForOpenCvImread(cv: OpenCvRuntime, deadlineMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + deadlineMs;
+
+    const tryResolve = (): void => {
+      if (typeof cv.imread === "function") {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        reject(new Error("OpenCV: timeout inizializzazione WASM"));
+        return;
+      }
+      setTimeout(tryResolve, 50);
+    };
+
+    if (typeof cv.imread === "function") {
+      resolve();
+      return;
+    }
+
+    const prev = cv.onRuntimeInitialized;
+    cv.onRuntimeInitialized = () => {
+      try {
+        if (typeof prev === "function") {
+          prev.call(cv);
+        }
+      } catch {
+        /* ignore third-party callback errors */
+      }
+      tryResolve();
+    };
+
+    tryResolve();
+  });
+}
+
+async function loadOpenCvInternal(): Promise<OpenCvRuntime> {
+  const w = window;
+  if (w.cv && typeof w.cv.imread === "function") {
+    return w.cv as OpenCvRuntime;
+  }
+
+  const existing = document.querySelector<HTMLScriptElement>('script[data-opencv="1"]');
+  if (!existing) {
+    await injectOpenCvScript();
+  }
+
+  const scriptDeadline = Date.now() + 15_000;
+  while (!w.cv && Date.now() < scriptDeadline) {
+    await sleep(30);
+  }
+  if (!w.cv) {
+    throw new Error("OpenCV: oggetto globale cv non trovato dopo il caricamento dello script");
+  }
+
+  const cv = w.cv as OpenCvRuntime;
+  await waitForOpenCvImread(cv, WASM_INIT_TIMEOUT_MS);
+
+  if (typeof cv.imread !== "function") {
+    throw new Error("OpenCV: imread non disponibile dopo l'inizializzazione");
+  }
+  return cv;
+}
 
 export function loadOpenCv(): Promise<OpenCvRuntime> {
   if (typeof window === "undefined") {
@@ -85,51 +175,9 @@ export function loadOpenCv(): Promise<OpenCvRuntime> {
   if (loadPromise) {
     return loadPromise;
   }
-  loadPromise = new Promise((resolve, reject) => {
-    const w = window;
-    if (w.cv && typeof w.cv.imread === "function") {
-      resolve(w.cv as OpenCvRuntime);
-      return;
-    }
-    const existing = document.querySelector<HTMLScriptElement>(`script[data-opencv="1"]`);
-    if (existing) {
-      const check = (): void => {
-        const cv = w.cv;
-        if (cv && typeof cv.imread === "function") {
-          resolve(cv as OpenCvRuntime);
-        } else if (cv?.onRuntimeInitialized) {
-          const prev = cv.onRuntimeInitialized;
-          cv.onRuntimeInitialized = () => {
-            prev?.();
-            resolve(cv as OpenCvRuntime);
-          };
-        } else {
-          setTimeout(check, 50);
-        }
-      };
-      check();
-      return;
-    }
-    const script = document.createElement("script");
-    script.async = true;
-    script.dataset.opencv = "1";
-    script.src = OPENCV_SRC;
-    script.onload = () => {
-      const cv = w.cv;
-      if (!cv) {
-        reject(new Error("OpenCV: global cv mancante"));
-        return;
-      }
-      if (typeof cv.imread === "function") {
-        resolve(cv as OpenCvRuntime);
-        return;
-      }
-      cv.onRuntimeInitialized = () => {
-        resolve(cv as OpenCvRuntime);
-      };
-    };
-    script.onerror = () => reject(new Error("Impossibile caricare OpenCV.js"));
-    document.body.appendChild(script);
+  loadPromise = loadOpenCvInternal().catch((err: unknown) => {
+    loadPromise = null;
+    throw err;
   });
   return loadPromise;
 }
