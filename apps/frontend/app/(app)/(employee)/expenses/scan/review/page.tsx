@@ -90,6 +90,8 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [lastSubmittedIds, setLastSubmittedIds] = useState<string[] | null>(null);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  /** Feedback minimo su azioni riga (sync ma pesanti da renderizzare). */
+  const [rowActionId, setRowActionId] = useState<string | null>(null);
 
   useEffect(() => {
     void (async (): Promise<void> => {
@@ -197,6 +199,17 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
       }
       return rows.filter((r) => r.id !== id);
     });
+  }, []);
+
+  const ROW_ACTION_MIN_MS = 240;
+
+  const withRowActionFeedback = useCallback((rowId: string, action: () => void): void => {
+    setRowActionId(rowId);
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
+    action();
+    const elapsed = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+    const wait = Math.max(0, ROW_ACTION_MIN_MS - elapsed);
+    window.setTimeout(() => setRowActionId(null), wait);
   }, []);
 
   const updateRow = useCallback((id: string, patch: Partial<RowDraft>): void => {
@@ -323,7 +336,7 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
         <ReceiptStillQuadEditor
           imageSrc={src}
           onCancel={onCropCancel}
-          onConfirm={(blob) => void onCropConfirm(blob)}
+          onConfirm={(blob) => onCropConfirm(blob)}
         />
       </main>
     );
@@ -388,9 +401,10 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
         {cropped.map((r) => (
           <li
             key={r.id}
-            className={`rounded-xl border p-4 md:grid md:grid-cols-[minmax(0,220px)_1fr] md:gap-6 ${
+            aria-busy={rowActionId === r.id}
+            className={`rounded-xl border p-4 transition-opacity md:grid md:grid-cols-[minmax(0,220px)_1fr] md:gap-6 ${
               r.validated ? "border-emerald-600/40 bg-emerald-950/10" : "border-slate-200 dark:border-slate-700"
-            }`}
+            } ${rowActionId === r.id ? "opacity-90" : ""}`}
           >
             <div className="mb-4 flex justify-center md:mb-0 md:block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -405,8 +419,9 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 Tipologia
                 <select
                   value={r.expenseType}
+                  disabled={rowActionId === r.id}
                   onChange={(ev) => updateRow(r.id, { expenseType: ev.target.value })}
-                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
                 >
                   {EXPENSE_TYPES.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -420,8 +435,9 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 <input
                   type="date"
                   value={r.expenseDate}
+                  disabled={rowActionId === r.id}
                   onChange={(ev) => updateRow(r.id, { expenseDate: ev.target.value })}
-                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
                 />
               </label>
               <p className="text-[11px] text-slate-500">
@@ -433,8 +449,9 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                   type="text"
                   inputMode="decimal"
                   value={r.amount}
+                  disabled={rowActionId === r.id}
                   onChange={(ev) => updateRow(r.id, { amount: ev.target.value })}
-                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                  className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
                 />
               </label>
               {r.ocrSuggestedCents != null ? (
@@ -445,23 +462,41 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500"
-                  onClick={() => updateRow(r.id, { validated: true })}
+                  className="inline-flex min-h-[2.25rem] min-w-[7.5rem] items-center justify-center gap-2 rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-80"
+                  disabled={rowActionId === r.id}
+                  onClick={() =>
+                    withRowActionFeedback(r.id, () => updateRow(r.id, { validated: true }))
+                  }
                 >
+                  {rowActionId === r.id ? (
+                    <span className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : null}
                   Valida riga
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-slate-400 px-3 py-1.5 text-sm"
-                  onClick={() => updateRow(r.id, { validated: false })}
+                  className="inline-flex min-h-[2.25rem] min-w-[10rem] items-center justify-center gap-2 rounded border border-slate-400 px-3 py-1.5 text-sm disabled:cursor-wait disabled:opacity-80"
+                  disabled={rowActionId === r.id}
+                  onClick={() =>
+                    withRowActionFeedback(r.id, () => updateRow(r.id, { validated: false }))
+                  }
                 >
+                  {rowActionId === r.id ? (
+                    <span className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : null}
                   Annulla validazione
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-red-500/50 px-3 py-1.5 text-sm text-red-600 dark:text-red-400"
-                  onClick={() => removeRow(r.id)}
+                  className="inline-flex min-h-[2.25rem] items-center justify-center gap-2 rounded border border-red-500/50 px-3 py-1.5 text-sm text-red-600 disabled:cursor-wait disabled:opacity-80 dark:text-red-400"
+                  disabled={rowActionId === r.id}
+                  onClick={() =>
+                    withRowActionFeedback(r.id, () => removeRow(r.id))
+                  }
                 >
+                  {rowActionId === r.id ? (
+                    <span className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : null}
                   Rimuovi scontrino
                 </button>
               </div>

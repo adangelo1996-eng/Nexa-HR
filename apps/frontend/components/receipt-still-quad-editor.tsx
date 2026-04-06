@@ -284,7 +284,7 @@ export function ReceiptStillQuadEditor({
         maxEdge: RECEIPT_EXPORT_MAX_EDGE,
         quality: RECEIPT_EXPORT_JPEG_QUALITY
       });
-      await Promise.resolve(onConfirm(blob));
+      await onConfirm(blob);
     } catch {
       setErrorMsg("Esportazione ritaglio fallita. Riprova.");
     } finally {
@@ -293,7 +293,19 @@ export function ReceiptStillQuadEditor({
   }, [onConfirm]);
 
   return (
-    <div className="flex max-h-[min(85vh,720px)] w-full max-w-lg flex-col gap-3 rounded-xl border border-slate-600 bg-slate-950 p-4 text-slate-100 shadow-xl">
+    <div className="relative flex max-h-[min(85vh,720px)] w-full max-w-lg flex-col gap-3 rounded-xl border border-slate-600 bg-slate-950 p-4 text-slate-100 shadow-xl">
+      {exporting ? (
+        <div
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-xl bg-slate-950/85 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+          <p className="px-4 text-center text-sm text-slate-200">Esportazione ritaglio e lettura OCR…</p>
+          <p className="px-4 text-center text-xs text-slate-400">Attendi, non chiudere la pagina.</p>
+        </div>
+      ) : null}
       <div className="text-sm font-medium">Ritaglio scontrino</div>
       <p className="text-xs text-slate-400">
         Sposta i quattro punti bianchi sull&apos;area dello scontrino. Nessun rilevamento automatico: tutto manuale e

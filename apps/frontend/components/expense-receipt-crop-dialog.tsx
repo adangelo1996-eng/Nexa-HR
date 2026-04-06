@@ -56,7 +56,7 @@ export function ExpenseReceiptCropDialog({
         <ReceiptStillQuadEditor
           imageSrc={imageSrc}
           onCancel={onClose}
-          onConfirm={(blob) => void handleConfirm(blob)}
+          onConfirm={(blob) => handleConfirm(blob)}
         />
       </div>
     </div>
