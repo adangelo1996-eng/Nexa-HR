@@ -6,6 +6,11 @@ import {
   fallbackCenterQuad,
   type Point
 } from "@/lib/receipt-quad-cv";
+import {
+  compressCanvasToJpegBlob,
+  RECEIPT_CAPTURE_JPEG_QUALITY,
+  RECEIPT_CAPTURE_MAX_EDGE
+} from "@/lib/receipt-image-compress";
 
 const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
 const HANDLE_RADIUS_CSS = 22;
@@ -254,6 +259,8 @@ export function ReceiptLiveScanner({
   const [cvProgress, setCvProgress] = useState<string>("");
   const [capturing, setCapturing] = useState(false);
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
+  /** Foto già accodate in questa sessione (per UI reattiva). */
+  const [sessionSavedCount, setSessionSavedCount] = useState(0);
   const docDragCleanupRef = useRef<(() => void) | null>(null);
 
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
@@ -279,6 +286,7 @@ export function ReceiptLiveScanner({
       setCameraRetryNonce(0);
       setCapturing(false);
       sessionBlobsRef.current = [];
+      setSessionSavedCount(0);
       dragCornerRef.current = null;
       manualQuadRef.current = false;
       docDragCleanupRef.current?.();
@@ -613,15 +621,14 @@ export function ReceiptLiveScanner({
         return;
       }
 
-      const blob = await new Promise<Blob | null>((resolve) => {
-        cap.toBlob((b) => resolve(b), "image/jpeg", 0.92);
-      });
-      if (!blob || blob.size < 2000) {
+      const blob = await compressCanvasToJpegBlob(cap, RECEIPT_CAPTURE_MAX_EDGE, RECEIPT_CAPTURE_JPEG_QUALITY);
+      if (!blob || blob.size < 900) {
         setErrorMsg("Cattura fallita o immagine troppo piccola. Riprova.");
         return;
       }
 
       sessionBlobsRef.current = [...sessionBlobsRef.current, blob];
+      setSessionSavedCount(sessionBlobsRef.current.length);
       setPhase("promptMore");
     } finally {
       setCapturing(false);
@@ -654,8 +661,8 @@ export function ReceiptLiveScanner({
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
             {variant === "page"
-              ? "Inquadra lo scontrino; dopo la cattura puoi aggiungerne altri o passare al ritaglio."
-              : "Inquadra lo scontrino; la messa a fuoco del bordo avviene sulla foto ferma al passo successivo."}
+              ? "Inquadra lo scontrino. La foto viene salvata in sessione (compressa) e ritagliata al passo successivo, senza rilevamento automatico dei bordi."
+              : "Inquadra lo scontrino; dopo la cattura scegli se aggiungerne altre o andare al ritaglio manuale."}
           </p>
         </div>
         <button
@@ -713,17 +720,30 @@ export function ReceiptLiveScanner({
         ) : null}
 
         {phase === "promptMore" ? (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-black/95 px-6 text-center">
-            <p className="max-w-sm text-sm text-white/90">
-              Foto salvata ({sessionBlobsRef.current.length} in questa sessione). Vuoi scansionare un altro scontrino?
-            </p>
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-black/95 px-6 text-center"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-5 py-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-xl font-bold text-slate-900">
+                ✓
+              </div>
+              <p className="text-base font-semibold text-emerald-100">Foto salvata in sessione</p>
+              <p className="text-sm text-white/85">
+                Hai <span className="font-semibold text-white">{sessionSavedCount}</span> foto in coda (JPEG
+                compresso, lato lungo max {RECEIPT_CAPTURE_MAX_EDGE}px).
+                Non sono ancora sul server: andrai al ritaglio manuale al passo successivo.
+              </p>
+            </div>
+            <p className="max-w-sm text-sm text-white/70">Vuoi aggiungere un altro scontrino prima di continuare?</p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
                 className="touch-manipulation rounded-lg border border-white/25 px-6 py-3 text-sm font-medium hover:bg-white/10"
                 onClick={() => void finishSession()}
               >
-                No, continua al ritaglio
+                No, vai al ritaglio ({sessionSavedCount} foto)
               </button>
               <button
                 type="button"
@@ -738,7 +758,7 @@ export function ReceiptLiveScanner({
                   setPhase("camera");
                 }}
               >
-                Sì, altro scontrino
+                Sì, aggiungi un&apos;altra foto
               </button>
             </div>
           </div>
@@ -774,7 +794,7 @@ export function ReceiptLiveScanner({
       {phase === "camera" ? (
         <>
           <p className="px-4 py-1 text-center text-xs text-white/45">
-            Il rilevamento automatico dei bordi avviene sulla foto ferma dopo questa cattura.
+            Cattura in qualità limitata per velocità; ritaglio manuale al passo successivo (nessun rilevamento automatico).
           </p>
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
           <footer className="relative z-40 flex shrink-0 flex-col items-center gap-3 border-t border-white/10 bg-black px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">

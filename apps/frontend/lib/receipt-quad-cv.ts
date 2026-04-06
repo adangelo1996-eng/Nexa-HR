@@ -265,7 +265,20 @@ export function warpQuadToBlob(
   });
 }
 
-export function cropQuadBoundingBoxToJpeg(sourceCanvas: HTMLCanvasElement, quad: Point[]): Promise<Blob> {
+export type CropQuadExportOpts = {
+  /** Lato lungo massimo dell’output (px). */
+  maxEdge?: number;
+  /** Qualità JPEG 0–1. */
+  quality?: number;
+};
+
+export function cropQuadBoundingBoxToJpeg(
+  sourceCanvas: HTMLCanvasElement,
+  quad: Point[],
+  opts?: CropQuadExportOpts
+): Promise<Blob> {
+  const maxEdge = opts?.maxEdge ?? 1024;
+  const quality = opts?.quality ?? 0.78;
   const xs = quad.map((p) => p.x);
   const ys = quad.map((p) => p.y);
   let x = Math.floor(Math.min(...xs));
@@ -278,9 +291,10 @@ export function cropQuadBoundingBoxToJpeg(sourceCanvas: HTMLCanvasElement, quad:
   y2 = Math.min(sourceCanvas.height, y2);
   const w = Math.max(1, x2 - x);
   const h = Math.max(1, y2 - y);
-  const maxOutW = 1200;
-  const outW = Math.min(maxOutW, w);
-  const outH = Math.max(1, Math.min(1800, Math.round((h / w) * outW)));
+  const longSide = Math.max(w, h);
+  const scale = Math.min(1, maxEdge / longSide);
+  const outW = Math.max(1, Math.round(w * scale));
+  const outH = Math.max(1, Math.round(h * scale));
   const out = document.createElement("canvas");
   out.width = outW;
   out.height = outH;
@@ -299,7 +313,7 @@ export function cropQuadBoundingBoxToJpeg(sourceCanvas: HTMLCanvasElement, quad:
         }
       },
       "image/jpeg",
-      0.92
+      quality
     );
   });
 }

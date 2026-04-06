@@ -89,6 +89,7 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [lastSubmittedIds, setLastSubmittedIds] = useState<string[] | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     void (async (): Promise<void> => {
@@ -102,6 +103,14 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
       setPhase("crop");
     })();
   }, [router]);
+
+  useEffect(() => {
+    if (!saveFeedback) {
+      return;
+    }
+    const t = window.setTimeout(() => setSaveFeedback(null), 7000);
+    return () => window.clearTimeout(t);
+  }, [saveFeedback]);
 
   const runOcr = useCallback(async (base64: string): Promise<{ text: string | null; cents: number | null }> => {
     try {
@@ -142,10 +151,18 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
         ocrSuggestedCents: cents,
         validated: false
       };
-      setCropped((prev) => [...prev, row]);
+      setCropped((prev) => {
+        const n = prev.length + 1;
+        queueMicrotask(() =>
+          setSaveFeedback(
+            `Ritaglio salvato in elenco locale (${n} di ${rawFrames.length}). Immagine compressa; non è ancora sul server — compila e valida ogni riga, poi «Invia».`
+          )
+        );
+        return [...prev, row];
+      });
       setCropIndex((i) => i + 1);
     },
-    [runOcr]
+    [runOcr, rawFrames.length]
   );
 
   useEffect(() => {
@@ -291,6 +308,15 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
     const src = `data:image/jpeg;base64,${rawFrames[cropIndex]}`;
     return (
       <main className="mx-auto flex min-h-[100dvh] max-w-lg flex-col items-center justify-center bg-slate-950 p-4">
+        {saveFeedback ? (
+          <div
+            className="mb-4 w-full max-w-lg rounded-lg border border-emerald-600/50 bg-emerald-950/80 px-3 py-2 text-center text-sm text-emerald-100"
+            role="status"
+            aria-live="polite"
+          >
+            {saveFeedback}
+          </div>
+        ) : null}
         <p className="mb-3 text-center text-xs text-slate-400">
           Ritaglio {cropIndex + 1} di {rawFrames.length}
         </p>
@@ -305,6 +331,15 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-4 md:p-6">
+      {saveFeedback ? (
+        <div
+          className="rounded-lg border border-emerald-600/50 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100"
+          role="status"
+          aria-live="polite"
+        >
+          {saveFeedback}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Revisione note spese</h1>
         <div className="flex flex-wrap gap-2">

@@ -1,17 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  cropQuadBoundingBoxToJpeg,
-  CV_SNAPSHOT_PROC_MAX_DESKTOP,
-  CV_SNAPSHOT_PROC_MAX_TOUCH,
-  fallbackCenterQuad,
-  findReceiptQuadFromSource,
-  loadOpenCvWithTimeout,
-  mapProcToVideo,
-  type Point,
-  warpQuadToBlob
-} from "@/lib/receipt-quad-cv";
+import { cropQuadBoundingBoxToJpeg, fallbackCenterQuad, type Point } from "@/lib/receipt-quad-cv";
+import { RECEIPT_EXPORT_JPEG_QUALITY, RECEIPT_EXPORT_MAX_EDGE } from "@/lib/receipt-image-compress";
 
 const HANDLE_RADIUS_CSS = 22;
 
@@ -69,12 +60,10 @@ export function ReceiptStillQuadEditor({
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const quadRef = useRef<Point[] | null>(null);
-  const manualQuadRef = useRef(false);
   const dragCornerRef = useRef<number | null>(null);
   const docDragCleanupRef = useRef<(() => void) | null>(null);
 
   const [ready, setReady] = useState(false);
-  const [cvBusy, setCvBusy] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const rafRef = useRef<number>(0);
@@ -94,7 +83,6 @@ export function ReceiptStillQuadEditor({
   }, []);
 
   useLayoutEffect(() => {
-    let cancelled = false;
     const imgEl = imgRef.current;
     if (!imgEl) {
       return;
@@ -117,34 +105,7 @@ export function ReceiptStillQuadEditor({
       ctx.drawImage(img, 0, 0);
       sourceCanvasRef.current = canvas;
       quadRef.current = fallbackCenterQuad(iw, ih, 0.08);
-      manualQuadRef.current = false;
       setReady(true);
-      setCvBusy(true);
-      void (async (): Promise<void> => {
-        const coarse =
-          typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-        const procMax = coarse ? CV_SNAPSHOT_PROC_MAX_TOUCH : CV_SNAPSHOT_PROC_MAX_DESKTOP;
-        const scaleProc = Math.min(procMax / iw, procMax / ih, 1);
-        const procW = Math.max(96, Math.round(iw * scaleProc));
-        const procH = Math.max(96, Math.round(ih * scaleProc));
-        const cv = await loadOpenCvWithTimeout();
-        if (cancelled) {
-          return;
-        }
-        if (cv && !manualQuadRef.current) {
-          try {
-            const procPts = findReceiptQuadFromSource(cv, canvas, procW, procH);
-            if (procPts) {
-              quadRef.current = mapProcToVideo(procPts, iw, ih, procW, procH);
-            }
-          } catch {
-            /* keep fallback */
-          }
-        }
-        if (!cancelled) {
-          setCvBusy(false);
-        }
-      })();
     }
 
     if (imgEl.complete && imgEl.naturalWidth) {
@@ -153,10 +114,6 @@ export function ReceiptStillQuadEditor({
       imgEl.onload = (): void => buildSource();
       imgEl.onerror = (): void => setErrorMsg("Impossibile caricare l’immagine.");
     }
-
-    return () => {
-      cancelled = true;
-    };
   }, [imageSrc]);
 
   useEffect(() => {
@@ -272,7 +229,6 @@ export function ReceiptStillQuadEditor({
     docDragCleanupRef.current?.();
     const pointerId = e.pointerId;
     dragCornerRef.current = hit;
-    manualQuadRef.current = true;
 
     const onMove = (ev: PointerEvent): void => {
       if (ev.pointerId !== pointerId || dragCornerRef.current === null) {
@@ -324,17 +280,10 @@ export function ReceiptStillQuadEditor({
     setExporting(true);
     setErrorMsg(null);
     try {
-      const cv = await loadOpenCvWithTimeout();
-      let blob: Blob;
-      if (cv) {
-        try {
-          blob = await warpQuadToBlob(cv, cap, q, "image/jpeg");
-        } catch {
-          blob = await cropQuadBoundingBoxToJpeg(cap, q);
-        }
-      } else {
-        blob = await cropQuadBoundingBoxToJpeg(cap, q);
-      }
+      const blob = await cropQuadBoundingBoxToJpeg(cap, q, {
+        maxEdge: RECEIPT_EXPORT_MAX_EDGE,
+        quality: RECEIPT_EXPORT_JPEG_QUALITY
+      });
       await Promise.resolve(onConfirm(blob));
     } catch {
       setErrorMsg("Esportazione ritaglio fallita. Riprova.");
@@ -347,10 +296,11 @@ export function ReceiptStillQuadEditor({
     <div className="flex max-h-[min(85vh,720px)] w-full max-w-lg flex-col gap-3 rounded-xl border border-slate-600 bg-slate-950 p-4 text-slate-100 shadow-xl">
       <div className="text-sm font-medium">Ritaglio scontrino</div>
       <p className="text-xs text-slate-400">
-        Verifica il riquadro verde; trascina i punti bianchi se serve. Conferma per usare questa immagine.
+        Sposta i quattro punti bianchi sull&apos;area dello scontrino. Nessun rilevamento automatico: tutto manuale e
+        leggero. L&apos;immagine inviata è compressa (max {RECEIPT_EXPORT_MAX_EDGE}px, JPEG ~
+        {Math.round(RECEIPT_EXPORT_JPEG_QUALITY * 100)}% qualità).
       </p>
       {errorMsg ? <p className="text-xs text-amber-400">{errorMsg}</p> : null}
-      {cvBusy ? <p className="text-xs text-slate-500">Rilevamento bordi…</p> : null}
       <div
         ref={wrapRef}
         className="relative mx-auto aspect-[3/4] w-full max-w-sm overflow-hidden rounded-lg bg-slate-900"

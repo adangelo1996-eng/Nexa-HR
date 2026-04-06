@@ -14,6 +14,11 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { guessAmountEurStringFromReceiptOcr } from "@/lib/expense-ocr";
+import {
+  compressImageFileToObjectUrl,
+  RECEIPT_CAPTURE_JPEG_QUALITY,
+  RECEIPT_CAPTURE_MAX_EDGE
+} from "@/lib/receipt-image-compress";
 
 const EXPENSE_TYPES = [
   { id: "ristorante", label: "Ristorante / pasti" },
@@ -54,6 +59,7 @@ export default function ExpensesPage(): React.JSX.Element {
   const [expenseDate, setExpenseDate] = useState<string>(() => todayIsoLocal());
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [filePrepareBusy, setFilePrepareBusy] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
@@ -111,16 +117,24 @@ export default function ExpensesPage(): React.JSX.Element {
     };
   }, [cropSrc]);
 
-  function onFileChosen(file: File | null): void {
+  async function onFileChosen(file: File | null): Promise<void> {
     if (!file || !file.type.startsWith("image/")) {
       return;
     }
-    if (cropSrc?.startsWith("blob:")) {
-      URL.revokeObjectURL(cropSrc);
+    setFilePrepareBusy(true);
+    setError(null);
+    try {
+      if (cropSrc?.startsWith("blob:")) {
+        URL.revokeObjectURL(cropSrc);
+      }
+      const url = await compressImageFileToObjectUrl(file, RECEIPT_CAPTURE_MAX_EDGE, RECEIPT_CAPTURE_JPEG_QUALITY);
+      setCropSrc(url);
+      setCropOpen(true);
+    } catch {
+      setError("Preparazione immagine fallita (file troppo grande o formato non supportato)");
+    } finally {
+      setFilePrepareBusy(false);
     }
-    const url = URL.createObjectURL(file);
-    setCropSrc(url);
-    setCropOpen(true);
   }
 
   async function submit(e: React.FormEvent): Promise<void> {
@@ -235,8 +249,9 @@ export default function ExpensesPage(): React.JSX.Element {
       <form onSubmit={(ev) => void submit(ev)} className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-700">
         <div className="text-sm font-medium">Nuova richiesta</div>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          Ritaglia con i quattro punti sullo scontrino. Il rimborso è previsto nel cedolino del mese successivo alla data
-          spesa, dopo approvazione. L&apos;immagine è conservata con hash a fini di tracciabilità.
+          Ritaglia con i quattro punti sullo scontrino. La foto viene ridimensionata e compressa prima del ritaglio. Il
+          rimborso è previsto nel cedolino del mese successivo alla data spesa, dopo approvazione. L&apos;immagine è
+          conservata con hash a fini di tracciabilità.
         </p>
         <div className="space-y-2">
           <label className="block text-xs text-slate-500 dark:text-slate-400">
@@ -245,14 +260,14 @@ export default function ExpensesPage(): React.JSX.Element {
               type="file"
               accept="image/*"
               capture="environment"
-              disabled={ocrBusy}
+              disabled={ocrBusy || filePrepareBusy}
               className="mt-1 block w-full text-sm"
-              onChange={(ev) => onFileChosen(ev.target.files?.[0] ?? null)}
+              onChange={(ev) => void onFileChosen(ev.target.files?.[0] ?? null)}
             />
           </label>
           <button
             type="button"
-            disabled={ocrBusy}
+            disabled={ocrBusy || filePrepareBusy}
             onClick={() => router.push("/expenses/scan" as Route)}
             className="w-full rounded border border-synapse-gold/40 bg-synapse-gold/15 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-synapse-gold/25 disabled:opacity-50 dark:border-synapse-gold/30 dark:text-white"
           >
@@ -264,6 +279,7 @@ export default function ExpensesPage(): React.JSX.Element {
             Scontrino pronto. Puoi sostituirlo con un nuovo caricamento o scanner.
           </p>
         ) : null}
+        {filePrepareBusy ? <p className="text-xs text-slate-500">Preparazione immagine (ridimensionamento e compressione)…</p> : null}
         {ocrBusy ? <p className="text-xs text-slate-500">OCR in corso sull&apos;area ritagliata…</p> : null}
 
         <div className="flex flex-col gap-4 md:flex-row md:items-start">
