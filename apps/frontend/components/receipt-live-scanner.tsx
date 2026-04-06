@@ -2,78 +2,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { loadOpenCv, type OpenCvRuntime } from "@/lib/opencv-loader";
-
-type Point = { x: number; y: number };
+import {
+  fallbackCenterQuad,
+  type Point
+} from "@/lib/receipt-quad-cv";
 
 const NO_GET_USER_MEDIA = "NO_GET_USER_MEDIA";
-/** JPEG minimo plausibile (header + pochi byte); sotto = probabile frame vuoto. */
-const MIN_CAPTURE_BLOB_BYTES = 900;
 const HANDLE_RADIUS_CSS = 22;
-
-/**
- * OpenCV solo al momento della cattura (frame fermo), mai in anteprima live.
- * Risoluzione ridotta per limitare il tempo sul main thread.
- */
-const CV_SNAPSHOT_PROC_MAX_DESKTOP = 280;
-const CV_SNAPSHOT_PROC_MAX_TOUCH = 220;
-/** Limite contorni analizzati con approxPolyDP (il costo è qui). */
-const CV_MAX_CONTOURS_TO_SCAN = 36;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = window.setTimeout(() => reject(new Error(label)), ms);
-    promise.then(
-      (v) => {
-        window.clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        window.clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
-
-/** Mapping object-fit: cover — stesso calcolo per overlay e per hit-test maniglie. */
-function getObjectCoverMapping(video: HTMLVideoElement): {
-  vw: number;
-  vh: number;
-  dispW: number;
-  dispH: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-} {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  const rect = video.getBoundingClientRect();
-  const dispW = rect.width;
-  const dispH = rect.height;
-  if (vw < 2 || vh < 2 || dispW < 2 || dispH < 2) {
-    return { vw, vh, dispW, dispH, scale: 1, offsetX: 0, offsetY: 0 };
-  }
-  const scale = Math.max(dispW / vw, dispH / vh);
-  const offsetX = (dispW - vw * scale) / 2;
-  const offsetY = (dispH - vh * scale) / 2;
-  return { vw, vh, dispW, dispH, scale, offsetX, offsetY };
-}
-
-function videoToDisplayPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
-  return { x: p.x * m.scale + m.offsetX, y: p.y * m.scale + m.offsetY };
-}
-
-function displayToVideoPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
-  return { x: (p.x - m.offsetX) / m.scale, y: (p.y - m.offsetY) / m.scale };
-}
-
-function clampVideoPt(p: Point, vw: number, vh: number, pad = 4): Point {
-  return {
-    x: Math.min(Math.max(pad, p.x), vw - pad),
-    y: Math.min(Math.max(pad, p.y), vh - pad)
-  };
-}
 
 async function waitForVideoFrameOrRaf(video: HTMLVideoElement): Promise<void> {
   const rvfc = video.requestVideoFrameCallback?.bind(video);
@@ -111,10 +46,6 @@ function secureCameraContextMessage(): string | null {
   return null;
 }
 
-/**
- * Prova più profili video: su desktop spesso non esiste `environment`, e vincoli troppo stretti
- * producono OverconstrainedError con un solo tentativo.
- */
 async function acquireCameraStream(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error(NO_GET_USER_MEDIA);
@@ -148,10 +79,6 @@ async function acquireCameraStream(): Promise<MediaStream> {
   }
 }
 
-/**
- * Collega lo stream al video e avvia la riproduzione. Su mobile il `<video>` deve essere già nel DOM
- * prima di `getUserMedia`; `play()` a volte non basta finché non arrivano frame — aspettiamo eventi + timeout.
- */
 async function attachStreamAndPlayVideo(video: HTMLVideoElement, stream: MediaStream): Promise<void> {
   video.srcObject = stream;
   video.muted = true;
@@ -259,295 +186,56 @@ function formatGetUserMediaError(err: unknown): string {
   }
 }
 
-function orderQuadPoints(pts: Point[]): [Point, Point, Point, Point] {
-  const s = pts.map((p) => p.x + p.y);
-  const d = pts.map((p) => p.x - p.y);
-  const tl = pts[s.indexOf(Math.min(...s))]!;
-  const br = pts[s.indexOf(Math.max(...s))]!;
-  const tr = pts[d.indexOf(Math.max(...d))]!;
-  const bl = pts[d.indexOf(Math.min(...d))]!;
-  return [tl, tr, br, bl];
+function getObjectCoverMapping(video: HTMLVideoElement): {
+  vw: number;
+  vh: number;
+  dispW: number;
+  dispH: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+} {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const rect = video.getBoundingClientRect();
+  const dispW = rect.width;
+  const dispH = rect.height;
+  if (vw < 2 || vh < 2 || dispW < 2 || dispH < 2) {
+    return { vw, vh, dispW, dispH, scale: 1, offsetX: 0, offsetY: 0 };
+  }
+  const scale = Math.max(dispW / vw, dispH / vh);
+  const offsetX = (dispW - vw * scale) / 2;
+  const offsetY = (dispH - vh * scale) / 2;
+  return { vw, vh, dispW, dispH, scale, offsetX, offsetY };
 }
 
-/** Estrae 4 vertici da approxPolyDP (layout variabile in OpenCV.js). */
-function extractQuadFromApproxMat(approx: {
-  rows: number;
-  cols: number;
-  data32S?: Int32Array;
-  data32F?: Float32Array;
-}): Point[] | null {
-  const dS = approx.data32S;
-  const dF = approx.data32F;
-  const read4 = (get: (i: number) => number): Point[] => {
-    const pts: Point[] = [];
-    for (let j = 0; j < 4; j++) {
-      pts.push({ x: get(j * 2), y: get(j * 2 + 1) });
-    }
-    return pts;
+function videoToDisplayPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
+  return { x: p.x * m.scale + m.offsetX, y: p.y * m.scale + m.offsetY };
+}
+
+function displayToVideoPt(p: Point, m: ReturnType<typeof getObjectCoverMapping>): Point {
+  return { x: (p.x - m.offsetX) / m.scale, y: (p.y - m.offsetY) / m.scale };
+}
+
+function clampVideoPt(p: Point, vw: number, vh: number, pad = 4): Point {
+  return {
+    x: Math.min(Math.max(pad, p.x), vw - pad),
+    y: Math.min(Math.max(pad, p.y), vh - pad)
   };
-  if (approx.rows === 4) {
-    if (dS && dS.length >= 8) {
-      return read4((i) => dS[i]!);
-    }
-    if (dF && dF.length >= 8) {
-      return read4((i) => dF[i]!);
-    }
-  }
-  if (approx.rows === 1 && approx.cols === 4) {
-    if (dS && dS.length >= 8) {
-      return read4((i) => dS[i]!);
-    }
-    if (dF && dF.length >= 8) {
-      return read4((i) => dF[i]!);
-    }
-  }
-  if (approx.rows === 4 && approx.cols === 1 && dS && dS.length >= 8) {
-    return read4((i) => dS[i]!);
-  }
-  if (approx.rows === 4 && approx.cols === 1 && dF && dF.length >= 8) {
-    return read4((i) => dF[i]!);
-  }
-  return null;
-}
-
-/** Rileva quadrilatero su fotogramma già catturato (canvas pieno risoluzione o video). */
-function findReceiptQuadFromSource(
-  cv: OpenCvRuntime,
-  source: HTMLCanvasElement | HTMLVideoElement,
-  procW: number,
-  procH: number
-): Point[] | null {
-  const canvas = document.createElement("canvas");
-  canvas.width = procW;
-  canvas.height = procH;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return null;
-  }
-  if (source instanceof HTMLVideoElement) {
-    if (source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || source.videoWidth < 32) {
-      return null;
-    }
-  } else if (source.width < 32 || source.height < 32) {
-    return null;
-  }
-  ctx.drawImage(source, 0, 0, procW, procH);
-
-  const src = cv.imread(canvas);
-  const gray = new cv.Mat();
-  const blurred = new cv.Mat();
-  const edges = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-
-  try {
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    const ksize = new cv.Size(3, 3);
-    cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
-    cv.Canny(blurred, edges, 48, 128);
-
-    const frameArea = procW * procH;
-    const minA = frameArea * 0.045;
-    const maxA = frameArea * 0.92;
-
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    let best: Point[] | null = null;
-    let bestArea = 0;
-
-    const total = contours.size();
-    const cap = Math.min(total, CV_MAX_CONTOURS_TO_SCAN);
-    for (let i = 0; i < cap; i++) {
-      const c = contours.get(i);
-      const area = cv.contourArea(c);
-      if (area < minA || area > maxA) {
-        c.delete();
-        continue;
-      }
-      const peri = cv.arcLength(c, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(c, approx, 0.048 * peri, true);
-      c.delete();
-
-      if (!cv.isContourConvex(approx)) {
-        approx.delete();
-        continue;
-      }
-
-      const pts = extractQuadFromApproxMat(approx);
-      approx.delete();
-      if (!pts || pts.length !== 4) {
-        continue;
-      }
-
-      if (area > bestArea) {
-        bestArea = area;
-        best = pts;
-      }
-    }
-
-    return best;
-  } finally {
-    src.delete();
-    gray.delete();
-    blurred.delete();
-    edges.delete();
-    contours.delete();
-    hierarchy.delete();
-  }
-}
-
-function mapProcToVideo(pts: Point[], vw: number, vh: number, procW: number, procH: number): Point[] {
-  const sx = vw / procW;
-  const sy = vh / procH;
-  return pts.map((p) => ({ x: p.x * sx, y: p.y * sy }));
-}
-
-function fallbackCenterQuad(vw: number, vh: number, margin = 0.08): Point[] {
-  const mx = vw * margin;
-  const my = vh * margin;
-  return [
-    { x: mx, y: my },
-    { x: vw - mx, y: my },
-    { x: vw - mx, y: vh - my },
-    { x: mx, y: vh - my }
-  ];
-}
-
-function warpQuadToBlob(
-  cv: OpenCvRuntime,
-  sourceCanvas: HTMLCanvasElement,
-  quadVideo: Point[],
-  mime: "image/jpeg"
-): Promise<Blob> {
-  const [tl, tr, br, bl] = orderQuadPoints(quadVideo);
-  const wTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-  const wBot = Math.hypot(br.x - bl.x, br.y - bl.y);
-  const hLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
-  const hRight = Math.hypot(br.x - tr.x, br.y - tr.y);
-  const maxW = Math.max(wTop, wBot, 1);
-  const maxH = Math.max(hLeft, hRight, 1);
-  const outW = Math.min(1200, Math.round(maxW));
-  const outH = Math.max(1, Math.min(1800, Math.round((maxH / maxW) * outW)));
-
-  const srcMat = cv.imread(sourceCanvas);
-  const dstMat = new cv.Mat();
-  const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    tl.x,
-    tl.y,
-    tr.x,
-    tr.y,
-    br.x,
-    br.y,
-    bl.x,
-    bl.y
-  ]);
-  const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, outW - 1, 0, outW - 1, outH - 1, 0, outH - 1]);
-  const M = cv.getPerspectiveTransform(srcTri, dstTri);
-  const dsize = new cv.Size(outW, outH);
-
-  try {
-    cv.warpPerspective(
-      srcMat,
-      dstMat,
-      M,
-      dsize,
-      cv.INTER_LINEAR,
-      cv.BORDER_CONSTANT,
-      new cv.Scalar(0, 0, 0, 255)
-    );
-  } finally {
-    srcMat.delete();
-    srcTri.delete();
-    dstTri.delete();
-    M.delete();
-  }
-
-  const outCanvas = document.createElement("canvas");
-  const domId = `ocv-out-${Date.now()}`;
-  outCanvas.id = domId;
-  outCanvas.width = dstMat.cols;
-  outCanvas.height = dstMat.rows;
-  outCanvas.setAttribute(
-    "style",
-    "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;width:1px;height:1px;"
-  );
-  document.body.appendChild(outCanvas);
-  try {
-    cv.imshow(domId, dstMat);
-  } finally {
-    dstMat.delete();
-  }
-
-  return new Promise((resolve, reject) => {
-    outCanvas.toBlob(
-      (b) => {
-        outCanvas.remove();
-        if (b) {
-          resolve(b);
-        } else {
-          reject(new Error("toBlob fallito"));
-        }
-      },
-      mime,
-      0.92
-    );
-  });
-}
-
-/** Ritaglio asse-allineato (fallback se OpenCV non è disponibile o warp fallisce). */
-function cropQuadBoundingBoxToJpeg(sourceCanvas: HTMLCanvasElement, quad: Point[]): Promise<Blob> {
-  const xs = quad.map((p) => p.x);
-  const ys = quad.map((p) => p.y);
-  let x = Math.floor(Math.min(...xs));
-  let y = Math.floor(Math.min(...ys));
-  let x2 = Math.ceil(Math.max(...xs));
-  let y2 = Math.ceil(Math.max(...ys));
-  x = Math.max(0, x);
-  y = Math.max(0, y);
-  x2 = Math.min(sourceCanvas.width, x2);
-  y2 = Math.min(sourceCanvas.height, y2);
-  const w = Math.max(1, x2 - x);
-  const h = Math.max(1, y2 - y);
-  const maxOutW = 1200;
-  const outW = Math.min(maxOutW, w);
-  const outH = Math.max(1, Math.min(1800, Math.round((h / w) * outW)));
-  const out = document.createElement("canvas");
-  out.width = outW;
-  out.height = outH;
-  const ctx = out.getContext("2d");
-  if (!ctx) {
-    return Promise.reject(new Error("Canvas 2D non disponibile"));
-  }
-  ctx.drawImage(sourceCanvas, x, y, w, h, 0, 0, outW, outH);
-  return new Promise((resolve, reject) => {
-    out.toBlob(
-      (b) => {
-        if (b) {
-          resolve(b);
-        } else {
-          reject(new Error("toBlob fallito"));
-        }
-      },
-      "image/jpeg",
-      0.92
-    );
-  });
 }
 
 export type ReceiptLiveScannerProps = {
   open: boolean;
   onClose: () => void;
-  /** Immagine rettificata (JPEG) pronta per OCR / invio. */
-  onCapture: (blob: Blob) => void | Promise<void>;
-  /** `page`: schermata dedicata (stile lettore documenti); `modal`: overlay sopra il form. */
+  /** Fotogrammi JPEG a piena risoluzione; il ritaglio avviene nella pagina di revisione. */
+  onSessionComplete: (blobs: Blob[]) => void | Promise<void>;
   variant?: "modal" | "page";
 };
 
 export function ReceiptLiveScanner({
   open,
   onClose,
-  onCapture,
+  onSessionComplete,
   variant = "modal"
 }: ReceiptLiveScannerProps): React.JSX.Element | null {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -555,22 +243,19 @@ export function ReceiptLiveScanner({
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const quadVideoRef = useRef<Point[] | null>(null);
-  /** Indice vertice 0–3 trascinato dall’utente, o null. */
   const dragCornerRef = useRef<number | null>(null);
-  /** Utente ha spostato le maniglie: non sovrascrivere il quad finché non centra di nuovo. */
   const manualQuadRef = useRef(false);
+  const sessionBlobsRef = useRef<Blob[]>([]);
 
-  const [phase, setPhase] = useState<"idle" | "starting" | "camera" | "error">("idle");
+  const [phase, setPhase] = useState<
+    "idle" | "starting" | "camera" | "promptMore" | "error"
+  >("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cvProgress, setCvProgress] = useState<string>("");
   const [capturing, setCapturing] = useState(false);
-  /** Incrementato per ritentare getUserMedia senza chiudere il modale. */
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
-  const footerRef = useRef<HTMLElement | null>(null);
-  /** Cleanup listener document-level per drag maniglie (evita setPointerCapture su iOS). */
   const docDragCleanupRef = useRef<(() => void) | null>(null);
 
-  /** Montaggio su document.body: fuori da main/header/footer AppShell che intercettano i tap (z-index). */
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setPortalRoot(document.body);
@@ -593,6 +278,7 @@ export function ReceiptLiveScanner({
       quadVideoRef.current = null;
       setCameraRetryNonce(0);
       setCapturing(false);
+      sessionBlobsRef.current = [];
       dragCornerRef.current = null;
       manualQuadRef.current = false;
       docDragCleanupRef.current?.();
@@ -680,7 +366,6 @@ export function ReceiptLiveScanner({
         return;
       }
 
-      /* Anteprima leggera: niente OpenCV finché non tocchi Cattura (evita freeze del main thread). */
       setPhase("camera");
       setCvProgress("");
     }
@@ -739,7 +424,6 @@ export function ReceiptLiveScanner({
       const overlay = overlayRef.current;
       const vwEarly = video?.videoWidth ?? 0;
       const vhEarly = video?.videoHeight ?? 0;
-      /* Su alcuni mobile readyState resta < HAVE_CURRENT_DATA a lungo: basta metadata + dimensioni per disegnare quad/maniglie. */
       if (!video || !overlay || vwEarly < 32 || vhEarly < 32) {
         rafRef.current = requestAnimationFrame(tick);
         return;
@@ -875,7 +559,7 @@ export function ReceiptLiveScanner({
     };
   }, [phase]);
 
-  const handleCapture = useCallback(async () => {
+  const handleCaptureRaw = useCallback(async () => {
     if (capturing) {
       return;
     }
@@ -929,80 +613,28 @@ export function ReceiptLiveScanner({
         return;
       }
 
-      let quad = quadVideoRef.current ?? fallbackCenterQuad(vw, vh, 0.1);
-      const userAdjustedCorners = manualQuadRef.current;
-
-      const tryFinalize = async (blob: Blob): Promise<boolean> => {
-        if (blob.size < MIN_CAPTURE_BLOB_BYTES) {
-          return false;
-        }
-        await Promise.resolve(onCapture(blob));
-        onClose();
-        return true;
-      };
-
-      const coarse =
-        typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-      const procMax = coarse ? CV_SNAPSHOT_PROC_MAX_TOUCH : CV_SNAPSHOT_PROC_MAX_DESKTOP;
-      const scaleProc = Math.min(procMax / vw, procMax / vh, 1);
-      const procW = Math.max(96, Math.round(vw * scaleProc));
-      const procH = Math.max(96, Math.round(vh * scaleProc));
-
-      let cv: OpenCvRuntime | null = null;
-      try {
-        cv = await withTimeout(loadOpenCv(), 60_000, "OpenCV: timeout");
-      } catch {
-        cv = null;
-      }
-
-      if (cv && !userAdjustedCorners) {
-        try {
-          const procPts = findReceiptQuadFromSource(cv, cap, procW, procH);
-          if (procPts) {
-            quad = mapProcToVideo(procPts, vw, vh, procW, procH);
-          }
-        } catch {
-          /* mantieni quad predefinito / centro */
-        }
-      }
-
-      if (!cv) {
-        try {
-          const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-          if (!(await tryFinalize(blob))) {
-            setErrorMsg("Immagine catturata troppo piccola o vuota. Riprova.");
-          }
-        } catch {
-          setErrorMsg(
-            "OpenCV non disponibile e ritaglio fallito. Controlla la connessione o usa Carica foto."
-          );
-        }
+      const blob = await new Promise<Blob | null>((resolve) => {
+        cap.toBlob((b) => resolve(b), "image/jpeg", 0.92);
+      });
+      if (!blob || blob.size < 2000) {
+        setErrorMsg("Cattura fallita o immagine troppo piccola. Riprova.");
         return;
       }
 
-      try {
-        const blob = await warpQuadToBlob(cv, cap, quad, "image/jpeg");
-        if (await tryFinalize(blob)) {
-          return;
-        }
-      } catch {
-        /* fallback sotto */
-      }
-      try {
-        const blob = await cropQuadBoundingBoxToJpeg(cap, quad);
-        if (await tryFinalize(blob)) {
-          return;
-        }
-        setErrorMsg(
-          "Immagine troppo piccola dopo il ritaglio. Allarga il rettangolo o migliora la luce e riprova."
-        );
-      } catch {
-        setErrorMsg("Elaborazione immagine fallita. Regola i vertici bianchi/verdi e riprova.");
-      }
+      sessionBlobsRef.current = [...sessionBlobsRef.current, blob];
+      setPhase("promptMore");
     } finally {
       setCapturing(false);
     }
-  }, [capturing, onCapture, onClose]);
+  }, [capturing]);
+
+  const finishSession = useCallback(async (): Promise<void> => {
+    stopCamera();
+    const blobs = [...sessionBlobsRef.current];
+    sessionBlobsRef.current = [];
+    await Promise.resolve(onSessionComplete(blobs));
+    onClose();
+  }, [onSessionComplete, onClose, stopCamera]);
 
   if (!open) {
     return null;
@@ -1022,8 +654,8 @@ export function ReceiptLiveScanner({
           <h2 className="text-base font-semibold">Scanner scontrino</h2>
           <p className="text-xs text-white/60">
             {variant === "page"
-              ? "Inquadra lo scontrino e, se serve, sposta i quattro punti bianchi. Il bordo si adatta automaticamente allo scontrino solo al momento della cattura (non in anteprima)."
-              : "Inquadra lo scontrino; puoi regolare i punti bianchi. Alla cattura viene applicato il rilevamento bordi sulla foto ferma."}
+              ? "Inquadra lo scontrino; dopo la cattura puoi aggiungerne altri o passare al ritaglio."
+              : "Inquadra lo scontrino; la messa a fuoco del bordo avviene sulla foto ferma al passo successivo."}
           </p>
         </div>
         <button
@@ -1035,10 +667,6 @@ export function ReceiptLiveScanner({
         </button>
       </header>
 
-      {/*
-        Il <video> deve restare nel DOM durante "starting"/"idle": altrimenti videoRef è null,
-        lo stream non si collega e su molti mobile getUserMedia non completa bene senza elemento video.
-      */}
       <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black">
         <div
           className={
@@ -1084,6 +712,38 @@ export function ReceiptLiveScanner({
           </div>
         ) : null}
 
+        {phase === "promptMore" ? (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-black/95 px-6 text-center">
+            <p className="max-w-sm text-sm text-white/90">
+              Foto salvata ({sessionBlobsRef.current.length} in questa sessione). Vuoi scansionare un altro scontrino?
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                className="touch-manipulation rounded-lg border border-white/25 px-6 py-3 text-sm font-medium hover:bg-white/10"
+                onClick={() => void finishSession()}
+              >
+                No, continua al ritaglio
+              </button>
+              <button
+                type="button"
+                className="touch-manipulation rounded-lg bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-emerald-400"
+                onClick={() => {
+                  manualQuadRef.current = false;
+                  dragCornerRef.current = null;
+                  const vid = videoRef.current;
+                  if (vid && vid.videoWidth >= 32 && vid.videoHeight >= 32) {
+                    quadVideoRef.current = fallbackCenterQuad(vid.videoWidth, vid.videoHeight, 0.1);
+                  }
+                  setPhase("camera");
+                }}
+              >
+                Sì, altro scontrino
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {phase === "error" ? (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black px-6 text-center">
             <p className="max-w-md text-sm text-red-300">{errorMsg}</p>
@@ -1114,14 +774,10 @@ export function ReceiptLiveScanner({
       {phase === "camera" ? (
         <>
           <p className="px-4 py-1 text-center text-xs text-white/45">
-            Anteprima leggera: il rilevamento automatico parte solo dopo &quot;Cattura scontrino&quot; (pochi secondi di
-            elaborazione possibili).
+            Il rilevamento automatico dei bordi avviene sulla foto ferma dopo questa cattura.
           </p>
           {errorMsg ? <p className="px-4 py-1 text-center text-xs text-amber-300">{errorMsg}</p> : null}
-          <footer
-            ref={footerRef}
-            className="relative z-40 flex shrink-0 flex-col items-center gap-3 border-t border-white/10 bg-black px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
-          >
+          <footer className="relative z-40 flex shrink-0 flex-col items-center gap-3 border-t border-white/10 bg-black px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
             <button
               type="button"
               className="touch-manipulation text-xs text-white/60 underline decoration-white/30 underline-offset-2 hover:text-white/90"
@@ -1149,9 +805,9 @@ export function ReceiptLiveScanner({
                 type="button"
                 className="touch-manipulation rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:opacity-50"
                 disabled={capturing}
-                onClick={() => void handleCapture()}
+                onClick={() => void handleCaptureRaw()}
               >
-                {capturing ? "Elaborazione foto…" : "Cattura scontrino"}
+                {capturing ? "Cattura…" : "Cattura scontrino"}
               </button>
             </div>
           </footer>

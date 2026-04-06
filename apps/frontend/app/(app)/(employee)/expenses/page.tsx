@@ -6,9 +6,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
 import { ExpenseReceiptCropDialog } from "@/components/expense-receipt-crop-dialog";
-import { createExpenseClaim, fetchExpenseClaims, type ExpenseClaimDto } from "@/lib/api";
+import {
+  createExpenseClaim,
+  downloadExpenseReceiptsArchiveZip,
+  fetchExpenseClaims,
+  type ExpenseClaimDto
+} from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-import { consumeExpenseLiveScanFromSession } from "@/lib/expense-scan-session";
 import { guessAmountEurStringFromReceiptOcr } from "@/lib/expense-ocr";
 
 const EXPENSE_TYPES = [
@@ -21,6 +25,14 @@ const EXPENSE_TYPES = [
   { id: "materiale", label: "Materiale / cancelleria" },
   { id: "altro", label: "Altro" }
 ] as const;
+
+function todayIsoLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function base64ToBlob(base64: string, mime: string): Blob {
   const bin = atob(base64);
@@ -39,6 +51,7 @@ export default function ExpensesPage(): React.JSX.Element {
   const [currency, setCurrency] = useState("EUR");
   const [description, setDescription] = useState("");
   const [expenseType, setExpenseType] = useState<string>("ristorante");
+  const [expenseDate, setExpenseDate] = useState<string>(() => todayIsoLocal());
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
@@ -91,21 +104,6 @@ export default function ExpensesPage(): React.JSX.Element {
   }, [load]);
 
   useEffect(() => {
-    const payload = consumeExpenseLiveScanFromSession();
-    if (!payload) {
-      return;
-    }
-    const mime = payload.mime as "image/jpeg" | "image/png" | "image/webp";
-    if (mime !== "image/jpeg" && mime !== "image/png" && mime !== "image/webp") {
-      setError("Formato immagine dalla scansione non supportato");
-      return;
-    }
-    setReceiptBase64(payload.base64);
-    setReceiptMime(mime);
-    void runOcrOnReceipt(payload.base64, mime);
-  }, [runOcrOnReceipt]);
-
-  useEffect(() => {
     return () => {
       if (cropSrc?.startsWith("blob:")) {
         URL.revokeObjectURL(cropSrc);
@@ -146,6 +144,7 @@ export default function ExpensesPage(): React.JSX.Element {
         amountCents: Math.round(euros * 100),
         currency,
         description: desc,
+        expenseDate,
         expenseType,
         receiptBase64,
         receiptMime,
@@ -154,6 +153,7 @@ export default function ExpensesPage(): React.JSX.Element {
       });
       setAmount("");
       setDescription("");
+      setExpenseDate(todayIsoLocal());
       setReceiptBase64(null);
       setReceiptMime(null);
       setOcrRawText(null);
@@ -196,22 +196,47 @@ export default function ExpensesPage(): React.JSX.Element {
         }}
       />
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Note spese</h1>
-        <Link
-          href="/"
-          className="inline-flex rounded-lg border border-synapse-gold/30 bg-white/70 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-slate-50 dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]"
-        >
-          Dashboard
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600"
+            onClick={() => {
+              void (async (): Promise<void> => {
+                const token = getToken();
+                if (!token) {
+                  return;
+                }
+                try {
+                  const blob = await downloadExpenseReceiptsArchiveZip(token);
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = "scontrini-archivio.zip";
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                } catch {
+                  setError("Download archivio ZIP fallito");
+                }
+              })();
+            }}
+          >
+            Scarica ZIP archivio
+          </button>
+          <Link
+            href="/"
+            className="inline-flex rounded-lg border border-synapse-gold/30 bg-white/70 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-slate-50 dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]"
+          >
+            Dashboard
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={(ev) => void submit(ev)} className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-700">
         <div className="text-sm font-medium">Nuova richiesta</div>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          Ritaglia lo scontrino nell&apos;inquadratura. L&apos;immagine viene conservata in modo inalterabile (hash
-          crittografico) a fini di tracciabilità. Per adeguamenti normativi (es. conservazione sostitutiva) integrare con
-          il DMS aziendale.
+          Ritaglia con i quattro punti sullo scontrino. Il rimborso è previsto nel cedolino del mese successivo alla data
+          spesa, dopo approvazione. L&apos;immagine è conservata con hash a fini di tracciabilità.
         </p>
         <div className="space-y-2">
           <label className="block text-xs text-slate-500 dark:text-slate-400">
@@ -231,47 +256,69 @@ export default function ExpensesPage(): React.JSX.Element {
             onClick={() => router.push("/expenses/scan" as Route)}
             className="w-full rounded border border-synapse-gold/40 bg-synapse-gold/15 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-synapse-gold/25 disabled:opacity-50 dark:border-synapse-gold/30 dark:text-white"
           >
-            Scansiona con fotocamera (pagina dedicata, tempo reale)
+            Scansiona con fotocamera (più scontrini → ritaglio e invio)
           </button>
         </div>
         {receiptBase64 ? (
           <p className="text-xs text-emerald-600 dark:text-emerald-400">
-            Scansione pronta per l&apos;invio. Puoi cambiare foto per sostituirla.
+            Scontrino pronto. Puoi sostituirlo con un nuovo caricamento o scanner.
           </p>
         ) : null}
         {ocrBusy ? <p className="text-xs text-slate-500">OCR in corso sull&apos;area ritagliata…</p> : null}
 
-        <label className="block text-xs text-slate-500 dark:text-slate-400">
-          Tipologia spesa
-          <select
-            value={expenseType}
-            onChange={(ev) => setExpenseType(ev.target.value)}
-            className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
-          >
-            {EXPENSE_TYPES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex gap-2">
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder="Importo (€)"
-            value={amount}
-            onChange={(ev) => setAmount(ev.target.value)}
-            className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
-          />
-          <select
-            value={currency}
-            onChange={(ev) => setCurrency(ev.target.value)}
-            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
-          >
-            <option value="EUR">EUR</option>
-          </select>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          {receiptBase64 && receiptMime ? (
+            <div className="mx-auto shrink-0 md:mx-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${receiptMime};base64,${receiptBase64}`}
+                alt="Anteprima scontrino"
+                className="h-auto max-h-48 w-full max-w-[200px] rounded-lg border border-slate-200 object-contain dark:border-slate-600"
+              />
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1 space-y-3">
+            <label className="block text-xs text-slate-500 dark:text-slate-400">
+              Tipologia spesa
+              <select
+                value={expenseType}
+                onChange={(ev) => setExpenseType(ev.target.value)}
+                className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+              >
+                {EXPENSE_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">
+              Data spesa
+              <input
+                type="date"
+                value={expenseDate}
+                onChange={(ev) => setExpenseDate(ev.target.value)}
+                className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+              />
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="Importo (€)"
+                value={amount}
+                onChange={(ev) => setAmount(ev.target.value)}
+                className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+              />
+              <select
+                value={currency}
+                onChange={(ev) => setCurrency(ev.target.value)}
+                className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+              >
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+          </div>
         </div>
         {ocrSuggestedCents != null ? (
           <p className="text-xs text-slate-500">
@@ -302,6 +349,8 @@ export default function ExpensesPage(): React.JSX.Element {
             <div className="font-medium">{r.description}</div>
             <div className="text-slate-600 dark:text-slate-400">
               {typeLabel(r.expenseType ?? "altro")} — {(r.amountCents / 100).toFixed(2)} {r.currency} — {r.status}
+              {r.expenseDate ? ` · data spesa ${r.expenseDate}` : ""}
+              {r.payslipPeriod ? ` · cedolino previsto ${r.payslipPeriod}` : ""}
             </div>
             {r.hasReceipt ? (
               <div className="mt-1 text-xs text-slate-500">

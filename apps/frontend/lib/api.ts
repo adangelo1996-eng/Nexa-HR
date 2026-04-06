@@ -1897,6 +1897,7 @@ export interface ExpenseClaimDto {
   amountCents: number;
   currency: string;
   description: string;
+  expenseDate?: string;
   expenseType?: string;
   hasReceipt?: boolean;
   receiptSha256?: string | null;
@@ -2024,19 +2025,22 @@ export async function fetchExpenseClaims(
   return body.items;
 }
 
+export type CreateExpenseClaimPayload = {
+  amountCents: number;
+  currency: string;
+  description: string;
+  expenseDate: string;
+  expenseType: string;
+  receiptBase64?: string;
+  receiptMime?: "image/jpeg" | "image/png" | "image/webp";
+  ocrRawText?: string;
+  ocrSuggestedCents?: number;
+  kmDistance?: number;
+};
+
 export async function createExpenseClaim(
   token: string,
-  payload: {
-    amountCents: number;
-    currency: string;
-    description: string;
-    expenseType: string;
-    receiptBase64?: string;
-    receiptMime?: "image/jpeg" | "image/png" | "image/webp";
-    ocrRawText?: string;
-    ocrSuggestedCents?: number;
-    kmDistance?: number;
-  }
+  payload: CreateExpenseClaimPayload
 ): Promise<ExpenseClaimDto> {
   const response = await fetch(buildApiUrl(`/expenses`), {
     method: "POST",
@@ -2045,6 +2049,59 @@ export async function createExpenseClaim(
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as ExpenseClaimDto;
+}
+
+export async function createExpenseClaimsBatch(
+  token: string,
+  items: CreateExpenseClaimPayload[]
+): Promise<{ items: ExpenseClaimDto[] }> {
+  const response = await fetch(buildApiUrl(`/expenses/batch`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ items })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: ExpenseClaimDto[] };
+}
+
+export async function downloadExpenseReceiptsArchiveZip(
+  token: string,
+  query?: { from?: string; to?: string; status?: string }
+): Promise<Blob> {
+  const q = new URLSearchParams();
+  if (query?.from) {
+    q.set("from", query.from);
+  }
+  if (query?.to) {
+    q.set("to", query.to);
+  }
+  if (query?.status) {
+    q.set("status", query.status);
+  }
+  const qs = q.toString();
+  const response = await fetch(buildApiUrl(`/expenses/receipts/zip${qs ? `?${qs}` : ""}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.blob();
+}
+
+export async function downloadExpenseReceiptsBatchZip(
+  token: string,
+  claimIds: string[]
+): Promise<Blob> {
+  const response = await fetch(buildApiUrl(`/expenses/receipts/zip`), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ claimIds })
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return response.blob();
 }
 
 export async function approveExpenseClaim(token: string, id: string): Promise<ExpenseClaimDto> {

@@ -257,6 +257,8 @@ export interface ExpenseClaim {
   amountCents: number;
   currency: string;
   description: string;
+  /** Data spesa documentale (YYYY-MM-DD). */
+  expenseDate?: string;
   /** Tipologia spesa (ristorante, autostrada, …). */
   expenseType?: string;
   /** True se è stato archiviato un documento (immagine) con hash integrità. */

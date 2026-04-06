@@ -4437,6 +4437,7 @@ export class HrDataStore {
       amountCents: Number(r.amountCents ?? 0),
       currency: String(r.currency),
       description: String(r.description),
+      expenseDate: r.expenseDate != null ? String(r.expenseDate) : undefined,
       expenseType: r.expenseType != null ? String(r.expenseType) : "altro",
       hasReceipt: Boolean(receiptB64.length > 0 && sha),
       receiptSha256: sha,
@@ -4534,6 +4535,7 @@ export class HrDataStore {
       amountCents: number;
       currency: string;
       description: string;
+      expenseDate: string;
       expenseType: string;
       kmDistance?: number;
       receiptMime?: string | null;
@@ -4542,14 +4544,16 @@ export class HrDataStore {
       ocrRawText?: string | null;
       ocrSuggestedCents?: number | null;
       legalArchivalAt?: string | null;
+      payslipPeriod: string;
     }
   ): Promise<ExpenseClaim> {
     const claim: ExpenseClaim = {
-      id: `exp-${Date.now()}`,
+      id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId,
       amountCents: input.amountCents,
       currency: input.currency,
       description: input.description,
+      expenseDate: input.expenseDate,
       expenseType: input.expenseType,
       hasReceipt: Boolean(input.receiptBodyBase64 && input.receiptSha256),
       receiptSha256: input.receiptSha256 ?? null,
@@ -4557,7 +4561,8 @@ export class HrDataStore {
       kmDistance: input.kmDistance,
       status: "submitted",
       createdAt: new Date().toISOString(),
-      legalArchivalAt: input.legalArchivalAt ?? null
+      legalArchivalAt: input.legalArchivalAt ?? null,
+      payslipPeriod: input.payslipPeriod
     };
     if (this.useDb) {
       const { error } = await this.supabase!.from("expense_claims").insert({
@@ -4566,11 +4571,12 @@ export class HrDataStore {
         amountCents: claim.amountCents,
         currency: claim.currency,
         description: claim.description,
+        expenseDate: input.expenseDate,
         expenseType: input.expenseType,
         kmDistance: claim.kmDistance ?? null,
         status: claim.status,
         createdAt: claim.createdAt,
-        payslipPeriod: null,
+        payslipPeriod: input.payslipPeriod,
         appliedPayslipId: null,
         receiptMime: input.receiptMime ?? null,
         receiptSha256: input.receiptSha256 ?? null,
@@ -4583,9 +4589,154 @@ export class HrDataStore {
         throw new InternalServerErrorException(`Creazione nota spesa fallita: ${error.message}`);
       }
     } else {
-      this.expenseClaims.unshift(claim);
+      const mem = claim as ExpenseClaim & { receiptBodyBase64?: string | null; receiptMime?: string | null };
+      mem.receiptBodyBase64 = input.receiptBodyBase64 ?? null;
+      mem.receiptMime = input.receiptMime ?? null;
+      this.expenseClaims.unshift(mem);
     }
     return claim;
+  }
+
+  /** Righe con immagine per export ZIP (solo utente indicato). */
+  async fetchExpenseReceiptZipRowsForUser(
+    userId: string,
+    filters: { fromDate?: string; toDate?: string; status?: string }
+  ): Promise<Array<{ id: string; receiptBodyBase64: string; receiptMime: string | null }>> {
+    if (!this.useDb) {
+      return this.expenseClaims
+        .filter((c) => {
+          if (c.userId !== userId) return false;
+          if (!this.expenseClaimHasReceiptPayload(c)) return false;
+          if (filters.status && c.status !== filters.status) return false;
+          const ed = c.expenseDate;
+          if (filters.fromDate && ed && ed < filters.fromDate) return false;
+          if (filters.toDate && ed && ed > filters.toDate) return false;
+          return true;
+        })
+        .map((c) => ({
+          id: c.id,
+          receiptBodyBase64: (c as unknown as { receiptBodyBase64?: string }).receiptBodyBase64 ?? "",
+          receiptMime: (c as unknown as { receiptMime?: string | null }).receiptMime ?? "image/jpeg"
+        }));
+    }
+    let q = this.supabase!
+      .from("expense_claims")
+      .select("id,receiptBodyBase64,receiptMime,expenseDate,status")
+      .eq("userId", userId)
+      .not("receiptBodyBase64", "is", null);
+    if (filters.fromDate?.trim()) {
+      q = q.gte("expenseDate", filters.fromDate.trim());
+    }
+    if (filters.toDate?.trim()) {
+      q = q.lte("expenseDate", filters.toDate.trim());
+    }
+    if (filters.status?.trim()) {
+      q = q.eq("status", filters.status.trim());
+    }
+    const { data, error } = await q;
+    if (error) {
+      throw new BadRequestException(`Lettura scontrini fallita: ${error.message}`);
+    }
+    return (data ?? []).map((r) => ({
+      id: String((r as Record<string, unknown>).id),
+      receiptBodyBase64: String((r as Record<string, unknown>).receiptBodyBase64 ?? ""),
+      receiptMime:
+        (r as Record<string, unknown>).receiptMime != null
+          ? String((r as Record<string, unknown>).receiptMime)
+          : "image/jpeg"
+    }));
+  }
+
+  async fetchExpenseReceiptZipRowsForUserAndIds(
+    userId: string,
+    claimIds: string[]
+  ): Promise<Array<{ id: string; receiptBodyBase64: string; receiptMime: string | null }>> {
+    if (claimIds.length === 0) {
+      return [];
+    }
+    if (!this.useDb) {
+      const set = new Set(claimIds);
+      return this.expenseClaims
+        .filter((c) => c.userId === userId && set.has(c.id) && this.expenseClaimHasReceiptPayload(c))
+        .map((c) => ({
+          id: c.id,
+          receiptBodyBase64: (c as unknown as { receiptBodyBase64?: string }).receiptBodyBase64 ?? "",
+          receiptMime: (c as unknown as { receiptMime?: string | null }).receiptMime ?? "image/jpeg"
+        }));
+    }
+    const { data, error } = await this.supabase!
+      .from("expense_claims")
+      .select("id,receiptBodyBase64,receiptMime")
+      .eq("userId", userId)
+      .in("id", claimIds)
+      .not("receiptBodyBase64", "is", null);
+    if (error) {
+      throw new BadRequestException(`Lettura scontrini fallita: ${error.message}`);
+    }
+    return (data ?? []).map((r) => ({
+      id: String((r as Record<string, unknown>).id),
+      receiptBodyBase64: String((r as Record<string, unknown>).receiptBodyBase64 ?? ""),
+      receiptMime:
+        (r as Record<string, unknown>).receiptMime != null
+          ? String((r as Record<string, unknown>).receiptMime)
+          : "image/jpeg"
+    }));
+  }
+
+  private expenseClaimHasReceiptPayload(c: ExpenseClaim): boolean {
+    const ext = c as unknown as { receiptBodyBase64?: string; receiptSha256?: string | null };
+    return Boolean(ext.receiptBodyBase64 && ext.receiptBodyBase64.length > 64 && c.receiptSha256);
+  }
+
+  async getExpenseClaimReceiptForOwner(
+    claimId: string,
+    userId: string
+  ): Promise<{ body: Buffer; mime: string } | null> {
+    const claim = await this.getExpenseClaim(claimId);
+    if (claim.userId !== userId) {
+      throw new NotFoundException("Scontrino non trovato");
+    }
+    if (!this.useDb) {
+      const ext = this.expenseClaims.find((c) => c.id === claimId) as unknown as {
+        receiptBodyBase64?: string;
+        receiptMime?: string | null;
+      };
+      if (!ext?.receiptBodyBase64) {
+        return null;
+      }
+      try {
+        const body = Buffer.from(ext.receiptBodyBase64.trim(), "base64");
+        if (body.length < 256) {
+          return null;
+        }
+        return { body, mime: ext.receiptMime?.trim() || "image/jpeg" };
+      } catch {
+        return null;
+      }
+    }
+    const { data, error } = await this.supabase!
+      .from("expense_claims")
+      .select("receiptBodyBase64,receiptMime")
+      .eq("id", claimId)
+      .eq("userId", userId)
+      .single();
+    if (error || !data) {
+      return null;
+    }
+    const row = data as Record<string, unknown>;
+    const b64 = row.receiptBodyBase64 != null ? String(row.receiptBodyBase64).trim() : "";
+    if (!b64) {
+      return null;
+    }
+    try {
+      const body = Buffer.from(b64, "base64");
+      if (body.length < 256) {
+        return null;
+      }
+      return { body, mime: row.receiptMime != null ? String(row.receiptMime) : "image/jpeg" };
+    } catch {
+      return null;
+    }
   }
 
   async getExpenseClaim(id: string): Promise<ExpenseClaim> {
