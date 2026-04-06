@@ -640,8 +640,8 @@ export function ReceiptLiveScanner({
     const blobs = [...sessionBlobsRef.current];
     sessionBlobsRef.current = [];
     await Promise.resolve(onSessionComplete(blobs));
-    onClose();
-  }, [onSessionComplete, onClose, stopCamera]);
+    // Non chiamare onClose: il padre naviga già verso review; onClose farebbe un secondo replace (es. /expenses).
+  }, [onSessionComplete, stopCamera]);
 
   if (!open) {
     return null;
@@ -737,13 +737,13 @@ export function ReceiptLiveScanner({
               </p>
             </div>
             <p className="max-w-sm text-sm text-white/70">Vuoi aggiungere un altro scontrino prima di continuare?</p>
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
               <button
                 type="button"
                 className="touch-manipulation rounded-lg border border-white/25 px-6 py-3 text-sm font-medium hover:bg-white/10"
                 onClick={() => void finishSession()}
               >
-                No, vai al ritaglio ({sessionSavedCount} foto)
+                No, torna all&apos;elenco ({sessionSavedCount} foto)
               </button>
               <button
                 type="button"
@@ -759,6 +759,24 @@ export function ReceiptLiveScanner({
                 }}
               >
                 Sì, aggiungi un&apos;altra foto
+              </button>
+              <button
+                type="button"
+                disabled={sessionSavedCount < 1}
+                className="touch-manipulation rounded-lg border border-amber-500/50 px-6 py-3 text-sm text-amber-100 hover:bg-white/10 disabled:opacity-40"
+                onClick={() => {
+                  sessionBlobsRef.current = sessionBlobsRef.current.slice(0, -1);
+                  setSessionSavedCount(sessionBlobsRef.current.length);
+                  manualQuadRef.current = false;
+                  dragCornerRef.current = null;
+                  const vid = videoRef.current;
+                  if (vid && vid.videoWidth >= 32 && vid.videoHeight >= 32) {
+                    quadVideoRef.current = fallbackCenterQuad(vid.videoWidth, vid.videoHeight, 0.1);
+                  }
+                  setPhase("camera");
+                }}
+              >
+                Rimuovi ultima foto
               </button>
             </div>
           </div>

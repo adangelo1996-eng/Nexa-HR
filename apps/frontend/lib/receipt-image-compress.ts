@@ -32,12 +32,12 @@ export async function compressCanvasToJpegBlob(
   });
 }
 
-/** Object URL da liberare con URL.revokeObjectURL quando non serve più. */
-export async function compressImageFileToObjectUrl(
+/** JPEG compresso da file immagine (stessi limiti della camera). */
+export async function compressImageFileToJpegBlob(
   file: File,
   maxEdge: number,
   quality: number
-): Promise<string> {
+): Promise<Blob> {
   const bmp = await createImageBitmap(file);
   try {
     const w = bmp.width;
@@ -59,8 +59,18 @@ export async function compressImageFileToObjectUrl(
     if (!blob) {
       throw new Error("Compressione fallita");
     }
-    return URL.createObjectURL(blob);
+    return blob;
   } finally {
     bmp.close();
   }
+}
+
+/** Object URL da liberare con URL.revokeObjectURL quando non serve più. */
+export async function compressImageFileToObjectUrl(
+  file: File,
+  maxEdge: number,
+  quality: number
+): Promise<string> {
+  const blob = await compressImageFileToJpegBlob(file, maxEdge, quality);
+  return URL.createObjectURL(blob);
 }

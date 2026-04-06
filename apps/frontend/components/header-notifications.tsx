@@ -98,8 +98,14 @@ export function HeaderNotifications(): React.JSX.Element {
         ) : null}
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-40 mt-1 w-[min(calc(100vw-2rem),320px)] rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] shadow-[var(--card-shadow)] transition-opacity">
-          <div className="max-h-72 overflow-auto py-1">
+        <div
+          className={[
+            "z-[200] flex max-h-[min(72dvh,24rem)] flex-col rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] shadow-[var(--card-shadow)] transition-opacity",
+            "fixed inset-x-2 top-[calc(3.5rem+0.5rem)] md:inset-x-auto",
+            "md:absolute md:right-0 md:top-full md:mt-1 md:max-h-72 md:w-[min(calc(100vw-2rem),320px)]"
+          ].join(" ")}
+        >
+          <div className="min-h-0 flex-1 overflow-auto py-1 md:max-h-72">
             {loading ? (
               <p className="px-3 py-2 text-sm text-[var(--prom-muted)]">Caricamento…</p>
             ) : items.length === 0 ? (
@@ -143,7 +149,7 @@ export function HeaderNotifications(): React.JSX.Element {
               ))
             )}
           </div>
-          <div className="border-t border-[var(--prom-line)] px-3 py-2">
+          <div className="shrink-0 border-t border-[var(--prom-line)] px-3 py-2">
             <Link
               href="/workflow"
               className="text-xs text-[var(--prom-muted)] hover:text-[var(--prom-text)]"

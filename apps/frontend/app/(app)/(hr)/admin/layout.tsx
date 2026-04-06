@@ -16,7 +16,7 @@ export default function AdminLayout({
         role="region"
         aria-label="Area amministrazione"
       >
-        <div className="mx-auto flex w-full max-w-7xl flex-row items-start gap-0">
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-0 md:flex-row md:items-start">
           <AdminSidebar />
           <div className="min-w-0 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
             {children}
