@@ -31,6 +31,7 @@ import type { Response } from "express";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
 import { payslipPeriodFromExpenseDate } from "./expense-date.util";
 
 const EXPENSE_TYPES = [
@@ -132,7 +133,10 @@ function resolvePayslipPeriod(expenseDate: string): string {
 @Controller("expenses")
 @UseGuards(NexaPermissionGuard)
 export class ExpensesController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Get("receipts/zip")
   @RequireNexaPermissions("nexa.expenses:read")
@@ -217,13 +221,24 @@ export class ExpensesController {
     @Query("scope") scope?: string
   ): Promise<{ items: ExpenseClaim[] }> {
     const s = scope === "team" ? "team" : "self";
-    if (s === "team" && auth.role !== "superuser") {
-      const managed = await this.store.listManagedMemberIdsForApprover(auth.userId);
-      if (managed.size <= 1) {
-        throw new ForbiddenException("Scope team non consentito");
+    let teamOrgWide = false;
+    if (s === "team") {
+      if (auth.role === "superuser") {
+        teamOrgWide = true;
+      } else {
+        const me = await this.store.getUser(auth.userId);
+        teamOrgWide = await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+      }
+      if (!teamOrgWide) {
+        const managed = await this.store.listManagedMemberIdsForApprover(auth.userId);
+        if (managed.size <= 1) {
+          throw new ForbiddenException("Scope team non consentito");
+        }
       }
     }
-    const items = await this.store.listExpenseClaimsForRequester(auth.userId, auth.role, s);
+    const items = await this.store.listExpenseClaimsForRequester(auth.userId, auth.role, s, {
+      teamOrgWide: s === "team" && teamOrgWide
+    });
     return { items };
   }
 

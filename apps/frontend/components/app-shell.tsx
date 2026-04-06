@@ -35,6 +35,7 @@ import {
   getToken,
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
+  sessionCanViewOrgExpenseClaims,
   type SessionUser
 } from "@/lib/auth-session";
 import { HeaderNotifications } from "@/components/header-notifications";
@@ -76,7 +77,8 @@ const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/compensation/bench", label: "Benchmark retribuzione" },
   { href: "/lifecycle/offboard", label: "Offboarding" },
   { href: "/forecast", label: "Forecast costi" },
-  { href: "/personnel-budget", label: "Budget personale" }
+  { href: "/personnel-budget", label: "Budget personale" },
+  { href: "/expenses/org" as Route, label: "Note spese (dipendenti)" }
 ];
 
 function getEmployeeViewOnly(): boolean {
@@ -137,7 +139,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   );
   const showBudgetNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
   const showAdminNav = Boolean(isAdminUi && !hideSensitiveHrBecausePreview);
-  const showHrSidebarSection = showPayrollNav || showBudgetNav || showAdminNav;
+  const showOrgExpensesNav = Boolean(
+    user && !hideSensitiveHrBecausePreview && sessionCanViewOrgExpenseClaims(user)
+  );
+  const showHrSidebarSection =
+    showPayrollNav || showBudgetNav || showAdminNav || showOrgExpensesNav;
 
   const filteredSearch = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -158,6 +164,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           r.href !== ("/admin/data-export" as Route) &&
           r.href !== ("/admin/data-import" as Route)
       );
+    }
+    if (!sessionCanViewOrgExpenseClaims(user ?? undefined)) {
+      routes = routes.filter((r) => r.href !== ("/expenses/org" as Route));
     }
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
   }, [searchQ, user]);
@@ -236,6 +245,20 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             >
               <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
               Budget personale
+            </Link>
+          ) : null}
+          {showOrgExpensesNav ? (
+            <Link
+              href="/expenses/org"
+              onClick={() => setMobileOpen(false)}
+              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+                pathname.startsWith("/expenses/org")
+                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+              }`}
+            >
+              <Receipt className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+              Note spese (dipendenti)
             </Link>
           ) : null}
           {showAdminNav ? (

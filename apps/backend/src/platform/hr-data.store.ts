@@ -4503,12 +4503,13 @@ export class HrDataStore {
   async listExpenseClaimsForRequester(
     requesterId: string,
     requesterRole: User["role"],
-    scope: "self" | "team"
+    scope: "self" | "team",
+    options?: { teamOrgWide?: boolean }
   ): Promise<ExpenseClaim[]> {
     let userIds: string[];
     if (scope === "self") {
       userIds = [requesterId];
-    } else if (requesterRole === "superuser") {
+    } else if (requesterRole === "superuser" || options?.teamOrgWide) {
       const all = await this.listUsers();
       userIds = all.map((u) => u.id);
     } else {

@@ -87,6 +87,13 @@ export function sessionCanNexaAdmin(
   return u?.canNexaAdmin === true;
 }
 
+/** Vista note spese per dipendente (`/expenses/org`): admin Synapse o HR esteso. */
+export function sessionCanViewOrgExpenseClaims(
+  u: Pick<SessionUser, "canNexaAdmin" | "canAccessHrExtendedConsole"> | null | undefined
+): boolean {
+  return sessionCanNexaAdmin(u) || u?.canAccessHrExtendedConsole === true;
+}
+
 /** Vista HR (workflow, calendario team): superuser, flag backend, o responsabile team (fallback se sessione vecchia). */
 export function sessionCanSeeApprovalsAndHrExtras(
   u: Pick<SessionUser, "role" | "canAccessHrWorkflowExtras" | "isTeamResponsible"> | null | undefined

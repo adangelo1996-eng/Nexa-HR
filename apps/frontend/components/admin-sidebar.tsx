@@ -14,6 +14,7 @@ const NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin", label: adminStrings.sidebar.users },
   { href: "/admin/roles", label: adminStrings.sidebar.roles },
   { href: "/admin/cost-centers", label: adminStrings.sidebar.costCenters },
+  { href: "/expenses/org" as Route, label: adminStrings.sidebar.expenseClaimsOrg },
   { href: "/settings", label: "Impostazioni" }
 ];
 

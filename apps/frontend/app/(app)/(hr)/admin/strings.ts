@@ -3,7 +3,8 @@ export const adminStrings = {
     users: "Utenti",
     roles: "Ruoli",
     costCenters: "Centri di costo",
-    approvals: "Approvazioni"
+    approvals: "Approvazioni",
+    expenseClaimsOrg: "Note spese (dipendenti)"
   },
   users: {
     title: "Amministrazione utenti",
