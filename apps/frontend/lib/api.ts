@@ -281,6 +281,7 @@ export interface ApprovalItem {
   type: "leave" | "sickness" | "smartworking" | "travel";
   requestedBy: string;
   approverId?: string;
+  approverName?: string;
   status: "pending" | "approved" | "rejected";
   at: string;
   startDate?: string;
@@ -1908,6 +1909,22 @@ export interface ExpenseClaimDto {
   createdAt: string;
   payslipPeriod?: string;
   appliedPayslipId?: string;
+  managerApprovedBy?: string | null;
+  managerApprovedAt?: string | null;
+  hrApprovedBy?: string | null;
+  hrApprovedAt?: string | null;
+}
+
+export interface ExpenseWorkflowRowDto {
+  claim: ExpenseClaimDto;
+  requesterName: string;
+  firstLineManagerName: string | null;
+}
+
+export interface ExpenseWorkflowDto {
+  toApproveManager: ExpenseWorkflowRowDto[];
+  toApproveHr: ExpenseWorkflowRowDto[];
+  mine: ExpenseWorkflowRowDto[];
 }
 
 export async function fetchUserCalendar(
@@ -2023,6 +2040,15 @@ export async function fetchExpenseClaims(
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { items: ExpenseClaimDto[] };
   return body.items;
+}
+
+export async function fetchExpenseWorkflow(token: string): Promise<ExpenseWorkflowDto> {
+  const response = await fetch(buildApiUrl("/expenses/workflow"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ExpenseWorkflowDto;
 }
 
 export type CreateExpenseClaimPayload = {

@@ -58,6 +58,15 @@ import {
   ADMIN_EXPORT_VARIABLE_FIELD_IDS,
   assertAdminExportFieldSelection
 } from "./admin-export.catalog";
+import { ALL_CATALOG_PERMISSION_IDS, LEGACY_TO_NEW_KEYS } from "./permission-catalog";
+import { isSynapseSuperuserEmail } from "./synapse-superuser";
+
+export interface ExpenseWorkflowRow {
+  claim: ExpenseClaim;
+  requesterName: string;
+  /** Responsabile di I livello anagrafico (manager o team lead), se presente. */
+  firstLineManagerName: string | null;
+}
 
 interface ApprovalRecord {
   id: string;
@@ -1871,6 +1880,86 @@ export class HrDataStore {
       throw new ForbiddenException("Non sei il responsabile di questo dipendente");
     }
     throw new ForbiddenException("Operazione non consentita");
+  }
+
+  private expandRolePermissionsRaw(raw: string[]): Set<string> {
+    const out = new Set<string>();
+    for (const p of raw) {
+      if (p === "*") {
+        for (const id of ALL_CATALOG_PERMISSION_IDS) {
+          out.add(id);
+        }
+        continue;
+      }
+      out.add(p);
+      const mapped = LEGACY_TO_NEW_KEYS[p];
+      if (mapped) {
+        for (const id of mapped) {
+          out.add(id);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Allineato a PermissionsService.canAccessHrExtendedConsole (evita dipendenza circolare). */
+  private async canAccessHrExtendedConsoleLocal(userId: string, jwtRole: AuthRole, email: string): Promise<boolean> {
+    if (jwtRole === "superuser") {
+      return true;
+    }
+    if (isSynapseSuperuserEmail(email)) {
+      return true;
+    }
+    const u = await this.getUser(userId);
+    if (!u.roleId) {
+      return false;
+    }
+    const role = await this.getRoleById(u.roleId);
+    if (!role) {
+      return false;
+    }
+    return this.expandRolePermissionsRaw(role.permissions ?? []).has("nexa.admin_users:read");
+  }
+
+  /** Esiste un responsabile di I livello (manager o team lead diverso dal dipendente). */
+  private async employeeHasExpenseFirstLineApprover(employeeId: string): Promise<boolean> {
+    const employee = await this.getUser(employeeId);
+    if (employee.managerId?.trim()) {
+      return true;
+    }
+    const tid = employee.teamId?.trim();
+    if (!tid) {
+      return false;
+    }
+    try {
+      const team = await this.getWorkTeam(tid);
+      const lead = (team.leadUserId ?? "").trim();
+      return Boolean(lead && lead !== employeeId);
+    } catch {
+      return false;
+    }
+  }
+
+  private async canApproveExpenseAsFirstLine(
+    actorId: string,
+    actorRole: AuthRole,
+    subjectUserId: string
+  ): Promise<boolean> {
+    if (subjectUserId === actorId) {
+      return false;
+    }
+    if (actorRole === "superuser") {
+      const a = await this.getUser(actorId);
+      const t = await this.getUser(subjectUserId);
+      return a.companyId === t.companyId;
+    }
+    if (actorRole === "user") {
+      return (
+        (await this.isManagerOf(actorId, subjectUserId)) ||
+        (await this.isUserLeadOfTeamContaining(actorId, subjectUserId))
+      );
+    }
+    return false;
   }
 
   async isManagerOf(managerId: string, employeeId: string): Promise<boolean> {
@@ -3767,12 +3856,14 @@ export class HrDataStore {
         note = tr.note ?? null;
       }
 
+      const approverUser = item.approverId ? usersById.get(item.approverId) : undefined;
       out.push({
         id: item.id,
         entityId: item.entityId,
         type: item.type,
         requestedBy: item.requestedBy,
         approverId: item.approverId,
+        approverName: approverUser?.fullName,
         status: item.status,
         at: item.at,
         requesterName: user?.fullName,
@@ -4417,13 +4508,18 @@ export class HrDataStore {
       100;
     let pendingExpenseCount = 0;
     if (this.useDb) {
-      const { count } = await this.supabase!
+      const { count: c1 } = await this.supabase!
         .from("expense_claims")
         .select("*", { count: "exact", head: true })
         .eq("status", "submitted");
-      pendingExpenseCount = count ?? 0;
+      const { count: c2 } = await this.supabase!
+        .from("expense_claims")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending_hr");
+      pendingExpenseCount = (c1 ?? 0) + (c2 ?? 0);
     } else {
-      pendingExpenseCount = this.expenseClaims.filter((c) => c.status === "submitted").length;
+      pendingExpenseCount = this.expenseClaims.filter((c) => c.status === "submitted" || c.status === "pending_hr")
+        .length;
     }
     return { headcount, budgetEur, pendingExpenseCount };
   }
@@ -4447,7 +4543,11 @@ export class HrDataStore {
       createdAt: String(r.createdAt),
       legalArchivalAt: r.legalArchivalAt != null ? String(r.legalArchivalAt) : null,
       payslipPeriod: r.payslipPeriod ? String(r.payslipPeriod) : undefined,
-      appliedPayslipId: r.appliedPayslipId ? String(r.appliedPayslipId) : undefined
+      appliedPayslipId: r.appliedPayslipId ? String(r.appliedPayslipId) : undefined,
+      managerApprovedBy: r.managerApprovedBy != null ? String(r.managerApprovedBy) : null,
+      managerApprovedAt: r.managerApprovedAt != null ? String(r.managerApprovedAt) : null,
+      hrApprovedBy: r.hrApprovedBy != null ? String(r.hrApprovedBy) : null,
+      hrApprovedAt: r.hrApprovedAt != null ? String(r.hrApprovedAt) : null
     };
   }
 
@@ -4530,6 +4630,115 @@ export class HrDataStore {
     return (data ?? []).map((row) => this.mapExpenseRow(row as Record<string, unknown>));
   }
 
+  private async resolveExpenseFirstLineManagerName(employeeUserId: string): Promise<string | null> {
+    const employee = await this.getUser(employeeUserId);
+    if (employee.managerId?.trim()) {
+      try {
+        const mgr = await this.getUser(employee.managerId.trim());
+        return mgr.fullName;
+      } catch {
+        return null;
+      }
+    }
+    const tid = employee.teamId?.trim();
+    if (!tid) {
+      return null;
+    }
+    try {
+      const team = await this.getWorkTeam(tid);
+      const leadId = (team.leadUserId ?? "").trim();
+      if (!leadId || leadId === employeeUserId) {
+        return null;
+      }
+      const lead = await this.getUser(leadId);
+      return lead.fullName;
+    } catch {
+      return null;
+    }
+  }
+
+  private async toExpenseWorkflowRow(claim: ExpenseClaim): Promise<ExpenseWorkflowRow> {
+    const requester = await this.getUser(claim.userId);
+    const firstLineManagerName = await this.resolveExpenseFirstLineManagerName(claim.userId);
+    return {
+      claim,
+      requesterName: requester.fullName,
+      firstLineManagerName
+    };
+  }
+
+  /**
+   * Code spese per workflow: da approvare (responsabile), da approvare HR, mie (tutte).
+   */
+  async listExpenseClaimsForWorkflow(
+    viewerId: string,
+    viewerRole: User["role"],
+    viewerEmail: string
+  ): Promise<{
+    toApproveManager: ExpenseWorkflowRow[];
+    toApproveHr: ExpenseWorkflowRow[];
+    mine: ExpenseWorkflowRow[];
+  }> {
+    const mineRaw = await this.fetchAllExpenseClaimsForUser(viewerId);
+    const mine = await Promise.all(mineRaw.map((c) => this.toExpenseWorkflowRow(c)));
+    const canHr = await this.canAccessHrExtendedConsoleLocal(viewerId, viewerRole as AuthRole, viewerEmail);
+    const toApproveManager: ExpenseWorkflowRow[] = [];
+    const toApproveHr: ExpenseWorkflowRow[] = [];
+
+    const pushManager = async (rows: ExpenseClaim[]): Promise<void> => {
+      for (const c of rows) {
+        if (c.status !== "submitted") {
+          continue;
+        }
+        if (await this.canApproveExpenseAsFirstLine(viewerId, viewerRole as AuthRole, c.userId)) {
+          toApproveManager.push(await this.toExpenseWorkflowRow(c));
+        }
+      }
+    };
+    const pushHr = async (rows: ExpenseClaim[]): Promise<void> => {
+      if (!canHr) {
+        return;
+      }
+      const viewer = await this.getUser(viewerId);
+      for (const c of rows) {
+        if (c.status !== "pending_hr") {
+          continue;
+        }
+        const subj = await this.getUser(c.userId);
+        if (subj.companyId === viewer.companyId) {
+          toApproveHr.push(await this.toExpenseWorkflowRow(c));
+        }
+      }
+    };
+
+    if (!this.useDb) {
+      await pushManager(this.expenseClaims);
+      await pushHr(this.expenseClaims);
+      return { toApproveManager, toApproveHr, mine };
+    }
+
+    const { data: submittedData, error: e1 } = await this.supabase!
+      .from("expense_claims")
+      .select("*")
+      .eq("status", "submitted")
+      .order("createdAt", { ascending: false });
+    if (e1) {
+      throw new BadRequestException(`Lettura note spese fallita: ${e1.message}`);
+    }
+    const { data: hrData, error: e2 } = await this.supabase!
+      .from("expense_claims")
+      .select("*")
+      .eq("status", "pending_hr")
+      .order("createdAt", { ascending: false });
+   
+    if (e2) {
+      throw new BadRequestException(`Lettura note spese fallita: ${e2.message}`);
+    }
+    await pushManager((submittedData ?? []).map((row) => this.mapExpenseRow(row as Record<string, unknown>)));
+    await pushHr((hrData ?? []).map((row) => this.mapExpenseRow(row as Record<string, unknown>)));
+    return { toApproveManager, toApproveHr, mine };
+  }
+
   async createExpenseClaim(
     userId: string,
     input: {
@@ -4548,6 +4757,8 @@ export class HrDataStore {
       payslipPeriod: string;
     }
   ): Promise<ExpenseClaim> {
+    const needsManager = await this.employeeHasExpenseFirstLineApprover(userId);
+    const initialStatus: ExpenseClaim["status"] = needsManager ? "submitted" : "pending_hr";
     const claim: ExpenseClaim = {
       id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId,
@@ -4560,10 +4771,14 @@ export class HrDataStore {
       receiptSha256: input.receiptSha256 ?? null,
       ocrSuggestedCents: input.ocrSuggestedCents ?? null,
       kmDistance: input.kmDistance,
-      status: "submitted",
+      status: initialStatus,
       createdAt: new Date().toISOString(),
       legalArchivalAt: input.legalArchivalAt ?? null,
-      payslipPeriod: input.payslipPeriod
+      payslipPeriod: input.payslipPeriod,
+      managerApprovedBy: null,
+      managerApprovedAt: null,
+      hrApprovedBy: null,
+      hrApprovedAt: null
     };
     if (this.useDb) {
       const { error } = await this.supabase!.from("expense_claims").insert({
@@ -4584,7 +4799,11 @@ export class HrDataStore {
         receiptBodyBase64: input.receiptBodyBase64 ?? null,
         ocrRawText: input.ocrRawText ?? null,
         ocrSuggestedCents: input.ocrSuggestedCents ?? null,
-        legalArchivalAt: input.legalArchivalAt ?? null
+        legalArchivalAt: input.legalArchivalAt ?? null,
+        managerApprovedBy: null,
+        managerApprovedAt: null,
+        hrApprovedBy: null,
+        hrApprovedAt: null
       });
       if (error) {
         throw new InternalServerErrorException(`Creazione nota spesa fallita: ${error.message}`);
@@ -4754,43 +4973,125 @@ export class HrDataStore {
   async approveExpenseClaim(claimId: string, approverId: string): Promise<ExpenseClaim> {
     const claim = await this.getExpenseClaim(claimId);
     const approver = await this.getUser(approverId);
-    await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
-    if (claim.status !== "submitted") {
-      throw new BadRequestException("Solo richieste inviate possono essere approvate");
+    const now = new Date().toISOString();
+
+    if (claim.status === "submitted") {
+      if (approver.role === "superuser") {
+        const a = await this.getUser(approverId);
+        const t = await this.getUser(claim.userId);
+        if (a.companyId !== t.companyId) {
+          throw new ForbiddenException("Azienda diversa");
+        }
+      } else {
+        await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
+      }
+      if (this.useDb) {
+        const { error } = await this.supabase!.from("expense_claims").update({
+          status: "pending_hr",
+          managerApprovedBy: approverId,
+          managerApprovedAt: now
+        }).eq("id", claimId);
+        if (error) {
+          throw new InternalServerErrorException(`Aggiornamento nota spesa fallito: ${error.message}`);
+        }
+      } else {
+        const row = this.expenseClaims.find((c) => c.id === claimId);
+        if (row) {
+          row.status = "pending_hr";
+          row.managerApprovedBy = approverId;
+          row.managerApprovedAt = now;
+        }
+      }
+      await this.insertUserNotification({
+        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        userId: claim.userId,
+        title: "Nota spesa: ok responsabile, in attesa HR",
+        body: claim.description.slice(0, 200),
+        read: false,
+        createdAt: new Date().toISOString(),
+        kind: "expense_pending_hr"
+      });
+      return this.getExpenseClaim(claimId);
     }
-    claim.status = "approved";
-    if (this.useDb) {
-      const { error } = await this.supabase!.from("expense_claims").update({ status: "approved" }).eq("id", claimId);
-      if (error) throw new InternalServerErrorException(`Aggiornamento nota spesa fallito: ${error.message}`);
-    } else {
-      const row = this.expenseClaims.find((c) => c.id === claimId);
-      if (row) row.status = "approved";
+
+    if (claim.status === "pending_hr") {
+      if (!(await this.canAccessHrExtendedConsoleLocal(approverId, approver.role as AuthRole, approver.email))) {
+        throw new ForbiddenException("Solo HR può approvare note spese a questo stadio");
+      }
+      const a = await this.getUser(approverId);
+      const t = await this.getUser(claim.userId);
+      if (a.companyId !== t.companyId) {
+        throw new ForbiddenException("Azienda diversa");
+      }
+      if (this.useDb) {
+        const { error } = await this.supabase!.from("expense_claims").update({
+          status: "approved",
+          hrApprovedBy: approverId,
+          hrApprovedAt: now
+        }).eq("id", claimId);
+        if (error) {
+          throw new InternalServerErrorException(`Aggiornamento nota spesa fallito: ${error.message}`);
+        }
+      } else {
+        const row = this.expenseClaims.find((c) => c.id === claimId);
+        if (row) {
+          row.status = "approved";
+          row.hrApprovedBy = approverId;
+          row.hrApprovedAt = now;
+        }
+      }
+      await this.insertUserNotification({
+        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        userId: claim.userId,
+        title: "Nota spesa approvata",
+        body: claim.description.slice(0, 200),
+        read: false,
+        createdAt: new Date().toISOString(),
+        kind: "expense_approved"
+      });
+      return this.getExpenseClaim(claimId);
     }
-    await this.insertUserNotification({
-      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      userId: claim.userId,
-      title: "Nota spesa approvata",
-      body: claim.description.slice(0, 200),
-      read: false,
-      createdAt: new Date().toISOString(),
-      kind: "expense_approved"
-    });
-    return this.getExpenseClaim(claimId);
+
+    throw new BadRequestException("Stato nota spesa non approvabile");
   }
 
   async rejectExpenseClaim(claimId: string, approverId: string): Promise<ExpenseClaim> {
     const claim = await this.getExpenseClaim(claimId);
     const approver = await this.getUser(approverId);
-    await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
-    if (claim.status !== "submitted") {
-      throw new BadRequestException("Solo richieste inviate possono essere rifiutate");
+
+    if (claim.status === "submitted") {
+      if (approver.role === "superuser") {
+        const a = await this.getUser(approverId);
+        const t = await this.getUser(claim.userId);
+        if (a.companyId !== t.companyId) {
+          throw new ForbiddenException("Azienda diversa");
+        }
+      } else {
+        await this.assertCanActOnBehalfOfUser(approverId, approver.role, claim.userId);
+      }
+    } else if (claim.status === "pending_hr") {
+      if (!(await this.canAccessHrExtendedConsoleLocal(approverId, approver.role as AuthRole, approver.email))) {
+        throw new ForbiddenException("Solo HR può rifiutare note spese a questo stadio");
+      }
+      const a = await this.getUser(approverId);
+      const t = await this.getUser(claim.userId);
+      if (a.companyId !== t.companyId) {
+        throw new ForbiddenException("Azienda diversa");
+      }
+    } else {
+      throw new BadRequestException("Solo richieste dal responsabile o in attesa HR possono essere rifiutate");
     }
+
     if (this.useDb) {
       const { error } = await this.supabase!.from("expense_claims").update({ status: "rejected" }).eq("id", claimId);
-      if (error) throw new InternalServerErrorException(`Aggiornamento nota spesa fallito: ${error.message}`);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento nota spesa fallito: ${error.message}`);
+      }
     } else {
       const row = this.expenseClaims.find((c) => c.id === claimId);
-      if (row) row.status = "rejected";
+      if (row) {
+        row.status = "rejected";
+      }
     }
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,

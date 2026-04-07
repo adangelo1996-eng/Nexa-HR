@@ -25,6 +25,7 @@ import {
   ValidateNested
 } from "class-validator";
 import type { ExpenseClaim } from "@payday/domain";
+import type { ExpenseWorkflowRow } from "../platform/hr-data.store";
 import archiver from "archiver";
 import { Type } from "class-transformer";
 import type { Response } from "express";
@@ -240,6 +241,17 @@ export class ExpensesController {
       teamOrgWide: s === "team" && teamOrgWide
     });
     return { items };
+  }
+
+  @Get("workflow")
+  @RequireNexaPermissions("nexa.expenses:read")
+  async workflow(@CurrentAuth() auth: AuthContext): Promise<{
+    toApproveManager: ExpenseWorkflowRow[];
+    toApproveHr: ExpenseWorkflowRow[];
+    mine: ExpenseWorkflowRow[];
+  }> {
+    const me = await this.store.getUser(auth.userId);
+    return this.store.listExpenseClaimsForWorkflow(auth.userId, me.role, me.email);
   }
 
   @Get(":id/receipt")

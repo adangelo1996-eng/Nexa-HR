@@ -2,10 +2,22 @@
 
 import { type Dispatch, type SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { approveApproval, fetchApprovals, fetchCurrentUser, rejectApproval, type ApprovalItem } from "@/lib/api";
+import {
+  approveApproval,
+  approveExpenseClaim,
+  fetchApprovals,
+  fetchCurrentUser,
+  fetchExpenseWorkflow,
+  rejectApproval,
+  rejectExpenseClaim,
+  type ApprovalItem,
+  type ExpenseWorkflowRowDto
+} from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { subscribePostgresTable } from "@/lib/supabase-realtime";
 import { Button } from "@/components/ui/button";
+import { WorkflowApprovalFlowDiagram } from "@/components/workflow-flow-diagram";
+import { WorkflowExpenseRow } from "@/components/workflow-expense-row";
 import {
   groupHistoryByRequestDayAndType,
   isHighPriorityPending,
@@ -173,6 +185,11 @@ function ApprovalRow(props: {
             </p>
           ) : null}
           {item.note ? <p className="mt-1 text-xs italic text-[var(--prom-muted)]">{item.note}</p> : null}
+          <WorkflowApprovalFlowDiagram
+            item={item}
+            requesterLabel={item.requesterName ?? item.requestedBy}
+            approverLabel={item.approverName}
+          />
           {variant === "history" ? (
             <p className="mt-1 text-xs text-[var(--prom-muted)]">{new Date(item.at).toLocaleString("it-CH")}</p>
           ) : null}
@@ -205,8 +222,14 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   const focusApprovalId = searchParams.get("approvalId");
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [expenseWf, setExpenseWf] = useState<{
+    toApproveManager: ExpenseWorkflowRowDto[];
+    toApproveHr: ExpenseWorkflowRowDto[];
+    mine: ExpenseWorkflowRowDto[];
+  } | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [expenseBusyId, setExpenseBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (): Promise<void> => {
@@ -216,25 +239,53 @@ function WorkflowApprovalsContent(): React.JSX.Element {
     }
     setLoading(true);
     try {
-      const [me, a] = await Promise.all([fetchCurrentUser(token), fetchApprovals(token)]);
+      const [me, a, ew] = await Promise.all([
+        fetchCurrentUser(token),
+        fetchApprovals(token),
+        fetchExpenseWorkflow(token).catch(() => null)
+      ]);
       setCurrentUserId(me.id);
       setApprovals(a);
+      setExpenseWf(
+        ew ?? {
+          toApproveManager: [],
+          toApproveHr: [],
+          mine: []
+        }
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const { toApprove, mine, historyGrouped } = useMemo(() => {
+  const { toApprove, mine, historyGrouped, expenseMineOpen, expenseHistory, mgr, hrQ } = useMemo(() => {
     if (!currentUserId) {
-      return { toApprove: [] as ApprovalItem[], mine: [] as ApprovalItem[], historyGrouped: [] };
+      return {
+        toApprove: [] as ApprovalItem[],
+        mine: [] as ApprovalItem[],
+        historyGrouped: [] as ReturnType<typeof groupHistoryByRequestDayAndType>,
+        expenseMineOpen: [] as ExpenseWorkflowRowDto[],
+        expenseHistory: [] as ExpenseWorkflowRowDto[],
+        mgr: [] as ExpenseWorkflowRowDto[],
+        hrQ: [] as ExpenseWorkflowRowDto[]
+      };
     }
     const { toApprove: rawA, mine: rawM, history } = partitionForWorkflow(approvals, currentUserId);
+    const ew = expenseWf ?? { toApproveManager: [], toApproveHr: [], mine: [] };
+    const expOpen = ew.mine.filter((r) => r.claim.status === "submitted" || r.claim.status === "pending_hr");
+    const expHist = ew.mine
+      .filter((r) => ["approved", "rejected", "paid"].includes(r.claim.status))
+      .sort((a, b) => (b.claim.createdAt ?? "").localeCompare(a.claim.createdAt ?? ""));
     return {
       toApprove: sortToApprove(rawA),
       mine: sortMine(rawM),
-      historyGrouped: groupHistoryByRequestDayAndType(history)
+      historyGrouped: groupHistoryByRequestDayAndType(history),
+      expenseMineOpen: expOpen,
+      expenseHistory: expHist,
+      mgr: ew.toApproveManager,
+      hrQ: ew.toApproveHr
     };
-  }, [approvals, currentUserId]);
+  }, [approvals, currentUserId, expenseWf]);
 
   useEffect(() => {
     void load();
@@ -244,10 +295,12 @@ function WorkflowApprovalsContent(): React.JSX.Element {
     const a = subscribePostgresTable("approvals", () => void load());
     const s = subscribePostgresTable("smartworking_requests", () => void load());
     const t = subscribePostgresTable("travel_requests", () => void load());
+    const e = subscribePostgresTable("expense_claims", () => void load());
     return (): void => {
       a.unsubscribe();
       s.unsubscribe();
       t.unsubscribe();
+      e.unsubscribe();
     };
   }, [load]);
 
@@ -279,20 +332,41 @@ function WorkflowApprovalsContent(): React.JSX.Element {
     void load();
   }
 
+  async function onExpenseDecision(claimId: string, action: "approve" | "reject"): Promise<void> {
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+    setExpenseBusyId(claimId);
+    try {
+      if (action === "approve") {
+        await approveExpenseClaim(token, claimId);
+      } else {
+        await rejectExpenseClaim(token, claimId);
+      }
+      await load();
+    } finally {
+      setExpenseBusyId(null);
+    }
+  }
+
+  const pendingExpenseCount = mgr.length + hrQ.length;
+  const pendingTotal = toApprove.length + pendingExpenseCount;
+
   return (
     <div className="space-y-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni team</h1>
         <p className="text-sm text-[var(--prom-muted)]">
-          Ferie, ROL, malattia, smart working e trasferte: da approvare, le tue richieste aperte e lo storico per giorno
-          di inizio richiesta e tipologia. Priorità alta se la data richiesta è entro due giorni o è già passata.
+          Ferie, ROL, malattia, smart working, trasferte e note spese (responsabile → HR). Storico per giorno di inizio e
+          tipologia. Priorità alta sulle assenze se la data richiesta è entro due giorni o è già passata.
         </p>
       </header>
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--prom-text)]">Approvazioni in sospeso</h2>
-        {toApprove.length === 0 ? (
+        {pendingTotal === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa dal team.</p>
         ) : (
           <ul className="space-y-3">
@@ -315,6 +389,30 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                 </li>
               );
             })}
+            {mgr.map((row) => (
+              <li key={`exp-mgr-${row.claim.id}`}>
+                <WorkflowExpenseRow
+                  row={row}
+                  variant="queue_manager"
+                  showActions
+                  busy={expenseBusyId === row.claim.id}
+                  onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
+                  onReject={() => void onExpenseDecision(row.claim.id, "reject")}
+                />
+              </li>
+            ))}
+            {hrQ.map((row) => (
+              <li key={`exp-hr-${row.claim.id}`}>
+                <WorkflowExpenseRow
+                  row={row}
+                  variant="queue_hr"
+                  showActions
+                  busy={expenseBusyId === row.claim.id}
+                  onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
+                  onReject={() => void onExpenseDecision(row.claim.id, "reject")}
+                />
+              </li>
+            ))}
           </ul>
         )}
       </section>
@@ -322,7 +420,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--prom-text)]">Le mie richieste in corso</h2>
         <p className="text-sm text-[var(--prom-muted)]">Le tue richieste ancora in sospeso.</p>
-        {mine.length === 0 ? (
+        {mine.length === 0 && expenseMineOpen.length === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta aperta da te.</p>
         ) : (
           <ul className="space-y-3">
@@ -342,6 +440,11 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                 />
               </li>
             ))}
+            {expenseMineOpen.map((row) => (
+              <li key={`exp-open-${row.claim.id}`}>
+                <WorkflowExpenseRow row={row} variant="mine" showActions={false} />
+              </li>
+            ))}
           </ul>
         )}
       </section>
@@ -351,7 +454,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
         <p className="text-sm text-[var(--prom-muted)]">
           Approvate e rifiutate, raggruppate per giorno di inizio richiesta e tipologia.
         </p>
-        {historyGrouped.length === 0 ? (
+        {historyGrouped.length === 0 && expenseHistory.length === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuno storico disponibile.</p>
         ) : (
           <div className="space-y-8">
@@ -387,6 +490,20 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                 </div>
               </div>
             ))}
+            {expenseHistory.length > 0 ? (
+              <div>
+                <h3 className="border-b border-[var(--prom-line)] pb-1 text-base font-medium text-[var(--prom-text)]">
+                  Note spese (concluse)
+                </h3>
+                <ul className="mt-3 space-y-2">
+                  {expenseHistory.map((row) => (
+                    <li key={`exp-h-${row.claim.id}`}>
+                      <WorkflowExpenseRow row={row} variant="history" showActions={false} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
         )}
       </section>

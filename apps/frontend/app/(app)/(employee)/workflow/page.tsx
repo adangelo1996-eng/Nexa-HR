@@ -4,12 +4,18 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { WorkflowApprovalFlowDiagram } from "@/components/workflow-flow-diagram";
+import { WorkflowExpenseRow } from "@/components/workflow-expense-row";
 import {
   approveApproval,
+  approveExpenseClaim,
   fetchApprovals,
   fetchCurrentUser,
+  fetchExpenseWorkflow,
   rejectApproval,
-  type ApprovalItem
+  rejectExpenseClaim,
+  type ApprovalItem,
+  type ExpenseWorkflowRowDto
 } from "@/lib/api";
 import {
   clearSession,
@@ -59,6 +65,11 @@ export default function WorkflowPage(): React.JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [expenseWf, setExpenseWf] = useState<{
+    toApproveManager: ExpenseWorkflowRowDto[];
+    toApproveHr: ExpenseWorkflowRowDto[];
+    mine: ExpenseWorkflowRowDto[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +86,22 @@ export default function WorkflowPage(): React.JSX.Element {
     };
   }, [approvals, user?.id]);
 
+  const expenseMineOpen = useMemo(() => {
+    if (!expenseWf) {
+      return [] as ExpenseWorkflowRowDto[];
+    }
+    return expenseWf.mine.filter((r) => r.claim.status === "submitted" || r.claim.status === "pending_hr");
+  }, [expenseWf]);
+
+  const expenseHistory = useMemo(() => {
+    if (!expenseWf) {
+      return [] as ExpenseWorkflowRowDto[];
+    }
+    return expenseWf.mine
+      .filter((r) => ["approved", "rejected", "paid"].includes(r.claim.status))
+      .sort((a, b) => (b.claim.createdAt ?? "").localeCompare(a.claim.createdAt ?? ""));
+  }, [expenseWf]);
+
   useEffect(() => {
     const currentToken = getToken();
     if (!currentToken) {
@@ -87,9 +114,19 @@ export default function WorkflowPage(): React.JSX.Element {
     async function load(): Promise<void> {
       try {
         const me = await fetchCurrentUser(tokenValue);
-        const list = await fetchApprovals(tokenValue);
+        const [list, ew] = await Promise.all([
+          fetchApprovals(tokenValue),
+          fetchExpenseWorkflow(tokenValue).catch(() => null)
+        ]);
         setUser(me);
         setApprovals(list);
+        setExpenseWf(
+          ew ?? {
+            toApproveManager: [],
+            toApproveHr: [],
+            mine: []
+          }
+        );
       } catch (loadError) {
         clearSession();
         router.replace("/login");
@@ -106,8 +143,14 @@ export default function WorkflowPage(): React.JSX.Element {
     if (!token) {
       return;
     }
-    const list = await fetchApprovals(token);
+    const [list, ew] = await Promise.all([
+      fetchApprovals(token),
+      fetchExpenseWorkflow(token).catch(() => null)
+    ]);
     setApprovals(list);
+    if (ew) {
+      setExpenseWf(ew);
+    }
   }
 
   async function onAction(approvalId: string, action: "approve" | "reject"): Promise<void> {
@@ -125,6 +168,26 @@ export default function WorkflowPage(): React.JSX.Element {
       await refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore aggiornamento autorizzazione");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onExpenseAction(claimId: string, action: "approve" | "reject"): Promise<void> {
+    if (!token) {
+      return;
+    }
+    setBusyId(`exp:${claimId}`);
+    setError(null);
+    try {
+      if (action === "approve") {
+        await approveExpenseClaim(token, claimId);
+      } else {
+        await rejectExpenseClaim(token, claimId);
+      }
+      await refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore nota spesa");
     } finally {
       setBusyId(null);
     }
@@ -175,6 +238,11 @@ export default function WorkflowPage(): React.JSX.Element {
             {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
           </p>
         ) : null}
+        <WorkflowApprovalFlowDiagram
+          item={item}
+          requesterLabel={item.requesterName ?? item.requestedBy}
+          approverLabel={item.approverName}
+        />
         <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(item.at).toLocaleString("it-CH")}</p>
         {opts.showActions ? (
           <div className="mt-3 flex gap-2">
@@ -199,6 +267,10 @@ export default function WorkflowPage(): React.JSX.Element {
       </article>
     );
   }
+
+  const mgr = expenseWf?.toApproveManager ?? [];
+  const hrQ = expenseWf?.toApproveHr ?? [];
+  const pendingTotal = toApprove.length + mgr.length + hrQ.length;
 
   if (loading) {
     return (
@@ -226,17 +298,38 @@ export default function WorkflowPage(): React.JSX.Element {
         <section className="card">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Approvazioni in sospeso</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Richieste del team in attesa della tua decisione. Priorità alta se la data richiesta è entro due giorni o
-            è già passata.
+            Ferie/malattia/SW/trasferte e note spese: azioni per responsabile o HR. Priorità alta sulle assenze se la data
+            richiesta è entro due giorni o è già passata.
           </p>
           <div className="mt-4 space-y-3">
-            {toApprove.length === 0 ? (
+            {pendingTotal === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta in attesa.</p>
-            ) : (
-              toApprove.map((item) => (
-                <Fragment key={item.id}>{renderCard(item, { showActions: true, showPriority: true })}</Fragment>
-              ))
-            )}
+            ) : null}
+            {toApprove.map((item) => (
+              <Fragment key={item.id}>{renderCard(item, { showActions: true, showPriority: true })}</Fragment>
+            ))}
+            {mgr.map((row) => (
+              <WorkflowExpenseRow
+                key={`exp-mgr-${row.claim.id}`}
+                row={row}
+                variant="queue_manager"
+                showActions
+                busy={busyId === `exp:${row.claim.id}`}
+                onApprove={() => void onExpenseAction(row.claim.id, "approve")}
+                onReject={() => void onExpenseAction(row.claim.id, "reject")}
+              />
+            ))}
+            {hrQ.map((row) => (
+              <WorkflowExpenseRow
+                key={`exp-hr-${row.claim.id}`}
+                row={row}
+                variant="queue_hr"
+                showActions
+                busy={busyId === `exp:${row.claim.id}`}
+                onApprove={() => void onExpenseAction(row.claim.id, "approve")}
+                onReject={() => void onExpenseAction(row.claim.id, "reject")}
+              />
+            ))}
           </div>
         </section>
 
@@ -244,55 +337,68 @@ export default function WorkflowPage(): React.JSX.Element {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Le mie richieste in corso</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Richieste inviate da te ancora in sospeso.</p>
           <div className="mt-4 space-y-3">
-            {mine.length === 0 ? (
+            {mine.length === 0 && expenseMineOpen.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta aperta da te.</p>
-            ) : (
-              mine.map((item) => (
-                <Fragment key={item.id}>{renderCard(item, { showActions: false, showPriority: true, compact: true })}</Fragment>
-              ))
-            )}
+            ) : null}
+            {mine.map((item) => (
+              <Fragment key={item.id}>{renderCard(item, { showActions: false, showPriority: true, compact: true })}</Fragment>
+            ))}
+            {expenseMineOpen.map((row) => (
+              <WorkflowExpenseRow key={`exp-mine-${row.claim.id}`} row={row} variant="mine" showActions={false} />
+            ))}
           </div>
         </section>
 
         <section className="card">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Approvate e rifiutate, raggruppate per giorno di inizio richiesta e tipologia.
+            Approvate e rifiutate (assenze/SW/trasferte), più note spese concluse.
           </p>
           <div className="mt-4 space-y-8">
-            {historyGrouped.length === 0 ? (
+            {historyGrouped.length === 0 && expenseHistory.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuno storico disponibile.</p>
-            ) : (
-              historyGrouped.map(({ day, typeGroups }) => (
-                <div key={day}>
-                  <h3 className="border-b border-slate-200 pb-1 text-base font-medium text-slate-800 dark:border-slate-600 dark:text-slate-200">
-                    {day === "—" ? "Senza data" : day}
-                  </h3>
-                  <div className="mt-3 space-y-6">
-                    {typeGroups.map(({ typeKey, items }) => (
-                      <div key={`${day}-${typeKey}`}>
-                        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          {historyTypeHeading(typeKey)}
-                        </h4>
-                        <div className="mt-2 space-y-2">
-                          {items.map((item) => (
-                            <Fragment key={item.id}>
-                              {renderCard(item, {
-                                showActions: false,
-                                showPriority: false,
-                                compact: true,
-                                showRequester:
-                                  Boolean(user && (sessionCanNexaAdmin(user) || user.role === "superuser"))
-                              })}
-                            </Fragment>
-                          ))}
-                        </div>
+            ) : null}
+            {historyGrouped.map(({ day, typeGroups }) => (
+              <div key={day}>
+                <h3 className="border-b border-slate-200 pb-1 text-base font-medium text-slate-800 dark:border-slate-600 dark:text-slate-200">
+                  {day === "—" ? "Senza data" : day}
+                </h3>
+                <div className="mt-3 space-y-6">
+                  {typeGroups.map(({ typeKey, items }) => (
+                    <div key={`${day}-${typeKey}`}>
+                      <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {historyTypeHeading(typeKey)}
+                      </h4>
+                      <div className="mt-2 space-y-2">
+                        {items.map((item) => (
+                          <Fragment key={item.id}>
+                            {renderCard(item, {
+                              showActions: false,
+                              showPriority: false,
+                              compact: true,
+                              showRequester:
+                                Boolean(user && (sessionCanNexaAdmin(user) || user.role === "superuser"))
+                            })}
+                          </Fragment>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
-              ))
-            )}
+              </div>
+            ))}
+            {expenseHistory.length > 0 ? (
+              <div>
+                <h3 className="border-b border-slate-200 pb-1 text-base font-medium text-slate-800 dark:border-slate-600 dark:text-slate-200">
+                  Note spese (concluse)
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {expenseHistory.map((row) => (
+                    <WorkflowExpenseRow key={`exp-hist-${row.claim.id}`} row={row} variant="history" showActions={false} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

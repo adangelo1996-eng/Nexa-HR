@@ -208,6 +208,8 @@ export interface ApprovalView {
   type: "leave" | "sickness" | "smartworking" | "travel";
   requestedBy: string;
   approverId?: string;
+  /** Nome attestato dell'ultimo approvatore (se già deciso). */
+  approverName?: string;
   status: "pending" | "approved" | "rejected";
   at: string;
   startDate?: string;
@@ -248,7 +250,7 @@ export interface Shift {
   status?: "scheduled" | "confirmed" | "cancelled";
 }
 
-export type ExpenseStatus = "draft" | "submitted" | "approved" | "rejected" | "paid";
+export type ExpenseStatus = "draft" | "submitted" | "pending_hr" | "approved" | "rejected" | "paid";
 
 /** Nota spesa / rimborso km. */
 export interface ExpenseClaim {
@@ -272,6 +274,12 @@ export interface ExpenseClaim {
   legalArchivalAt?: string | null;
   payslipPeriod?: string;
   appliedPayslipId?: string;
+  /** Approvazione responsabile (passaggio verso HR). */
+  managerApprovedBy?: string | null;
+  managerApprovedAt?: string | null;
+  /** Approvazione definitiva HR. */
+  hrApprovedBy?: string | null;
+  hrApprovedAt?: string | null;
 }
 
 export type EmployeeDocumentKind = "contract" | "payslip" | "personal" | "other";
