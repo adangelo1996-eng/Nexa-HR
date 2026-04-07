@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   Bell,
-  Clock3,
+  CalendarDays,
   LogIn,
   LogOut,
   Palmtree,
@@ -44,6 +44,7 @@ import {
   sessionCanSeeApprovalsAndHrExtras,
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
+import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
 import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
 import { Button } from "@/components/ui/button";
 
@@ -105,6 +106,7 @@ export default function HomePage(): React.JSX.Element {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [notifications, setNotifications] = useState<UserNotificationDto[]>([]);
   const [notificationsBusy, setNotificationsBusy] = useState(false);
+  const [clearNotificationsOpen, setClearNotificationsOpen] = useState(false);
   const [attendanceStatusFailed, setAttendanceStatusFailed] = useState(false);
   const [clockLoading, setClockLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [clockError, setClockError] = useState<string | null>(null);
@@ -299,6 +301,17 @@ export default function HomePage(): React.JSX.Element {
         : Math.round((todaySummaryRow?.minutesWorked ?? 0) * 60);
   const hoursTodayLabel = formatWorkedHm(workedDisplaySeconds);
 
+  const hoursWeekLabel = useMemo(() => {
+    const now = new Date();
+    const { start, end } = isoWeekRange(now);
+    const weekRows = summary.filter((s) => s.date >= start && s.date <= end);
+    let totalSeconds = 0;
+    for (const r of weekRows) {
+      totalSeconds += r.workedSeconds ?? Math.round((r.minutesWorked ?? 0) * 60);
+    }
+    return formatWorkedHm(totalSeconds);
+  }, [summary]);
+
   const periodSummaries = useMemo(() => {
     const now = new Date();
     if (periodTab === "today") {
@@ -416,10 +429,7 @@ export default function HomePage(): React.JSX.Element {
     }
   }
 
-  async function clearAllNotifications(): Promise<void> {
-    if (!window.confirm("Eliminare tutte le notifiche?")) {
-      return;
-    }
+  async function performClearAllNotifications(): Promise<void> {
     const t = getToken();
     if (!t) {
       return;
@@ -428,6 +438,7 @@ export default function HomePage(): React.JSX.Element {
     try {
       await deleteAllUserNotifications(t);
       setNotifications([]);
+      setClearNotificationsOpen(false);
     } finally {
       setNotificationsBusy(false);
     }
@@ -451,76 +462,6 @@ export default function HomePage(): React.JSX.Element {
       </header>
 
       {error ? <p className="text-sm text-amber-700 dark:text-amber-300">{error}</p> : null}
-
-      <section className="card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--prom-line)] pb-3">
-          <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-[var(--prom-gold)] opacity-90" aria-hidden />
-            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Notifiche</h2>
-          </div>
-          {notifications.length > 0 ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={notificationsBusy}
-              onClick={() => void clearAllNotifications()}
-            >
-              Elimina tutte
-            </Button>
-          ) : null}
-        </div>
-        {notifications.length === 0 ? (
-          <p className="py-2 text-sm text-[var(--prom-muted)]">Nessuna notifica da mostrare.</p>
-        ) : (
-          <ul className="space-y-3">
-            {notifications.map((n) => (
-              <li
-                key={n.id}
-                className={`relative rounded-xl border border-[var(--prom-line)] p-4 pr-12 ${
-                  n.read
-                    ? "bg-[color-mix(in_srgb,var(--prom-surface-soft)_40%,transparent)]"
-                    : "border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)]"
-                }`}
-              >
-                <button
-                  type="button"
-                  className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[var(--prom-muted)] transition-colors hover:bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] hover:text-[var(--prom-text)]"
-                  aria-label="Elimina notifica"
-                  disabled={notificationsBusy}
-                  onClick={() => void removeNotification(n.id)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-                {n.actionPath ? (
-                  <Link
-                    href={n.actionPath as Route}
-                    className="block text-[var(--prom-text)] hover:opacity-90"
-                  >
-                    <p className="pr-6 text-base font-medium leading-snug">{n.title}</p>
-                    {n.body ? (
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--prom-muted)]">{n.body}</p>
-                    ) : null}
-                  </Link>
-                ) : (
-                  <>
-                    <p className="pr-6 text-base font-medium leading-snug text-[var(--prom-text)]">{n.title}</p>
-                    {n.body ? (
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--prom-muted)]">{n.body}</p>
-                    ) : null}
-                  </>
-                )}
-                <p className="mt-2 text-xs text-[var(--prom-muted)]">
-                  {new Date(n.createdAt).toLocaleString("it-CH", { dateStyle: "medium", timeStyle: "short" })}
-                  {!n.read ? (
-                    <span className="ml-2 font-medium text-[var(--prom-gold)]">· Non letta</span>
-                  ) : null}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card space-y-3">
@@ -617,9 +558,11 @@ export default function HomePage(): React.JSX.Element {
             <p className="text-xs text-[var(--prom-muted)]">Saldo ferie (gg)</p>
           </div>
           <div className="rounded-xl border border-[var(--prom-line)] p-4">
-            <Clock3 className="mb-2 h-5 w-5 opacity-70" aria-hidden />
-            <p className="text-lg font-semibold leading-tight text-[var(--prom-text)]">—</p>
-            <p className="text-xs text-[var(--prom-muted)]">Prossimo turno</p>
+            <CalendarDays className="mb-2 h-5 w-5 opacity-70" aria-hidden />
+            <p className="text-3xl font-semibold tabular-nums tracking-tight text-[var(--prom-text)]">
+              {hoursWeekLabel}
+            </p>
+            <p className="text-xs text-[var(--prom-muted)]">Ore settimana</p>
           </div>
           <div className="rounded-xl border border-[var(--prom-line)] p-4">
             <LogIn className="mb-2 h-5 w-5 opacity-70" aria-hidden />
@@ -630,6 +573,70 @@ export default function HomePage(): React.JSX.Element {
           </div>
         </section>
       </div>
+
+      <section className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--prom-line)] pb-3">
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-[var(--prom-gold)] opacity-90" aria-hidden />
+            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Notifiche</h2>
+          </div>
+          {notifications.length > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={notificationsBusy}
+              onClick={() => setClearNotificationsOpen(true)}
+            >
+              Elimina tutte
+            </Button>
+          ) : null}
+        </div>
+        {notifications.length === 0 ? (
+          <p className="py-1 text-sm text-[var(--prom-muted)]">Nessuna notifica.</p>
+        ) : (
+          <ul className="space-y-2">
+            {notifications.map((n) => (
+              <li
+                key={n.id}
+                className={`relative rounded-xl border border-[var(--prom-line)] p-3 pr-11 ${
+                  n.read
+                    ? "bg-[color-mix(in_srgb,var(--prom-surface-soft)_40%,transparent)]"
+                    : "border-[color-mix(in_srgb,var(--prom-gold)_30%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_6%,transparent)]"
+                }`}
+              >
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[var(--prom-muted)] transition-colors hover:bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] hover:text-[var(--prom-text)]"
+                  aria-label="Elimina notifica"
+                  disabled={notificationsBusy}
+                  onClick={() => void removeNotification(n.id)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                {n.actionPath ? (
+                  <Link
+                    href={n.actionPath as Route}
+                    className="block text-[var(--prom-text)] hover:opacity-90"
+                  >
+                    <p className="pr-2 text-sm font-medium leading-snug">{n.title}</p>
+                    {n.body ? <p className="mt-1 text-xs text-[var(--prom-muted)]">{n.body}</p> : null}
+                  </Link>
+                ) : (
+                  <>
+                    <p className="pr-2 text-sm font-medium leading-snug text-[var(--prom-text)]">{n.title}</p>
+                    {n.body ? <p className="mt-1 text-xs text-[var(--prom-muted)]">{n.body}</p> : null}
+                  </>
+                )}
+                <p className="mt-1 text-[11px] text-[var(--prom-muted)]">
+                  {new Date(n.createdAt).toLocaleString("it-CH", { dateStyle: "short", timeStyle: "short" })}
+                  {!n.read ? <span className="ml-1.5 text-[var(--prom-gold)]">· Nuova</span> : null}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card">
         <div className="flex gap-2 border-b border-[var(--prom-line)] pb-3">
@@ -724,6 +731,18 @@ export default function HomePage(): React.JSX.Element {
           </p>
         ) : null}
       </section>
+
+      <GlassConfirmDialog
+        open={clearNotificationsOpen}
+        title="Eliminare tutte le notifiche?"
+        message="Le voci verranno rimosse dall’elenco."
+        confirmLabel="Elimina tutte"
+        cancelLabel="Annulla"
+        variant="danger"
+        busy={notificationsBusy}
+        onCancel={() => setClearNotificationsOpen(false)}
+        onConfirm={performClearAllNotifications}
+      />
     </div>
   );
 }

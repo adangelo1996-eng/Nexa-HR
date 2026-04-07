@@ -1918,6 +1918,7 @@ export interface ExpenseClaimDto {
 export interface ExpenseWorkflowRowDto {
   claim: ExpenseClaimDto;
   requesterName: string;
+  requesterPhotoUrl?: string | null;
   firstLineManagerName: string | null;
 }
 

@@ -64,6 +64,7 @@ import { isSynapseSuperuserEmail } from "./synapse-superuser";
 export interface ExpenseWorkflowRow {
   claim: ExpenseClaim;
   requesterName: string;
+  requesterPhotoUrl?: string | null;
   /** Responsabile di I livello anagrafico (manager o team lead), se presente. */
   firstLineManagerName: string | null;
 }
@@ -4516,13 +4517,20 @@ export class HrDataStore {
     if (!target.profilePhotoPath?.trim()) {
       return null;
     }
+    const requester = await this.getUser(requesterId);
     const isSelf = requesterId === targetUserId;
     const isAdmin = requesterRole === "superuser";
     const isManagerWithHierarchy =
       requesterRole === "user" &&
       ((await this.isManagerOf(requesterId, targetUserId)) ||
         (await this.isUserLeadOfTeamContaining(requesterId, targetUserId)));
-    if (!isSelf && !isAdmin && !isManagerWithHierarchy) {
+    const isHrSameCompany =
+      (await this.canAccessHrExtendedConsoleLocal(
+        requesterId,
+        requesterRole as AuthRole,
+        requester.email ?? ""
+      )) && target.companyId === requester.companyId;
+    if (!isSelf && !isAdmin && !isManagerWithHierarchy && !isHrSameCompany) {
       throw new ForbiddenException("Accesso negato alla foto profilo");
     }
     const { data, error } = await this.supabase.storage
@@ -4695,12 +4703,23 @@ export class HrDataStore {
     }
   }
 
-  private async toExpenseWorkflowRow(claim: ExpenseClaim): Promise<ExpenseWorkflowRow> {
+  private async toExpenseWorkflowRow(
+    claim: ExpenseClaim,
+    viewerId: string,
+    viewerRole: User["role"]
+  ): Promise<ExpenseWorkflowRow> {
     const requester = await this.getUser(claim.userId);
     const firstLineManagerName = await this.resolveExpenseFirstLineManagerName(claim.userId);
+    let requesterPhotoUrl: string | null = null;
+    try {
+      requesterPhotoUrl = await this.getEmployeeProfilePhotoSignedUrl(viewerId, viewerRole, claim.userId);
+    } catch {
+      requesterPhotoUrl = null;
+    }
     return {
       claim,
       requesterName: requester.fullName,
+      requesterPhotoUrl,
       firstLineManagerName
     };
   }
@@ -4718,7 +4737,7 @@ export class HrDataStore {
     mine: ExpenseWorkflowRow[];
   }> {
     const mineRaw = await this.fetchAllExpenseClaimsForUser(viewerId);
-    const mine = await Promise.all(mineRaw.map((c) => this.toExpenseWorkflowRow(c)));
+    const mine = await Promise.all(mineRaw.map((c) => this.toExpenseWorkflowRow(c, viewerId, viewerRole)));
     const canHr = await this.canAccessHrExtendedConsoleLocal(viewerId, viewerRole as AuthRole, viewerEmail);
     const toApproveManager: ExpenseWorkflowRow[] = [];
     const toApproveHr: ExpenseWorkflowRow[] = [];
@@ -4729,7 +4748,7 @@ export class HrDataStore {
           continue;
         }
         if (await this.canApproveExpenseAsFirstLine(viewerId, viewerRole as AuthRole, c.userId)) {
-          toApproveManager.push(await this.toExpenseWorkflowRow(c));
+          toApproveManager.push(await this.toExpenseWorkflowRow(c, viewerId, viewerRole));
         }
       }
     };
@@ -4744,7 +4763,7 @@ export class HrDataStore {
         }
         const subj = await this.getUser(c.userId);
         if (subj.companyId === viewer.companyId) {
-          toApproveHr.push(await this.toExpenseWorkflowRow(c));
+          toApproveHr.push(await this.toExpenseWorkflowRow(c, viewerId, viewerRole));
         }
       }
     };

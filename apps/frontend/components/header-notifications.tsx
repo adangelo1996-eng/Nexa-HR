@@ -12,6 +12,7 @@ import {
   type UserNotificationDto
 } from "@/lib/api";
 import { subscribeUserNotifications } from "@/lib/supabase-realtime";
+import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
 
 function showToast(message: string): void {
   if (typeof document === "undefined") {
@@ -37,6 +38,7 @@ export function HeaderNotifications(): React.JSX.Element {
   const [items, setItems] = useState<UserNotificationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -98,10 +100,7 @@ export function HeaderNotifications(): React.JSX.Element {
     }
   }
 
-  async function onDeleteAll(): Promise<void> {
-    if (!window.confirm("Eliminare tutte le notifiche?")) {
-      return;
-    }
+  async function performDeleteAll(): Promise<void> {
     const token = getToken();
     if (!token) {
       return;
@@ -110,6 +109,7 @@ export function HeaderNotifications(): React.JSX.Element {
     try {
       await deleteAllUserNotifications(token);
       setItems([]);
+      setConfirmDeleteAllOpen(false);
     } finally {
       setBusy(false);
     }
@@ -205,7 +205,7 @@ export function HeaderNotifications(): React.JSX.Element {
                 type="button"
                 className="text-xs text-rose-600 hover:underline dark:text-rose-400"
                 disabled={busy}
-                onClick={() => void onDeleteAll()}
+                onClick={() => setConfirmDeleteAllOpen(true)}
               >
                 Elimina tutte
               </button>
@@ -213,6 +213,17 @@ export function HeaderNotifications(): React.JSX.Element {
           </div>
         </div>
       ) : null}
+      <GlassConfirmDialog
+        open={confirmDeleteAllOpen}
+        title="Eliminare tutte le notifiche?"
+        message="Le voci verranno rimosse dall’elenco."
+        confirmLabel="Elimina tutte"
+        cancelLabel="Annulla"
+        variant="danger"
+        busy={busy}
+        onCancel={() => setConfirmDeleteAllOpen(false)}
+        onConfirm={performDeleteAll}
+      />
     </div>
   );
 }

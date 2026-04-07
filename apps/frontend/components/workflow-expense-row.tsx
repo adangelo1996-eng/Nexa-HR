@@ -17,6 +17,17 @@ const TYPE_LABELS: Record<string, string> = {
   altro: "Altro"
 };
 
+function initials(name: string): string {
+  if (!name?.trim()) {
+    return "?";
+  }
+  const p = name.trim().split(/\s+/);
+  if (p.length === 1) {
+    return p[0]!.slice(0, 2).toUpperCase();
+  }
+  return `${p[0]!.charAt(0)}${p[p.length - 1]!.charAt(0)}`.toUpperCase();
+}
+
 function statusLabel(s: string): string {
   switch (s) {
     case "submitted":
@@ -68,20 +79,33 @@ export function WorkflowExpenseRow(props: {
         }}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-medium text-[var(--prom-text)]">Nota spesa</p>
-            <p className="text-sm text-[var(--prom-muted)]">
-              <span className="text-[var(--prom-text)]">{row.requesterName}</span>
-              <span className="mx-1.5 text-[var(--prom-line)]">·</span>
-              {typeL}
-              <span className="mx-1.5 text-[var(--prom-line)]">·</span>
-              {amount}
-            </p>
-            {c.expenseDate ? (
-              <p className="mt-0.5 text-xs text-[var(--prom-muted)]">Data spesa: {c.expenseDate}</p>
-            ) : null}
-            <p className="mt-1 text-sm text-[var(--prom-text)]">{c.description}</p>
-            <p className="mt-2 text-xs text-[var(--prom-gold)]">Apri per dettaglio e allegati</p>
+          <div className="flex min-w-0 flex-1 gap-3">
+            {row.requesterPhotoUrl ? (
+              <img
+                src={row.requesterPhotoUrl}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-muted)_14%,transparent)] text-xs font-semibold text-[var(--prom-text)]"
+                aria-hidden
+              >
+                {initials(row.requesterName)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="font-medium text-[var(--prom-text)]">{row.requesterName}</p>
+              <p className="text-sm text-[var(--prom-muted)]">
+                {typeL}
+                <span className="mx-1.5 text-[var(--prom-line)]">·</span>
+                {amount}
+              </p>
+              {c.expenseDate ? (
+                <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{c.expenseDate}</p>
+              ) : null}
+              <p className="mt-1 line-clamp-2 text-sm text-[var(--prom-text)]">{c.description}</p>
+            </div>
           </div>
           <span
             className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
@@ -100,14 +124,10 @@ export function WorkflowExpenseRow(props: {
           requesterLabel={row.requesterName}
           managerLabel={row.firstLineManagerName}
         />
-        {variant !== "history" ? (
-          <p className="mt-2 text-xs text-[var(--prom-muted)]">
-            Inserita: {new Date(c.createdAt).toLocaleString("it-CH")}
-            {c.hasReceipt ? " · con scontrino" : ""}
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-[var(--prom-muted)]">{new Date(c.createdAt).toLocaleString("it-CH")}</p>
-        )}
+        <p className="mt-2 text-[11px] text-[var(--prom-muted)]">
+          {new Date(c.createdAt).toLocaleDateString("it-CH")}
+          {c.hasReceipt ? " · scontrino" : ""}
+        </p>
       </div>
       {showActions && onApprove && onReject ? (
         <div className="mt-3 flex flex-wrap gap-2">

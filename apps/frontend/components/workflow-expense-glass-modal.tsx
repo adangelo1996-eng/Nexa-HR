@@ -121,7 +121,7 @@ export function WorkflowExpenseGlassModal(props: {
       }}
     >
       <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-md transition-opacity"
+        className="absolute inset-0 bg-black/60 backdrop-blur-2xl transition-opacity"
         aria-hidden
       />
       <div
@@ -131,17 +131,24 @@ export function WorkflowExpenseGlassModal(props: {
         aria-labelledby="expense-glass-modal-title"
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--prom-line)] px-5 py-4">
-          <div className="min-w-0">
-            <h2 id="expense-glass-modal-title" className="text-lg font-semibold text-[var(--prom-text)]">
-              Nota spesa
-            </h2>
-            <p className="mt-1 text-sm text-[var(--prom-muted)]">
-              <span className="text-[var(--prom-text)]">{row.requesterName}</span>
-              <span className="mx-1.5 text-[var(--prom-line)]">·</span>
-              {typeL}
-              <span className="mx-1.5 text-[var(--prom-line)]">·</span>
-              {amount}
-            </p>
+          <div className="flex min-w-0 items-start gap-3">
+            {row.requesterPhotoUrl ? (
+              <img
+                src={row.requesterPhotoUrl}
+                alt=""
+                className="h-11 w-11 shrink-0 rounded-full object-cover"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <h2 id="expense-glass-modal-title" className="text-lg font-semibold text-[var(--prom-text)]">
+                {row.requesterName}
+              </h2>
+              <p className="mt-0.5 text-sm text-[var(--prom-muted)]">
+                {typeL}
+                <span className="mx-1.5 text-[var(--prom-line)]">·</span>
+                {amount}
+              </p>
+            </div>
           </div>
           <Button
             type="button"
@@ -168,9 +175,10 @@ export function WorkflowExpenseGlassModal(props: {
               {statusLabel(c.status)}
             </span>
           </div>
-          {c.expenseDate ? (
-            <p className="mt-3 text-sm text-[var(--prom-muted)]">Data spesa: {c.expenseDate}</p>
-          ) : null}
+          <p className="mt-3 text-xs text-[var(--prom-muted)]">
+            {c.expenseDate ? <>Data spesa {c.expenseDate} · </> : null}
+            Inserita {new Date(c.createdAt).toLocaleDateString("it-CH")}
+          </p>
           <p className="mt-2 text-sm leading-relaxed text-[var(--prom-text)]">{c.description}</p>
           <div className="mt-4">
             <WorkflowExpenseFlowDiagram
@@ -179,15 +187,8 @@ export function WorkflowExpenseGlassModal(props: {
               managerLabel={row.firstLineManagerName}
             />
           </div>
-          <p className="mt-3 text-xs text-[var(--prom-muted)]">
-            Inserita: {new Date(c.createdAt).toLocaleString("it-CH")}
-            {c.hasReceipt ? " · con allegato scontrino" : ""}
-          </p>
           {c.hasReceipt ? (
-            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_50%,transparent)] p-3 backdrop-blur-sm">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Allegato
-              </p>
+            <div className="mt-4 rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_50%,transparent)] p-3 backdrop-blur-sm">
               {receiptLoading ? (
                 <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p>
               ) : receiptErr ? (
@@ -200,9 +201,7 @@ export function WorkflowExpenseGlassModal(props: {
                 />
               ) : null}
             </div>
-          ) : (
-            <p className="mt-5 text-sm text-[var(--prom-muted)]">Nessun allegato per questa nota spesa.</p>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

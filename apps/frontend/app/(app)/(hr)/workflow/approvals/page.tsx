@@ -91,7 +91,7 @@ function ApprovalRow(props: {
 }): React.JSX.Element {
   const { item, variant, focused, rowRef, reasons, setReasons, onApprove, onReject } = props;
   const urgent = variant !== "history" && isHighPriorityPending(item);
-  const showAvatar = variant !== "history";
+  const showAvatar = true;
   const showMetrics = variant === "full";
 
   const shellClass = [
@@ -145,44 +145,38 @@ function ApprovalRow(props: {
           </p>
           {showMetrics && item.type === "leave" && item.leaveKind === "annual" && item.residualAnnualLeaveDays != null ? (
             <p className="mt-1 text-xs text-[var(--prom-muted)]">
-              Saldo ferie annuali (anno della richiesta):{" "}
-              <span className="font-medium text-[var(--prom-text)]">{item.residualAnnualLeaveDays} giorni residui</span>
-              {item.requestedCalendarDays != null ? <> · richiesta: {item.requestedCalendarDays} giorni calendario</> : null}
+              Residuo ferie:{" "}
+              <span className="font-medium text-[var(--prom-text)]">{item.residualAnnualLeaveDays} gg</span>
+              {item.requestedCalendarDays != null ? (
+                <> · richiesta {item.requestedCalendarDays} gg</>
+              ) : null}
             </p>
           ) : null}
           {showMetrics && item.type === "leave" && item.leaveKind === "rol" && item.requestedCalendarDays != null ? (
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">Richiesta ROL: {item.requestedCalendarDays} giorni calendario</p>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              ROL: {item.requestedCalendarDays} gg
+            </p>
           ) : null}
           {showMetrics && item.type === "sickness" && item.requestedCalendarDays != null ? (
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">Durata: {item.requestedCalendarDays} giorni calendario</p>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">{item.requestedCalendarDays} gg</p>
           ) : null}
           {showMetrics && item.type === "travel" && item.requestedCalendarDays != null ? (
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">
-              Giorni calendario: {item.requestedCalendarDays} (trasferta su singola data).
-            </p>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">{item.requestedCalendarDays} gg</p>
           ) : null}
           {showMetrics && item.type === "smartworking" ? (
             <p
               className="mt-1 text-xs text-[var(--prom-muted)]"
-              title="Il conteggio settimanale usa la settimana da lunedì a domenica in UTC (può differire di un giorno rispetto al fuso locale). Contano solo richieste non rifiutate (pending o approvate), inclusa questa in valutazione."
+              title="Conteggio su settimana lun–dom (UTC). Conteggiati solo stati non rifiutati."
             >
-              Settimana della data richiesta (lun–dom,{" "}
-              <abbr
-                title="Coordinated Universal Time: il confine della settimana segue il calendario UTC, non il fuso italiano."
-                className="cursor-help underline decoration-dotted"
-              >
-                UTC
-              </abbr>
-              ):{" "}
+              SW:{" "}
               <span className="font-medium text-[var(--prom-text)]">
-                {item.smartworkingWeekUsed ?? "—"} usati / {item.smartworkingWeekQuota ?? "—"} ammessi
+                {item.smartworkingWeekUsed ?? "—"}/{item.smartworkingWeekQuota ?? "—"}
               </span>{" "}
-              nello smart working (pending o approvati; i rifiutati non contano). {" · "}
-              Mese (stesso criterio):{" "}
+              (sett.) ·{" "}
               <span className="font-medium text-[var(--prom-text)]">
-                {item.smartworkingMonthUsed ?? "—"} / {item.smartworkingMonthQuota ?? "—"}
+                {item.smartworkingMonthUsed ?? "—"}/{item.smartworkingMonthQuota ?? "—"}
               </span>{" "}
-              giorni con SW (max mensile).
+              (mese)
             </p>
           ) : null}
           {item.note ? <p className="mt-1 text-xs italic text-[var(--prom-muted)]">{item.note}</p> : null}
@@ -362,30 +356,24 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   return (
     <div className="space-y-10">
       <header>
-        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni team</h1>
-        <p className="text-sm text-[var(--prom-muted)]">
-          Ferie, ROL, malattia, smart working, trasferte e note spese (responsabile → HR). Storico per giorno di inizio e
-          tipologia. Priorità alta sulle assenze se la data richiesta è entro due giorni o è già passata.
-        </p>
+        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni</h1>
       </header>
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Approvazioni in sospeso</h2>
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">In sospeso</h2>
         {pendingTotal === 0 ? (
-          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa dal team.</p>
+          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta.</p>
         ) : (
           <div className="space-y-8">
             {toApprove.length > 0 ? (
-              <div className="space-y-5">
-                <h3 className="text-base font-semibold text-[var(--prom-text)]">Assenze e permessi</h3>
-                <div className="space-y-6">
-                  {absencePendingGroups.map(({ typeKey, items }) =>
+              <div className="space-y-6">
+                {absencePendingGroups.map(({ typeKey, items }) =>
                     items.length === 0 ? null : (
                       <div key={typeKey} className="space-y-3">
-                        <h4 className="text-sm font-medium text-[var(--prom-muted)]">
+                        <h3 className="text-sm font-medium text-[var(--prom-muted)]">
                           {historyTypeHeading(typeKey)}
-                        </h4>
+                        </h3>
                         <ul className="space-y-3">
                           {items.map((item) => {
                             const focused = focusApprovalId === item.id;
@@ -410,12 +398,11 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                       </div>
                     )
                   )}
-                </div>
               </div>
             ) : null}
             {mgr.length > 0 ? (
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-[var(--prom-text)]">Note spese — da responsabile</h3>
+                <h3 className="text-sm font-semibold text-[var(--prom-text)]">Spese · responsabile</h3>
                 <ul className="space-y-3">
                   {mgr.map((row) => (
                     <li key={`exp-mgr-${row.claim.id}`}>
@@ -434,7 +421,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
             ) : null}
             {hrQ.length > 0 ? (
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-[var(--prom-text)]">Note spese — da HR</h3>
+                <h3 className="text-sm font-semibold text-[var(--prom-text)]">Spese · HR</h3>
                 <ul className="space-y-3">
                   {hrQ.map((row) => (
                     <li key={`exp-hr-${row.claim.id}`}>
@@ -456,10 +443,9 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Le mie richieste in corso</h2>
-        <p className="text-sm text-[var(--prom-muted)]">Le tue richieste ancora in sospeso.</p>
+        <h2 className="text-lg font-semibold text-[var(--prom-text)]">Le mie richieste</h2>
         {mine.length === 0 && expenseMineOpen.length === 0 ? (
-          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta aperta da te.</p>
+          <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta aperta.</p>
         ) : (
           <ul className="space-y-3">
             {mine.map((item) => (
@@ -489,11 +475,8 @@ function WorkflowApprovalsContent(): React.JSX.Element {
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-[var(--prom-text)]">Storico</h2>
-        <p className="text-sm text-[var(--prom-muted)]">
-          Approvate e rifiutate, raggruppate per giorno di inizio richiesta e tipologia.
-        </p>
         {historyGrouped.length === 0 && expenseHistory.length === 0 ? (
-          <p className="text-sm text-[var(--prom-muted)]">Nessuno storico disponibile.</p>
+          <p className="text-sm text-[var(--prom-muted)]">Vuoto.</p>
         ) : (
           <div className="space-y-8">
             {historyGrouped.map(({ day, typeGroups }) => (
@@ -504,7 +487,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
                 <div className="mt-3 space-y-6">
                   {typeGroups.map(({ typeKey, items }) => (
                     <div key={`${day}-${typeKey}`}>
-                      <h4 className="text-sm font-medium text-[var(--prom-muted)]">{historyTypeHeading(typeKey)}</h4>
+                      <h4 className="text-xs font-medium text-[var(--prom-muted)]">{historyTypeHeading(typeKey)}</h4>
                       <ul className="mt-2 space-y-2">
                         {items.map((item) => (
                           <li key={item.id}>
@@ -530,8 +513,8 @@ function WorkflowApprovalsContent(): React.JSX.Element {
             ))}
             {expenseHistory.length > 0 ? (
               <div>
-                <h3 className="border-b border-[var(--prom-line)] pb-1 text-base font-medium text-[var(--prom-text)]">
-                  Note spese (concluse)
+                <h3 className="border-b border-[var(--prom-line)] pb-1 text-sm font-medium text-[var(--prom-text)]">
+                  Spese concluse
                 </h3>
                 <ul className="mt-3 space-y-2">
                   {expenseHistory.map((row) => (
