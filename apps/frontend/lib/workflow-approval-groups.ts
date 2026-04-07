@@ -85,6 +85,15 @@ export function sortMine(items: ApprovalItem[]): ApprovalItem[] {
 
 const HISTORY_TYPE_ORDER = ["leave:annual", "leave:rol", "sickness", "smartworking", "travel"] as const;
 
+/** Ordine intestazioni «Approvazioni in sospeso» (assenze): Ferie → ROL → Malattia → Trasferta → Smart working. */
+const PENDING_APPROVAL_CATEGORY_ORDER = [
+  "leave:annual",
+  "leave:rol",
+  "sickness",
+  "travel",
+  "smartworking"
+] as const;
+
 export function historyTypeKey(item: ApprovalItem): string {
   if (item.type === "leave") {
     return item.leaveKind === "rol" ? "leave:rol" : "leave:annual";
@@ -95,6 +104,29 @@ export function historyTypeKey(item: ApprovalItem): string {
 function historyTypeOrderIndex(key: string): number {
   const i = HISTORY_TYPE_ORDER.indexOf(key as (typeof HISTORY_TYPE_ORDER)[number]);
   return i === -1 ? 999 : i;
+}
+
+function pendingApprovalCategoryOrderIndex(key: string): number {
+  const i = PENDING_APPROVAL_CATEGORY_ORDER.indexOf(key as (typeof PENDING_APPROVAL_CATEGORY_ORDER)[number]);
+  return i === -1 ? 999 : i;
+}
+
+/** Raggruppa richieste assenza/permesso in attesa per tipologia (ordine fisso da piano prodotto). */
+export function groupPendingApprovalsByCategory(
+  items: ApprovalItem[]
+): Array<{ typeKey: string; items: ApprovalItem[] }> {
+  const byType = new Map<string, ApprovalItem[]>();
+  for (const item of items) {
+    const k = historyTypeKey(item);
+    const g = byType.get(k) ?? [];
+    g.push(item);
+    byType.set(k, g);
+  }
+  const typeKeys = [...byType.keys()].sort((a, b) => pendingApprovalCategoryOrderIndex(a) - pendingApprovalCategoryOrderIndex(b));
+  return typeKeys.map((typeKey) => ({
+    typeKey,
+    items: byType.get(typeKey) ?? []
+  }));
 }
 
 /** Primo giorno richiesta per bucket storico; se manca startDate, giorno di `at` in Europe/Rome. */

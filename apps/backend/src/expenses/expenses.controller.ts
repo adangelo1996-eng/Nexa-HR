@@ -261,7 +261,7 @@ export class ExpensesController {
     @CurrentAuth() auth: AuthContext,
     @Res({ passthrough: false }) res: Response
   ): Promise<void> {
-    const payload = await this.store.getExpenseClaimReceiptForOwner(id.trim(), auth.userId);
+    const payload = await this.store.getExpenseClaimReceiptForViewer(id.trim(), auth.userId);
     if (!payload) {
       res.status(404).json({ message: "Scontrino non trovato" });
       return;

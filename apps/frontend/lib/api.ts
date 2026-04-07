@@ -2029,6 +2029,22 @@ export async function markUserNotificationRead(
   return (await response.json()) as UserNotificationDto;
 }
 
+export async function deleteUserNotification(token: string, notificationId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/users/me/notifications/${encodeURIComponent(notificationId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export async function deleteAllUserNotifications(token: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/users/me/notifications`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
 export async function fetchExpenseClaims(
   token: string,
   scope: "self" | "team" = "self"
@@ -2049,6 +2065,15 @@ export async function fetchExpenseWorkflow(token: string): Promise<ExpenseWorkfl
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as ExpenseWorkflowDto;
+}
+
+export async function fetchExpenseClaimReceipt(token: string, claimId: string): Promise<Blob> {
+  const response = await fetch(buildApiUrl(`/expenses/${encodeURIComponent(claimId)}/receipt`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.blob();
 }
 
 export type CreateExpenseClaimPayload = {

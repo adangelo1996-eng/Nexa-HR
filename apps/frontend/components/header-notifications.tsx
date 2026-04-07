@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, X } from "lucide-react";
 import { getToken, getSessionUser } from "@/lib/auth-session";
 import {
+  deleteAllUserNotifications,
+  deleteUserNotification,
   fetchUserNotifications,
   markUserNotificationRead,
   type UserNotificationDto
@@ -34,6 +36,7 @@ export function HeaderNotifications(): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<UserNotificationDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -81,6 +84,37 @@ export function HeaderNotifications(): React.JSX.Element {
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   }
 
+  async function onDelete(id: string): Promise<void> {
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await deleteUserNotification(token, id);
+      setItems((prev) => prev.filter((n) => n.id !== id));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDeleteAll(): Promise<void> {
+    if (!window.confirm("Eliminare tutte le notifiche?")) {
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await deleteAllUserNotifications(token);
+      setItems([]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="relative shrink-0">
       <button
@@ -114,10 +148,19 @@ export function HeaderNotifications(): React.JSX.Element {
               items.map((n) => (
                 <div
                   key={n.id}
-                  className={`border-b border-[var(--prom-line)] px-3 py-2 text-sm last:border-0 ${
+                  className={`relative border-b border-[var(--prom-line)] px-3 py-2 pr-10 text-sm last:border-0 ${
                     n.read ? "opacity-70" : ""
                   }`}
                 >
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 rounded-full p-1 text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] hover:text-[var(--prom-text)] disabled:opacity-40"
+                    aria-label="Elimina notifica"
+                    disabled={busy}
+                    onClick={() => void onDelete(n.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                   {n.actionPath ? (
                     <a
                       href={n.actionPath}
@@ -149,7 +192,7 @@ export function HeaderNotifications(): React.JSX.Element {
               ))
             )}
           </div>
-          <div className="shrink-0 border-t border-[var(--prom-line)] px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--prom-line)] px-3 py-2">
             <Link
               href="/workflow"
               className="text-xs text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
@@ -157,6 +200,16 @@ export function HeaderNotifications(): React.JSX.Element {
             >
               Apri workflow
             </Link>
+            {items.length > 0 ? (
+              <button
+                type="button"
+                className="text-xs text-rose-600 hover:underline dark:text-rose-400"
+                disabled={busy}
+                onClick={() => void onDeleteAll()}
+              >
+                Elimina tutte
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

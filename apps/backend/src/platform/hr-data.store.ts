@@ -4183,6 +4183,44 @@ export class HrDataStore {
     return this.mapNotificationRows([data])[0];
   }
 
+  async deleteUserNotification(userId: string, notificationId: string): Promise<void> {
+    if (!this.useDb) {
+      const idx = this.userNotifications.findIndex((n) => n.id === notificationId && n.userId === userId);
+      if (idx === -1) {
+        throw new NotFoundException("Notifica non trovata");
+      }
+      this.userNotifications.splice(idx, 1);
+      return;
+    }
+    const { data, error } = await this.supabase!
+      .from("user_notifications")
+      .delete()
+      .eq("id", notificationId)
+      .eq("userId", userId)
+      .select("id");
+    if (error) {
+      throw new BadRequestException(`Eliminazione notifica fallita: ${error.message}`);
+    }
+    if (!data?.length) {
+      throw new NotFoundException("Notifica non trovata");
+    }
+  }
+
+  async deleteAllUserNotifications(userId: string): Promise<void> {
+    if (!this.useDb) {
+      for (let i = this.userNotifications.length - 1; i >= 0; i -= 1) {
+        if (this.userNotifications[i]!.userId === userId) {
+          this.userNotifications.splice(i, 1);
+        }
+      }
+      return;
+    }
+    const { error } = await this.supabase!.from("user_notifications").delete().eq("userId", userId);
+    if (error) {
+      throw new BadRequestException(`Eliminazione notifiche fallita: ${error.message}`);
+    }
+  }
+
   private mapNotificationRows(data: Record<string, unknown>[]): UserNotification[] {
     return (data as Record<string, unknown>[]).map((r) => ({
       id: String(r.id),
@@ -4939,6 +4977,78 @@ export class HrDataStore {
       .select("receiptBodyBase64,receiptMime")
       .eq("id", claimId)
       .eq("userId", userId)
+      .single();
+    if (error || !data) {
+      return null;
+    }
+    const row = data as Record<string, unknown>;
+    const b64 = row.receiptBodyBase64 != null ? String(row.receiptBodyBase64).trim() : "";
+    if (!b64) {
+      return null;
+    }
+    try {
+      const body = Buffer.from(b64, "base64");
+      if (body.length < 256) {
+        return null;
+      }
+      return { body, mime: row.receiptMime != null ? String(row.receiptMime) : "image/jpeg" };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Scontrino per chi ha diritto di vederlo in workflow: richiedente, responsabile di prima linea su richiesta
+   * `submitted`, oppure HR (console estesa) su `pending_hr` stessa company.
+   */
+  async getExpenseClaimReceiptForViewer(
+    claimId: string,
+    viewerId: string
+  ): Promise<{ body: Buffer; mime: string } | null> {
+    const claim = await this.getExpenseClaim(claimId);
+    const viewer = await this.getUser(viewerId);
+    const viewerRole = viewer.role as AuthRole;
+    const viewerEmail = viewer.email ?? "";
+
+    let allowed = false;
+    if (claim.userId === viewerId) {
+      allowed = true;
+    } else if (claim.status === "submitted") {
+      allowed = await this.canApproveExpenseAsFirstLine(viewerId, viewerRole, claim.userId);
+    } else if (claim.status === "pending_hr") {
+      const canHr = await this.canAccessHrExtendedConsoleLocal(viewerId, viewerRole, viewerEmail);
+      if (canHr) {
+        const subj = await this.getUser(claim.userId);
+        allowed = subj.companyId === viewer.companyId;
+      }
+    }
+
+    if (!allowed) {
+      throw new NotFoundException("Scontrino non trovato");
+    }
+
+    if (!this.useDb) {
+      const ext = this.expenseClaims.find((c) => c.id === claimId) as unknown as {
+        receiptBodyBase64?: string;
+        receiptMime?: string | null;
+      };
+      if (!ext?.receiptBodyBase64) {
+        return null;
+      }
+      try {
+        const body = Buffer.from(ext.receiptBodyBase64.trim(), "base64");
+        if (body.length < 256) {
+          return null;
+        }
+        return { body, mime: ext.receiptMime?.trim() || "image/jpeg" };
+      } catch {
+        return null;
+      }
+    }
+    const { data, error } = await this.supabase!
+      .from("expense_claims")
+      .select("receiptBodyBase64,receiptMime")
+      .eq("id", claimId)
       .single();
     if (error || !data) {
       return null;

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -718,6 +719,21 @@ export class UserController {
     @Param("id") id: string
   ): Promise<unknown> {
     return this.store.markUserNotificationRead(auth.userId, id);
+  }
+
+  @Delete("me/notifications/:id")
+  async deleteNotification(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string
+  ): Promise<{ ok: true }> {
+    await this.store.deleteUserNotification(auth.userId, id);
+    return { ok: true };
+  }
+
+  @Delete("me/notifications")
+  async deleteAllNotifications(@CurrentAuth() auth: AuthContext): Promise<{ ok: true }> {
+    await this.store.deleteAllUserNotifications(auth.userId);
+    return { ok: true };
   }
 
   @Get("roles")

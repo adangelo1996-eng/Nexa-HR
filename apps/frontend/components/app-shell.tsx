@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
+  ChevronRight,
   Clock3,
   ChevronDown,
   FileText,
@@ -24,6 +25,7 @@ import {
   Wallet2,
   Workflow,
   Network,
+  type LucideIcon,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,16 +46,48 @@ import { fetchCurrentUser } from "@/lib/api";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
-const NAV_MAIN: { href: Route; label: string; icon: typeof LayoutDashboard }[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/attendance", label: "Presenze", icon: Clock3 },
-  { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
-  { href: "/organigramma", label: "Organigramma", icon: Network },
-  { href: "/workflow", label: "Workflow", icon: Workflow },
-  { href: "/expenses", label: "Spese", icon: Receipt },
-  { href: "/payslips", label: "Cedolini", icon: FileText },
-  { href: "/settings", label: "Impostazioni", icon: Settings }
+const SIDEBAR_STORAGE_KEY = "nexa_hr_sidebar_sections_v1";
+
+type NavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
+
+const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
+
+const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
+  {
+    id: "work",
+    title: "Tempo e attività",
+    items: [
+      { href: "/attendance", label: "Presenze", icon: Clock3 },
+      { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
+      { href: "/workflow", label: "Workflow", icon: Workflow }
+    ]
+  },
+  {
+    id: "data",
+    title: "Compensi e dati",
+    items: [
+      { href: "/organigramma", label: "Organigramma", icon: Network },
+      { href: "/expenses", label: "Spese", icon: Receipt },
+      { href: "/payslips", label: "Cedolini", icon: FileText }
+    ]
+  },
+  {
+    id: "profile",
+    title: "Profilo",
+    items: [{ href: "/settings", label: "Impostazioni", icon: Settings }]
+  }
 ];
+
+function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
+  if (exact) {
+    return pathname === href;
+  }
+  return pathname === href || (href !== "/" && pathname.startsWith(href));
+}
+
+function sectionHasActivePath(pathname: string, items: NavItem[]): boolean {
+  return items.some((it) => pathActive(pathname, it.href, it.exact));
+}
 
 const SEARCH_ROUTES: { href: Route; label: string }[] = [
   { href: "/", label: "Dashboard" },
@@ -86,6 +120,92 @@ function getEmployeeViewOnly(): boolean {
     return false;
   }
   return sessionStorage.getItem(EMPLOYEE_VIEW_KEY) === "1";
+}
+
+function readSidebarSectionPrefs(): Record<string, boolean> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function writeSidebarSectionPrefs(next: Record<string, boolean>): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function SidebarNavLink(props: {
+  item: NavItem;
+  pathname: string;
+  onNavigate: () => void;
+}): React.JSX.Element {
+  const { item, pathname, onNavigate } = props;
+  const { href, label, icon: Icon, exact } = item;
+  const active = pathActive(pathname, href, exact);
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
+        active
+          ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+          : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+function SidebarCollapsibleSection(props: {
+  section: { id: string; title: string; items: NavItem[] };
+  pathname: string;
+  open: boolean;
+  onOpenChange: (id: string, nextOpen: boolean) => void;
+  onNavigate: () => void;
+}): React.JSX.Element {
+  const { section, pathname, open, onOpenChange, onNavigate } = props;
+  return (
+    <details
+      className="group mx-0 border-b border-transparent py-0.5 last:border-b-0"
+      open={open}
+      onToggle={(e) => onOpenChange(section.id, e.currentTarget.open)}
+    >
+      <summary
+        className={`mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--prom-muted)] transition-[background,color] marker:content-none [&::-webkit-details-marker]:hidden ${
+          open
+            ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)] text-[var(--prom-text)]"
+            : "hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
+        }`}
+      >
+        <span>{section.title}</span>
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 opacity-70 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          aria-hidden
+        />
+      </summary>
+      <div className="mt-0.5 space-y-0.5 pb-1">
+        {section.items.map((item) => (
+          <SidebarNavLink key={`${section.id}-${item.href}`} item={item} pathname={pathname} onNavigate={onNavigate} />
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -184,12 +304,74 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     router.refresh();
   }, [router]);
 
+  const sidebarHrSections = useMemo(() => {
+    const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
+    const hrOps: NavItem[] = [];
+    if (showPayrollNav) {
+      hrOps.push({ href: "/payroll-hebb" as Route, label: "Hebb - Payroll", icon: Sparkles });
+    }
+    if (showBudgetNav) {
+      hrOps.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
+    }
+    if (showOrgExpensesNav) {
+      hrOps.push({ href: "/expenses/org" as Route, label: "Note spese (dipendenti)", icon: Receipt });
+    }
+    if (hrOps.length > 0) {
+      hrBlocks.push({ id: "hr-ops", title: "Strumenti HR", items: hrOps });
+    }
+    const hrAdmin: NavItem[] = [];
+    if (showAdminNav) {
+      hrAdmin.push({ href: "/admin" as Route, label: "Admin", icon: UserCog, exact: true });
+      hrAdmin.push({ href: "/admin/data-export" as Route, label: "Export Excel", icon: FileText });
+      hrAdmin.push({ href: "/admin/data-import" as Route, label: "Import Excel", icon: Upload });
+    }
+    if (hrAdmin.length > 0) {
+      hrBlocks.push({ id: "hr-admin", title: "Amministrazione", items: hrAdmin });
+    }
+    return hrBlocks;
+  }, [showPayrollNav, showBudgetNav, showOrgExpensesNav, showAdminNav]);
+
+  const allCollapsibleSections = useMemo(
+    () => [...NAV_SECTIONS_MAIN, ...sidebarHrSections],
+    [sidebarHrSections]
+  );
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setOpenSections((prev) => ({ ...readSidebarSectionPrefs(), ...prev }));
+  }, []);
+
+  useEffect(() => {
+    setOpenSections((prev) => {
+      const next = { ...prev };
+      for (const sec of allCollapsibleSections) {
+        if (sectionHasActivePath(pathname, sec.items)) {
+          next[sec.id] = true;
+        }
+      }
+      return next;
+    });
+  }, [pathname, allCollapsibleSections]);
+
+  const onSectionOpenChange = useCallback((id: string, isOpen: boolean): void => {
+    setOpenSections((prev) => {
+      const next = { ...prev, [id]: isOpen };
+      writeSidebarSectionPrefs(next);
+      return next;
+    });
+  }, []);
+
+  const closeMobile = useCallback((): void => {
+    setMobileOpen(false);
+  }, []);
+
   const SidebarContent = (
     <div className="flex h-full flex-col gap-1 py-4">
       <Link
         href="/"
         className="mb-3 flex items-center gap-2 px-3 transition-opacity hover:opacity-90"
-        onClick={() => setMobileOpen(false)}
+        onClick={closeMobile}
       >
         <span
           className="nexa-wordmark-face text-sm font-semibold uppercase tracking-[0.12em] text-[var(--prom-text)]"
@@ -198,109 +380,30 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           Nexa HR
         </span>
       </Link>
-      {NAV_MAIN.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || (href !== "/" && pathname.startsWith(href));
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={() => setMobileOpen(false)}
-            className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-              active
-                ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-            }`}
-          >
-            <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-            <span>{label}</span>
-          </Link>
-        );
-      })}
-      {showHrSidebarSection ? (
+      <SidebarNavLink item={NAV_DASHBOARD} pathname={pathname} onNavigate={closeMobile} />
+      {NAV_SECTIONS_MAIN.map((section) => (
+        <SidebarCollapsibleSection
+          key={section.id}
+          section={section}
+          pathname={pathname}
+          open={Boolean(openSections[section.id])}
+          onOpenChange={onSectionOpenChange}
+          onNavigate={closeMobile}
+        />
+      ))}
+      {showHrSidebarSection && sidebarHrSections.length > 0 ? (
         <>
           <div className="my-2 border-t border-[var(--prom-line)]" />
-          {showPayrollNav ? (
-            <Link
-              href="/payroll-hebb"
-              onClick={() => setMobileOpen(false)}
-              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                pathname.startsWith("/payroll-hebb")
-                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-              }`}
-            >
-              <Sparkles className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-              Hebb - Payroll
-            </Link>
-          ) : null}
-          {showBudgetNav ? (
-            <Link
-              href="/personnel-budget"
-              onClick={() => setMobileOpen(false)}
-              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                pathname.startsWith("/personnel-budget")
-                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-              }`}
-            >
-              <Wallet2 className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-              Budget personale
-            </Link>
-          ) : null}
-          {showOrgExpensesNav ? (
-            <Link
-              href="/expenses/org"
-              onClick={() => setMobileOpen(false)}
-              className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                pathname.startsWith("/expenses/org")
-                  ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                  : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-              }`}
-            >
-              <Receipt className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-              Note spese (dipendenti)
-            </Link>
-          ) : null}
-          {showAdminNav ? (
-            <>
-              <Link
-                href="/admin"
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/admin") && pathname === "/admin"
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <UserCog className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Admin
-              </Link>
-              <Link
-                href={"/admin/data-export" as Route}
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/admin/data-export")
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <FileText className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Export Excel
-              </Link>
-              <Link
-                href={"/admin/data-import" as Route}
-                onClick={() => setMobileOpen(false)}
-                className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-                  pathname.startsWith("/admin/data-import")
-                    ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-                    : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-                }`}
-              >
-                <Upload className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                Import Excel
-              </Link>
-            </>
-          ) : null}
+          {sidebarHrSections.map((section) => (
+            <SidebarCollapsibleSection
+              key={section.id}
+              section={section}
+              pathname={pathname}
+              open={Boolean(openSections[section.id])}
+              onOpenChange={onSectionOpenChange}
+              onNavigate={closeMobile}
+            />
+          ))}
         </>
       ) : null}
     </div>

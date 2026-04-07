@@ -1,18 +1,23 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown,
+  Bell,
   Clock3,
   LogIn,
   LogOut,
   Palmtree,
   Receipt,
   Timer,
-  ArrowDown
+  X
 } from "lucide-react";
 import {
   clock,
+  deleteAllUserNotifications,
+  deleteUserNotification,
   fetchApprovals,
   fetchAttendanceEntries,
   fetchAttendanceOvertimeAggregates,
@@ -22,12 +27,14 @@ import {
   fetchLeaveBalance,
   fetchLeavePlans,
   fetchUserCalendar,
+  fetchUserNotifications,
   type ApprovalItem,
   type AttendanceOvertimeAggregates,
   type AttendanceStatus,
   type LeaveBalance,
   type LeavePlan,
   type TimeEntry,
+  type UserNotificationDto,
   type WorkdaySummary
 } from "@/lib/api";
 import {
@@ -38,6 +45,7 @@ import {
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
 import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
+import { Button } from "@/components/ui/button";
 
 type PeriodTab = "today" | "week" | "month";
 
@@ -95,6 +103,8 @@ export default function HomePage(): React.JSX.Element {
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null);
   const [leavePlans, setLeavePlans] = useState<LeavePlan[]>([]);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [notifications, setNotifications] = useState<UserNotificationDto[]>([]);
+  const [notificationsBusy, setNotificationsBusy] = useState(false);
   const [attendanceStatusFailed, setAttendanceStatusFailed] = useState(false);
   const [clockLoading, setClockLoading] = useState<"clock_in" | "clock_out" | null>(null);
   const [clockError, setClockError] = useState<string | null>(null);
@@ -141,7 +151,8 @@ export default function HomePage(): React.JSX.Element {
           overtimeAggregates,
           yearBalance,
           myLeaves,
-          workflowApprovals
+          workflowApprovals,
+          notificationItems
         ] = await Promise.all([
           fetchAttendanceEntries(tokenValue).catch(() => [] as TimeEntry[]),
           fetchAttendanceSummary(tokenValue).catch(() => [] as WorkdaySummary[]),
@@ -155,7 +166,8 @@ export default function HomePage(): React.JSX.Element {
           fetchLeavePlans(tokenValue).catch(() => [] as LeavePlan[]),
           me && sessionCanSeeApprovalsAndHrExtras(me)
             ? fetchApprovals(tokenValue, "pending").catch(() => [] as ApprovalItem[])
-            : Promise.resolve([] as ApprovalItem[])
+            : Promise.resolve([] as ApprovalItem[]),
+          fetchUserNotifications(tokenValue, 40).catch(() => [] as UserNotificationDto[])
         ]);
 
         setAttendanceStatusFailed(!statusResult.ok);
@@ -169,6 +181,7 @@ export default function HomePage(): React.JSX.Element {
         setLeaveBalance(yearBalance);
         setLeavePlans(myLeaves);
         setApprovals(workflowApprovals);
+        setNotifications(notificationItems);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Caricamento parziale");
       } finally {
@@ -187,20 +200,29 @@ export default function HomePage(): React.JSX.Element {
       const todayDate = new Date().toISOString().slice(0, 10);
       void (async (): Promise<void> => {
         try {
-          const [entriesList, summaryList, statusValue, overtimeAggregates, yearBalance, myLeaves, workflowApprovals] =
-            await Promise.all([
-              fetchAttendanceEntries(token).catch(() => [] as TimeEntry[]),
-              fetchAttendanceSummary(token).catch(() => [] as WorkdaySummary[]),
-              fetchAttendanceStatus(token, todayDate).catch(() => null as AttendanceStatus | null),
-              fetchAttendanceOvertimeAggregates(token, todayDate).catch(
-                () => null as AttendanceOvertimeAggregates | null
-              ),
-              fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
-              fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
-              user && sessionCanSeeApprovalsAndHrExtras(user)
-                ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
-                : Promise.resolve([] as ApprovalItem[])
-            ]);
+          const [
+            entriesList,
+            summaryList,
+            statusValue,
+            overtimeAggregates,
+            yearBalance,
+            myLeaves,
+            workflowApprovals,
+            notificationItems
+          ] = await Promise.all([
+            fetchAttendanceEntries(token).catch(() => [] as TimeEntry[]),
+            fetchAttendanceSummary(token).catch(() => [] as WorkdaySummary[]),
+            fetchAttendanceStatus(token, todayDate).catch(() => null as AttendanceStatus | null),
+            fetchAttendanceOvertimeAggregates(token, todayDate).catch(
+              () => null as AttendanceOvertimeAggregates | null
+            ),
+            fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
+            fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
+            user && sessionCanSeeApprovalsAndHrExtras(user)
+              ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
+              : Promise.resolve([] as ApprovalItem[]),
+            fetchUserNotifications(token, 40).catch(() => [] as UserNotificationDto[])
+          ]);
           setEntries(entriesList);
           setSummary(summaryList);
           if (statusValue) {
@@ -215,6 +237,7 @@ export default function HomePage(): React.JSX.Element {
           }
           setLeavePlans(myLeaves);
           setApprovals(workflowApprovals);
+          setNotifications(notificationItems);
         } catch {
           /* ignore */
         }
@@ -379,6 +402,37 @@ export default function HomePage(): React.JSX.Element {
     return <p className="text-rose-600 dark:text-rose-300">{error ?? "Sessione non valida"}</p>;
   }
 
+  async function removeNotification(id: string): Promise<void> {
+    const t = getToken();
+    if (!t) {
+      return;
+    }
+    setNotificationsBusy(true);
+    try {
+      await deleteUserNotification(t, id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } finally {
+      setNotificationsBusy(false);
+    }
+  }
+
+  async function clearAllNotifications(): Promise<void> {
+    if (!window.confirm("Eliminare tutte le notifiche?")) {
+      return;
+    }
+    const t = getToken();
+    if (!t) {
+      return;
+    }
+    setNotificationsBusy(true);
+    try {
+      await deleteAllUserNotifications(t);
+      setNotifications([]);
+    } finally {
+      setNotificationsBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -397,6 +451,76 @@ export default function HomePage(): React.JSX.Element {
       </header>
 
       {error ? <p className="text-sm text-amber-700 dark:text-amber-300">{error}</p> : null}
+
+      <section className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--prom-line)] pb-3">
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-[var(--prom-gold)] opacity-90" aria-hidden />
+            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Notifiche</h2>
+          </div>
+          {notifications.length > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={notificationsBusy}
+              onClick={() => void clearAllNotifications()}
+            >
+              Elimina tutte
+            </Button>
+          ) : null}
+        </div>
+        {notifications.length === 0 ? (
+          <p className="py-2 text-sm text-[var(--prom-muted)]">Nessuna notifica da mostrare.</p>
+        ) : (
+          <ul className="space-y-3">
+            {notifications.map((n) => (
+              <li
+                key={n.id}
+                className={`relative rounded-xl border border-[var(--prom-line)] p-4 pr-12 ${
+                  n.read
+                    ? "bg-[color-mix(in_srgb,var(--prom-surface-soft)_40%,transparent)]"
+                    : "border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)]"
+                }`}
+              >
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[var(--prom-muted)] transition-colors hover:bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] hover:text-[var(--prom-text)]"
+                  aria-label="Elimina notifica"
+                  disabled={notificationsBusy}
+                  onClick={() => void removeNotification(n.id)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                {n.actionPath ? (
+                  <Link
+                    href={n.actionPath as Route}
+                    className="block text-[var(--prom-text)] hover:opacity-90"
+                  >
+                    <p className="pr-6 text-base font-medium leading-snug">{n.title}</p>
+                    {n.body ? (
+                      <p className="mt-2 text-sm leading-relaxed text-[var(--prom-muted)]">{n.body}</p>
+                    ) : null}
+                  </Link>
+                ) : (
+                  <>
+                    <p className="pr-6 text-base font-medium leading-snug text-[var(--prom-text)]">{n.title}</p>
+                    {n.body ? (
+                      <p className="mt-2 text-sm leading-relaxed text-[var(--prom-muted)]">{n.body}</p>
+                    ) : null}
+                  </>
+                )}
+                <p className="mt-2 text-xs text-[var(--prom-muted)]">
+                  {new Date(n.createdAt).toLocaleString("it-CH", { dateStyle: "medium", timeStyle: "short" })}
+                  {!n.read ? (
+                    <span className="ml-2 font-medium text-[var(--prom-gold)]">· Non letta</span>
+                  ) : null}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card space-y-3">

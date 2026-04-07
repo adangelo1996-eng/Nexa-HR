@@ -20,6 +20,7 @@ import { WorkflowApprovalFlowDiagram } from "@/components/workflow-flow-diagram"
 import { WorkflowExpenseRow } from "@/components/workflow-expense-row";
 import {
   groupHistoryByRequestDayAndType,
+  groupPendingApprovalsByCategory,
   isHighPriorityPending,
   partitionForWorkflow,
   sortMine,
@@ -353,6 +354,11 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   const pendingExpenseCount = mgr.length + hrQ.length;
   const pendingTotal = toApprove.length + pendingExpenseCount;
 
+  const absencePendingGroups = useMemo(
+    () => groupPendingApprovalsByCategory(toApprove),
+    [toApprove]
+  );
+
   return (
     <div className="space-y-10">
       <header>
@@ -369,51 +375,83 @@ function WorkflowApprovalsContent(): React.JSX.Element {
         {pendingTotal === 0 ? (
           <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa dal team.</p>
         ) : (
-          <ul className="space-y-3">
-            {toApprove.map((item) => {
-              const focused = focusApprovalId === item.id;
-              return (
-                <li key={item.id}>
-                  <ApprovalRow
-                    item={item}
-                    variant="full"
-                    focused={focused}
-                    rowRef={(el) => {
-                      rowRefs.current[item.id] = el;
-                    }}
-                    reasons={reasons}
-                    setReasons={setReasons}
-                    onApprove={(id) => void onApproveA(id)}
-                    onReject={(id) => void onRejectA(id)}
-                  />
-                </li>
-              );
-            })}
-            {mgr.map((row) => (
-              <li key={`exp-mgr-${row.claim.id}`}>
-                <WorkflowExpenseRow
-                  row={row}
-                  variant="queue_manager"
-                  showActions
-                  busy={expenseBusyId === row.claim.id}
-                  onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
-                  onReject={() => void onExpenseDecision(row.claim.id, "reject")}
-                />
-              </li>
-            ))}
-            {hrQ.map((row) => (
-              <li key={`exp-hr-${row.claim.id}`}>
-                <WorkflowExpenseRow
-                  row={row}
-                  variant="queue_hr"
-                  showActions
-                  busy={expenseBusyId === row.claim.id}
-                  onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
-                  onReject={() => void onExpenseDecision(row.claim.id, "reject")}
-                />
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-8">
+            {toApprove.length > 0 ? (
+              <div className="space-y-5">
+                <h3 className="text-base font-semibold text-[var(--prom-text)]">Assenze e permessi</h3>
+                <div className="space-y-6">
+                  {absencePendingGroups.map(({ typeKey, items }) =>
+                    items.length === 0 ? null : (
+                      <div key={typeKey} className="space-y-3">
+                        <h4 className="text-sm font-medium text-[var(--prom-muted)]">
+                          {historyTypeHeading(typeKey)}
+                        </h4>
+                        <ul className="space-y-3">
+                          {items.map((item) => {
+                            const focused = focusApprovalId === item.id;
+                            return (
+                              <li key={item.id}>
+                                <ApprovalRow
+                                  item={item}
+                                  variant="full"
+                                  focused={focused}
+                                  rowRef={(el) => {
+                                    rowRefs.current[item.id] = el;
+                                  }}
+                                  reasons={reasons}
+                                  setReasons={setReasons}
+                                  onApprove={(id) => void onApproveA(id)}
+                                  onReject={(id) => void onRejectA(id)}
+                                />
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {mgr.length > 0 ? (
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold text-[var(--prom-text)]">Note spese — da responsabile</h3>
+                <ul className="space-y-3">
+                  {mgr.map((row) => (
+                    <li key={`exp-mgr-${row.claim.id}`}>
+                      <WorkflowExpenseRow
+                        row={row}
+                        variant="queue_manager"
+                        showActions
+                        busy={expenseBusyId === row.claim.id}
+                        onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
+                        onReject={() => void onExpenseDecision(row.claim.id, "reject")}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {hrQ.length > 0 ? (
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold text-[var(--prom-text)]">Note spese — da HR</h3>
+                <ul className="space-y-3">
+                  {hrQ.map((row) => (
+                    <li key={`exp-hr-${row.claim.id}`}>
+                      <WorkflowExpenseRow
+                        row={row}
+                        variant="queue_hr"
+                        showActions
+                        busy={expenseBusyId === row.claim.id}
+                        onApprove={() => void onExpenseDecision(row.claim.id, "approve")}
+                        onReject={() => void onExpenseDecision(row.claim.id, "reject")}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         )}
       </section>
 
