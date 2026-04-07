@@ -65,6 +65,8 @@ export interface SessionUser {
   contractFixedTerm?: boolean;
   taxRegion?: string;
   taxMunicipalityIt?: string;
+  /** Da impostazioni aziendali (`company_settings`), solo lettura per dipendente. */
+  companyCcnl?: string | null;
   /** Permesso catalogo budget (backend); la sezione `/personnel-budget` in UI è mostrata solo con `canNexaAdmin`. */
   canAccessPersonnelBudgetArea?: boolean;
 }
@@ -87,11 +89,27 @@ export function sessionCanNexaAdmin(
   return u?.canNexaAdmin === true;
 }
 
-/** Vista note spese per dipendente (`/expenses/org`): admin Synapse o HR esteso. */
+/**
+ * Vista note spese per dipendente (`/expenses/org`): console Synapse, HR esteso,
+ * o stesso perimetro workflow HR (responsabili team / approvazioni).
+ */
 export function sessionCanViewOrgExpenseClaims(
-  u: Pick<SessionUser, "canNexaAdmin" | "canAccessHrExtendedConsole"> | null | undefined
+  u: Pick<
+    SessionUser,
+    | "canNexaAdmin"
+    | "canAccessHrExtendedConsole"
+    | "role"
+    | "canAccessHrWorkflowExtras"
+    | "isTeamResponsible"
+  > | null | undefined
 ): boolean {
-  return sessionCanNexaAdmin(u) || u?.canAccessHrExtendedConsole === true;
+  if (!u) {
+    return false;
+  }
+  if (sessionCanNexaAdmin(u) || u.canAccessHrExtendedConsole === true) {
+    return true;
+  }
+  return sessionCanSeeApprovalsAndHrExtras(u);
 }
 
 /** Vista HR (workflow, calendario team): superuser, flag backend, o responsabile team (fallback se sessione vecchia). */

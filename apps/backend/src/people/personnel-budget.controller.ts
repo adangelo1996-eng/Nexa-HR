@@ -6,8 +6,10 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards
 } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import { Type } from "class-transformer";
 import {
   IsArray,
@@ -157,6 +159,8 @@ class PatchAnalysisNoteDto {
   comment!: string;
 }
 
+const PERSONNEL_BUDGET_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 @Controller("hr/personnel-budget")
 @UseGuards(NexaPermissionGuard)
 export class PersonnelBudgetController {
@@ -201,6 +205,60 @@ export class PersonnelBudgetController {
       return this.store.getPersonnelBudgetSnapshot(now.getFullYear(), now.getMonth() + 1);
     }
     return this.store.getPersonnelBudgetSnapshot(year, month);
+  }
+
+  @Get("export-actual.xlsx")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async exportActualXlsx(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string,
+    @Query("month") monthQ?: string
+  ): Promise<StreamableFile> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const now = new Date();
+    const y = yearQ ? Number.parseInt(yearQ, 10) : now.getFullYear();
+    const mo = monthQ ? Number.parseInt(monthQ, 10) : now.getMonth() + 1;
+    const year = Number.isFinite(y) ? y : now.getFullYear();
+    const month = Number.isFinite(mo) ? mo : now.getMonth() + 1;
+    const snap = await this.store.getPersonnelBudgetSnapshot(year, month);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Actual");
+    ws.addRow([
+      "Centro di costo",
+      "Dipendente",
+      "userId",
+      "Periodo",
+      "ACT RAL",
+      "ACT Straord.",
+      "ACT Trasferte",
+      "ACT INPS",
+      "ACT INAIL",
+      "ACT TFR",
+      "ACT Tot. costo azienda"
+    ]);
+    for (const d of snap.departments) {
+      for (const r of d.rows) {
+        const a = r.actual;
+        ws.addRow([
+          d.costCenterName ?? "",
+          r.fullName,
+          r.userId,
+          snap.period,
+          a.ral,
+          a.overtime,
+          a.travel,
+          a.inps,
+          a.inail,
+          a.tfr,
+          a.totalCompanyCost ?? ""
+        ]);
+      }
+    }
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    return new StreamableFile(buf, {
+      disposition: `attachment; filename="nexa-personnel-budget-actual-${snap.period}.xlsx"`,
+      type: PERSONNEL_BUDGET_XLSX_MIME
+    });
   }
 
   @Get("year-status")

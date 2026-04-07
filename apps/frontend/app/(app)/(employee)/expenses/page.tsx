@@ -60,9 +60,9 @@ export default function ExpensesPage(): React.JSX.Element {
   const typeLabel = (id: string) => EXPENSE_TYPES.find((t) => t.id === id)?.label ?? id;
 
   return (
-    <main className="mx-auto max-w-lg space-y-6 p-6">
+    <main className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">Note spese</h1>
+        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Note spese</h1>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -97,9 +97,9 @@ export default function ExpensesPage(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-700">
-        <div className="text-sm font-medium">Nuova richiesta</div>
-        <p className="text-xs text-slate-600 dark:text-slate-400">
+      <section className="space-y-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4 shadow-[var(--card-shadow)]">
+        <div className="text-sm font-medium text-[var(--prom-text)]">Nuova richiesta</div>
+        <p className="text-xs text-[var(--prom-muted)]">
           Scontrini da file o foto, ritaglio per richiesta. Flusso{" "}
           <span className="font-medium text-slate-800 dark:text-slate-200">manager → HR</span>; stato in{" "}
           <Link href={"/workflow" as Route} className="font-medium text-emerald-700 underline dark:text-emerald-400">
@@ -113,13 +113,18 @@ export default function ExpensesPage(): React.JSX.Element {
         >
           Carica o scansiona
         </Link>
-      </div>
+      </section>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <ul className="space-y-2 text-sm">
-        {items.length === 0 ? <li className="text-slate-500">Nessuna nota spesa ancora.</li> : null}
+      <ul className="space-y-3 text-sm">
+        {items.length === 0 ? (
+          <li className="text-[var(--prom-muted)]">Nessuna nota spesa ancora.</li>
+        ) : null}
         {items.map((r) => (
-          <li key={r.id} className="rounded border border-slate-200 p-3 dark:border-slate-700">
+          <li
+            key={r.id}
+            className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_94%,transparent)] p-4 shadow-[var(--card-shadow)]"
+          >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="font-medium">{r.description}</div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -137,12 +142,17 @@ export default function ExpensesPage(): React.JSX.Element {
                 ) : null}
               </div>
             </div>
-            <div className="mt-1 text-slate-600 dark:text-slate-400">
+            <div className="mt-1 text-[var(--prom-muted)]">
               {typeLabel(r.expenseType ?? "altro")} — {(r.amountCents / 100).toFixed(2)} {r.currency}
               {r.expenseDate ? ` · data spesa ${r.expenseDate}` : ""}
               {r.payslipPeriod ? ` · cedolino previsto ${r.payslipPeriod}` : ""}
             </div>
-            <WorkflowExpenseFlowDiagram claim={r} requesterLabel={requesterLabel} managerLabel={null} />
+            <WorkflowExpenseFlowDiagram
+              variant="stacked"
+              claim={r}
+              requesterLabel={requesterLabel}
+              managerLabel={null}
+            />
             {r.hasReceipt ? (
               <div className="mt-1 text-xs text-slate-500">
                 Scontrino archiviato

@@ -40,6 +40,8 @@ interface Props {
   framed?: boolean;
   onNodeSelect?: (node: OrgChartNode) => void;
   heightClass?: string;
+  /** Evidenzia il nodo dell’utente corrente nel grafo (bordo/oro). */
+  highlightUserId?: string;
 }
 
 const CARD_W = 240;
@@ -55,8 +57,13 @@ function initials(name: string): string {
 }
 
 function EmployeeCardNode({ data, selected }: NodeProps): React.JSX.Element {
-  const payload = data as { node: OrgChartNode; onSelect?: (n: OrgChartNode) => void };
+  const payload = data as {
+    node: OrgChartNode;
+    onSelect?: (n: OrgChartNode) => void;
+    highlightUserId?: string;
+  };
   const n = payload.node;
+  const isMe = Boolean(payload.highlightUserId && payload.highlightUserId === n.id);
   const title = n.roleName ?? n.role;
   const sub = [n.costCenterName, n.email].filter(Boolean).join(" · ");
   return (
@@ -65,10 +72,12 @@ function EmployeeCardNode({ data, selected }: NodeProps): React.JSX.Element {
       <button
         type="button"
         className={`flex w-full min-w-[220px] max-w-[260px] cursor-pointer gap-3 rounded-xl border-2 px-3 py-2.5 text-left shadow-sm transition-[box-shadow,opacity,border-color] duration-200 ${
-          selected
-            ? "border-[color-mix(in_srgb,var(--prom-gold)_70%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--prom-gold)_22%,transparent)]"
-            : "border-[var(--prom-line)] hover:border-[color-mix(in_srgb,var(--prom-gold)_45%,var(--prom-line))]"
-        } bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)]`}
+          isMe
+            ? "border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_14%,var(--prom-surface))] shadow-[0_0_0_3px_color-mix(in_srgb,var(--prom-gold)_28%,transparent)]"
+            : selected
+              ? "border-[color-mix(in_srgb,var(--prom-gold)_70%,transparent)] bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--prom-gold)_22%,transparent)]"
+              : "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] hover:border-[color-mix(in_srgb,var(--prom-gold)_45%,var(--prom-line))]"
+        }`}
         onClick={(e) => {
           e.stopPropagation();
           payload.onSelect?.(n);
@@ -97,7 +106,8 @@ export function OrgChart({
   edges,
   framed = true,
   onNodeSelect,
-  heightClass = "h-[min(70vh,560px)]"
+  heightClass = "h-[min(70vh,560px)]",
+  highlightUserId
 }: Props): React.JSX.Element {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -141,7 +151,7 @@ export function OrgChart({
         id: node.id,
         type: "employeeCard",
         position: { x, y },
-        data: { node, onSelect: onSelectCb },
+        data: { node, onSelect: onSelectCb, highlightUserId },
         draggable: false
       };
     });
@@ -156,7 +166,7 @@ export function OrgChart({
     }));
 
     return { flowNodes: flowNodesResult, flowEdges: flowEdgesResult };
-  }, [nodes, edges, onSelectCb]);
+  }, [nodes, edges, onSelectCb, highlightUserId]);
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_, fn) => {

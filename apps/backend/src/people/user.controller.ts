@@ -662,6 +662,7 @@ export class UserController {
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
     const canEditSelfPayrollProfileIt = auth.role === "superuser" || canAccessHrExtendedConsole;
+    const companyRow = await this.store.getCompanySettings(user.companyId);
     return {
       ...user,
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
@@ -674,7 +675,8 @@ export class UserController {
       isTeamResponsible: workTeamIdsWhereLead.length > 0,
       workTeamIdsWhereLead,
       canAccessPayrollArea,
-      canAccessPersonnelBudgetArea
+      canAccessPersonnelBudgetArea,
+      companyCcnl: companyRow.companyCcnl?.trim() || null
     };
   }
 

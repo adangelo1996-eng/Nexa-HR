@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  fetchCompanySettings,
   fetchPersonnelBudgetAnnualMatrix,
   fetchCurrentUser,
   postPersonnelBudgetApplyProRata,
   postPersonnelBudgetYearApprove,
+  type CompanySettingsDto,
   type PersonnelBudgetAnnualMatrixRow
 } from "@/lib/api";
 import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
@@ -41,6 +43,7 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchPersonnelBudgetAnnualMatrix>> | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettingsDto | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -60,6 +63,12 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
       }
       const m = await fetchPersonnelBudgetAnnualMatrix(t, year);
       setData(m);
+      try {
+        const cs = await fetchCompanySettings(t);
+        setCompanySettings(cs);
+      } catch {
+        setCompanySettings(null);
+      }
     } catch (e) {
       if (shouldClearSessionOnUnauthorizedApiError(e)) {
         router.replace("/login");
@@ -160,6 +169,38 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
           Vista 12 mesi per dipendente; usa la mensilità aziendale per la pro-rata assistita. Con approvazione
           annuale le modifiche al budget mensile sono bloccate.
         </p>
+        {companySettings ? (
+          <aside className="mt-4 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] p-4 text-sm text-[var(--prom-text)]">
+            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Riferimenti di calcolo (configurazione)</h2>
+            <p className="mt-2 text-[var(--prom-muted)]">
+              I valori seguenti provengono da <span className="font-mono text-xs">company_settings</span> (API{" "}
+              <span className="font-mono text-xs">GET /company/settings</span>) e non duplicano altre definizioni di
+              competenza o periodo.
+            </p>
+            <ul className="mt-2 list-inside list-disc space-y-1 text-[var(--prom-muted)]">
+              <li>
+                <span className="font-mono text-xs">settings.payrollInstallmentMonths</span>:{" "}
+                {companySettings.payrollInstallmentMonths} (mensilità per riparto RAL / pro-rata)
+              </li>
+              <li>
+                <span className="font-mono text-xs">settings.fiscalYearStartMonth</span>:{" "}
+                {companySettings.fiscalYearStartMonth} (mese di inizio anno di riferimento societario)
+              </li>
+              <li>
+                <span className="font-mono text-xs">settings.companyCcnl</span>:{" "}
+                {companySettings.companyCcnl.trim() || "—"} (CCNL di riferimento per il tenant)
+              </li>
+              <li>
+                Per una proposta di budget da consuntivo anno precedente con incremento da rinnovo contrattuale, usare
+                una variabile personalizzata{" "}
+                <span className="font-mono text-xs">budget_national_increase_pct</span> (es.{" "}
+                <span className="font-mono">2.5</span> per +2,5%) nelle Variabili aziendali; formula indicativa: BDG
+                proposto = ACT_ref × (1 + p/100), con ACT_ref coerente con il periodo di competenza già impostato
+                nell&apos;app.
+              </li>
+            </ul>
+          </aside>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

@@ -10,8 +10,11 @@ import {
   Post,
   Query,
   StreamableFile,
-  UseGuards
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 import {
   type User,
@@ -68,6 +71,24 @@ class PublishPeriodDto {
   @IsString()
   period!: string;
 }
+
+class PayslipImportCommitDto {
+  @IsString()
+  userId!: string;
+
+  @IsString()
+  period!: string;
+
+  @IsOptional()
+  @IsString()
+  netSalary?: string;
+
+  @IsOptional()
+  @IsString()
+  grossSalary?: string;
+}
+
+const PAYSLIP_IMPORT_MAX_BYTES = 6_000_000;
 
 @Controller("payroll")
 @UseGuards(NexaPermissionGuard)
@@ -254,6 +275,109 @@ export class PayrollController {
     return { items };
   }
 
+  @Post("payslips/import/pdf-preview")
+  @RequireNexaPermissions("nexa.payroll:write")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: PAYSLIP_IMPORT_MAX_BYTES }
+    })
+  )
+  async payslipImportPreview(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @UploadedFile() file: Express.Multer.File | undefined
+  ): Promise<{
+    excerpt: string;
+    textLength: number;
+    suggestedPeriod: string | null;
+    netHints: string[];
+  }> {
+    await this.assertPayrollCalcAccess(auth);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("File mancante");
+    }
+    const mime = String(file.mimetype ?? "").toLowerCase();
+    const name = String(file.originalname ?? "").toLowerCase();
+    if (mime !== "application/pdf" && !name.endsWith(".pdf")) {
+      throw new BadRequestException("Caricare un file PDF");
+    }
+    const { PDFParse } = await import("pdf-parse");
+    const Parser = PDFParse as unknown as new (opts: { data: Buffer }) => {
+      load: () => Promise<void>;
+      getText: () => Promise<{ text?: string }>;
+      destroy: () => Promise<void>;
+    };
+    const parser = new Parser({ data: file.buffer });
+    await parser.load();
+    let fullText = "";
+    try {
+      const parsed = await parser.getText();
+      fullText = String(parsed.text ?? "");
+    } finally {
+      await parser.destroy();
+    }
+    const excerpt = fullText.replace(/\s+/g, " ").trim().slice(0, 8000);
+    const periodMatch = fullText.match(/\b(20\d{2})[-/](\d{2})\b/);
+    const suggestedPeriod = periodMatch
+      ? `${periodMatch[1]}-${periodMatch[2]}`
+      : null;
+    const netHints = [...fullText.matchAll(/netto[:\s]+([\d][\d.,]*)/gi)]
+      .map((m) => String(m[1]).trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    return {
+      excerpt,
+      textLength: fullText.length,
+      suggestedPeriod,
+      netHints
+    };
+  }
+
+  @Post("payslips/import/pdf-commit")
+  @RequireNexaPermissions("nexa.payroll:write")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: PAYSLIP_IMPORT_MAX_BYTES }
+    })
+  )
+  async payslipImportCommit(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: PayslipImportCommitDto
+  ): Promise<unknown> {
+    await this.assertPayrollCalcAccess(auth);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("File mancante");
+    }
+    const mime = String(file.mimetype ?? "").toLowerCase();
+    const name = String(file.originalname ?? "").toLowerCase();
+    if (mime !== "application/pdf" && !name.endsWith(".pdf")) {
+      throw new BadRequestException("Caricare un file PDF");
+    }
+    const targetUserId = String(body.userId ?? "").trim();
+    const period = String(body.period ?? "").trim();
+    if (!targetUserId || !period) {
+      throw new BadRequestException("userId e period (YYYY-MM) obbligatori");
+    }
+    await this.assertSameCompanyUnlessSuperuser(auth, targetUserId);
+    const op = await this.store.getUser(auth.userId);
+    const netRaw = body.netSalary?.trim();
+    const grossRaw = body.grossSalary?.trim();
+    const netSalary = netRaw ? Number.parseFloat(netRaw.replace(",", ".")) : undefined;
+    const grossSalary = grossRaw ? Number.parseFloat(grossRaw.replace(",", ".")) : undefined;
+    return this.store.importPayslipFromExternalPdf(
+      auth.userId,
+      auth.role,
+      op.email ?? "",
+      targetUserId,
+      period,
+      file.buffer,
+      {
+        netSalary: netSalary != null && Number.isFinite(netSalary) ? netSalary : undefined,
+        grossSalary: grossSalary != null && Number.isFinite(grossSalary) ? grossSalary : undefined
+      }
+    );
+  }
+
   @Patch("payslips/:payslipId/read")
   @RequireNexaPermissions("nexa.payslips:read")
   async markRead(
@@ -300,6 +424,21 @@ export class PayrollController {
       }
       payslip = await this.store.generatePayslip(userId, period, {
         status: "draft"
+      });
+    }
+    const supa = String(payslip.pdfUrl ?? "").trim();
+    if (supa.startsWith("supabase://")) {
+      const raw = supa.slice("supabase://".length);
+      const slash = raw.indexOf("/");
+      if (slash <= 0) {
+        throw new NotFoundException("Percorso PDF importato non valido");
+      }
+      const bucket = raw.slice(0, slash);
+      const path = raw.slice(slash + 1);
+      const buf = await this.store.downloadSupabasePrivateFile(bucket, path);
+      return new StreamableFile(buf, {
+        disposition: `attachment; filename="nexa-hr-cedolino-${userId}-${period}.pdf"`,
+        type: "application/pdf"
       });
     }
     const employee = await this.store.getUser(userId);

@@ -9,7 +9,10 @@ import {
   patchPersonnelBudgetAnalysisNote,
   type PersonnelBudgetAnalysisCategory
 } from "@/lib/api";
-import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
+import {
+  budgetDeltaPercentLabel,
+  formatPersonnelBudgetAmount
+} from "@/lib/personnel-budget-format";
 import {
   getToken,
   sessionCanNexaAdmin,
@@ -230,6 +233,8 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
                 <th className={th}>Categoria</th>
                 <th className={th}>Actual</th>
                 <th className={th}>Budget</th>
+                <th className={th}>Δ (BDG − ACT)</th>
+                <th className={th}>Δ %</th>
                 <th className={th}>Forecast</th>
               </tr>
             </thead>
@@ -239,6 +244,12 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
                   <td className={td}>{row.label}</td>
                   <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.actual)}</td>
                   <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.budget)}</td>
+                  <td className={`${td} text-right tabular-nums`}>
+                    {formatPersonnelBudgetAmount(row.budget - row.actual)}
+                  </td>
+                  <td className={`${td} text-right tabular-nums text-xs`}>
+                    {budgetDeltaPercentLabel(row.actual, row.budget)}
+                  </td>
                   <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(row.forecast)}</td>
                 </tr>
               ))}
@@ -260,15 +271,17 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
                   <th className={th}>Dipendente</th>
                   <th className={th}>Actual</th>
                   <th className={th}>Budget</th>
+                  <th className={th}>Δ (BDG − ACT)</th>
+                  <th className={th}>Δ %</th>
                   <th className={th}>Forecast</th>
-                  <th className={th}>Δ</th>
-                  <th className={th}>%</th>
+                  <th className={th}>Δ (F − B)</th>
+                  <th className={th}>Δ % F/B</th>
                 </tr>
               </thead>
               <tbody>
                 {data.variances.length === 0 ? (
                   <tr>
-                    <td className={td} colSpan={7}>
+                    <td className={td} colSpan={9}>
                       Nessuna varianze sopra soglia.
                     </td>
                   </tr>
@@ -279,6 +292,12 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
                       <td className={td}>{v.fullName ?? "—"}</td>
                       <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.actual)}</td>
                       <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.budget)}</td>
+                      <td className={`${td} text-right tabular-nums`}>
+                        {formatPersonnelBudgetAmount(v.budget - v.actual)}
+                      </td>
+                      <td className={`${td} text-right tabular-nums text-xs`}>
+                        {budgetDeltaPercentLabel(v.actual, v.budget)}
+                      </td>
                       <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.forecast)}</td>
                       <td className={`${td} text-right tabular-nums`}>{formatPersonnelBudgetAmount(v.varianceBf)}</td>
                       <td className={`${td} text-right tabular-nums`}>

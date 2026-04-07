@@ -510,14 +510,31 @@ export default function HomePage(): React.JSX.Element {
                 )}
               </div>
             </div>
-            <Link
-              href="/workflow"
-              prefetch
-              className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1.5 text-center text-sm font-medium leading-none text-[var(--prom-text)]"
-            >
-              <Palmtree className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
-              <span className="px-1">Ferie</span>
-            </Link>
+            <div className="dashboard-quick-action flex min-h-[6rem] flex-col items-center justify-center gap-1 px-1 text-center text-[var(--prom-text)]">
+              <Timer className="h-6 w-6 shrink-0 opacity-80" aria-hidden />
+              {status && !attendanceStatusFailed && status.dailyTargetSeconds > 0 ? (
+                <span
+                  className="font-mono text-2xl font-semibold tabular-nums leading-none text-[var(--prom-text)]"
+                  title="Tempo residuo fino al completamento delle ore minime giornaliere"
+                >
+                  {formattedCountdown}
+                </span>
+              ) : (
+                <span className="text-lg text-[var(--prom-muted)]" aria-hidden>
+                  —
+                </span>
+              )}
+              <span className="text-[10px] font-normal leading-tight text-[var(--prom-muted)]">
+                Residuo obiettivo
+              </span>
+              <Link
+                href="/workflow"
+                prefetch
+                className="text-[10px] font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
+              >
+                Workflow (ferie / permessi)
+              </Link>
+            </div>
             <Link
               href="/expenses"
               prefetch
@@ -530,12 +547,6 @@ export default function HomePage(): React.JSX.Element {
           {attendanceStatusFailed ? (
             <p className="text-xs text-amber-700 dark:text-amber-300">
               Stato timbratura non disponibile (permessi o rete).
-            </p>
-          ) : null}
-          {!attendanceStatusFailed && status ? (
-            <p className="text-center text-xs text-[var(--prom-muted)]" title="Tempo residuo giornata">
-              Residuo ·{" "}
-              <span className="font-mono text-[var(--prom-text)]">{formattedCountdown}</span>
             </p>
           ) : null}
           {clockError ? <p className="text-xs text-rose-600 dark:text-rose-300">{clockError}</p> : null}
@@ -726,9 +737,27 @@ export default function HomePage(): React.JSX.Element {
           <WorkedDaySummaryCards rows={periodSummaries} user={user} travelDates={travelDates} />
         </div>
         {aggregates ? (
-          <p className="mt-4 text-xs text-[var(--prom-muted)]">
-            Straord.: sett. {aggregates.week.overtimeHours.toFixed(1)}h · mese {aggregates.month.overtimeHours.toFixed(1)}h
-          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["Oggi", aggregates.day.overtimeSeconds],
+                ["Settimana", aggregates.week.overtimeSeconds],
+                ["Mese", aggregates.month.overtimeSeconds],
+                ["Anno", aggregates.year.overtimeSeconds]
+              ] as const
+            ).map(([label, sec]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_50%,transparent)] px-3 py-3 text-center"
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--prom-muted)]">{label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">
+                  {formatWorkedHm(sec)}
+                </p>
+                <p className="text-[10px] text-[var(--prom-muted)]">Straordinario</p>
+              </div>
+            ))}
+          </div>
         ) : null}
       </section>
 

@@ -29,6 +29,11 @@ class PatchCompanySettingsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(240)
+  companyCcnl?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(8)
   defaultCurrency?: string;
 

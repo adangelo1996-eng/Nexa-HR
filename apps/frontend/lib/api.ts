@@ -153,6 +153,8 @@ export interface CompanySettingsDto {
   companyLegalName: string;
   companyVatNumber: string;
   companyRegistrationInfo: string;
+  /** CCNL di riferimento per il tenant (testo o codice). */
+  companyCcnl: string;
   defaultCurrency: string;
   weeklyFullTimeHours: number;
   /** Mensilità per riparto budget (12–14). */
@@ -252,6 +254,7 @@ export interface AttendanceStatus {
 
 export interface AttendanceOvertimeAggregates {
   referenceDate: string;
+  day: { overtimeSeconds: number; overtimeHours: number };
   week: { overtimeSeconds: number; overtimeHours: number };
   month: { overtimeSeconds: number; overtimeHours: number };
   year: { overtimeSeconds: number; overtimeHours: number };
@@ -665,6 +668,45 @@ export async function markPayslipReadApi(token: string, payslipId: string): Prom
   if (!response.ok) {
     await parseError(response);
   }
+}
+
+export interface PayslipImportPreviewResult {
+  excerpt: string;
+  textLength: number;
+  suggestedPeriod: string | null;
+  netHints: string[];
+}
+
+export async function postPayslipImportPreview(token: string, file: File): Promise<PayslipImportPreviewResult> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(buildApiUrl("/payroll/payslips/import/pdf-preview"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PayslipImportPreviewResult>;
+}
+
+export async function postPayslipImportCommit(
+  token: string,
+  file: File,
+  payload: { userId: string; period: string; netSalary?: number; grossSalary?: number }
+): Promise<Payslip> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("userId", payload.userId);
+  body.append("period", payload.period);
+  if (payload.netSalary != null) body.append("netSalary", String(payload.netSalary));
+  if (payload.grossSalary != null) body.append("grossSalary", String(payload.grossSalary));
+  const response = await fetch(buildApiUrl("/payroll/payslips/import/pdf-commit"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<Payslip>;
 }
 
 export async function fetchUsers(token: string): Promise<User[]> {
@@ -2303,6 +2345,22 @@ export async function fetchPersonnelBudget(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<PersonnelBudgetSnapshot>;
+}
+
+export async function downloadPersonnelBudgetActualExport(
+  token: string,
+  year?: number,
+  month?: number
+): Promise<Blob> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  if (month != null) q.set("month", String(month));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/export-actual.xlsx${s ? `?${s}` : ""}`), {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) await parseError(response);
+  return response.blob();
 }
 
 export async function patchPersonnelBudgetCostCenterOrder(

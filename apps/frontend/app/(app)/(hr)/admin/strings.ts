@@ -4,7 +4,8 @@ export const adminStrings = {
     roles: "Ruoli",
     costCenters: "Centri di costo",
     approvals: "Approvazioni",
-    expenseClaimsOrg: "Note spese (dipendenti)"
+    expenseClaimsOrg: "Note spese (dipendenti)",
+    payslipImport: "Import cedolini PDF"
   },
   users: {
     title: "Amministrazione utenti",

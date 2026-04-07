@@ -10,7 +10,10 @@ import {
   type PersonnelBudgetForecastRow,
   type PersonnelBudgetMoney
 } from "@/lib/api";
-import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
+import {
+  formatPersonnelBudgetAmount,
+  parsePersonnelBudgetMoneyInput
+} from "@/lib/personnel-budget-format";
 import {
   getToken,
   sessionCanNexaAdmin,
@@ -26,13 +29,6 @@ type ForecastDraft = Partial<{
   inail: string;
   tfr: string;
 }>;
-
-function parseBudgetNumber(s: string): number | null {
-  const t = s.trim().replace(",", ".");
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-}
 
 function rowForecastTotal(f: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number }): number {
   const ral = f.ral ?? 0;
@@ -82,12 +78,12 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
         for (const r of d.rows) {
           const f = r.forecast;
           next[r.userId] = {
-            ral: f.ral != null ? String(f.ral) : "",
-            overtime: f.overtime != null ? String(f.overtime) : "",
-            travel: f.travel != null ? String(f.travel) : "",
-            inps: f.inps != null ? String(f.inps) : "",
-            inail: f.inail != null ? String(f.inail) : "",
-            tfr: f.tfr != null ? String(f.tfr) : ""
+            ral: f.ral != null ? formatPersonnelBudgetAmount(Number(f.ral)) : "",
+            overtime: f.overtime != null ? formatPersonnelBudgetAmount(Number(f.overtime)) : "",
+            travel: f.travel != null ? formatPersonnelBudgetAmount(Number(f.travel)) : "",
+            inps: f.inps != null ? formatPersonnelBudgetAmount(Number(f.inps)) : "",
+            inail: f.inail != null ? formatPersonnelBudgetAmount(Number(f.inail)) : "",
+            tfr: f.tfr != null ? formatPersonnelBudgetAmount(Number(f.tfr)) : ""
           };
         }
       }
@@ -133,12 +129,12 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
         const dr = draftByUser[r.userId] ?? {};
         cells.push({
           userId: r.userId,
-          forecastRal: parseBudgetNumber(dr.ral ?? ""),
-          forecastOvertime: parseBudgetNumber(dr.overtime ?? ""),
-          forecastTravel: parseBudgetNumber(dr.travel ?? ""),
-          forecastInps: parseBudgetNumber(dr.inps ?? ""),
-          forecastInail: parseBudgetNumber(dr.inail ?? ""),
-          forecastTfr: parseBudgetNumber(dr.tfr ?? "")
+          forecastRal: parsePersonnelBudgetMoneyInput(dr.ral ?? ""),
+          forecastOvertime: parsePersonnelBudgetMoneyInput(dr.overtime ?? ""),
+          forecastTravel: parsePersonnelBudgetMoneyInput(dr.travel ?? ""),
+          forecastInps: parsePersonnelBudgetMoneyInput(dr.inps ?? ""),
+          forecastInail: parsePersonnelBudgetMoneyInput(dr.inail ?? ""),
+          forecastTfr: parsePersonnelBudgetMoneyInput(dr.tfr ?? "")
         });
       }
     }
@@ -274,19 +270,19 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                   {dept.rows.map((row: PersonnelBudgetForecastRow) => {
                     const dr = draftByUser[row.userId] ?? {};
                     const fMerged: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number } = {
-                      ral: parseBudgetNumber(dr.ral ?? "") ?? row.forecast.ral,
-                      overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.forecast.overtime,
-                      travel: parseBudgetNumber(dr.travel ?? "") ?? row.forecast.travel,
-                      inps: parseBudgetNumber(dr.inps ?? "") ?? row.forecast.inps,
-                      inail: parseBudgetNumber(dr.inail ?? "") ?? row.forecast.inail,
-                      tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.forecast.tfr,
+                      ral: parsePersonnelBudgetMoneyInput(dr.ral ?? "") ?? row.forecast.ral,
+                      overtime: parsePersonnelBudgetMoneyInput(dr.overtime ?? "") ?? row.forecast.overtime,
+                      travel: parsePersonnelBudgetMoneyInput(dr.travel ?? "") ?? row.forecast.travel,
+                      inps: parsePersonnelBudgetMoneyInput(dr.inps ?? "") ?? row.forecast.inps,
+                      inail: parsePersonnelBudgetMoneyInput(dr.inail ?? "") ?? row.forecast.inail,
+                      tfr: parsePersonnelBudgetMoneyInput(dr.tfr ?? "") ?? row.forecast.tfr,
                       totalCompanyCost: rowForecastTotal({
-                        ral: parseBudgetNumber(dr.ral ?? "") ?? row.forecast.ral,
-                        overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.forecast.overtime,
-                        travel: parseBudgetNumber(dr.travel ?? "") ?? row.forecast.travel,
-                        inps: parseBudgetNumber(dr.inps ?? "") ?? row.forecast.inps,
-                        inail: parseBudgetNumber(dr.inail ?? "") ?? row.forecast.inail,
-                        tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.forecast.tfr
+                        ral: parsePersonnelBudgetMoneyInput(dr.ral ?? "") ?? row.forecast.ral,
+                        overtime: parsePersonnelBudgetMoneyInput(dr.overtime ?? "") ?? row.forecast.overtime,
+                        travel: parsePersonnelBudgetMoneyInput(dr.travel ?? "") ?? row.forecast.travel,
+                        inps: parsePersonnelBudgetMoneyInput(dr.inps ?? "") ?? row.forecast.inps,
+                        inail: parsePersonnelBudgetMoneyInput(dr.inail ?? "") ?? row.forecast.inail,
+                        tfr: parsePersonnelBudgetMoneyInput(dr.tfr ?? "") ?? row.forecast.tfr
                       })
                     };
                     const b = row.budget;
@@ -312,6 +308,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.ral ?? ""}
                             onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "ral", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>
@@ -324,6 +324,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.overtime ?? ""}
                             onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "overtime", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>
@@ -336,6 +340,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.travel ?? ""}
                             onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "travel", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>
@@ -348,6 +356,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.inps ?? ""}
                             onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "inps", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>
@@ -360,6 +372,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.inail ?? ""}
                             onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "inail", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>
@@ -372,6 +388,10 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                             className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
                             value={dr.tfr ?? ""}
                             onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
+                            onBlur={(e) => {
+                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                              if (p != null) updateDraft(row.userId, "tfr", formatPersonnelBudgetAmount(p));
+                            }}
                             inputMode="decimal"
                           />
                         </td>

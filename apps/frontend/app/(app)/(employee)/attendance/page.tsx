@@ -103,6 +103,7 @@ export default function AttendancePage(): React.JSX.Element {
   const [hrBoardError, setHrBoardError] = useState<string | null>(null);
   const [hrBoardCcOptions, setHrBoardCcOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [hrBoardCcSelected, setHrBoardCcSelected] = useState<Set<string>>(new Set());
+  const [hrBoardCcSearch, setHrBoardCcSearch] = useState("");
   const [hrBoardExportLoading, setHrBoardExportLoading] = useState(false);
   const [travelDates, setTravelDates] = useState<Set<string>>(() => new Set());
 
@@ -313,6 +314,16 @@ export default function AttendancePage(): React.JSX.Element {
         u.email.toLowerCase().includes(q)
     );
   }, [teamUsers, hrUserSearch]);
+
+  const filteredHrBoardCcOptions = useMemo(() => {
+    const q = hrBoardCcSearch.trim().toLowerCase();
+    if (!q) {
+      return hrBoardCcOptions;
+    }
+    return hrBoardCcOptions.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
+    );
+  }, [hrBoardCcOptions, hrBoardCcSearch]);
 
   function toggleHrBoardCc(id: string): void {
     setHrBoardCcSelected((prev) => {
@@ -532,16 +543,34 @@ export default function AttendancePage(): React.JSX.Element {
       <section className="card mb-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Straordinario</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Riepilogo ore di straordinario sulla settimana, il mese e l&apos;anno solare (riferimento data odierna).
+          Ore e minuti accumulati (riferimento: data odierna). «Oggi» include anche la timbratura in corso.
         </p>
-        <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
-          Settimana / mese / anno:{" "}
-          <span className="font-semibold tabular-nums">
-            {aggregates
-              ? `${aggregates.week.overtimeHours.toFixed(2)}h · ${aggregates.month.overtimeHours.toFixed(2)}h · ${aggregates.year.overtimeHours.toFixed(2)}h`
-              : "—"}
-          </span>
-        </p>
+        {aggregates ? (
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["Oggi", aggregates.day.overtimeSeconds],
+                ["Questa settimana", aggregates.week.overtimeSeconds],
+                ["Questo mese", aggregates.month.overtimeSeconds],
+                ["Quest'anno", aggregates.year.overtimeSeconds]
+              ] as const
+            ).map(([label, sec]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-4 text-center dark:border-slate-600 dark:bg-slate-900/40"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                  {label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatSecondsHm(sec)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">—</p>
+        )}
       </section>
 
       {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
@@ -606,34 +635,85 @@ export default function AttendancePage(): React.JSX.Element {
                   <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
-                        Filtra per centro di costo
+                        Centri di costo
                       </p>
-                      <button
-                        type="button"
-                        className="text-xs text-synapse-gold underline decoration-dotted hover:opacity-90"
-                        onClick={() => setHrBoardCcSelected(new Set())}
-                      >
-                        Tutti i CDC
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="text-xs text-synapse-gold underline decoration-dotted hover:opacity-90"
+                          onClick={() => setHrBoardCcSelected(new Set())}
+                        >
+                          Mostra tutti
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-slate-600 underline decoration-dotted hover:opacity-90 dark:text-slate-400"
+                          onClick={() =>
+                            setHrBoardCcSelected(new Set(hrBoardCcOptions.map((o) => o.id)))
+                          }
+                        >
+                          Seleziona tutti i CDC
+                        </button>
+                      </div>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-                      Nessuna spunta = tutti i dipendenti visibili. Con una o più spunte, solo i CDC selezionati.
+                      Senza selezione: tutti i dipendenti. Con uno o più CDC attivi, la vista si restringe.
                     </p>
-                    <div className="mt-2 flex max-h-40 flex-col flex-wrap gap-x-4 gap-y-1.5 overflow-y-auto sm:max-h-32">
-                      {hrBoardCcOptions.map((cc) => (
-                        <label
-                          key={cc.id}
-                          className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
-                        >
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-400"
-                            checked={hrBoardCcSelected.has(cc.id)}
-                            onChange={() => toggleHrBoardCc(cc.id)}
-                          />
-                          <span>{cc.label}</span>
-                        </label>
-                      ))}
+                    <label className="mt-2 block text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                      Cerca CDC
+                      <input
+                        type="search"
+                        value={hrBoardCcSearch}
+                        onChange={(e) => setHrBoardCcSearch(e.target.value)}
+                        placeholder="Nome o codice…"
+                        className="mt-1 w-full max-w-sm rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    </label>
+                    {hrBoardCcSelected.size > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {hrBoardCcOptions
+                          .filter((o) => hrBoardCcSelected.has(o.id))
+                          .map((o) => (
+                            <button
+                              key={o.id}
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                              onClick={() => toggleHrBoardCc(o.id)}
+                            >
+                              {o.label}
+                              <span className="text-slate-500" aria-hidden>
+                                ×
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-500">Filtro CDC: nessuno (tutti)</p>
+                    )}
+                    <div className="mt-3 max-h-48 overflow-y-auto rounded-md border border-slate-200/80 bg-white/60 p-2 dark:border-slate-700 dark:bg-slate-950/40">
+                      <div className="flex flex-wrap gap-2">
+                        {filteredHrBoardCcOptions.map((cc) => {
+                          const on = hrBoardCcSelected.has(cc.id);
+                          return (
+                            <button
+                              key={cc.id}
+                              type="button"
+                              onClick={() => toggleHrBoardCc(cc.id)}
+                              className={[
+                                "rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-colors",
+                                on
+                                  ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-900 dark:border-emerald-500/50 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-200"
+                              ].join(" ")}
+                            >
+                              {cc.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {filteredHrBoardCcOptions.length === 0 ? (
+                        <p className="py-2 text-center text-xs text-slate-500">Nessun CDC corrisponde.</p>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}

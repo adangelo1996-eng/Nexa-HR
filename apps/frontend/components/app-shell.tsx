@@ -43,6 +43,8 @@ import {
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchCurrentUser } from "@/lib/api";
+import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
+import { NEXA_HR_PREFS_CHANGED_EVENT, readNexaHrPrefs, NEXA_HR_PREFS_STORAGE_KEY } from "@/lib/synapse-prefs";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
@@ -88,32 +90,6 @@ function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
 function sectionHasActivePath(pathname: string, items: NavItem[]): boolean {
   return items.some((it) => pathActive(pathname, it.href, it.exact));
 }
-
-const SEARCH_ROUTES: { href: Route; label: string }[] = [
-  { href: "/", label: "Dashboard" },
-  { href: "/attendance", label: "Presenze" },
-  { href: "/workflow", label: "Workflow" },
-  { href: "/expenses", label: "Spese" },
-  { href: "/settings", label: "Impostazioni" },
-  { href: "/org-chart", label: "Organigramma (persone)" },
-  { href: "/organigramma", label: "Organigramma strutturale" },
-  { href: "/payslips", label: "Cedolini" },
-  { href: "/smartworking", label: "Smartworking" },
-  { href: "/workflow/approvals", label: "Approvazioni team" },
-  { href: "/reports", label: "Report HR" },
-  { href: "/payroll-hebb", label: "Hebb - Payroll" },
-  { href: "/admin", label: "Admin" },
-  { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
-  { href: "/admin/data-import" as Route, label: "Import Excel dipendenti" },
-  { href: "/insights", label: "People insights" },
-  { href: "/scheduling", label: "Turni" },
-  { href: "/work-calendar", label: "Calendario lavoro" },
-  { href: "/compensation/bench", label: "Benchmark retribuzione" },
-  { href: "/lifecycle/offboard", label: "Offboarding" },
-  { href: "/forecast", label: "Forecast costi" },
-  { href: "/personnel-budget", label: "Budget personale" },
-  { href: "/expenses/org" as Route, label: "Note spese (dipendenti)" }
-];
 
 function getEmployeeViewOnly(): boolean {
   if (typeof window === "undefined") {
@@ -219,6 +195,25 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const [searchQ, setSearchQ] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement | null>(null);
+  const [mobileShortcutHrefs, setMobileShortcutHrefs] = useState<string[]>(() => readNexaHrPrefs().menuShortcutHrefs ?? []);
+
+  useEffect(() => {
+    function refreshMenuShortcuts(): void {
+      setMobileShortcutHrefs(readNexaHrPrefs().menuShortcutHrefs ?? []);
+    }
+    refreshMenuShortcuts();
+    function onStorage(e: StorageEvent): void {
+      if (e.key === NEXA_HR_PREFS_STORAGE_KEY) {
+        refreshMenuShortcuts();
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(NEXA_HR_PREFS_CHANGED_EVENT, refreshMenuShortcuts);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(NEXA_HR_PREFS_CHANGED_EVENT, refreshMenuShortcuts);
+    };
+  }, []);
 
   useEffect(() => {
     setUser(getSessionUser());
@@ -270,7 +265,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     if (!q) {
       return [];
     }
-    let routes = SEARCH_ROUTES;
+    let routes = NEXA_NAV_ROUTE_CATALOG;
     if (!sessionCanAccessPayrollArea(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== "/payroll-hebb");
     }
@@ -367,7 +362,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, []);
 
   const SidebarContent = (
-    <div className="flex h-full flex-col gap-1 py-4">
+    <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
         href="/"
         className="mb-3 flex items-center gap-2 px-3 transition-opacity hover:opacity-90"
@@ -412,7 +407,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   return (
     <div className="flex h-[100dvh] overflow-hidden">
       <aside
-        className="hidden h-full w-[200px] shrink-0 overflow-y-auto border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
+        className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
         aria-label="Navigazione principale"
       >
         {SidebarContent}
@@ -444,6 +439,23 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                 <X className="h-5 w-5" />
               </Button>
             </div>
+            {mobileShortcutHrefs.length > 0 ? (
+              <div className="flex flex-wrap gap-2 border-b border-[var(--prom-line)] px-3 pb-3">
+                <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                  Preferiti
+                </span>
+                {mobileShortcutHrefs.map((href) => (
+                  <Link
+                    key={href}
+                    href={href as Route}
+                    onClick={closeMobile}
+                    className="rounded-full border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-2.5 py-1 text-xs text-[var(--prom-text)] transition-colors hover:border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line-strong))]"
+                  >
+                    {navCatalogLabelForHref(href)}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
             {SidebarContent}
           </div>
         </div>
@@ -458,7 +470,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             boxShadow: "var(--bar-shadow)"
           }}
         >
-          <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-6 py-3">
+          <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6">
             <Button
               type="button"
               variant="ghost"
@@ -588,7 +600,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <main className="mx-auto w-full max-w-[1600px] px-6 py-6">{children}</main>
+          <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
           <footer className="border-t border-[var(--prom-line)] py-4 text-center text-xs text-[var(--prom-muted)]">
             © Nexa HR 2026
           </footer>

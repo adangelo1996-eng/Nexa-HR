@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { ChevronDown, ChevronRight, FileCheck, Receipt } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { OrgExpenseClaimsAccessGate } from "@/components/org-expense-claims-access-gate";
 import { WorkflowExpenseFlowDiagram } from "@/components/workflow-flow-diagram";
-import { fetchExpenseClaims, fetchUsers, type ExpenseClaimDto, type User } from "@/lib/api";
+import {
+  fetchExpenseClaims,
+  fetchUserProfilePhotoUrl,
+  fetchUsers,
+  type ExpenseClaimDto,
+  type User
+} from "@/lib/api";
 import { getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
 import {
   EXPENSE_STATUS_FILTER_OPTIONS,
@@ -46,10 +52,16 @@ function userDisplay(u: User | undefined, fallbackId: string): string {
 
 function managerLabelForClaim(claim: ExpenseClaimDto, userMap: Map<string, User>): string | null {
   const u = userMap.get(claim.userId);
-  if (!u?.managerId) {
+  if (!u) {
     return null;
   }
-  return userDisplay(userMap.get(u.managerId), u.managerId);
+  if (u.managerId?.trim()) {
+    return userDisplay(userMap.get(u.managerId), u.managerId);
+  }
+  if (u.role === "superuser") {
+    return "HR";
+  }
+  return null;
 }
 
 function claimSortKey(c: ExpenseClaimDto): string {
@@ -83,6 +95,7 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
   const [periodFrom, setPeriodFrom] = useState<string>("");
   const [periodTo, setPeriodTo] = useState<string>("");
   const [query, setQuery] = useState<string>("");
+  const [photoByUserId, setPhotoByUserId] = useState<Record<string, string | null>>({});
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -154,6 +167,41 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
     list.sort((a, b) => a.label.localeCompare(b.label, "it"));
     return list;
   }, [filteredClaims, userMap]);
+
+  const groupUserIdsKey = useMemo(() => groups.map((g) => g.userId).sort().join("|"), [groups]);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token || groups.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      const entries = await Promise.all(
+        groups.map(async (g) => {
+          try {
+            const url = await fetchUserProfilePhotoUrl(token, g.userId);
+            return [g.userId, url] as const;
+          } catch {
+            return [g.userId, null] as const;
+          }
+        })
+      );
+      if (cancelled) {
+        return;
+      }
+      setPhotoByUserId((prev) => {
+        const merged = { ...prev };
+        for (const [id, url] of entries) {
+          merged[id] = url;
+        }
+        return merged;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [groupUserIdsKey]);
 
   const statusSummary = useMemo(() => {
     const m = new Map<string, number>();
@@ -329,6 +377,17 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                       ) : (
                         <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
                       )}
+                      {photoByUserId[g.userId] ? (
+                        <img
+                          src={photoByUserId[g.userId]!}
+                          alt=""
+                          className="h-9 w-9 shrink-0 rounded-full border border-[var(--prom-line)] object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] text-xs font-semibold text-[var(--prom-muted)]">
+                          {g.label.trim().slice(0, 1).toUpperCase() || "?"}
+                        </span>
+                      )}
                       <span className="min-w-0 flex-1 font-semibold text-[var(--prom-text)]">{g.label}</span>
                       <span className="hidden shrink-0 text-xs text-[var(--prom-muted)] sm:inline">
                         Subtotale filtrato
@@ -357,50 +416,57 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                           </thead>
                           <tbody>
                             {g.claims.map((r) => (
-                              <tr key={r.id} className="align-top text-[var(--prom-text)]">
-                                <td className="border-b border-[var(--prom-line)] py-3 pr-3 tabular-nums text-[var(--prom-muted)]">
-                                  {r.expenseDate ?? "—"}
-                                </td>
-                                <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-[var(--prom-muted)]">
-                                  {typeLabel(r.expenseType)}
-                                </td>
-                                <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-right font-medium tabular-nums">
-                                  {formatMoney(r.amountCents, r.currency)}
-                                </td>
-                                <td className="border-b border-[var(--prom-line)] py-3 pr-3">
-                                  <span
-                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${expenseStatusBadgeClassName(r.status)}`}
-                                  >
-                                    {expenseStatusLabelIt(r.status)}
-                                  </span>
-                                </td>
-                                <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-[var(--prom-muted)]">
-                                  {r.hasReceipt ? (
-                                    <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
-                                      <Receipt className="h-3.5 w-3.5" aria-hidden />
-                                      Sì
+                              <Fragment key={r.id}>
+                                <tr className="align-top text-[var(--prom-text)]">
+                                  <td className="border-b border-[var(--prom-line)] py-3 pr-3 tabular-nums text-[var(--prom-muted)]">
+                                    {r.expenseDate ?? "—"}
+                                  </td>
+                                  <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-[var(--prom-muted)]">
+                                    {typeLabel(r.expenseType)}
+                                  </td>
+                                  <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-right font-medium tabular-nums">
+                                    {formatMoney(r.amountCents, r.currency)}
+                                  </td>
+                                  <td className="border-b border-[var(--prom-line)] py-3 pr-3">
+                                    <span
+                                      className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${expenseStatusBadgeClassName(r.status)}`}
+                                    >
+                                      {expenseStatusLabelIt(r.status)}
                                     </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 opacity-70">
-                                      <FileCheck className="h-3.5 w-3.5" aria-hidden />
-                                      No
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="border-b border-[var(--prom-line)] py-3">
-                                  <p className="max-w-[14rem] font-medium leading-snug">{r.description}</p>
-                                  {r.payslipPeriod ? (
-                                    <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                                      Cedolino: {r.payslipPeriod}
-                                    </p>
-                                  ) : null}
-                                  <WorkflowExpenseFlowDiagram
-                                    claim={r}
-                                    requesterLabel={g.label}
-                                    managerLabel={managerLabelForClaim(r, userMap)}
-                                  />
-                                </td>
-                              </tr>
+                                  </td>
+                                  <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-[var(--prom-muted)]">
+                                    {r.hasReceipt ? (
+                                      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
+                                        <Receipt className="h-3.5 w-3.5" aria-hidden />
+                                        Sì
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 opacity-70">
+                                        <FileCheck className="h-3.5 w-3.5" aria-hidden />
+                                        No
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="border-b border-[var(--prom-line)] py-3">
+                                    <p className="max-w-[14rem] font-medium leading-snug">{r.description}</p>
+                                    {r.payslipPeriod ? (
+                                      <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                                        Cedolino: {r.payslipPeriod}
+                                      </p>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                                <tr className="text-[var(--prom-text)]">
+                                  <td colSpan={6} className="border-b border-[var(--prom-line)] px-3 pb-4 pt-0">
+                                    <WorkflowExpenseFlowDiagram
+                                      variant="stacked"
+                                      claim={r}
+                                      requesterLabel={g.label}
+                                      managerLabel={managerLabelForClaim(r, userMap)}
+                                    />
+                                  </td>
+                                </tr>
+                              </Fragment>
                             ))}
                           </tbody>
                         </table>
@@ -437,6 +503,7 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                               ) : null}
                             </div>
                             <WorkflowExpenseFlowDiagram
+                              variant="stacked"
                               claim={r}
                               requesterLabel={g.label}
                               managerLabel={managerLabelForClaim(r, userMap)}

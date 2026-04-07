@@ -418,6 +418,8 @@ export interface CompanySettingsStored {
   companyLegalName: string;
   companyVatNumber: string;
   companyRegistrationInfo: string;
+  /** Contratto nazionale di riferimento per l’azienda (testo o codice). */
+  companyCcnl: string;
   defaultCurrency: string;
   weeklyFullTimeHours: number;
   /** Mensilità per riparto RAL / costi (es. 12, 13, 14). Default 12. */
@@ -2350,17 +2352,19 @@ export class HrDataStore {
   async getOvertimeAggregates(
     userId: string,
     referenceDate: string,
-    scope?: "week" | "month" | "year"
+    scope?: "day" | "week" | "month" | "year"
   ): Promise<{
     referenceDate: string;
+    day: { overtimeSeconds: number; overtimeHours: number };
     week: { overtimeSeconds: number; overtimeHours: number };
     month: { overtimeSeconds: number; overtimeHours: number };
     year: { overtimeSeconds: number; overtimeHours: number };
-  } | { scope: "week" | "month" | "year"; overtimeSeconds: number; overtimeHours: number }> {
+  } | { scope: "day" | "week" | "month" | "year"; overtimeSeconds: number; overtimeHours: number }> {
     const summaries = await this.listWorkdaySummary(userId);
     const { start, end } = this.weekRange(referenceDate);
     const monthPrefix = referenceDate.slice(0, 7);
     const yearPrefix = referenceDate.slice(0, 4);
+    const dayStr = referenceDate.slice(0, 10);
     const user = await this.getUser(userId);
     const targetSeconds = this.resolveDailyTargetSeconds(user);
 
@@ -2369,6 +2373,14 @@ export class HrDataStore {
         const fallbackOvertime = Math.max(0, (item.workedSeconds ?? item.minutesWorked * 60) - targetSeconds);
         return acc + (item.overtimeSeconds ?? fallbackOvertime);
       }, 0);
+
+    const daySummaries = summaries.filter((item) => item.date === dayStr);
+    let dayOvertimeSeconds = sumOvertime(daySummaries);
+    const todayRome = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+    if (dayStr === todayRome) {
+      const live = await this.computeClockState(userId, dayStr);
+      dayOvertimeSeconds = Math.max(dayOvertimeSeconds, live.overtimeSeconds);
+    }
 
     const weekOvertimeSeconds = sumOvertime(
       summaries.filter((item) => item.date >= start && item.date <= end)
@@ -2382,6 +2394,7 @@ export class HrDataStore {
 
     const result = {
       referenceDate,
+      day: { overtimeSeconds: dayOvertimeSeconds, overtimeHours: dayOvertimeSeconds / 3600 },
       week: { overtimeSeconds: weekOvertimeSeconds, overtimeHours: weekOvertimeSeconds / 3600 },
       month: { overtimeSeconds: monthOvertimeSeconds, overtimeHours: monthOvertimeSeconds / 3600 },
       year: { overtimeSeconds: yearOvertimeSeconds, overtimeHours: yearOvertimeSeconds / 3600 }
@@ -3544,6 +3557,100 @@ export class HrDataStore {
     });
   }
 
+  async importPayslipFromExternalPdf(
+    operatorUserId: string,
+    operatorRole: AuthRole,
+    operatorEmail: string,
+    targetUserId: string,
+    period: string,
+    pdfBuffer: Buffer,
+    salaries?: { grossSalary?: number; netSalary?: number }
+  ): Promise<Payslip> {
+    const p = period.trim();
+    if (!/^\d{4}-\d{2}$/.test(p)) {
+      throw new BadRequestException("Periodo atteso YYYY-MM");
+    }
+    if (pdfBuffer.length < 16) {
+      throw new BadRequestException("PDF non valido o file vuoto");
+    }
+    if (pdfBuffer.length > 6_000_000) {
+      throw new BadRequestException("PDF troppo grande (max 6 MB)");
+    }
+    const magic = pdfBuffer.slice(0, 5).toString("latin1");
+    if (!magic.startsWith("%PDF")) {
+      throw new BadRequestException("Il file non sembra un PDF");
+    }
+    const canOp =
+      operatorRole === "superuser" ||
+      (await this.canAccessHrExtendedConsoleLocal(operatorUserId, operatorRole, operatorEmail));
+    if (!canOp) {
+      throw new ForbiddenException("Import cedolini riservato a HR / amministratori");
+    }
+    const operator = await this.getUser(operatorUserId);
+    const target = await this.getUser(targetUserId);
+    if (operatorRole !== "superuser" && target.companyId !== operator.companyId) {
+      throw new ForbiddenException("Dipendente di un'altra azienda");
+    }
+    if (!this.useDb || !this.supabase) {
+      throw new BadRequestException("Import PDF richiede database e storage Supabase");
+    }
+    const cid = String(target.companyId ?? "default").replace(/[^\w-]/g, "_");
+    const objectPath = `payslip-imports/${cid}/${targetUserId}/${p}.pdf`;
+    const { error: upErr } = await this.supabase.storage.from("employee-photos").upload(objectPath, pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true
+    });
+    if (upErr) {
+      throw new InternalServerErrorException(`Upload storage fallito: ${upErr.message}`);
+    }
+    const pdfUrl = `supabase://employee-photos/${objectPath}`;
+    const gross =
+      salaries?.grossSalary != null && Number.isFinite(Number(salaries.grossSalary))
+        ? Number(salaries.grossSalary)
+        : 0;
+    const net =
+      salaries?.netSalary != null && Number.isFinite(Number(salaries.netSalary))
+        ? Number(salaries.netSalary)
+        : 0;
+    const now = new Date().toISOString();
+    const payslip: Payslip = {
+      id: `ps-imp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      userId: targetUserId,
+      period: p,
+      grossSalary: gross,
+      netSalary: net,
+      lines: [{ code: "IMP", description: "Cedolino importato (PDF esterno)", amount: net }],
+      pdfUrl,
+      status: "published",
+      publishedAt: now,
+      publishedByUserId: operatorUserId,
+      computedAt: now,
+      variablePeriod: null
+    };
+    const { error: delErr } = await this.supabase.from("payslips").delete().eq("userId", targetUserId).eq("period", p);
+    if (delErr) {
+      throw new InternalServerErrorException(`Aggiornamento cedolino fallito: ${delErr.message}`);
+    }
+    const { error: insErr } = await this.supabase.from("payslips").insert({
+      id: payslip.id,
+      userId: payslip.userId,
+      period: payslip.period,
+      grossSalary: payslip.grossSalary,
+      netSalary: payslip.netSalary,
+      lines: payslip.lines,
+      pdfUrl: payslip.pdfUrl,
+      status: payslip.status,
+      publishedAt: payslip.publishedAt,
+      publishedByUserId: payslip.publishedByUserId,
+      computedAt: payslip.computedAt,
+      variablePeriod: payslip.variablePeriod
+    });
+    if (insErr) {
+      throw new InternalServerErrorException(`Salvataggio cedolino fallito: ${insErr.message}`);
+    }
+    return payslip;
+  }
+
   async getPayslipForPeriod(userId: string, period: string): Promise<Payslip | undefined> {
     const all = await this.listPayslips(userId, userId);
     return all.find((item) => item.period === period);
@@ -4542,6 +4649,18 @@ export class HrDataStore {
     return data.signedUrl;
   }
 
+  async downloadSupabasePrivateFile(bucket: string, objectPath: string): Promise<Buffer> {
+    if (!this.supabase) {
+      throw new InternalServerErrorException("Storage non configurato");
+    }
+    const { data, error } = await this.supabase.storage.from(bucket).download(objectPath);
+    if (error || !data) {
+      throw new NotFoundException(`File non disponibile${error?.message ? `: ${error.message}` : ""}`);
+    }
+    const ab = await data.arrayBuffer();
+    return Buffer.from(ab);
+  }
+
   async getHrDashboardSummary(): Promise<{
     headcount: number;
     budgetEur: number;
@@ -4687,20 +4806,22 @@ export class HrDataStore {
       }
     }
     const tid = employee.teamId?.trim();
-    if (!tid) {
-      return null;
-    }
-    try {
-      const team = await this.getWorkTeam(tid);
-      const leadId = (team.leadUserId ?? "").trim();
-      if (!leadId || leadId === employeeUserId) {
-        return null;
+    if (tid) {
+      try {
+        const team = await this.getWorkTeam(tid);
+        const leadId = (team.leadUserId ?? "").trim();
+        if (leadId && leadId !== employeeUserId) {
+          const lead = await this.getUser(leadId);
+          return lead.fullName;
+        }
+      } catch {
+        /* fall through */
       }
-      const lead = await this.getUser(leadId);
-      return lead.fullName;
-    } catch {
-      return null;
     }
+    if (employee.role === "superuser" || isSynapseSuperuserEmail(employee.email)) {
+      return "HR";
+    }
+    return null;
   }
 
   private async toExpenseWorkflowRow(
@@ -7672,6 +7793,7 @@ export class HrDataStore {
       companyLegalName: "",
       companyVatNumber: "",
       companyRegistrationInfo: "",
+      companyCcnl: "",
       defaultCurrency: "EUR",
       weeklyFullTimeHours: 40,
       payrollInstallmentMonths: 12,
@@ -7697,6 +7819,9 @@ export class HrDataStore {
     }
     if (typeof o.companyRegistrationInfo === "string") {
       d.companyRegistrationInfo = o.companyRegistrationInfo.slice(0, 240);
+    }
+    if (typeof o.companyCcnl === "string") {
+      d.companyCcnl = o.companyCcnl.slice(0, 240);
     }
     if (typeof o.defaultCurrency === "string" && o.defaultCurrency.trim()) {
       d.defaultCurrency = o.defaultCurrency.trim().toUpperCase().slice(0, 8);
@@ -7741,6 +7866,9 @@ export class HrDataStore {
     }
     if (patch.companyRegistrationInfo !== undefined) {
       next.companyRegistrationInfo = patch.companyRegistrationInfo.trim().slice(0, 240);
+    }
+    if (patch.companyCcnl !== undefined) {
+      next.companyCcnl = patch.companyCcnl.trim().slice(0, 240);
     }
     if (patch.defaultCurrency !== undefined) {
       const c = patch.defaultCurrency.trim().toUpperCase().slice(0, 8);

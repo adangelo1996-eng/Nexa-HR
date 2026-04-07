@@ -17,12 +17,13 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, FileSpreadsheet, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  downloadPersonnelBudgetActualExport,
   fetchPersonnelBudget,
   fetchCurrentUser,
   patchPersonnelBudgetCells,
@@ -32,7 +33,11 @@ import {
   type PersonnelBudgetRow,
   type PersonnelBudgetSnapshot
 } from "@/lib/api";
-import { formatPersonnelBudgetAmount } from "@/lib/personnel-budget-format";
+import {
+  budgetDeltaPercentLabel,
+  formatPersonnelBudgetAmount,
+  parsePersonnelBudgetMoneyInput
+} from "@/lib/personnel-budget-format";
 import {
   getToken,
   getSessionUser,
@@ -109,13 +114,6 @@ function deptSortId(d: PersonnelBudgetDepartment): string {
   return d.costCenterId ?? "__none__";
 }
 
-function parseBudgetNumber(s: string): number | null {
-  const t = s.trim().replace(",", ".");
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-}
-
 function pickBudgetInputStr(
   b: Partial<PersonnelBudgetMoney>,
   sug: Partial<PersonnelBudgetMoney> | undefined,
@@ -123,11 +121,11 @@ function pickBudgetInputStr(
 ): string {
   const v = b[key];
   if (v != null && Number.isFinite(Number(v))) {
-    return String(v);
+    return formatPersonnelBudgetAmount(Number(v));
   }
   const sv = sug?.[key];
   if (sv != null && Number.isFinite(Number(sv))) {
-    return String(sv);
+    return formatPersonnelBudgetAmount(Number(sv));
   }
   return "";
 }
@@ -146,12 +144,12 @@ function budgetRowTotal(b: Partial<PersonnelBudgetMoney> | undefined): number {
 
 function mergedBudgetForRow(row: PersonnelBudgetRow, dr: BudgetDraft): Partial<PersonnelBudgetMoney> {
   return {
-    ral: parseBudgetNumber(dr.ral ?? "") ?? row.budget.ral,
-    overtime: parseBudgetNumber(dr.overtime ?? "") ?? row.budget.overtime,
-    travel: parseBudgetNumber(dr.travel ?? "") ?? row.budget.travel,
-    inps: parseBudgetNumber(dr.inps ?? "") ?? row.budget.inps,
-    inail: parseBudgetNumber(dr.inail ?? "") ?? row.budget.inail,
-    tfr: parseBudgetNumber(dr.tfr ?? "") ?? row.budget.tfr
+    ral: parsePersonnelBudgetMoneyInput(dr.ral ?? "") ?? row.budget.ral,
+    overtime: parsePersonnelBudgetMoneyInput(dr.overtime ?? "") ?? row.budget.overtime,
+    travel: parsePersonnelBudgetMoneyInput(dr.travel ?? "") ?? row.budget.travel,
+    inps: parsePersonnelBudgetMoneyInput(dr.inps ?? "") ?? row.budget.inps,
+    inail: parsePersonnelBudgetMoneyInput(dr.inail ?? "") ?? row.budget.inail,
+    tfr: parsePersonnelBudgetMoneyInput(dr.tfr ?? "") ?? row.budget.tfr
   };
 }
 
@@ -243,133 +241,225 @@ function SortableDeptSection({
       </div>
       {expanded ? (
         <div className="overflow-x-auto p-3">
-          <table id={`dept-table-${id}`} className="min-w-[1100px] w-full border-collapse text-sm">
+          <table id={`dept-table-${id}`} className="min-w-[1680px] w-full border-collapse text-sm">
             <thead>
               <tr>
                 <th className={th}>Dipendente</th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   RAL
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   Straordinari
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   Trasferte
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   INPS (stima datore)
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   INAIL (stima datore)
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   TFR (accanton.)
                 </th>
-                <th className={th} colSpan={2}>
+                <th className={th} colSpan={4}>
                   Tot. costo az.**
                 </th>
               </tr>
               <tr>
                 <th className={th} />
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
-                <th className={th}>B</th>
-                <th className={th}>C</th>
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-ral-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-ov-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-tr-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-inps-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-inail-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-tfr-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
+                {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                  <th key={`h-tot-${h}`} className={th}>
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {dept.rows.map((row: PersonnelBudgetRow) => {
                 const dr = draftByUser[row.userId] ?? {};
                 const merged = mergedBudgetForRow(row, dr);
+                const bRal = Number(merged.ral ?? 0);
+                const bOv = Number(merged.overtime ?? 0);
+                const bTr = Number(merged.travel ?? 0);
+                const bInps = Number(merged.inps ?? 0);
+                const bInail = Number(merged.inail ?? 0);
+                const bTfr = Number(merged.tfr ?? 0);
                 const bDraftTot = budgetRowTotal(merged);
+                const actTot = row.actual.totalCompanyCost;
                 return (
                   <tr key={row.userId}>
                     <td className={td}>
                       <span className="font-medium">{row.fullName}</span>
-                    </td>
-                    <td className={td}>
-                      <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.ral ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
-                        inputMode="decimal"
-                      />
                     </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.ral)}
                     </td>
                     <td className={td}>
                       <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.overtime ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.ral ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "ral", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
                         inputMode="decimal"
                       />
+                    </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bRal - row.actual.ral)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.ral, bRal)}
                     </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.overtime)}
                     </td>
                     <td className={td}>
                       <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.travel ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.overtime ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "overtime", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
                         inputMode="decimal"
                       />
+                    </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bOv - row.actual.overtime)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.overtime, bOv)}
                     </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.travel)}
                     </td>
                     <td className={td}>
                       <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.inps ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.travel ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "travel", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
                         inputMode="decimal"
                       />
+                    </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bTr - row.actual.travel)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.travel, bTr)}
                     </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.inps)}
                     </td>
                     <td className={td}>
                       <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.inail ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.inps ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "inps", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
                         inputMode="decimal"
                       />
+                    </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bInps - row.actual.inps)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.inps, bInps)}
                     </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.inail)}
                     </td>
                     <td className={td}>
                       <input
-                        className="w-24 rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
-                        value={dr.tfr ?? ""}
-                        onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.inail ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "inail", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
                         inputMode="decimal"
                       />
                     </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bInail - row.actual.inail)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.inail, bInail)}
+                    </td>
                     <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
                       {formatPersonnelBudgetAmount(row.actual.tfr)}
+                    </td>
+                    <td className={td}>
+                      <input
+                        className="w-[6.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 py-0.5"
+                        value={dr.tfr ?? ""}
+                        onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
+                        onBlur={(e) => {
+                          const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                          if (p != null) {
+                            updateDraft(row.userId, "tfr", formatPersonnelBudgetAmount(p));
+                          }
+                        }}
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bTfr - row.actual.tfr)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(row.actual.tfr, bTfr)}
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
+                      {formatPersonnelBudgetAmount(row.actual.totalCompanyCost)}
                     </td>
                     <td className={`${td} font-medium tabular-nums`}>
                       {bDraftTot > 0 || Object.keys(row.budget).length > 0
                         ? formatPersonnelBudgetAmount(bDraftTot)
                         : "—"}
                     </td>
-                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>
-                      {formatPersonnelBudgetAmount(row.actual.totalCompanyCost)}
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bDraftTot - actTot)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>
+                      {budgetDeltaPercentLabel(actTot, bDraftTot)}
                     </td>
                   </tr>
                 );
@@ -377,33 +467,75 @@ function SortableDeptSection({
               {dept.rows.length > 0 ? (
                 <tr className="bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)] font-medium">
                   <td className={td}>Totale centro di costo</td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bRal)}</td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cRal)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bOvertime)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bRal)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bRal - colTotals.cRal)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cRal, colTotals.bRal)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cOvertime)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTravel)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bOvertime)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bOvertime - colTotals.cOvertime)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cOvertime, colTotals.bOvertime)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cTravel)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInps)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTravel)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bTravel - colTotals.cTravel)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cTravel, colTotals.bTravel)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cInps)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInail)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInps)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bInps - colTotals.cInps)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cInps, colTotals.bInps)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cInail)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTfr)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bInail)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bInail - colTotals.cInail)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cInail, colTotals.bInail)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cTfr)}
                   </td>
-                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bCompany)}</td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bTfr)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bTfr - colTotals.cTfr)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cTfr, colTotals.bTfr)}
+                  </td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                     {formatPersonnelBudgetAmount(colTotals.cCompany)}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(colTotals.bCompany)}</td>
+                  <td className={`${td} tabular-nums`}>
+                    {formatPersonnelBudgetAmount(colTotals.bCompany - colTotals.cCompany)}
+                  </td>
+                  <td className={`${td} text-xs tabular-nums`}>
+                    {budgetDeltaPercentLabel(colTotals.cCompany, colTotals.bCompany)}
                   </td>
                 </tr>
               ) : null}
@@ -431,80 +563,143 @@ function GrandTotalTable({
     <section className="rounded-xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-3 shadow-[var(--card-shadow)]">
       <h2 className="mb-3 text-lg font-semibold text-[var(--prom-text)]">Totale budget (tutti i centri di costo)</h2>
       <div className="overflow-x-auto">
-        <table className="min-w-[1100px] w-full border-collapse text-sm">
+        <table className="min-w-[1680px] w-full border-collapse text-sm">
           <thead>
             <tr>
               <th className={th} />
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 RAL
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 Straordinari
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 Trasferte
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 INPS
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 INAIL
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 TFR
               </th>
-              <th className={th} colSpan={2}>
+              <th className={th} colSpan={4}>
                 Tot. costo az.
               </th>
             </tr>
             <tr>
               <th className={th} />
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
-              <th className={th}>B</th>
-              <th className={th}>C</th>
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-ral-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-ov-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-tr-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-inps-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-inail-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-tfr-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
+              {(["ACT", "BDG", "Δ", "Δ %"] as const).map((h) => (
+                <th key={`gt-co-${h}`} className={th}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             <tr className="font-semibold">
               <td className={td}>Totali</td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bRal)}</td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cRal)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bOvertime)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bRal)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bRal - totals.cRal)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cRal, totals.bRal)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cOvertime)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTravel)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bOvertime)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bOvertime - totals.cOvertime)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cOvertime, totals.bOvertime)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cTravel)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInps)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTravel)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bTravel - totals.cTravel)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cTravel, totals.bTravel)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cInps)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInail)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInps)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bInps - totals.cInps)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cInps, totals.bInps)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cInail)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTfr)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bInail)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bInail - totals.cInail)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cInail, totals.bInail)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cTfr)}
               </td>
-              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bCompany)}</td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bTfr)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bTfr - totals.cTfr)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cTfr, totals.bTfr)}
+              </td>
               <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
                 {formatPersonnelBudgetAmount(totals.cCompany)}
+              </td>
+              <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(totals.bCompany)}</td>
+              <td className={`${td} tabular-nums`}>
+                {formatPersonnelBudgetAmount(totals.bCompany - totals.cCompany)}
+              </td>
+              <td className={`${td} text-xs tabular-nums`}>
+                {budgetDeltaPercentLabel(totals.cCompany, totals.bCompany)}
               </td>
             </tr>
           </tbody>
@@ -526,6 +721,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   const [expandedByDeptId, setExpandedByDeptId] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -643,6 +839,28 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
     }));
   };
 
+  const exportActualExcel = async (): Promise<void> => {
+    const t = token ?? getToken();
+    if (!t) {
+      return;
+    }
+    setExporting(true);
+    setErr(null);
+    try {
+      const blob = await downloadPersonnelBudgetActualExport(t, year, month);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nexa-personnel-budget-actual-${year}-${String(month).padStart(2, "0")}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Export fallito");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const saveBudgets = async (): Promise<void> => {
     if (!token || !snap) {
       return;
@@ -663,12 +881,12 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
         const dr = draftByUser[r.userId] ?? {};
         cells.push({
           userId: r.userId,
-          budgetRal: parseBudgetNumber(dr.ral ?? ""),
-          budgetOvertime: parseBudgetNumber(dr.overtime ?? ""),
-          budgetTravel: parseBudgetNumber(dr.travel ?? ""),
-          budgetInps: parseBudgetNumber(dr.inps ?? ""),
-          budgetInail: parseBudgetNumber(dr.inail ?? ""),
-          budgetTfr: parseBudgetNumber(dr.tfr ?? "")
+          budgetRal: parsePersonnelBudgetMoneyInput(dr.ral ?? ""),
+          budgetOvertime: parsePersonnelBudgetMoneyInput(dr.overtime ?? ""),
+          budgetTravel: parsePersonnelBudgetMoneyInput(dr.travel ?? ""),
+          budgetInps: parsePersonnelBudgetMoneyInput(dr.inps ?? ""),
+          budgetInail: parsePersonnelBudgetMoneyInput(dr.inail ?? ""),
+          budgetTfr: parsePersonnelBudgetMoneyInput(dr.tfr ?? "")
         });
       }
     }
@@ -738,6 +956,16 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
           </label>
           <Button type="button" variant="secondary" onClick={() => void load()}>
             Aggiorna
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            className="gap-2"
+            disabled={exporting || !token}
+            onClick={() => void exportActualExcel()}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {exporting ? "Export…" : "Export Actual (Excel)"}
           </Button>
           <Button type="button" onClick={() => void saveBudgets()} disabled={saving || !snap}>
             {saving ? "Salvataggio…" : "Salva budget"}

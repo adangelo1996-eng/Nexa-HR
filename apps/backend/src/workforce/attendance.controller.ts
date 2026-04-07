@@ -65,7 +65,7 @@ class ClockDto {
 class AggregateQueryDto {
   @IsOptional()
   @IsIn(["week", "month", "year"])
-  scope?: "week" | "month" | "year";
+  scope?: "day" | "week" | "month" | "year";
 
   @IsOptional()
   @IsString()

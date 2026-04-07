@@ -6,7 +6,7 @@ import { fetchCurrentUser } from "@/lib/api";
 import { getToken, sessionCanViewOrgExpenseClaims } from "@/lib/auth-session";
 
 /**
- * Vista organico note spese: console Synapse (`canNexaAdmin`) o HR esteso (`canAccessHrExtendedConsole`).
+ * Vista organico note spese: console Synapse, HR esteso, o perimetro workflow (team lead / approvazioni).
  */
 export function OrgExpenseClaimsAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();

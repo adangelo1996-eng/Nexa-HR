@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCard } from "@/components/glass-card";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,14 @@ import {
 import {
   clearSession,
   getToken,
+  sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
+  sessionCanViewOrgExpenseClaims,
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
+import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
+import type { Route } from "next";
 import {
   readNexaHrPrefs,
   readSynapsePrefs,
@@ -35,6 +39,7 @@ import {
   type SynapsePrefsV1
 } from "@/lib/synapse-prefs";
 import { useTheme } from "@/components/theme-provider";
+import { IT_REGION_NAMES, itComuniDatalistOptionsForRegion } from "@/lib/data/it-locations";
 
 const CAT_LABEL: Record<ImportCategory, string> = {
   users: "Utenti",
@@ -190,6 +195,32 @@ export default function SettingsPage(): React.JSX.Element {
     setNexaPrefs(readNexaHrPrefs());
   }, []);
 
+  const comuneResidenzaSuggestions = useMemo(
+    () => itComuniDatalistOptionsForRegion(String(itForm.taxRegion ?? "")),
+    [itForm.taxRegion]
+  );
+
+  const shortcutPickerRoutes = useMemo(() => {
+    let rows = [...NEXA_NAV_ROUTE_CATALOG];
+    if (!sessionCanAccessPayrollArea(profileUser ?? undefined)) {
+      rows = rows.filter((r) => r.href !== "/payroll-hebb");
+    }
+    if (!sessionCanNexaAdmin(profileUser ?? undefined)) {
+      rows = rows.filter(
+        (r) =>
+          r.href !== "/personnel-budget" &&
+          r.href !== "/admin" &&
+          r.href !== ("/admin/data-export" as Route) &&
+          r.href !== ("/admin/data-import" as Route) &&
+          r.href !== ("/admin/payslip-import" as Route)
+      );
+    }
+    if (!sessionCanViewOrgExpenseClaims(profileUser ?? undefined)) {
+      rows = rows.filter((r) => r.href !== ("/expenses/org" as Route));
+    }
+    return rows;
+  }, [profileUser]);
+
   function persistSynapse(next: SynapsePrefsV1): void {
     setSynapsePrefs(next);
     writeSynapsePrefs(next);
@@ -259,6 +290,7 @@ export default function SettingsPage(): React.JSX.Element {
         companyLegalName: companyDraft.companyLegalName,
         companyVatNumber: companyDraft.companyVatNumber,
         companyRegistrationInfo: companyDraft.companyRegistrationInfo,
+        companyCcnl: companyDraft.companyCcnl,
         defaultCurrency: companyDraft.defaultCurrency,
         weeklyFullTimeHours: companyDraft.weeklyFullTimeHours,
         payrollInstallmentMonths: companyDraft.payrollInstallmentMonths,
@@ -427,6 +459,65 @@ export default function SettingsPage(): React.JSX.Element {
               <option value="hm">Ore e minuti</option>
             </select>
           </label>
+          <div className="space-y-2 border-t border-slate-700/40 pt-3">
+            <div className="text-slate-700 dark:text-slate-300">
+              Scorciatoie menu (mobile)
+              <p className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                Fino a 6 voci in cima al drawer su schermi piccoli.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(nexaPrefs.menuShortcutHrefs ?? []).map((href) => (
+                <span
+                  key={href}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-600/80 bg-slate-950/50 px-2 py-1 text-xs text-slate-200"
+                >
+                  {navCatalogLabelForHref(href)}
+                  <button
+                    type="button"
+                    className="rounded-full px-1 text-slate-400 hover:text-rose-400"
+                    aria-label={`Rimuovi ${href}`}
+                    onClick={() => {
+                      const next = (nexaPrefs.menuShortcutHrefs ?? []).filter((h) => h !== href);
+                      persistNexa({ ...nexaPrefs, menuShortcutHrefs: next });
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {(nexaPrefs.menuShortcutHrefs ?? []).length >= 6 ? null : (
+                <label className="inline-flex items-center gap-2 text-xs text-slate-400">
+                  <span>Aggiungi</span>
+                  <select
+                    className="rounded border border-slate-600 bg-slate-950/60 px-2 py-1 text-slate-100"
+                    value=""
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      e.target.value = "";
+                      if (!v || !v.startsWith("/")) {
+                        return;
+                      }
+                      const cur = nexaPrefs.menuShortcutHrefs ?? [];
+                      if (cur.includes(v) || cur.length >= 6) {
+                        return;
+                      }
+                      persistNexa({ ...nexaPrefs, menuShortcutHrefs: [...cur, v] });
+                    }}
+                  >
+                    <option value="">Scegli pagina…</option>
+                    {shortcutPickerRoutes
+                      .filter((r) => !(nexaPrefs.menuShortcutHrefs ?? []).includes(r.href))
+                      .map((r) => (
+                        <option key={r.href} value={r.href}>
+                          {r.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          </div>
         </div>
       </GlassCard>
 
@@ -447,6 +538,13 @@ export default function SettingsPage(): React.JSX.Element {
               base mensile:{" "}
               {profileUser.baseSalaryMonthly != null ? `${profileUser.baseSalaryMonthly.toFixed(2)} €` : "—"}
             </p>
+          </div>
+        ) : null}
+        {profileUser?.companyCcnl?.trim() ? (
+          <div className="mb-4 rounded-lg border border-amber-700/40 bg-slate-950/40 p-3 text-sm text-slate-200">
+            <div className="font-medium">CCNL di riferimento (impostazione aziendale)</div>
+            <p className="mt-1 text-slate-300">{profileUser.companyCcnl.trim()}</p>
+            <p className="mt-1 text-xs text-slate-500">Sola lettura: modificabile solo da console admin nelle variabili aziendali.</p>
           </div>
         ) : null}
         <div
@@ -525,8 +623,15 @@ export default function SettingsPage(): React.JSX.Element {
               value={String(itForm.taxRegion ?? "")}
               onChange={(e) => setItForm({ ...itForm, taxRegion: e.target.value.slice(0, 64) })}
               className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
-              placeholder="es. LAZ"
+              placeholder="Suggerimenti da elenco statico"
+              list="nexa-settings-it-regioni"
+              autoComplete="off"
             />
+            <datalist id="nexa-settings-it-regioni">
+              {IT_REGION_NAMES.map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-slate-700 dark:text-slate-300">Comune di residenza</span>
@@ -534,7 +639,17 @@ export default function SettingsPage(): React.JSX.Element {
               value={String(itForm.taxMunicipalityIt ?? "")}
               onChange={(e) => setItForm({ ...itForm, taxMunicipalityIt: e.target.value.slice(0, 120) })}
               className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+              list="nexa-settings-it-comuni-res"
+              autoComplete="off"
             />
+            <datalist id="nexa-settings-it-comuni-res">
+              {comuneResidenzaSuggestions.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+            <p className="text-[11px] text-slate-500">
+              Suggerimenti da dataset locale (estendibile); è possibile digitare un comune non in elenco.
+            </p>
           </label>
           <label className="flex items-center gap-2 sm:col-span-2">
             <input
@@ -813,6 +928,22 @@ export default function SettingsPage(): React.JSX.Element {
                 }
                 className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
                 maxLength={240}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">CCNL di riferimento (azienda)</span>
+              <p className="text-xs text-slate-500">
+                Contratto nazionale applicato al tenant; visibile in sola lettura ai dipendenti nel profilo
+                fiscale/contrattuale.
+              </p>
+              <input
+                type="text"
+                value={companyDraft.companyCcnl}
+                onChange={(e) => setCompanyDraft({ ...companyDraft, companyCcnl: e.target.value })}
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                maxLength={240}
+                placeholder="es. Commercio, Metalmeccanici Industria…"
               />
             </label>
 

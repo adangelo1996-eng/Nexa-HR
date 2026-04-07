@@ -117,6 +117,7 @@ describe("HrDataStore", () => {
     if ("scope" in aggregates) {
       assert.fail("Unexpected scoped response");
     }
+    assert.equal(aggregates.day.overtimeSeconds, 7200);
     assert.equal(aggregates.week.overtimeSeconds, 10800);
     assert.equal(aggregates.month.overtimeSeconds, 10800);
     assert.equal(aggregates.year.overtimeSeconds, 10800);

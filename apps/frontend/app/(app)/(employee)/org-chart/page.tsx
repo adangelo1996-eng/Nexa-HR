@@ -71,6 +71,11 @@ export default function OrgChartPage(): React.JSX.Element {
     [centers]
   );
 
+  const nodesSortedForList = useMemo(
+    () => [...data.nodes].sort((a, b) => a.label.localeCompare(b.label, "it")),
+    [data.nodes]
+  );
+
   const sediOptions = useMemo((): Pick<CostCenter, "id" | "name">[] => {
     const fromNodes = [...new Set(data.nodes.map((n) => n.costCenterId).filter(Boolean))] as string[];
     if (centers.length) {
@@ -131,8 +136,38 @@ export default function OrgChartPage(): React.JSX.Element {
         edges={data.edges}
         framed={false}
         heightClass="h-[min(560px,calc(100dvh-12rem))]"
+        highlightUserId={user?.id}
         onNodeSelect={setSelected}
       />
+
+      {data.nodes.length > 0 ? (
+        <details className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] p-3 text-sm text-[var(--prom-text)] shadow-[var(--card-shadow)]">
+          <summary className="cursor-pointer font-medium text-[var(--prom-muted)] outline-none hover:text-[var(--prom-text)]">
+            Elenco persone ({data.nodes.length})
+          </summary>
+          <ul className="mt-2 max-h-48 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
+            {nodesSortedForList.map((n) => {
+              const isMe = user?.id === n.id;
+              return (
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    className={
+                      "w-full rounded-lg px-2 py-1.5 text-left transition-colors " +
+                      (isMe
+                        ? "border border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_16%,transparent)] font-medium text-[var(--prom-text)]"
+                        : "border border-transparent text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)] hover:text-[var(--prom-text)]")
+                    }
+                    onClick={() => setSelected(n)}
+                  >
+                    {n.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ) : null}
 
       {selected ? (
         <>
@@ -142,7 +177,14 @@ export default function OrgChartPage(): React.JSX.Element {
             aria-label="Chiudi"
             onClick={() => setSelected(null)}
           />
-          <aside className="fixed bottom-0 right-0 top-0 z-50 flex w-[min(100vw,340px)] flex-col border-l border-[var(--prom-line)] bg-[var(--prom-surface)] p-4 shadow-[var(--card-shadow)] transition-transform">
+          <aside
+            className={
+              "fixed bottom-0 right-0 top-0 z-50 flex w-[min(100vw,340px)] flex-col border-l bg-[var(--prom-surface)] p-4 shadow-[var(--card-shadow)] transition-transform " +
+              (user?.id === selected.id
+                ? "border-[var(--prom-gold)] ring-2 ring-[color-mix(in_srgb,var(--prom-gold)_35%,transparent)]"
+                : "border-[var(--prom-line)]")
+            }
+          >
             <div className="flex justify-between gap-2">
               <h2 className="text-lg font-semibold text-[var(--prom-text)]">{selected.label}</h2>
               <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setSelected(null)} aria-label="Chiudi">

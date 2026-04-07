@@ -496,6 +496,32 @@ function isCalendarEventStartInFuture(ev: CalendarEventDto): boolean {
   return calendarEventStartDateIso(ev) > calendarDateTodayIsoRome();
 }
 
+/** HR esteso / Synapse admin / superuser: possono modificare anche giorni passati. */
+function viewerCanEditPastCalendarEvents(me: SessionUser | null): boolean {
+  if (!me) return false;
+  if (me.role === "superuser") return true;
+  if (me.canNexaAdmin === true) return true;
+  if (me.canAccessHrExtendedConsole === true) return true;
+  return false;
+}
+
+function calendarEventEndDateIso(ev: CalendarEventDto): string {
+  return (ev.end ?? ev.start).slice(0, 10);
+}
+
+/** Dipendente/responsabile: modifica consentita solo se l’evento ha almeno un giorno ≥ oggi (o è HR). */
+function nonHrMayEditCalendarEvent(me: SessionUser | null, ev: CalendarEventDto): boolean {
+  if (viewerCanEditPastCalendarEvents(me)) return true;
+  const today = calendarDateTodayIsoRome();
+  return calendarEventEndDateIso(ev) >= today;
+}
+
+function assertMayOpenCalendarDayModal(me: SessionUser | null, dayIso: string): boolean {
+  if (!me) return false;
+  if (viewerCanEditPastCalendarEvents(me)) return true;
+  return dayIso.slice(0, 10) >= calendarDateTodayIsoRome();
+}
+
 /** Solo il dipendente della riga (o superuser) può togliere assenze approvate future; HR vede ma non il pulsante. */
 function canRemoveApprovedFutureAsEmployee(viewer: SessionUser | null, rowUserId: string): boolean {
   if (!viewer) return false;
@@ -1035,6 +1061,10 @@ export default function WorkCalendarPage(): React.JSX.Element {
   };
 
   const beginEditFromChip = (day: string, row: RowUser, ev: CalendarEventDto): void => {
+    if (!nonHrMayEditCalendarEvent(me, ev)) {
+      setError("Le richieste su date già trascorse possono essere modificate solo da HR/Admin.");
+      return;
+    }
     setModal({ day, row });
     setChipEditIsApproved(isCalendarApproved(ev));
     setEditingTravelRequestId(null);
@@ -1867,10 +1897,20 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           "cursor-pointer align-top border border-[var(--prom-line)] p-0.5 transition-colors hover:bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)]",
                           weekend ? "bg-[color-mix(in_srgb,var(--prom-muted)_8%,transparent)]" : ""
                         ].join(" ")}
-                        onClick={() => openModal(iso, row)}
+                        onClick={() => {
+                          if (!assertMayOpenCalendarDayModal(me, iso)) {
+                            setError("Le date passate non sono modificabili. Contatta HR.");
+                            return;
+                          }
+                          openModal(iso, row);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
+                            if (!assertMayOpenCalendarDayModal(me, iso)) {
+                              setError("Le date passate non sono modificabili. Contatta HR.");
+                              return;
+                            }
                             openModal(iso, row);
                           }
                         }}
@@ -1881,6 +1921,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           {list.map((ev) => {
                             const showEdit =
                               showActions &&
+                              nonHrMayEditCalendarEvent(me, ev) &&
                               (isPendingWithMutableRequest(ev) ||
                                 canEditApprovedCalendarChip(me, row.id, ev));
                             const showRemove = showActions && canRemoveCalendarRequest(ev, me, row.id);

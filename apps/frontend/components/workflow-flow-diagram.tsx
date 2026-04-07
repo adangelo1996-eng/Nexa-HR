@@ -8,8 +8,9 @@ function StepBox(props: {
   title: string;
   subtitle?: string;
   state: StepState;
+  className?: string;
 }): React.JSX.Element {
-  const { title, subtitle, state } = props;
+  const { title, subtitle, state, className } = props;
   const border =
     state === "current"
       ? "border-[color-mix(in_srgb,var(--prom-gold)_55%,var(--prom-line))] ring-2 ring-[color-mix(in_srgb,var(--prom-gold)_35%,transparent)]"
@@ -21,7 +22,7 @@ function StepBox(props: {
             ? "border-dashed border-[var(--prom-line)] opacity-70"
             : "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)]";
   return (
-    <div className={`min-w-[7.5rem] max-w-[11rem] rounded-lg border px-2.5 py-2 text-center ${border}`}>
+    <div className={`min-w-[7.5rem] max-w-[11rem] rounded-lg border px-2.5 py-2 text-center ${border} ${className ?? ""}`}>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">{title}</p>
       <p className="mt-0.5 text-xs font-medium leading-snug text-[var(--prom-text)]">{subtitle ?? "—"}</p>
     </div>
@@ -45,8 +46,10 @@ export function WorkflowExpenseFlowDiagram(props: {
   claim: ExpenseClaimDto;
   requesterLabel: string;
   managerLabel?: string | null;
+  /** `stacked`: riga completa per «Esito» sotto Richiesta → Responsabile → HR. */
+  variant?: "default" | "stacked";
 }): React.JSX.Element {
-  const { claim, requesterLabel, managerLabel } = props;
+  const { claim, requesterLabel, managerLabel, variant = "default" } = props;
   const skipMgr =
     skipManagerStep(claim) &&
     (claim.status === "pending_hr" || claim.status === "approved" || claim.status === "paid");
@@ -118,17 +121,39 @@ export function WorkflowExpenseFlowDiagram(props: {
       outcomeLabel = claim.status === "draft" ? "Bozza" : "—";
   }
 
+  const mainRow = (
+    <>
+      <StepBox title="Richiesta" subtitle={requesterLabel} state="done" />
+      <Arrow />
+      <StepBox title="Responsabile" subtitle={mgrSub} state={managerState} />
+      <Arrow />
+      <StepBox title="HR" subtitle={hrSub} state={hrState} />
+    </>
+  );
+
+  if (variant === "stacked") {
+    return (
+      <div className="mt-3 space-y-2" role="img" aria-label="Flusso approvazione nota spesa">
+        <div className="flex flex-wrap items-center justify-center gap-0.5 sm:justify-start">{mainRow}</div>
+        <div className="flex w-full justify-center sm:justify-start">
+          <StepBox
+            title="Esito"
+            subtitle={outcomeLabel}
+            state={outcomeState}
+            className="max-w-none min-w-0 w-full sm:w-auto sm:min-w-[10rem] sm:max-w-[28rem]"
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="mt-3 flex flex-wrap items-center justify-center gap-0.5 sm:justify-start"
       role="img"
       aria-label="Flusso approvazione nota spesa"
     >
-      <StepBox title="Richiesta" subtitle={requesterLabel} state="done" />
-      <Arrow />
-      <StepBox title="Responsabile" subtitle={mgrSub} state={managerState} />
-      <Arrow />
-      <StepBox title="HR" subtitle={hrSub} state={hrState} />
+      {mainRow}
       <Arrow />
       <StepBox title="Esito" subtitle={outcomeLabel} state={outcomeState} />
     </div>
