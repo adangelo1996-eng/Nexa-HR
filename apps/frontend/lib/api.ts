@@ -2174,6 +2174,14 @@ export async function rejectExpenseClaim(token: string, id: string): Promise<Exp
   return (await response.json()) as ExpenseClaimDto;
 }
 
+export async function deleteExpenseClaim(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/expenses/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
 export async function fetchQrClockToken(token: string): Promise<{ token: string; expiresInSec: number }> {
   const response = await fetch(buildApiUrl(`/attendance/qr-token`), {
     method: "POST",

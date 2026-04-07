@@ -63,10 +63,14 @@ function monthRange(year: number, month: number): { from: string; to: string } {
   };
 }
 
+/** Pulsanti / righe azione trasferta: niente blu/cyan, allineato a --prom-* */
+const TRAVEL_ACTION_ROW_CLASS =
+  "rounded-xl border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] px-4 py-3 text-left text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_100%,transparent)]";
+
 function kindStyle(kind: CalendarEventDto["kind"]): string {
   switch (kind) {
     case "shift":
-      return "border-blue-500/50 bg-blue-500/15 text-blue-900 dark:text-blue-100";
+      return "border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] text-[var(--prom-text)]";
     case "smartworking":
       return "border-violet-500/50 bg-violet-500/15 text-violet-900 dark:text-violet-100";
     case "leave":
@@ -78,7 +82,7 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
     case "sickness":
       return "border-orange-500/50 bg-orange-500/15 text-orange-900 dark:text-orange-100";
     case "travel":
-      return "border-cyan-500/50 bg-cyan-500/15 text-cyan-950 dark:text-cyan-100";
+      return "border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] text-[var(--prom-text)]";
     case "office":
       return "border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] text-[var(--prom-text)]";
     default:
@@ -1755,9 +1759,13 @@ export default function WorkCalendarPage(): React.JSX.Element {
       </header>
 
       <div className="flex flex-wrap gap-3 text-[11px]">
-        <span className="rounded border border-blue-500/40 bg-blue-500/10 px-2 py-0.5">Turno</span>
+        <span className="rounded border border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] px-2 py-0.5 text-[var(--prom-text)]">
+          Turno
+        </span>
         <span className="rounded border border-violet-500/40 bg-violet-500/10 px-2 py-0.5">Smart working</span>
-        <span className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5">Trasferta</span>
+        <span className="rounded border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-2 py-0.5 text-[var(--prom-text)]">
+          Trasferta
+        </span>
         <span className="rounded border border-yellow-500/45 bg-yellow-500/12 px-2 py-0.5 text-yellow-950 dark:text-yellow-100">
           In attesa approvazione
         </span>
@@ -2296,7 +2304,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           setTravelNote("");
                           setModalStep("travel");
                         }}
-                        className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                        className={TRAVEL_ACTION_ROW_CLASS}
                       >
                         Trasferta
                       </button>
@@ -2444,7 +2452,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           }
                           setModalStep("travel");
                         }}
-                        className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                        className={TRAVEL_ACTION_ROW_CLASS}
                       >
                         Modifica trasferta in attesa
                       </button>
@@ -2507,7 +2515,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                               setTravelNote("");
                               setModalStep("travel");
                             }}
-                            className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-cyan-950 transition hover:bg-cyan-500/15 dark:text-cyan-100"
+                            className={TRAVEL_ACTION_ROW_CLASS}
                           >
                             Nuova trasferta
                           </button>
@@ -2750,7 +2758,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                               aria-checked={trDisplayOn}
                               checked={trDisplayOn}
                               onChange={(e) => onTravelSwitch(e.target.checked)}
-                              className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-cyan-600"
+                              className="h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--prom-line)] accent-[var(--prom-gold)]"
                             />
                           </label>
                         ) : (

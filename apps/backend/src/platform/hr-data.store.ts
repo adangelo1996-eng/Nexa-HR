@@ -5099,6 +5099,41 @@ export class HrDataStore {
     return this.mapExpenseRow(data as Record<string, unknown>);
   }
 
+  /**
+   * Elimina una sola riga `expense_claims` di proprietà del richiedente.
+   * Lo scontrino è su colonne della riga: con il DELETE spariscono solo i dati di quella richiesta.
+   */
+  async deleteExpenseClaimByRequester(claimId: string, requesterUserId: string): Promise<void> {
+    const deletableStatuses: ExpenseClaim["status"][] = ["draft", "submitted", "pending_hr", "rejected"];
+    const claim = await this.getExpenseClaim(claimId);
+    if (claim.userId !== requesterUserId) {
+      throw new ForbiddenException("Operazione non consentita");
+    }
+    if (!deletableStatuses.includes(claim.status)) {
+      throw new BadRequestException("Questa nota spesa non può essere eliminata");
+    }
+    if (!this.useDb) {
+      const idx = this.expenseClaims.findIndex((c) => c.id === claimId && c.userId === requesterUserId);
+      if (idx < 0) {
+        throw new NotFoundException("Nota spesa non trovata");
+      }
+      this.expenseClaims.splice(idx, 1);
+      return;
+    }
+    const { data, error } = await this.supabase!
+      .from("expense_claims")
+      .delete()
+      .eq("id", claimId)
+      .eq("userId", requesterUserId)
+      .select("id");
+    if (error) {
+      throw new InternalServerErrorException(`Eliminazione nota spesa fallita: ${error.message}`);
+    }
+    if (!data?.length) {
+      throw new NotFoundException("Nota spesa non trovata");
+    }
+  }
+
   async approveExpenseClaim(claimId: string, approverId: string): Promise<ExpenseClaim> {
     const claim = await this.getExpenseClaim(claimId);
     const approver = await this.getUser(approverId);

@@ -220,7 +220,7 @@ export default function WorkflowPage(): React.JSX.Element {
                   ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200"
                   : item.status === "rejected"
                     ? "bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-200"
-                    : "bg-slate-200 text-slate-800 dark:bg-[#2a3f4d]/70 dark:text-[#c5dde8]"
+                    : "bg-slate-200 text-slate-800 dark:bg-[color-mix(in_srgb,var(--prom-surface-soft)_95%,var(--prom-gold))] dark:text-[var(--prom-text)]"
               }`}
             >
               {item.status}
@@ -275,7 +275,7 @@ export default function WorkflowPage(): React.JSX.Element {
   if (loading) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <p className="text-slate-700 dark:text-slate-300">Caricamento workflow...</p>
+        <p className="text-slate-700 dark:text-slate-300">Caricamento…</p>
       </main>
     );
   }
@@ -284,22 +284,21 @@ export default function WorkflowPage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Workflow autorizzazioni</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Workflow</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Vista di richieste dei sottoposti per {user?.fullName} ({user?.role}).
+            {user?.fullName} · {user?.role}
           </p>
         </div>
         <Link href="/" className="synapse-nav-link">
-          Torna alla dashboard
+          Dashboard
         </Link>
       </header>
 
       <div className="space-y-10">
         <section className="card">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Approvazioni in sospeso</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">In sospeso</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Ferie/malattia/SW/trasferte e note spese: azioni per responsabile o HR. Priorità alta sulle assenze se la data
-            richiesta è entro due giorni o è già passata.
+            Assenze, trasferte, smart working e note spese. Priorità alta se la data è entro 2 giorni o passata.
           </p>
           <div className="mt-4 space-y-3">
             {pendingTotal === 0 ? (
@@ -334,8 +333,8 @@ export default function WorkflowPage(): React.JSX.Element {
         </section>
 
         <section className="card">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Le mie richieste in corso</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Richieste inviate da te ancora in sospeso.</p>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Le mie richieste</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Ancora da completare.</p>
           <div className="mt-4 space-y-3">
             {mine.length === 0 && expenseMineOpen.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta aperta da te.</p>
@@ -351,9 +350,7 @@ export default function WorkflowPage(): React.JSX.Element {
 
         <section className="card">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Approvate e rifiutate (assenze/SW/trasferte), più note spese concluse.
-          </p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Approvate, rifiutate e note spese chiuse.</p>
           <div className="mt-4 space-y-8">
             {historyGrouped.length === 0 && expenseHistory.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuno storico disponibile.</p>

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -363,5 +364,11 @@ export class ExpensesController {
   @RequireNexaPermissions("nexa.approvals:write")
   async reject(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<ExpenseClaim> {
     return this.store.rejectExpenseClaim(id, auth.userId);
+  }
+
+  @Delete(":id")
+  @RequireNexaPermissions("nexa.expenses:write")
+  async remove(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<void> {
+    await this.store.deleteExpenseClaimByRequester(id.trim(), auth.userId);
   }
 }

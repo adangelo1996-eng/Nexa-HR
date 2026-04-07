@@ -131,8 +131,7 @@ export default function ExpenseReceiptScanPage(): React.JSX.Element {
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Acquisisci scontrini</h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              1) Carica file dall&apos;archivio (PDF o immagine) e/o scatta foto con la fotocamera. 2) Rimuovi le
-              anteprime che non ti servono. 3) Vai al ritaglio per ritagliare ogni scansione prima dell&apos;invio.
+              Carica o fotografa, togli le anteprime in eccesso, poi ritaglia ogni scontrino prima dell&apos;invio.
             </p>
           </div>
 
@@ -165,10 +164,7 @@ export default function ExpenseReceiptScanPage(): React.JSX.Element {
             </button>
           </div>
 
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            PDF: viene usata la prima pagina, convertita in immagine. Formati immagine: JPEG, PNG, WebP; altri tipi
-            dipendono dal browser.
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">PDF: prima pagina → immagine. JPEG, PNG, WebP.</p>
 
           {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
