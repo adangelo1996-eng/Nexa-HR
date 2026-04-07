@@ -7,6 +7,11 @@ import { OrgExpenseClaimsAccessGate } from "@/components/org-expense-claims-acce
 import { WorkflowExpenseFlowDiagram } from "@/components/workflow-flow-diagram";
 import { fetchExpenseClaims, fetchUsers, type ExpenseClaimDto, type User } from "@/lib/api";
 import { getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
+import {
+  EXPENSE_STATUS_FILTER_OPTIONS,
+  expenseStatusBadgeClassName,
+  expenseStatusLabelIt
+} from "@/lib/expense-status-ui";
 
 const EXPENSE_TYPES: { id: string; label: string }[] = [
   { id: "ristorante", label: "Ristorante / pasti" },
@@ -17,16 +22,6 @@ const EXPENSE_TYPES: { id: string; label: string }[] = [
   { id: "parcheggio", label: "Parcheggio" },
   { id: "materiale", label: "Materiale / cancelleria" },
   { id: "altro", label: "Altro" }
-];
-
-const STATUS_FILTERS: { value: string; label: string }[] = [
-  { value: "all", label: "Tutti gli stati" },
-  { value: "submitted", label: "In attesa responsabile" },
-  { value: "pending_hr", label: "In attesa HR" },
-  { value: "approved", label: "Approvata" },
-  { value: "paid", label: "Pagata" },
-  { value: "rejected", label: "Rifiutata" },
-  { value: "draft", label: "Bozza" }
 ];
 
 function typeLabel(id: string | undefined): string {
@@ -55,33 +50,6 @@ function managerLabelForClaim(claim: ExpenseClaimDto, userMap: Map<string, User>
     return null;
   }
   return userDisplay(userMap.get(u.managerId), u.managerId);
-}
-
-function statusBadgeClass(status: string): string {
-  if (status === "approved") {
-    return "bg-emerald-100/90 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200";
-  }
-  if (status === "paid") {
-    return "bg-sky-100/90 text-sky-900 dark:bg-sky-900/45 dark:text-sky-100";
-  }
-  if (status === "rejected") {
-    return "bg-rose-100/90 text-rose-900 dark:bg-rose-900/50 dark:text-rose-200";
-  }
-  if (status === "submitted") {
-    return "bg-amber-100/90 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100";
-  }
-  if (status === "pending_hr") {
-    return "bg-violet-100/90 text-violet-900 dark:bg-violet-900/45 dark:text-violet-100";
-  }
-  if (status === "draft") {
-    return "bg-[color-mix(in_srgb,var(--prom-muted)_22%,transparent)] text-[var(--prom-text)]";
-  }
-  return "bg-[color-mix(in_srgb,var(--prom-muted)_25%,transparent)] text-[var(--prom-text)]";
-}
-
-function statusLabelIt(status: string): string {
-  const f = STATUS_FILTERS.find((x) => x.value === status);
-  return f?.label ?? status;
 }
 
 function claimSortKey(c: ExpenseClaimDto): string {
@@ -263,7 +231,7 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-3 py-2 text-sm text-[var(--prom-text)]"
               >
-                {STATUS_FILTERS.map((o) => (
+                {EXPENSE_STATUS_FILTER_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -301,7 +269,7 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--prom-line)] pt-3">
             <span className="text-xs text-[var(--prom-muted)]">Totale caricato:</span>
-            {STATUS_FILTERS.filter((x) => x.value !== "all").map((s) => {
+            {EXPENSE_STATUS_FILTER_OPTIONS.filter((x) => x.value !== "all").map((s) => {
               const n = statusSummary.get(s.value) ?? 0;
               if (n === 0) {
                 return null;
@@ -309,7 +277,7 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
               return (
                 <span
                   key={s.value}
-                  className={`rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass(s.value)}`}
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${expenseStatusBadgeClassName(s.value)}`}
                 >
                   {s.label}: {n}
                 </span>
@@ -401,9 +369,9 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                                 </td>
                                 <td className="border-b border-[var(--prom-line)] py-3 pr-3">
                                   <span
-                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass(r.status)}`}
+                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${expenseStatusBadgeClassName(r.status)}`}
                                   >
-                                    {statusLabelIt(r.status)}
+                                    {expenseStatusLabelIt(r.status)}
                                   </span>
                                 </td>
                                 <td className="border-b border-[var(--prom-line)] py-3 pr-3 text-[var(--prom-muted)]">
@@ -457,9 +425,9 @@ export default function OrgExpenseClaimsPage(): React.JSX.Element {
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <span
-                                className={`rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass(r.status)}`}
+                                className={`rounded px-2 py-0.5 text-xs font-medium ${expenseStatusBadgeClassName(r.status)}`}
                               >
-                                {statusLabelIt(r.status)}
+                                {expenseStatusLabelIt(r.status)}
                               </span>
                               <span className="text-xs text-[var(--prom-muted)]">
                                 {r.hasReceipt ? "Scontrino caricato" : "Nessuno scontrino"}

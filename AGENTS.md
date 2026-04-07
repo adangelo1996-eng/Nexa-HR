@@ -31,3 +31,11 @@ Se un rischio non è correggibile subito, **issue o nota tecnica** con severity 
 
 - Non dichiarare il blocco «completato in sicurezza» senza aver almeno eseguito audit dipendenze e un passaggio mirato su auth/input sul codice toccato.
 - Per modifiche solo documentazione/isolate, ridurre scope ma mantenere audit dipendenze se è passato molto tempo dall’ultimo run nel branch.
+
+## Operatività: accessi esterni (Render / Supabase)
+
+Quando un task richiede azioni su sistemi esterni (es. leggere env su Render, applicare migrazioni Supabase):
+
+- Verificare subito se l’integrazione/connessione è **autorizzata** (evitare loop di tentativi “alla cieca”).
+- Se non autorizzata o non disponibile in questo contesto, riportare **il blocco preciso** (es. missing env var / MCP unauthorized) e fornire **il percorso minimo** per ottenere i dati necessari.
+- Non chiedere credenziali alternative se esiste già una fonte di verità (es. env su Render) accessibile con i permessi corretti.
