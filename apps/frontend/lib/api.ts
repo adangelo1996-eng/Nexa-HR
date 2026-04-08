@@ -1934,6 +1934,17 @@ export interface UserNotificationDto {
   actionPath?: string;
 }
 
+export interface EmployeeDocumentDto {
+  id: string;
+  userId: string;
+  kind: "contract" | "payslip" | "personal" | "other";
+  title: string;
+  mimeType?: string;
+  storagePath?: string;
+  createdAt: string;
+  uploadedBy?: string;
+}
+
 export interface ExpenseClaimDto {
   id: string;
   userId: string;
@@ -2082,6 +2093,272 @@ export async function deleteUserNotification(token: string, notificationId: stri
 
 export async function deleteAllUserNotifications(token: string): Promise<void> {
   const response = await fetch(buildApiUrl(`/users/me/notifications`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export async function uploadDocumentToVault(
+  token: string,
+  payload: {
+    title: string;
+    kind: EmployeeDocumentDto["kind"];
+    mimeType?: string;
+    bodyBase64?: string;
+    targetUserId?: string;
+  }
+): Promise<EmployeeDocumentDto> {
+  const response = await fetch(buildApiUrl("/documents/vault"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<EmployeeDocumentDto>;
+}
+
+export interface RecruitPositionDto {
+  id: string;
+  company_id: string;
+  title: string;
+  job_description: string;
+  status: "open" | "closed";
+  created_at: string;
+}
+
+export interface RecruitCandidateDto {
+  id: string;
+  company_id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string;
+  created_at: string;
+}
+
+export interface RecruitPipelineStageDto {
+  id: string;
+  pipeline_id: string;
+  stage_order: number;
+  name: string;
+  stage_kind: string;
+}
+
+export interface RecruitCandidateStageStateDto {
+  id: string;
+  candidate_id: string;
+  position_id: string;
+  current_stage_id: string;
+  status: "in_progress" | "passed" | "failed";
+  updated_at: string;
+}
+
+export async function fetchRecruitPositions(token: string): Promise<RecruitPositionDto[]> {
+  const response = await fetch(buildApiUrl("/recruiting/positions"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: RecruitPositionDto[] };
+  return body.items ?? [];
+}
+
+export async function createRecruitPosition(
+  token: string,
+  payload: { title: string; jobDescription: string }
+): Promise<RecruitPositionDto> {
+  const response = await fetch(buildApiUrl("/recruiting/positions"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function fetchRecruitCandidates(token: string): Promise<RecruitCandidateDto[]> {
+  const response = await fetch(buildApiUrl("/recruiting/candidates"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: RecruitCandidateDto[] };
+  return body.items ?? [];
+}
+
+export async function createRecruitCandidate(
+  token: string,
+  payload: { firstName: string; lastName: string; email?: string; phone?: string; notes?: string }
+): Promise<RecruitCandidateDto> {
+  const response = await fetch(buildApiUrl("/recruiting/candidates"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateDto>;
+}
+
+export async function fetchRecruitCandidateDetail(
+  token: string,
+  candidateId: string
+): Promise<{
+  candidate: RecruitCandidateDto;
+  states: Array<{
+    state_id: string;
+    position_id: string;
+    position_title: string;
+    current_stage_id: string;
+    status: "in_progress" | "passed" | "failed";
+    updated_at: string;
+  }>;
+}> {
+  const response = await fetch(buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    candidate: RecruitCandidateDto;
+    states: Array<{
+      state_id: string;
+      position_id: string;
+      position_title: string;
+      current_stage_id: string;
+      status: "in_progress" | "passed" | "failed";
+      updated_at: string;
+    }>;
+  }>;
+}
+
+export async function attachRecruitCandidateToPosition(
+  token: string,
+  payload: { candidateId: string; positionId: string }
+): Promise<RecruitCandidateStageStateDto> {
+  const response = await fetch(buildApiUrl("/recruiting/attach"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateStageStateDto>;
+}
+
+export async function fetchRecruitBoard(
+  token: string,
+  positionId: string
+): Promise<{
+  position: { id: string; title: string };
+  stages: RecruitPipelineStageDto[];
+  items: Array<{ state: RecruitCandidateStageStateDto; candidate: RecruitCandidateDto }>;
+}> {
+  const response = await fetch(buildApiUrl(`/recruiting/board/${encodeURIComponent(positionId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    position: { id: string; title: string };
+    stages: RecruitPipelineStageDto[];
+    items: Array<{ state: RecruitCandidateStageStateDto; candidate: RecruitCandidateDto }>;
+  }>;
+}
+
+export async function moveRecruitCandidateStage(
+  token: string,
+  payload: { stateId: string; nextStageId: string }
+): Promise<RecruitCandidateStageStateDto> {
+  const response = await fetch(buildApiUrl(`/recruiting/state/${encodeURIComponent(payload.stateId)}/move`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ nextStageId: payload.nextStageId })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateStageStateDto>;
+}
+
+export async function decideRecruitCandidate(
+  token: string,
+  payload: { stateId: string; status: "in_progress" | "passed" | "failed" }
+): Promise<RecruitCandidateStageStateDto> {
+  const response = await fetch(buildApiUrl(`/recruiting/state/${encodeURIComponent(payload.stateId)}/decision`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ status: payload.status })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateStageStateDto>;
+}
+
+export type HrStandardContractStatus = "draft" | "approved" | "exported";
+
+export interface HrStandardContractDto {
+  id: string;
+  title: string;
+  status: HrStandardContractStatus;
+  createdAt: string;
+  updatedAt: string;
+  party: Record<string, unknown>;
+  blocks: unknown[];
+  lastExportedDocumentId?: string;
+  recruitCandidateId?: string;
+  recruitPositionId?: string;
+}
+
+export async function fetchHrStandardContracts(token: string): Promise<HrStandardContractDto[]> {
+  const response = await fetch(buildApiUrl("/hr-contracts"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: HrStandardContractDto[] };
+  return body.items ?? [];
+}
+
+export async function fetchHrStandardContract(token: string, id: string): Promise<HrStandardContractDto> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+export type CreateHrStandardContractPayload = {
+  title: string;
+  party: Record<string, unknown>;
+  blocks: unknown[];
+  recruitCandidateId?: string;
+  recruitPositionId?: string;
+};
+
+export async function createHrStandardContract(
+  token: string,
+  payload: CreateHrStandardContractPayload
+): Promise<HrStandardContractDto> {
+  const response = await fetch(buildApiUrl("/hr-contracts"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+export type PatchHrStandardContractPayload = {
+  title?: string;
+  party?: Record<string, unknown>;
+  blocks?: unknown[];
+  status?: HrStandardContractStatus;
+  lastExportedDocumentId?: string;
+};
+
+export async function patchHrStandardContract(
+  token: string,
+  id: string,
+  payload: PatchHrStandardContractPayload
+): Promise<HrStandardContractDto> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+export async function deleteHrStandardContract(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}`), {
     method: "DELETE",
     headers: getAuthHeaders(token)
   });

@@ -182,6 +182,20 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
     "Consulenti HR",
     "Accesso in lettura delegato per consulenti.",
     "Operazioni consentite in ambito consulenza."
+  ),
+  ...cat(
+    "nexa_hr",
+    "recruiting",
+    "Recruiting e selezione",
+    "Consultare posizioni, candidati e pipeline.",
+    "Gestire posizioni, candidati, fasi pipeline e decisioni."
+  ),
+  ...cat(
+    "nexa_hr",
+    "standard_contracts",
+    "Contratti standard HR",
+    "Consultare bozze e contratti a blocchi.",
+    "Creare, modificare ed eliminare contratti standard e stati di approvazione."
   )
 ];
 
@@ -300,7 +314,11 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.lifecycle:read",
     "nexa.lifecycle:write",
     "nexa.innovation:read",
-    "nexa.innovation:write"
+    "nexa.innovation:write",
+    "nexa.recruiting:read",
+    "nexa.recruiting:write",
+    "nexa.standard_contracts:read",
+    "nexa.standard_contracts:write"
   ],
   "read:self": [
     "nexa.attendance:read",

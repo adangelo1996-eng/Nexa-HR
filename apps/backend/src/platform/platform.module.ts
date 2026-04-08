@@ -30,6 +30,7 @@ import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
   ],
   exports: [
     HrDataStore,
+    DatabasePoolService,
     AdminEmployeeExcelService,
     ImportService,
     AuthService,

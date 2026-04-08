@@ -1,0 +1,12 @@
+import { Module } from "@nestjs/common";
+import { PlatformModule } from "../platform/platform.module";
+import { HrContractsController } from "./hr-contracts.controller";
+import { HrContractsService } from "./hr-contracts.service";
+
+@Module({
+  imports: [PlatformModule],
+  controllers: [HrContractsController],
+  providers: [HrContractsService],
+  exports: [HrContractsService]
+})
+export class HrContractsModule {}

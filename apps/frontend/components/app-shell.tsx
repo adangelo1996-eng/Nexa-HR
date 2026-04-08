@@ -14,6 +14,8 @@ import {
   LogOut,
   Menu,
   Moon,
+  PenLine,
+  UserRoundSearch,
   Receipt,
   Search,
   Settings,
@@ -253,12 +255,13 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     user && !hideSensitiveHrBecausePreview && sessionCanAccessPayrollArea(user)
   );
   const showBudgetNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
+  const showHrToolsNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
   const showAdminNav = Boolean(isAdminUi && !hideSensitiveHrBecausePreview);
   const showOrgExpensesNav = Boolean(
     user && !hideSensitiveHrBecausePreview && sessionCanViewOrgExpenseClaims(user)
   );
   const showHrSidebarSection =
-    showPayrollNav || showBudgetNav || showAdminNav || showOrgExpensesNav;
+    showPayrollNav || showBudgetNav || showHrToolsNav || showAdminNav || showOrgExpensesNav;
 
   const filteredSearch = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -302,6 +305,15 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const sidebarHrSections = useMemo(() => {
     const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
     const hrOps: NavItem[] = [];
+    if (showHrToolsNav) {
+      hrOps.push({
+        href: "/tools/cost-calculator" as Route,
+        label: "Calcolatore costo/netto",
+        icon: Sparkles
+      });
+      hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
+      hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
+    }
     if (showPayrollNav) {
       hrOps.push({ href: "/payroll-hebb" as Route, label: "Hebb - Payroll", icon: Sparkles });
     }

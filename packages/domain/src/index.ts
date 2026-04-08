@@ -1,5 +1,8 @@
 /** Tipi dominio Nexa HR (canonici per backend e client). */
 
+export * from "./hr-tools/cost-calculator";
+export * from "./hr-tools/calculation-assumptions";
+
 /** Ruolo accesso piattaforma (JWT / `users.role`). Il “responsabile team” non è un valore qui: vive in `work_teams.leadUserId`. */
 export type RoleName = "superuser" | "user";
 
