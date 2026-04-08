@@ -1,6 +1,5 @@
-import { Injectable } from "@nestjs/common";
-import type { PoolClient } from "pg";
-import { DatabasePoolService } from "../platform/database-pool.service";
+import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { HrDataStore } from "../platform/hr-data.store";
 
 export interface RecruitPositionRow {
   id: string;
@@ -50,25 +49,37 @@ export interface RecruitCandidateStageStateRow {
 
 @Injectable()
 export class RecruitingService {
-  constructor(private readonly dbPool: DatabasePoolService) {}
+  constructor(private readonly store: HrDataStore) {}
 
-  private async q<T = unknown>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
-    return this.dbPool.withTransaction(async (client: PoolClient) => {
-      const out = await client.query(sql, params);
-      return { rows: out.rows as T[] };
-    });
+  private sb() {
+    return this.store.getServiceRoleClient();
+  }
+
+  private toIso(v: unknown): string {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    return new Date(v as string | number | Date).toISOString();
   }
 
   async listPositions(companyId: string): Promise<RecruitPositionRow[]> {
-    const { rows } = await this.q<RecruitPositionRow>(
-      `select id::text, company_id, title, job_description, status, created_at::text
-       from public.recruit_positions
-       where company_id = $1
-       order by created_at desc
-       limit 200`,
-      [companyId]
-    );
-    return rows;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_positions")
+      .select("id, company_id, title, job_description, status, created_at")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      throw new InternalServerErrorException(`Recruiting list positions: ${error.message}`);
+    }
+    return (data ?? []).map((r) => ({
+      id: String(r.id),
+      company_id: r.company_id as string,
+      title: r.title as string,
+      job_description: r.job_description as string,
+      status: r.status as RecruitPositionRow["status"],
+      created_at: this.toIso(r.created_at)
+    }));
   }
 
   async createPosition(input: {
@@ -77,72 +88,112 @@ export class RecruitingService {
     jobDescription: string;
     createdByUserId: string;
   }): Promise<RecruitPositionRow> {
-    const { rows } = await this.q<RecruitPositionRow>(
-      `insert into public.recruit_positions (company_id, title, job_description, status, created_by_user_id)
-       values ($1, $2, $3, 'open', $4)
-       returning id::text, company_id, title, job_description, status, created_at::text`,
-      [input.companyId, input.title, input.jobDescription, input.createdByUserId]
-    );
-    return rows[0] as RecruitPositionRow;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_positions")
+      .insert({
+        company_id: input.companyId,
+        title: input.title,
+        job_description: input.jobDescription,
+        status: "open",
+        created_by_user_id: input.createdByUserId
+      })
+      .select("id, company_id, title, job_description, status, created_at")
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Creazione posizione: ${error?.message ?? "nessun dato"}`);
+    }
+    return {
+      id: String(data.id),
+      company_id: data.company_id as string,
+      title: data.title as string,
+      job_description: data.job_description as string,
+      status: data.status as RecruitPositionRow["status"],
+      created_at: this.toIso(data.created_at)
+    };
   }
 
   async ensureDefaultPipelineForPosition(positionId: string): Promise<{ pipelineId: string; stages: RecruitPipelineStageRow[] }> {
-    await this.q(
-      `insert into public.recruit_pipelines (position_id, name)
-       values ($1, 'Pipeline')
-       on conflict (position_id) do nothing`,
-      [positionId]
-    );
-    const pl = await this.q<{ id: string }>(
-      `select id::text from public.recruit_pipelines where position_id = $1 limit 1`,
-      [positionId]
-    );
-    const pipelineId = pl.rows[0]?.id ?? "";
-    if (!pipelineId) {
-      throw new Error("Pipeline non disponibile");
+    const sb = this.sb();
+    const { error: insErr } = await sb.from("recruit_pipelines").insert({
+      position_id: positionId,
+      name: "Pipeline"
+    });
+    if (insErr && insErr.code !== "23505") {
+      throw new InternalServerErrorException(`Pipeline insert: ${insErr.message}`);
     }
-    const st = await this.q<RecruitPipelineStageRow>(
-      `select id::text, pipeline_id::text, stage_order, name, stage_kind
-       from public.recruit_pipeline_stages
-       where pipeline_id = $1
-       order by stage_order asc`,
-      [pipelineId]
-    );
-    if (st.rows.length === 0) {
-      // Seed fasi default MVP
-      await this.q(
-        `insert into public.recruit_pipeline_stages (pipeline_id, stage_order, name, stage_kind)
-         values
-          ($1, 10, 'Nuovo', 'screening'),
-          ($1, 20, 'Screening', 'screening'),
-          ($1, 30, 'Colloquio 1', 'interview'),
-          ($1, 40, 'Colloquio 2', 'interview'),
-          ($1, 50, 'Offerta', 'offer'),
-          ($1, 60, 'Assunto', 'hired'),
-          ($1, 70, 'Scartato', 'rejected')`,
-        [pipelineId]
-      );
+    const { data: pl, error: plErr } = await sb
+      .from("recruit_pipelines")
+      .select("id")
+      .eq("position_id", positionId)
+      .maybeSingle();
+    if (plErr || !pl?.id) {
+      throw new InternalServerErrorException(plErr?.message ?? "Pipeline non disponibile");
     }
-    const st2 = await this.q<RecruitPipelineStageRow>(
-      `select id::text, pipeline_id::text, stage_order, name, stage_kind
-       from public.recruit_pipeline_stages
-       where pipeline_id = $1
-       order by stage_order asc`,
-      [pipelineId]
-    );
-    return { pipelineId, stages: st2.rows };
+    const pipelineId = String(pl.id);
+    const { data: existing, error: stErr } = await sb
+      .from("recruit_pipeline_stages")
+      .select("id, pipeline_id, stage_order, name, stage_kind")
+      .eq("pipeline_id", pipelineId)
+      .order("stage_order", { ascending: true });
+    if (stErr) {
+      throw new InternalServerErrorException(`Lettura fasi: ${stErr.message}`);
+    }
+    if (!existing?.length) {
+      const { error: seedErr } = await sb.from("recruit_pipeline_stages").insert([
+        { pipeline_id: pipelineId, stage_order: 10, name: "Nuovo", stage_kind: "screening" },
+        { pipeline_id: pipelineId, stage_order: 20, name: "Screening", stage_kind: "screening" },
+        { pipeline_id: pipelineId, stage_order: 30, name: "Colloquio 1", stage_kind: "interview" },
+        { pipeline_id: pipelineId, stage_order: 40, name: "Colloquio 2", stage_kind: "interview" },
+        { pipeline_id: pipelineId, stage_order: 50, name: "Offerta", stage_kind: "offer" },
+        { pipeline_id: pipelineId, stage_order: 60, name: "Assunto", stage_kind: "hired" },
+        { pipeline_id: pipelineId, stage_order: 70, name: "Scartato", stage_kind: "rejected" }
+      ]);
+      if (seedErr) {
+        throw new InternalServerErrorException(`Seed fasi: ${seedErr.message}`);
+      }
+    }
+    const { data: st2, error: st2Err } = await sb
+      .from("recruit_pipeline_stages")
+      .select("id, pipeline_id, stage_order, name, stage_kind")
+      .eq("pipeline_id", pipelineId)
+      .order("stage_order", { ascending: true });
+    if (st2Err) {
+      throw new InternalServerErrorException(st2Err.message);
+    }
+    return {
+      pipelineId,
+      stages: (st2 ?? []).map((s) => ({
+        id: String(s.id),
+        pipeline_id: String(s.pipeline_id),
+        stage_order: s.stage_order as number,
+        name: s.name as string,
+        stage_kind: s.stage_kind as string
+      }))
+    };
   }
 
   async listCandidates(companyId: string): Promise<RecruitCandidateRow[]> {
-    const { rows } = await this.q<RecruitCandidateRow>(
-      `select id::text, company_id, first_name, last_name, email, phone, notes, created_at::text
-       from public.recruit_candidates
-       where company_id = $1
-       order by created_at desc
-       limit 300`,
-      [companyId]
-    );
-    return rows;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidates")
+      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (error) {
+      throw new InternalServerErrorException(`Lista candidati: ${error.message}`);
+    }
+    return (data ?? []).map((r) => ({
+      id: String(r.id),
+      company_id: r.company_id as string,
+      first_name: r.first_name as string,
+      last_name: r.last_name as string,
+      email: (r.email as string | null) ?? null,
+      phone: (r.phone as string | null) ?? null,
+      notes: r.notes as string,
+      created_at: this.toIso(r.created_at)
+    }));
   }
 
   async createCandidate(input: {
@@ -154,53 +205,83 @@ export class RecruitingService {
     notes?: string;
     createdByUserId: string;
   }): Promise<RecruitCandidateRow> {
-    const { rows } = await this.q<RecruitCandidateRow>(
-      `insert into public.recruit_candidates (company_id, first_name, last_name, email, phone, notes, created_by_user_id)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id::text, company_id, first_name, last_name, email, phone, notes, created_at::text`,
-      [
-        input.companyId,
-        input.firstName,
-        input.lastName,
-        input.email ?? null,
-        input.phone ?? null,
-        input.notes ?? "",
-        input.createdByUserId
-      ]
-    );
-    return rows[0] as RecruitCandidateRow;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidates")
+      .insert({
+        company_id: input.companyId,
+        first_name: input.firstName,
+        last_name: input.lastName,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        notes: input.notes ?? "",
+        created_by_user_id: input.createdByUserId
+      })
+      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Creazione candidato: ${error?.message ?? "nessun dato"}`);
+    }
+    return {
+      id: String(data.id),
+      company_id: data.company_id as string,
+      first_name: data.first_name as string,
+      last_name: data.last_name as string,
+      email: (data.email as string | null) ?? null,
+      phone: (data.phone as string | null) ?? null,
+      notes: data.notes as string,
+      created_at: this.toIso(data.created_at)
+    };
   }
 
   async getCandidate(candidateId: string): Promise<RecruitCandidateRow> {
-    const { rows } = await this.q<RecruitCandidateRow>(
-      `select id::text, company_id, first_name, last_name, email, phone, notes, created_at::text
-       from public.recruit_candidates
-       where id = $1
-       limit 1`,
-      [candidateId]
-    );
-    if (!rows[0]) {
-      throw new Error("Candidato non trovato");
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidates")
+      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .eq("id", candidateId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
     }
-    return rows[0];
+    if (!data) {
+      throw new NotFoundException("Candidato non trovato");
+    }
+    return {
+      id: String(data.id),
+      company_id: data.company_id as string,
+      first_name: data.first_name as string,
+      last_name: data.last_name as string,
+      email: (data.email as string | null) ?? null,
+      phone: (data.phone as string | null) ?? null,
+      notes: data.notes as string,
+      created_at: this.toIso(data.created_at)
+    };
   }
 
   async listCandidateStates(candidateId: string): Promise<RecruitCandidatePositionStateSummary[]> {
-    const { rows } = await this.q<RecruitCandidatePositionStateSummary>(
-      `select
-        s.id::text as state_id,
-        s.position_id::text,
-        p.title as position_title,
-        s.current_stage_id::text,
-        s.status,
-        s.updated_at::text
-      from public.recruit_candidate_stage_state s
-      join public.recruit_positions p on p.id = s.position_id
-      where s.candidate_id = $1
-      order by s.updated_at desc`,
-      [candidateId]
-    );
-    return rows;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .select(
+        "id, position_id, current_stage_id, status, updated_at, recruit_positions ( title )"
+      )
+      .eq("candidate_id", candidateId)
+      .order("updated_at", { ascending: false });
+    if (error) {
+      throw new InternalServerErrorException(`Stati candidato: ${error.message}`);
+    }
+    return (data ?? []).map((row: Record<string, unknown>) => {
+      const pos = row.recruit_positions as { title?: string } | null | undefined;
+      return {
+        state_id: String(row.id),
+        position_id: String(row.position_id),
+        position_title: pos?.title ?? "",
+        current_stage_id: String(row.current_stage_id),
+        status: row.status as RecruitCandidatePositionStateSummary["status"],
+        updated_at: this.toIso(row.updated_at)
+      };
+    });
   }
 
   async attachCandidateToPosition(input: {
@@ -212,18 +293,32 @@ export class RecruitingService {
     const { stages } = await this.ensureDefaultPipelineForPosition(input.positionId);
     const firstStage = stages[0];
     if (!firstStage) {
-      throw new Error("Pipeline senza fasi");
+      throw new InternalServerErrorException("Pipeline senza fasi");
     }
-    const { rows } = await this.q<RecruitCandidateStageStateRow>(
-      `insert into public.recruit_candidate_stage_state
-        (candidate_id, position_id, current_stage_id, status, updated_by_user_id)
-       values ($1, $2, $3, 'in_progress', $4)
-       on conflict (candidate_id, position_id)
-       do update set current_stage_id = excluded.current_stage_id, status = 'in_progress', updated_at = now(), updated_by_user_id = excluded.updated_by_user_id
-       returning id::text, candidate_id::text, position_id::text, current_stage_id::text, status, updated_at::text`,
-      [input.candidateId, input.positionId, firstStage.id, input.actorUserId]
-    );
-    return rows[0] as RecruitCandidateStageStateRow;
+    const sb = this.sb();
+    const row = {
+      candidate_id: input.candidateId,
+      position_id: input.positionId,
+      current_stage_id: firstStage.id,
+      status: "in_progress" as const,
+      updated_by_user_id: input.actorUserId
+    };
+    const { data, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .upsert(row, { onConflict: "candidate_id,position_id" })
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Attach candidato: ${error?.message ?? "nessun dato"}`);
+    }
+    return {
+      id: String(data.id),
+      candidate_id: String(data.candidate_id),
+      position_id: String(data.position_id),
+      current_stage_id: String(data.current_stage_id),
+      status: data.status as RecruitCandidateStageStateRow["status"],
+      updated_at: this.toIso(data.updated_at)
+    };
   }
 
   async listPipelineBoard(positionId: string): Promise<{
@@ -235,82 +330,110 @@ export class RecruitingService {
     }>;
   }> {
     const { stages } = await this.ensureDefaultPipelineForPosition(positionId);
-    const pos = await this.q<{ id: string; title: string }>(
-      `select id::text, title from public.recruit_positions where id = $1 limit 1`,
-      [positionId]
-    );
-    const positionRow = pos.rows[0];
-    if (!positionRow) {
-      throw new Error("Posizione non trovata");
+    const sb = this.sb();
+    const { data: posRow, error: posErr } = await sb
+      .from("recruit_positions")
+      .select("id, title")
+      .eq("id", positionId)
+      .maybeSingle();
+    if (posErr || !posRow) {
+      throw posErr ? new InternalServerErrorException(posErr.message) : new NotFoundException("Posizione non trovata");
     }
-    const position = { id: positionRow.id, title: positionRow.title };
-    const { rows } = await this.q<any>(
-      `select
-        s.id::text as state_id,
-        s.candidate_id::text,
-        s.position_id::text,
-        s.current_stage_id::text,
-        s.status,
-        s.updated_at::text,
-        c.id::text as cand_id,
-        c.company_id,
-        c.first_name,
-        c.last_name,
-        c.email,
-        c.phone,
-        c.notes,
-        c.created_at::text as created_at
-      from public.recruit_candidate_stage_state s
-      join public.recruit_candidates c on c.id = s.candidate_id
-      where s.position_id = $1
-      order by s.updated_at desc`,
-      [positionId]
-    );
-    const items = rows.map((r) => ({
-      state: {
-        id: r.state_id,
-        candidate_id: r.candidate_id,
-        position_id: r.position_id,
-        current_stage_id: r.current_stage_id,
-        status: r.status,
-        updated_at: r.updated_at
-      } as RecruitCandidateStageStateRow,
-      candidate: {
-        id: r.cand_id,
-        company_id: r.company_id,
-        first_name: r.first_name,
-        last_name: r.last_name,
-        email: r.email,
-        phone: r.phone,
-        notes: r.notes,
-        created_at: r.created_at
-      } as RecruitCandidateRow
-    }));
+    const position = { id: String(posRow.id), title: posRow.title as string };
+    const { data: rows, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .select(
+        "id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( id, company_id, first_name, last_name, email, phone, notes, created_at )"
+      )
+      .eq("position_id", positionId)
+      .order("updated_at", { ascending: false });
+    if (error) {
+      throw new InternalServerErrorException(`Board pipeline: ${error.message}`);
+    }
+    const items = (rows ?? []).map((r: Record<string, unknown>) => {
+      const c = r.recruit_candidates as Record<string, unknown> | null | undefined;
+      if (!c) {
+        throw new InternalServerErrorException("Board: candidato mancante nella join");
+      }
+      return {
+        state: {
+          id: String(r.id),
+          candidate_id: String(r.candidate_id),
+          position_id: String(r.position_id),
+          current_stage_id: String(r.current_stage_id),
+          status: r.status as RecruitCandidateStageStateRow["status"],
+          updated_at: this.toIso(r.updated_at)
+        } as RecruitCandidateStageStateRow,
+        candidate: {
+          id: String(c.id),
+          company_id: c.company_id as string,
+          first_name: c.first_name as string,
+          last_name: c.last_name as string,
+          email: (c.email as string | null) ?? null,
+          phone: (c.phone as string | null) ?? null,
+          notes: c.notes as string,
+          created_at: this.toIso(c.created_at)
+        } as RecruitCandidateRow
+      };
+    });
     return { position, stages, items };
   }
 
   async moveCandidateToStage(input: { stateId: string; nextStageId: string; actorUserId: string }): Promise<RecruitCandidateStageStateRow> {
-    const { rows } = await this.q<RecruitCandidateStageStateRow>(
-      `update public.recruit_candidate_stage_state
-       set current_stage_id = $2, updated_at = now(), updated_by_user_id = $3
-       where id = $1
-       returning id::text, candidate_id::text, position_id::text, current_stage_id::text, status, updated_at::text`,
-      [input.stateId, input.nextStageId, input.actorUserId]
-    );
-    if (!rows[0]) throw new Error("Stato candidato non trovato");
-    return rows[0] as RecruitCandidateStageStateRow;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .update({
+        current_stage_id: input.nextStageId,
+        updated_by_user_id: input.actorUserId
+      })
+      .eq("id", input.stateId)
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+    return {
+      id: String(data.id),
+      candidate_id: String(data.candidate_id),
+      position_id: String(data.position_id),
+      current_stage_id: String(data.current_stage_id),
+      status: data.status as RecruitCandidateStageStateRow["status"],
+      updated_at: this.toIso(data.updated_at)
+    };
   }
 
-  async setCandidateDecision(input: { stateId: string; status: "passed" | "failed" | "in_progress"; actorUserId: string }): Promise<RecruitCandidateStageStateRow> {
-    const { rows } = await this.q<RecruitCandidateStageStateRow>(
-      `update public.recruit_candidate_stage_state
-       set status = $2, updated_at = now(), updated_by_user_id = $3
-       where id = $1
-       returning id::text, candidate_id::text, position_id::text, current_stage_id::text, status, updated_at::text`,
-      [input.stateId, input.status, input.actorUserId]
-    );
-    if (!rows[0]) throw new Error("Stato candidato non trovato");
-    return rows[0] as RecruitCandidateStageStateRow;
+  async setCandidateDecision(input: {
+    stateId: string;
+    status: "passed" | "failed" | "in_progress";
+    actorUserId: string;
+  }): Promise<RecruitCandidateStageStateRow> {
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .update({
+        status: input.status,
+        updated_by_user_id: input.actorUserId
+      })
+      .eq("id", input.stateId)
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+    return {
+      id: String(data.id),
+      candidate_id: String(data.candidate_id),
+      position_id: String(data.position_id),
+      current_stage_id: String(data.current_stage_id),
+      status: data.status as RecruitCandidateStageStateRow["status"],
+      updated_at: this.toIso(data.updated_at)
+    };
   }
 }
-

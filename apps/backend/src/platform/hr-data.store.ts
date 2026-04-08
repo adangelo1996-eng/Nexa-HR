@@ -725,6 +725,19 @@ export class HrDataStore {
     return this.useDb;
   }
 
+  /**
+   * Client Supabase con service role (bypass RLS). Solo per codice server Nest.
+   * Evita dipendenze da DATABASE_URL / SUPABASE_DB_URL per accessi che possono usare PostgREST.
+   */
+  getServiceRoleClient(): SupabaseClient {
+    if (!this.supabase) {
+      throw new InternalServerErrorException(
+        "Supabase non configurato: impostare SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY"
+      );
+    }
+    return this.supabase;
+  }
+
   private async ensureSeedUsers(): Promise<void> {
     if (!this.useDb || this.seeded) return;
     await this.ensureSeedReferenceData();
