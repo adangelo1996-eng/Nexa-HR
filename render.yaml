@@ -61,8 +61,8 @@ services:
     plan: free
     region: frankfurt
     branch: main
-    # @payday/domain espone dist/ solo dopo tsc; senza questo passaggio Next non risolve il workspace package (es. cost-calculator).
-    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/domain build && pnpm --filter @payday/frontend build
+    # @payday/frontend prebuild compila @payday/domain (main → dist/). Anche senza step esplicito qui, Next non va in errore module-not-found.
+    buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
     startCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/frontend start
     healthCheckPath: /health
     envVars:
