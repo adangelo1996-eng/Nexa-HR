@@ -13,14 +13,19 @@ import {
   fetchAdminRoles,
   fetchAdminWorkTeams,
   fetchCurrentUser,
+  fetchThirdPartyAssignmentsForUser,
+  fetchThirdPartyLicenses,
   fetchUserProfilePhotoUrl,
   fetchUsers,
   setLeaveAllowance,
+  syncThirdPartyAssignmentsForUser,
   updateUser,
   uploadUserProfilePhoto,
   type CostCenter,
   type CreateUserPayload,
   type Role,
+  type ThirdPartyLicenseAssignmentDto,
+  type ThirdPartyLicenseDto,
   type User,
   type WorkTeamDto
 } from "@/lib/api";
@@ -189,9 +194,16 @@ export default function AdminPage(): React.JSX.Element {
   const [teamsNested, setTeamsNested] = useState<Array<{ cc: CostCenter; teams: WorkTeamDto[] }>>([]);
   const [userSearch, setUserSearch] = useState("");
   const [adminModal, setAdminModal] = useState<"closed" | "edit" | "create">("closed");
-  const [editUserTab, setEditUserTab] = useState<"anagrafica" | "contratto" | "organizzazione" | "pagamento">(
-    "anagrafica"
-  );
+  const [editUserTab, setEditUserTab] = useState<
+    "anagrafica" | "contratto" | "organizzazione" | "pagamento" | "utenze_terze"
+  >("anagrafica");
+  const [tpLicenses, setTpLicenses] = useState<ThirdPartyLicenseDto[]>([]);
+  const [tpDraft, setTpDraft] = useState<
+    Record<string, { enabled: boolean; status: "active" | "inactive"; assignedAt: string; notes: string }>
+  >({});
+  const [tpLoading, setTpLoading] = useState(false);
+  const [tpSaving, setTpSaving] = useState(false);
+  const [tpMessage, setTpMessage] = useState<string | null>(null);
 
   const selectedUser = users.find((item) => item.id === selectedUserId) ?? null;
 
@@ -246,6 +258,45 @@ export default function AdminPage(): React.JSX.Element {
       cancelled = true;
     };
   }, [token, selectedUser?.id, selectedUser?.profilePhotoPath]);
+
+  useEffect(() => {
+    if (!token || !selectedUser || editUserTab !== "utenze_terze") {
+      return;
+    }
+    let cancelled = false;
+    setTpLoading(true);
+    setTpMessage(null);
+    void Promise.all([fetchThirdPartyLicenses(token), fetchThirdPartyAssignmentsForUser(token, selectedUser.id)])
+      .then(([licenses, userAsg]) => {
+        if (cancelled) return;
+        setTpLicenses(licenses);
+        const draft: Record<
+          string,
+          { enabled: boolean; status: "active" | "inactive"; assignedAt: string; notes: string }
+        > = {};
+        for (const l of licenses) {
+          const hit = userAsg.find((a) => a.licenseId === l.id);
+          draft[l.id] = hit
+            ? {
+                enabled: true,
+                status: hit.status,
+                assignedAt: (hit.assignedAt ?? "").slice(0, 10),
+                notes: hit.notes ?? ""
+              }
+            : { enabled: false, status: "active" as const, assignedAt: "", notes: "" };
+        }
+        setTpDraft(draft);
+      })
+      .catch(() => {
+        if (!cancelled) setTpMessage("Impossibile caricare le licenze. Verifica permessi nexa.third_party_licenses.");
+      })
+      .finally(() => {
+        if (!cancelled) setTpLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedUser?.id, editUserTab, selectedUser]);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -1011,7 +1062,8 @@ export default function AdminPage(): React.JSX.Element {
                       ["anagrafica", "Anagrafica e domicilio"],
                       ["contratto", "Fiscale, contratto e retribuzione"],
                       ["organizzazione", "Organizzazione"],
-                      ["pagamento", "Pagamento"]
+                      ["pagamento", "Pagamento"],
+                      ["utenze_terze", "Utenze terze"]
                     ] as const
                   ).map(([tid, lbl]) => (
                     <button
@@ -1535,6 +1587,165 @@ export default function AdminPage(): React.JSX.Element {
                     className={inputOptionalClass}
                   />
                 </label>
+                </div>
+                <div className={editUserTab !== "utenze_terze" ? "hidden" : "contents"}>
+                  <div className="md:col-span-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Assegna licenze dal catalogo (SYN-88). Gestione inventario e costi in{" "}
+                      <Link href="/tools/third-party-licenses" className="font-medium underline underline-offset-2">
+                        Strumenti → Utenze terze
+                      </Link>
+                      .
+                    </p>
+                    {tpLoading ? (
+                      <p className="text-xs text-slate-500">Caricamento licenze…</p>
+                    ) : tpLicenses.length === 0 ? (
+                      <p className="text-xs text-slate-500">Nessuna licenza in catalogo.</p>
+                    ) : (
+                      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {tpLicenses.map((l) => {
+                          const d = tpDraft[l.id] ?? {
+                            enabled: false,
+                            status: "active" as const,
+                            assignedAt: "",
+                            notes: ""
+                          };
+                          return (
+                            <div
+                              key={l.id}
+                              className="grid gap-2 rounded-md border border-slate-200/80 bg-white/90 p-2 text-xs dark:border-slate-600 dark:bg-slate-950/50 md:grid-cols-[auto_1fr]"
+                            >
+                              <label className="flex flex-col gap-1 md:flex-row md:items-center">
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={d.enabled}
+                                    onChange={(e) =>
+                                      setTpDraft((prev) => ({
+                                        ...prev,
+                                        [l.id]: { ...d, enabled: e.target.checked }
+                                      }))
+                                    }
+                                  />
+                                  <span className="font-medium text-slate-800 dark:text-slate-100">
+                                    {l.toolName} — {l.licensePlan}
+                                  </span>
+                                </span>
+                                <span className="text-[10px] text-slate-500">
+                                  Posti attivi {l.activeSeatsCount}/{l.seatsPurchased}
+                                </span>
+                              </label>
+                              {d.enabled ? (
+                                <div className="flex flex-wrap items-end gap-2 md:col-span-2">
+                                  <label className="flex flex-col gap-0.5">
+                                    <span className="text-[10px] text-slate-500">Stato</span>
+                                    <select
+                                      value={d.status}
+                                      onChange={(e) =>
+                                        setTpDraft((prev) => ({
+                                          ...prev,
+                                          [l.id]: {
+                                            ...d,
+                                            status: e.target.value as "active" | "inactive"
+                                          }
+                                        }))
+                                      }
+                                      className={selectOptionalClass}
+                                    >
+                                      <option value="active">Attiva</option>
+                                      <option value="inactive">Disattiva</option>
+                                    </select>
+                                  </label>
+                                  <label className="flex flex-col gap-0.5">
+                                    <span className="text-[10px] text-slate-500">Data assegnazione</span>
+                                    <input
+                                      type="date"
+                                      value={d.assignedAt}
+                                      onChange={(e) =>
+                                        setTpDraft((prev) => ({
+                                          ...prev,
+                                          [l.id]: { ...d, assignedAt: e.target.value }
+                                        }))
+                                      }
+                                      className={inputOptionalClass}
+                                    />
+                                  </label>
+                                  <label className="flex min-w-[120px] flex-1 flex-col gap-0.5">
+                                    <span className="text-[10px] text-slate-500">Note</span>
+                                    <input
+                                      value={d.notes}
+                                      onChange={(e) =>
+                                        setTpDraft((prev) => ({
+                                          ...prev,
+                                          [l.id]: { ...d, notes: e.target.value }
+                                        }))
+                                      }
+                                      className={inputOptionalClass}
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {tpMessage ? <p className="text-xs text-rose-600 dark:text-rose-300">{tpMessage}</p> : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={!token || !selectedUser || tpSaving || tpLoading}
+                      onClick={() => {
+                        if (!token || !selectedUser) return;
+                        const items = tpLicenses
+                          .filter((l) => tpDraft[l.id]?.enabled)
+                          .map((l) => {
+                            const row = tpDraft[l.id]!;
+                            return {
+                              licenseId: l.id,
+                              status: row.status,
+                              assignedAt: row.assignedAt || null,
+                              notes: row.notes || undefined
+                            };
+                          });
+                        setTpSaving(true);
+                        setTpMessage(null);
+                        void syncThirdPartyAssignmentsForUser(token, selectedUser.id, items)
+                          .then(() => {
+                            setTpMessage("Utenze salvate.");
+                            return Promise.all([
+                              fetchThirdPartyLicenses(token),
+                              fetchThirdPartyAssignmentsForUser(token, selectedUser.id)
+                            ]);
+                          })
+                          .then((pair) => {
+                            const licenses = pair[0] as ThirdPartyLicenseDto[];
+                            const userAsg = pair[1] as ThirdPartyLicenseAssignmentDto[];
+                            setTpLicenses(licenses);
+                            setTpDraft((prev) => {
+                              const next = { ...prev };
+                              for (const l of licenses) {
+                                const hit = userAsg.find((a) => a.licenseId === l.id);
+                                next[l.id] = hit
+                                  ? {
+                                      enabled: true,
+                                      status: hit.status,
+                                      assignedAt: (hit.assignedAt ?? "").slice(0, 10),
+                                      notes: hit.notes ?? ""
+                                    }
+                                  : { enabled: false, status: "active", assignedAt: "", notes: "" };
+                              }
+                              return next;
+                            });
+                          })
+                          .catch(() => setTpMessage("Salvataggio utenze non riuscito."))
+                          .finally(() => setTpSaving(false));
+                      }}
+                    >
+                      {tpSaving ? "Salvataggio…" : "Salva assegnazioni utenze"}
+                    </Button>
+                  </div>
                 </div>
               </div>
 

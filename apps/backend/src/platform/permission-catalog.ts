@@ -196,6 +196,13 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
     "Contratti standard HR",
     "Consultare bozze e contratti a blocchi.",
     "Creare, modificare ed eliminare contratti standard e stati di approvazione."
+  ),
+  ...cat(
+    "nexa_hr",
+    "third_party_licenses",
+    "Utenze e licenze terze",
+    "Consultare inventario licenze (Power BI, ChatGPT, ecc.) e assegnazioni.",
+    "Gestire catalogo licenze, costi e assegnazioni agli utenti."
   )
 ];
 
@@ -318,7 +325,9 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.recruiting:read",
     "nexa.recruiting:write",
     "nexa.standard_contracts:read",
-    "nexa.standard_contracts:write"
+    "nexa.standard_contracts:write",
+    "nexa.third_party_licenses:read",
+    "nexa.third_party_licenses:write"
   ],
   "read:self": [
     "nexa.attendance:read",

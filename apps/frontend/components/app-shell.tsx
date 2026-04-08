@@ -10,6 +10,7 @@ import {
   Clock3,
   ChevronDown,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -313,6 +314,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       });
       hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
       hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
+      hrOps.push({
+        href: "/tools/third-party-licenses" as Route,
+        label: "Utenze e licenze terze",
+        icon: KeyRound
+      });
     }
     if (showPayrollNav) {
       hrOps.push({ href: "/payroll-hebb" as Route, label: "Hebb - Payroll", icon: Sparkles });

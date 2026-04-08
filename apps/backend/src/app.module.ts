@@ -12,6 +12,7 @@ import { PlatformModule } from "./platform/platform.module";
 import { RecruitingModule } from "./recruiting/recruiting.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { SchedulingModule } from "./scheduling/scheduling.module";
+import { ThirdPartyLicensesModule } from "./third-party-licenses/third-party-licenses.module";
 import { TimeoffModule } from "./timeoff/timeoff.module";
 import { WorkforceModule } from "./workforce/workforce.module";
 
@@ -31,6 +32,7 @@ import { WorkforceModule } from "./workforce/workforce.module";
     RealtimeModule,
     RecruitingModule,
     HrContractsModule,
+    ThirdPartyLicensesModule,
     HebbHrModule
   ]
 })

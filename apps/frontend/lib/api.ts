@@ -2365,6 +2365,140 @@ export async function deleteHrStandardContract(token: string, id: string): Promi
   if (!response.ok) await parseError(response);
 }
 
+export type ThirdPartyCostFrequency = "monthly" | "annual" | "one_time" | "other";
+
+export interface ThirdPartyLicenseDto {
+  id: string;
+  companyId: string;
+  toolName: string;
+  licensePlan: string;
+  seatsPurchased: number;
+  costAmountCents: number;
+  costFrequency: ThirdPartyCostFrequency;
+  costCenterId: string | null;
+  renewalDate: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  activeSeatsCount: number;
+}
+
+export interface ThirdPartyLicenseAssignmentDto {
+  id: string;
+  companyId: string;
+  userId: string;
+  licenseId: string;
+  status: "active" | "inactive";
+  assignedAt: string | null;
+  revokedAt: string | null;
+  notes: string;
+  userFullName: string;
+  toolName: string;
+  licensePlan: string;
+}
+
+export async function fetchThirdPartyLicenses(token: string): Promise<ThirdPartyLicenseDto[]> {
+  const response = await fetch(buildApiUrl("/third-party-licenses"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: ThirdPartyLicenseDto[] };
+  return body.items ?? [];
+}
+
+export async function fetchThirdPartyAssignments(token: string): Promise<ThirdPartyLicenseAssignmentDto[]> {
+  const response = await fetch(buildApiUrl("/third-party-licenses/assignments"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: ThirdPartyLicenseAssignmentDto[] };
+  return body.items ?? [];
+}
+
+export async function fetchThirdPartyAssignmentsForUser(
+  token: string,
+  userId: string
+): Promise<ThirdPartyLicenseAssignmentDto[]> {
+  const response = await fetch(
+    buildApiUrl(`/third-party-licenses/assignments/user/${encodeURIComponent(userId)}`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: ThirdPartyLicenseAssignmentDto[] };
+  return body.items ?? [];
+}
+
+export type CreateThirdPartyLicensePayload = {
+  toolName: string;
+  licensePlan: string;
+  seatsPurchased: number;
+  costAmountCents: number;
+  costFrequency: ThirdPartyCostFrequency;
+  costCenterId?: string;
+  renewalDate?: string;
+  notes?: string;
+};
+
+export async function createThirdPartyLicense(
+  token: string,
+  payload: CreateThirdPartyLicensePayload
+): Promise<ThirdPartyLicenseDto> {
+  const response = await fetch(buildApiUrl("/third-party-licenses"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<ThirdPartyLicenseDto>;
+}
+
+export type PatchThirdPartyLicensePayload = Partial<CreateThirdPartyLicensePayload>;
+
+export async function patchThirdPartyLicense(
+  token: string,
+  id: string,
+  payload: PatchThirdPartyLicensePayload
+): Promise<ThirdPartyLicenseDto> {
+  const response = await fetch(buildApiUrl(`/third-party-licenses/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<ThirdPartyLicenseDto>;
+}
+
+export async function deleteThirdPartyLicense(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/third-party-licenses/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export type SyncThirdPartyAssignmentItem = {
+  licenseId: string;
+  status: "active" | "inactive";
+  assignedAt?: string | null;
+  notes?: string;
+};
+
+export async function syncThirdPartyAssignmentsForUser(
+  token: string,
+  userId: string,
+  items: SyncThirdPartyAssignmentItem[]
+): Promise<ThirdPartyLicenseAssignmentDto[]> {
+  const response = await fetch(
+    buildApiUrl(`/third-party-licenses/assignments/user/${encodeURIComponent(userId)}`),
+    {
+      method: "PUT",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ items })
+    }
+  );
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: ThirdPartyLicenseAssignmentDto[] };
+  return body.items ?? [];
+}
+
 export async function fetchExpenseClaims(
   token: string,
   scope: "self" | "team" = "self"

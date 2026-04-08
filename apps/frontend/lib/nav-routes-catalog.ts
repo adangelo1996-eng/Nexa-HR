@@ -14,6 +14,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/workflow/approvals", label: "Approvazioni team" },
   { href: "/reports", label: "Report HR" },
   { href: "/tools/cost-calculator" as Route, label: "Calcolatore costo azienda / netto" },
+  { href: "/tools/third-party-licenses" as Route, label: "Utenze e licenze terze" },
   { href: "/recruiting" as Route, label: "Colloqui e selezione" },
   { href: "/contracts" as Route, label: "Contratti standard" },
   { href: "/payroll-hebb", label: "Hebb - Payroll" },
