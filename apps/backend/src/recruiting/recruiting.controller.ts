@@ -64,20 +64,6 @@ export class RecruitingController {
   @RequireNexaPermissions("nexa.recruiting:read")
   async listPositions(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {
     const tenantId = auth.tenantId ?? "comp-1";
-    // #region agent log
-    fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "fb5f3b" },
-      body: JSON.stringify({
-        sessionId: "fb5f3b",
-        hypothesisId: "H0",
-        location: "recruiting.controller.ts:listPositions",
-        message: "GET recruiting/positions entered",
-        data: { tenantId, userIdPresent: Boolean(auth.userId) },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     const items = await this.svc.listPositions(tenantId);
     return { items };
   }

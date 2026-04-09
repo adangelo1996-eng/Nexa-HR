@@ -1,6 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import type { PoolClient } from "pg";
-import { DatabasePoolService } from "../platform/database-pool.service";
+import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { HrDataStore } from "../platform/hr-data.store";
 
 export type HrStandardContractStatus = "draft" | "approved" | "exported";
 
@@ -46,62 +45,63 @@ function rowToDto(r: ContractRow): HrStandardContractDto {
   };
 }
 
+function recordToRow(r: Record<string, unknown>): ContractRow {
+  return {
+    id: String(r.id),
+    company_id: String(r.company_id),
+    title: String(r.title),
+    status: r.status as HrStandardContractStatus,
+    created_at: typeof r.created_at === "string" ? r.created_at : new Date(r.created_at as string).toISOString(),
+    updated_at: typeof r.updated_at === "string" ? r.updated_at : new Date(r.updated_at as string).toISOString(),
+    party: (r.party as Record<string, unknown>) ?? {},
+    blocks: Array.isArray(r.blocks) ? r.blocks : [],
+    last_exported_document_id: (r.last_exported_document_id as string | null) ?? null,
+    recruit_candidate_id: r.recruit_candidate_id != null ? String(r.recruit_candidate_id) : null,
+    recruit_position_id: r.recruit_position_id != null ? String(r.recruit_position_id) : null
+  };
+}
+
 @Injectable()
 export class HrContractsService {
-  constructor(private readonly dbPool: DatabasePoolService) {}
+  constructor(private readonly store: HrDataStore) {}
 
-  private async q<T = unknown>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
-    return this.dbPool.withTransaction(async (client: PoolClient) => {
-      const out = await client.query(sql, params);
-      return { rows: out.rows as T[] };
-    });
+  private sb() {
+    return this.store.getServiceRoleClient();
   }
 
   async listForCompany(companyId: string): Promise<HrStandardContractDto[]> {
-    const { rows } = await this.q<ContractRow>(
-      `select
-        id::text,
-        company_id,
-        title,
-        status,
-        created_at::text,
-        updated_at::text,
-        party,
-        blocks,
-        last_exported_document_id,
-        recruit_candidate_id::text,
-        recruit_position_id::text
-       from public.hr_standard_contracts
-       where company_id = $1
-       order by updated_at desc
-       limit 500`,
-      [companyId]
-    );
-    return rows.map(rowToDto);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_standard_contracts")
+      .select(
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id"
+      )
+      .eq("company_id", companyId)
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    if (error) {
+      throw new InternalServerErrorException(`Contratti: ${error.message}`);
+    }
+    return (data ?? []).map((r) => rowToDto(recordToRow(r as Record<string, unknown>)));
   }
 
   async getById(companyId: string, id: string): Promise<HrStandardContractDto> {
-    const { rows } = await this.q<ContractRow>(
-      `select
-        id::text,
-        company_id,
-        title,
-        status,
-        created_at::text,
-        updated_at::text,
-        party,
-        blocks,
-        last_exported_document_id,
-        recruit_candidate_id::text,
-        recruit_position_id::text
-       from public.hr_standard_contracts
-       where id = $1 and company_id = $2
-       limit 1`,
-      [id, companyId]
-    );
-    const r = rows[0];
-    if (!r) throw new NotFoundException("Contratto non trovato");
-    return rowToDto(r);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_standard_contracts")
+      .select(
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id"
+      )
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Contratto non trovato");
+    }
+    return rowToDto(recordToRow(data as Record<string, unknown>));
   }
 
   async create(input: {
@@ -113,33 +113,27 @@ export class HrContractsService {
     recruitCandidateId?: string | null;
     recruitPositionId?: string | null;
   }): Promise<HrStandardContractDto> {
-    const { rows } = await this.q<ContractRow>(
-      `insert into public.hr_standard_contracts
-        (company_id, title, status, party, blocks, created_by_user_id, recruit_candidate_id, recruit_position_id)
-       values ($1, $2, 'draft', $3::jsonb, $4::jsonb, $5, $6::uuid, $7::uuid)
-       returning
-        id::text,
-        company_id,
-        title,
-        status,
-        created_at::text,
-        updated_at::text,
-        party,
-        blocks,
-        last_exported_document_id,
-        recruit_candidate_id::text,
-        recruit_position_id::text`,
-      [
-        input.companyId,
-        input.title,
-        JSON.stringify(input.party),
-        JSON.stringify(input.blocks),
-        input.createdByUserId,
-        input.recruitCandidateId || null,
-        input.recruitPositionId || null
-      ]
-    );
-    return rowToDto(rows[0] as ContractRow);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_standard_contracts")
+      .insert({
+        company_id: input.companyId,
+        title: input.title,
+        status: "draft" as const,
+        party: input.party,
+        blocks: input.blocks,
+        created_by_user_id: input.createdByUserId,
+        recruit_candidate_id: input.recruitCandidateId || null,
+        recruit_position_id: input.recruitPositionId || null
+      })
+      .select(
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id"
+      )
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Creazione contratto: ${error?.message ?? "nessun dato"}`);
+    }
+    return rowToDto(recordToRow(data as Record<string, unknown>));
   }
 
   async update(
@@ -161,48 +155,46 @@ export class HrContractsService {
     const nextExportId =
       patch.lastExportedDocumentId !== undefined ? patch.lastExportedDocumentId : cur.lastExportedDocumentId ?? null;
 
-    const { rows } = await this.q<ContractRow>(
-      `update public.hr_standard_contracts
-       set
-         title = $3,
-         party = $4::jsonb,
-         blocks = $5::jsonb,
-         status = $6,
-         last_exported_document_id = $7,
-         updated_at = now()
-       where id = $1 and company_id = $2
-       returning
-        id::text,
-        company_id,
-        title,
-        status,
-        created_at::text,
-        updated_at::text,
-        party,
-        blocks,
-        last_exported_document_id,
-        recruit_candidate_id::text,
-        recruit_position_id::text`,
-      [
-        id,
-        companyId,
-        nextTitle,
-        JSON.stringify(nextParty),
-        JSON.stringify(nextBlocks),
-        nextStatus,
-        nextExportId
-      ]
-    );
-    const r = rows[0];
-    if (!r) throw new NotFoundException("Contratto non trovato");
-    return rowToDto(r);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_standard_contracts")
+      .update({
+        title: nextTitle,
+        party: nextParty,
+        blocks: nextBlocks,
+        status: nextStatus,
+        last_exported_document_id: nextExportId,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .select(
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id"
+      )
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Contratto non trovato");
+    }
+    return rowToDto(recordToRow(data as Record<string, unknown>));
   }
 
   async delete(companyId: string, id: string): Promise<void> {
-    const { rows } = await this.q<{ c: string }>(
-      `delete from public.hr_standard_contracts where id = $1 and company_id = $2 returning id::text as c`,
-      [id, companyId]
-    );
-    if (!rows[0]) throw new NotFoundException("Contratto non trovato");
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_standard_contracts")
+      .delete()
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Contratto non trovato");
+    }
   }
 }

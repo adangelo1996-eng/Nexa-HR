@@ -1,6 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import type { PoolClient } from "pg";
-import { DatabasePoolService } from "../platform/database-pool.service";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException
+} from "@nestjs/common";
+import { HrDataStore } from "../platform/hr-data.store";
 
 export type ThirdPartyCostFrequency = "monthly" | "annual" | "one_time" | "other";
 export type AssignmentStatus = "active" | "inactive";
@@ -35,85 +40,113 @@ export interface ThirdPartyLicenseAssignmentRow {
   license_plan: string;
 }
 
+function userFullName(u: {
+  firstName?: string | null;
+  lastName?: string | null;
+  fullName?: string | null;
+}): string {
+  const fn = (u.firstName ?? "").trim();
+  const ln = (u.lastName ?? "").trim();
+  const combo = `${fn} ${ln}`.trim();
+  if (combo.length > 0) return combo;
+  return (u.fullName ?? "").trim();
+}
+
 @Injectable()
 export class ThirdPartyLicensesService {
-  constructor(private readonly dbPool: DatabasePoolService) {}
+  constructor(private readonly store: HrDataStore) {}
 
-  private async q<T = unknown>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
-    return this.dbPool.withTransaction(async (client: PoolClient) => {
-      const out = await client.query(sql, params);
-      return { rows: out.rows as T[] };
-    });
+  private sb() {
+    return this.store.getServiceRoleClient();
   }
 
   private async assertUserInCompany(userId: string, companyId: string): Promise<void> {
-    const { rows } = await this.q<{ cid: string }>(
-      `select "companyId" as cid from public.users where id = $1 limit 1`,
-      [userId]
-    );
-    const u = rows[0];
-    if (!u) throw new NotFoundException("Utente non trovato");
-    if (u.cid !== companyId) {
+    const sb = this.sb();
+    const { data, error } = await sb.from("users").select("companyId").eq("id", userId).maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Utente non trovato");
+    }
+    const row = data as { companyId?: string | null };
+    if (row.companyId !== companyId) {
       throw new ForbiddenException("Utente non appartiene all'azienda indicata");
     }
   }
 
+  private async activeCountsForLicenses(companyId: string, licenseIds: string[]): Promise<Map<string, number>> {
+    const m = new Map<string, number>();
+    if (licenseIds.length === 0) return m;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("user_third_party_license_assignments")
+      .select("license_id")
+      .eq("company_id", companyId)
+      .eq("status", "active")
+      .in("license_id", licenseIds);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    for (const r of data ?? []) {
+      const lid = String((r as { license_id: string }).license_id);
+      m.set(lid, (m.get(lid) ?? 0) + 1);
+    }
+    return m;
+  }
+
+  private mapLicenseRecord(r: Record<string, unknown>, activeCount: number): ThirdPartyLicenseRow {
+    return {
+      id: String(r.id),
+      company_id: String(r.company_id),
+      tool_name: String(r.tool_name),
+      license_plan: String(r.license_plan ?? ""),
+      seats_purchased: Number(r.seats_purchased ?? 0),
+      cost_amount_cents: String(r.cost_amount_cents ?? 0),
+      cost_frequency: r.cost_frequency as ThirdPartyCostFrequency,
+      cost_center_id: (r.cost_center_id as string | null) ?? null,
+      renewal_date: r.renewal_date != null ? String(r.renewal_date) : null,
+      notes: String(r.notes ?? ""),
+      created_at: typeof r.created_at === "string" ? r.created_at : new Date(r.created_at as string).toISOString(),
+      updated_at: typeof r.updated_at === "string" ? r.updated_at : new Date(r.updated_at as string).toISOString(),
+      active_seats_count: activeCount
+    };
+  }
+
   async listLicenses(companyId: string): Promise<ThirdPartyLicenseRow[]> {
-    const { rows } = await this.q<ThirdPartyLicenseRow>(
-      `select
-        l.id::text,
-        l.company_id,
-        l.tool_name,
-        l.license_plan,
-        l.seats_purchased,
-        l.cost_amount_cents::text,
-        l.cost_frequency,
-        l.cost_center_id,
-        l.renewal_date::text,
-        l.notes,
-        l.created_at::text,
-        l.updated_at::text,
-        coalesce((
-          select count(*)::int
-          from public.user_third_party_license_assignments a
-          where a.license_id = l.id and a.status = 'active'
-        ), 0) as active_seats_count
-       from public.third_party_licenses l
-       where l.company_id = $1
-       order by l.tool_name asc, l.license_plan asc`,
-      [companyId]
-    );
-    return rows;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("third_party_licenses")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("tool_name", { ascending: true })
+      .order("license_plan", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(`Licenze: ${error.message}`);
+    }
+    const rows = (data ?? []) as Record<string, unknown>[];
+    const ids = rows.map((r) => String(r.id));
+    const counts = await this.activeCountsForLicenses(companyId, ids);
+    return rows.map((r) => this.mapLicenseRecord(r, counts.get(String(r.id)) ?? 0));
   }
 
   async getLicense(companyId: string, id: string): Promise<ThirdPartyLicenseRow> {
-    const { rows } = await this.q<ThirdPartyLicenseRow>(
-      `select
-        l.id::text,
-        l.company_id,
-        l.tool_name,
-        l.license_plan,
-        l.seats_purchased,
-        l.cost_amount_cents::text,
-        l.cost_frequency,
-        l.cost_center_id,
-        l.renewal_date::text,
-        l.notes,
-        l.created_at::text,
-        l.updated_at::text,
-        coalesce((
-          select count(*)::int
-          from public.user_third_party_license_assignments a
-          where a.license_id = l.id and a.status = 'active'
-        ), 0) as active_seats_count
-       from public.third_party_licenses l
-       where l.id = $1::uuid and l.company_id = $2
-       limit 1`,
-      [id, companyId]
-    );
-    const row = rows[0];
-    if (!row) throw new NotFoundException("Licenza non trovata");
-    return row;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("third_party_licenses")
+      .select("*")
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Licenza non trovata");
+    }
+    const r = data as Record<string, unknown>;
+    const counts = await this.activeCountsForLicenses(companyId, [String(r.id)]);
+    return this.mapLicenseRecord(r, counts.get(String(r.id)) ?? 0);
   }
 
   async createLicense(input: {
@@ -128,27 +161,27 @@ export class ThirdPartyLicensesService {
     notes?: string;
     createdByUserId: string;
   }): Promise<ThirdPartyLicenseRow> {
-    const { rows } = await this.q<{ id: string }>(
-      `insert into public.third_party_licenses (
-        company_id, tool_name, license_plan, seats_purchased,
-        cost_amount_cents, cost_frequency, cost_center_id, renewal_date, notes, created_by_user_id
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10)
-      returning id::text`,
-      [
-        input.companyId,
-        input.toolName,
-        input.licensePlan,
-        input.seatsPurchased,
-        input.costAmountCents,
-        input.costFrequency,
-        input.costCenterId ?? null,
-        input.renewalDate ?? null,
-        input.notes ?? "",
-        input.createdByUserId
-      ]
-    );
-    const id = rows[0]?.id;
-    if (!id) throw new BadRequestException("Creazione licenza fallita");
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("third_party_licenses")
+      .insert({
+        company_id: input.companyId,
+        tool_name: input.toolName,
+        license_plan: input.licensePlan,
+        seats_purchased: input.seatsPurchased,
+        cost_amount_cents: input.costAmountCents,
+        cost_frequency: input.costFrequency,
+        cost_center_id: input.costCenterId ?? null,
+        renewal_date: input.renewalDate ?? null,
+        notes: input.notes ?? "",
+        created_by_user_id: input.createdByUserId
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(`Creazione licenza fallita: ${error?.message ?? ""}`);
+    }
+    const id = String((data as { id: string }).id);
     return this.getLicense(input.companyId, id);
   }
 
@@ -173,105 +206,120 @@ export class ThirdPartyLicensesService {
     const costAmountCents = patch.costAmountCents ?? Number(cur.cost_amount_cents);
     const costFrequency = patch.costFrequency ?? cur.cost_frequency;
     const costCenterId = patch.costCenterId !== undefined ? patch.costCenterId : cur.cost_center_id;
-    const renewalDate =
-      patch.renewalDate !== undefined ? patch.renewalDate : cur.renewal_date;
+    const renewalDate = patch.renewalDate !== undefined ? patch.renewalDate : cur.renewal_date;
     const notes = patch.notes !== undefined ? patch.notes : cur.notes;
 
-    await this.q(
-      `update public.third_party_licenses
-       set
-         tool_name = $3,
-         license_plan = $4,
-         seats_purchased = $5,
-         cost_amount_cents = $6,
-         cost_frequency = $7,
-         cost_center_id = $8,
-         renewal_date = $9::date,
-         notes = $10,
-         updated_at = now()
-       where id = $1::uuid and company_id = $2`,
-      [
-        id,
-        companyId,
-        toolName,
-        licensePlan,
-        seatsPurchased,
-        costAmountCents,
-        costFrequency,
-        costCenterId,
-        renewalDate,
-        notes
-      ]
-    );
+    const sb = this.sb();
+    const { error } = await sb
+      .from("third_party_licenses")
+      .update({
+        tool_name: toolName,
+        license_plan: licensePlan,
+        seats_purchased: seatsPurchased,
+        cost_amount_cents: costAmountCents,
+        cost_frequency: costFrequency,
+        cost_center_id: costCenterId,
+        renewal_date: renewalDate,
+        notes,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", id)
+      .eq("company_id", companyId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
     return this.getLicense(companyId, id);
   }
 
   async deleteLicense(companyId: string, id: string): Promise<void> {
     await this.getLicense(companyId, id);
-    await this.q(`delete from public.third_party_licenses where id = $1::uuid and company_id = $2`, [
-      id,
-      companyId
+    const sb = this.sb();
+    const { error } = await sb.from("third_party_licenses").delete().eq("id", id).eq("company_id", companyId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
+  private async assignmentRowsFromAssigns(
+    assigns: Array<Record<string, unknown>>,
+    companyId: string
+  ): Promise<ThirdPartyLicenseAssignmentRow[]> {
+    if (assigns.length === 0) return [];
+    const userIds = [...new Set(assigns.map((a) => String(a.user_id)))];
+    const licenseIds = [...new Set(assigns.map((a) => String(a.license_id)))];
+    const sb = this.sb();
+    const [{ data: usersData, error: uErr }, { data: licData, error: lErr }] = await Promise.all([
+      sb.from("users").select("id, firstName, lastName, fullName").in("id", userIds),
+      sb.from("third_party_licenses").select("id, tool_name, license_plan").in("id", licenseIds)
     ]);
+    if (uErr) throw new InternalServerErrorException(uErr.message);
+    if (lErr) throw new InternalServerErrorException(lErr.message);
+    const users = (usersData ?? []) as Array<Record<string, unknown>>;
+    const userMap = new Map<string, { firstName?: string | null; lastName?: string | null; fullName?: string | null }>();
+    for (const u of users) {
+      userMap.set(String(u.id), {
+        firstName: u.firstName as string | null | undefined,
+        lastName: u.lastName as string | null | undefined,
+        fullName: u.fullName as string | null | undefined
+      });
+    }
+    const licMap = new Map<string, { tool_name: string; license_plan: string }>();
+    for (const l of (licData ?? []) as Array<Record<string, unknown>>) {
+      licMap.set(String(l.id), { tool_name: String(l.tool_name), license_plan: String(l.license_plan ?? "") });
+    }
+    return assigns.map((a) => {
+      const uid = String(a.user_id);
+      const lid = String(a.license_id);
+      const u = userMap.get(uid) ?? {};
+      const lic = licMap.get(lid) ?? { tool_name: "", license_plan: "" };
+      return {
+        id: String(a.id),
+        company_id: companyId,
+        user_id: uid,
+        license_id: lid,
+        status: a.status as AssignmentStatus,
+        assigned_at: a.assigned_at != null ? String(a.assigned_at) : null,
+        revoked_at: a.revoked_at != null ? String(a.revoked_at) : null,
+        notes: String(a.notes ?? ""),
+        user_full_name: userFullName(u),
+        tool_name: lic.tool_name,
+        license_plan: lic.license_plan
+      };
+    });
   }
 
   async listAssignments(companyId: string): Promise<ThirdPartyLicenseAssignmentRow[]> {
-    const { rows } = await this.q<ThirdPartyLicenseAssignmentRow>(
-      `select
-        a.id::text,
-        a.company_id,
-        a.user_id,
-        a.license_id::text,
-        a.status,
-        a.assigned_at::text,
-        a.revoked_at::text,
-        a.notes,
-        coalesce(
-          nullif(trim(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", '')), ''),
-          u."fullName"
-        ) as user_full_name,
-        l.tool_name,
-        l.license_plan
-       from public.user_third_party_license_assignments a
-       join public.users u on u.id = a.user_id
-       join public.third_party_licenses l on l.id = a.license_id
-       where a.company_id = $1
-       order by l.tool_name, user_full_name`,
-      [companyId]
-    );
-    return rows;
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("user_third_party_license_assignments")
+      .select("id, company_id, user_id, license_id, status, assigned_at, revoked_at, notes")
+      .eq("company_id", companyId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    const assigns = (data ?? []) as Array<Record<string, unknown>>;
+    const withNames = await this.assignmentRowsFromAssigns(assigns, companyId);
+    withNames.sort((x, y) => x.tool_name.localeCompare(y.tool_name) || x.user_full_name.localeCompare(y.user_full_name));
+    return withNames;
   }
 
   async listAssignmentsForUser(companyId: string, userId: string): Promise<ThirdPartyLicenseAssignmentRow[]> {
     await this.assertUserInCompany(userId, companyId);
-    const { rows } = await this.q<ThirdPartyLicenseAssignmentRow>(
-      `select
-        a.id::text,
-        a.company_id,
-        a.user_id,
-        a.license_id::text,
-        a.status,
-        a.assigned_at::text,
-        a.revoked_at::text,
-        a.notes,
-        coalesce(
-          nullif(trim(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", '')), ''),
-          u."fullName"
-        ) as user_full_name,
-        l.tool_name,
-        l.license_plan
-       from public.user_third_party_license_assignments a
-       join public.users u on u.id = a.user_id
-       join public.third_party_licenses l on l.id = a.license_id
-       where a.company_id = $1 and a.user_id = $2
-       order by l.tool_name`,
-      [companyId, userId]
-    );
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("user_third_party_license_assignments")
+      .select("id, company_id, user_id, license_id, status, assigned_at, revoked_at, notes")
+      .eq("company_id", companyId)
+      .eq("user_id", userId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    const assigns = (data ?? []) as Array<Record<string, unknown>>;
+    const rows = await this.assignmentRowsFromAssigns(assigns, companyId);
+    rows.sort((x, y) => x.tool_name.localeCompare(y.tool_name));
     return rows;
   }
 
-  /**
-   * Sostituisce tutte le assegnazioni per l'utente con il payload (0..N licenze da catalogo).
-   */
   async syncUserAssignments(
     companyId: string,
     userId: string,
@@ -284,63 +332,48 @@ export class ThirdPartyLicensesService {
   ): Promise<ThirdPartyLicenseAssignmentRow[]> {
     await this.assertUserInCompany(userId, companyId);
 
-    const licenseIds = [...new Set(items.map((i) => i.licenseId))];
+    const deduped = [...new Map(items.map((it) => [it.licenseId, it])).values()];
+    const licenseIds = [...new Set(deduped.map((i) => i.licenseId))];
+    const sb = this.sb();
     for (const lid of licenseIds) {
-      const { rows } = await this.q<{ c: string }>(
-        `select company_id as c from public.third_party_licenses where id = $1::uuid limit 1`,
-        [lid]
-      );
-      if (!rows[0] || rows[0].c !== companyId) {
+      const { data, error } = await sb
+        .from("third_party_licenses")
+        .select("company_id")
+        .eq("id", lid)
+        .maybeSingle();
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      const row = data as { company_id?: string } | null;
+      if (!row || row.company_id !== companyId) {
         throw new BadRequestException(`Licenza non valida o non appartenente all'azienda: ${lid}`);
       }
     }
 
-    const deduped = [...new Map(items.map((it) => [it.licenseId, it])).values()];
+    const { error: delErr } = await sb
+      .from("user_third_party_license_assignments")
+      .delete()
+      .eq("user_id", userId)
+      .eq("company_id", companyId);
+    if (delErr) {
+      throw new InternalServerErrorException(delErr.message);
+    }
 
-    return this.dbPool.withTransaction(async (client: PoolClient) => {
-      await client.query(
-        `delete from public.user_third_party_license_assignments where user_id = $1 and company_id = $2`,
-        [userId, companyId]
-      );
-      for (const it of deduped) {
-        await client.query(
-          `insert into public.user_third_party_license_assignments
-            (company_id, user_id, license_id, status, assigned_at, notes)
-           values ($1, $2, $3::uuid, $4, $5::date, $6)`,
-          [
-            companyId,
-            userId,
-            it.licenseId,
-            it.status,
-            it.assignedAt ?? null,
-            it.notes ?? ""
-          ]
-        );
+    if (deduped.length > 0) {
+      const insertRows = deduped.map((it) => ({
+        company_id: companyId,
+        user_id: userId,
+        license_id: it.licenseId,
+        status: it.status,
+        assigned_at: it.assignedAt ?? null,
+        notes: it.notes ?? ""
+      }));
+      const { error: insErr } = await sb.from("user_third_party_license_assignments").insert(insertRows);
+      if (insErr) {
+        throw new InternalServerErrorException(insErr.message);
       }
-      const out = await client.query<ThirdPartyLicenseAssignmentRow>(
-        `select
-          a.id::text,
-          a.company_id,
-          a.user_id,
-          a.license_id::text,
-          a.status,
-          a.assigned_at::text,
-          a.revoked_at::text,
-          a.notes,
-          coalesce(
-            nullif(trim(coalesce(u."firstName", '') || ' ' || coalesce(u."lastName", '')), ''),
-            u."fullName"
-          ) as user_full_name,
-          l.tool_name,
-          l.license_plan
-         from public.user_third_party_license_assignments a
-         join public.users u on u.id = a.user_id
-         join public.third_party_licenses l on l.id = a.license_id
-         where a.company_id = $1 and a.user_id = $2
-         order by l.tool_name`,
-        [companyId, userId]
-      );
-      return out.rows;
-    });
+    }
+
+    return this.listAssignmentsForUser(companyId, userId);
   }
 }
