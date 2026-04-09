@@ -1,6 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
-import { ValidationPipe } from "@nestjs/common";
+import { BadRequestException, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
@@ -68,7 +68,19 @@ async function bootstrap(): Promise<void> {
     res.json({ status: "ok", service: "nexa-hr-backend", basePath: "/api" });
   });
   app.setGlobalPrefix("api");
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      exceptionFactory: (errors) => {
+        const formatted = errors.map((e) => ({
+          property: e.property,
+          message: Object.values(e.constraints ?? {}).join(", ")
+        }));
+        return new BadRequestException({ message: "Validation failed", errors: formatted });
+      }
+    })
+  );
   const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
   await app.listen(port, "0.0.0.0");
 }

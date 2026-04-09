@@ -1,23 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getToken } from "@/lib/auth-session";
-import { createHrStandardContract } from "@/lib/api";
-import { createNewContract } from "@/lib/contracts";
 import {
+  createHrStandardContract,
   decideRecruitCandidate,
   fetchRecruitBoard,
   moveRecruitCandidateStage,
+  undoRecruitLastMove,
   type RecruitCandidateDto,
   type RecruitCandidateStageStateDto,
   type RecruitPipelineStageDto
 } from "@/lib/api";
+import { createNewContract } from "@/lib/contracts";
 
-type BoardItem = { state: RecruitCandidateStageStateDto; candidate: RecruitCandidateDto };
+type BoardItem = {
+  state: RecruitCandidateStageStateDto;
+  candidate: RecruitCandidateDto;
+  can_undo_last_move: boolean;
+};
 
 export default function RecruitingPipelinePage(): React.JSX.Element {
   const router = useRouter();
@@ -31,6 +36,20 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const reloadBoard = useCallback(async (): Promise<void> => {
+    const t = getToken();
+    if (!t) return;
+    const b = await fetchRecruitBoard(t, positionId);
+    setStages(b.stages);
+    setItems(
+      b.items.map((row) => ({
+        ...row,
+        can_undo_last_move: row.can_undo_last_move ?? false
+      }))
+    );
+    setPositionTitle(b.position.title);
+  }, [positionId]);
+
   useEffect(() => {
     const t = getToken();
     if (!t) {
@@ -43,7 +62,12 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     void fetchRecruitBoard(t, positionId)
       .then((b) => {
         setStages(b.stages);
-        setItems(b.items);
+        setItems(
+          b.items.map((row) => ({
+            ...row,
+            can_undo_last_move: row.can_undo_last_move ?? false
+          }))
+        );
         setPositionTitle(b.position.title);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Errore caricamento pipeline"))
@@ -71,10 +95,8 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     if (!token) return;
     setError(null);
     try {
-      const updated = await moveRecruitCandidateStage(token, { stateId, nextStageId });
-      setItems((prev) =>
-        prev.map((it) => (it.state.id === updated.id ? { ...it, state: { ...it.state, current_stage_id: updated.current_stage_id } } : it))
-      );
+      await moveRecruitCandidateStage(token, { stateId, nextStageId });
+      await reloadBoard();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore spostamento");
     }
@@ -84,10 +106,21 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     if (!token) return;
     setError(null);
     try {
-      const updated = await decideRecruitCandidate(token, { stateId, status });
-      setItems((prev) => prev.map((it) => (it.state.id === updated.id ? { ...it, state: { ...it.state, status: updated.status } } : it)));
+      await decideRecruitCandidate(token, { stateId, status });
+      await reloadBoard();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore decisione");
+    }
+  }
+
+  async function onUndoMove(stateId: string): Promise<void> {
+    if (!token) return;
+    setError(null);
+    try {
+      await undoRecruitLastMove(token, stateId);
+      await reloadBoard();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore annullamento spostamento");
     }
   }
 
@@ -96,7 +129,8 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Pipeline</h1>
         <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
-          Sposta i candidati tra fasi e registra esito (MVP).
+          Schede compatte: espandi per spostare fase, avanzare (con passaggio automatico alla colonna successiva su
+          «Avanza») o annullare l’ultimo spostamento.
         </p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Link
@@ -138,75 +172,97 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                   ) : (
                     <ul className="space-y-2">
                       {stageItems.map((it) => (
-                        <li key={it.state.id} className="rounded-lg border border-[var(--card-border)] p-2">
-                          <p className="text-sm font-medium text-synapse-text dark:text-white">
-                            {it.candidate.first_name} {it.candidate.last_name}
-                          </p>
-                          <p className="text-[11px] text-synapse-muted dark:text-[#c8c8c8]">
-                            {it.candidate.email ?? "—"}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <select
-                              value={it.state.current_stage_id}
-                              onChange={(e) => void onMove(it.state.id, e.target.value)}
-                              className="w-full rounded-md border border-slate-300/90 bg-white/90 px-2 py-1 text-xs text-synapse-text outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
-                            >
-                              {stages.map((opt) => (
-                                <option key={opt.id} value={opt.id}>
-                                  {opt.name}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="flex w-full flex-wrap gap-2">
-                              <Button type="button" size="sm" variant="secondary" onClick={() => void onDecision(it.state.id, "in_progress")}>
-                                In corso
-                              </Button>
-                              <Button type="button" size="sm" onClick={() => void onDecision(it.state.id, "passed")}>
-                                Avanza
-                              </Button>
-                              <Button type="button" size="sm" variant="secondary" onClick={() => void onDecision(it.state.id, "failed")}>
-                                Scarta
-                              </Button>
-                            </div>
-                            <p className="text-[11px] text-synapse-muted">Esito: {it.state.status}</p>
-                            {(() => {
-                              const st = stageById.get(it.state.current_stage_id);
-                              const isHired = st?.stage_kind === "hired" || st?.name.toLowerCase().includes("assunt");
-                              if (!isHired) return null;
-                              return (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => {
-                                    if (!token) return;
-                                    setError(null);
-                                    const draft = createNewContract({
-                                      companyLegalName: "Azienda",
-                                      employeeFirstName: it.candidate.first_name,
-                                      employeeLastName: it.candidate.last_name,
-                                      roleTitle: positionTitle || "Posizione",
-                                      payMonthsPerYear: 13
-                                    });
-                                    void createHrStandardContract(token, {
-                                      title: draft.title,
-                                      party: { ...draft.party },
-                                      blocks: draft.blocks as unknown[],
-                                      recruitCandidateId: it.candidate.id,
-                                      recruitPositionId: positionId
-                                    })
-                                      .then((created) => {
-                                        router.push(`/contracts/${encodeURIComponent(created.id)}`);
-                                      })
-                                      .catch((e) =>
-                                        setError(e instanceof Error ? e.message : "Errore creazione contratto")
-                                      );
-                                  }}
-                                >
-                                  Genera contratto
+                        <li key={it.state.id} className="rounded-lg border border-[var(--card-border)] p-0">
+                          <details className="group rounded-lg">
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 [&::-webkit-details-marker]:hidden">
+                              <span className="text-sm font-medium text-synapse-text dark:text-white">
+                                {it.candidate.first_name} {it.candidate.last_name}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-synapse-muted dark:text-[#c8c8c8]">
+                                {it.state.status}
+                              </span>
+                            </summary>
+                            <div className="space-y-2 border-t border-[var(--card-border)] px-2 pb-2 pt-2">
+                              <p className="text-[11px] text-synapse-muted dark:text-[#c8c8c8]">
+                                {it.candidate.email ?? "—"}
+                              </p>
+                              <Link
+                                href={`/recruiting/candidates/${encodeURIComponent(it.candidate.id)}`}
+                                className="text-[11px] underline text-synapse-text dark:text-white"
+                              >
+                                Scheda candidato
+                              </Link>
+                              <select
+                                value={it.state.current_stage_id}
+                                onChange={(e) => void onMove(it.state.id, e.target.value)}
+                                className="w-full rounded-md border border-slate-300/90 bg-white/90 px-2 py-1 text-xs text-synapse-text outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                              >
+                                {stages.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex flex-wrap gap-2">
+                                <Button type="button" size="sm" variant="secondary" onClick={() => void onDecision(it.state.id, "in_progress")}>
+                                  In corso
                                 </Button>
-                              );
-                            })()}
-                          </div>
+                                <Button type="button" size="sm" onClick={() => void onDecision(it.state.id, "passed")}>
+                                  Avanza
+                                </Button>
+                                <Button type="button" size="sm" variant="secondary" onClick={() => void onDecision(it.state.id, "failed")}>
+                                  Scarta
+                                </Button>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={!it.can_undo_last_move}
+                                onClick={() => void onUndoMove(it.state.id)}
+                              >
+                                Annulla ultimo spostamento
+                              </Button>
+                              <p className="text-[11px] text-synapse-muted">Esito: {it.state.status}</p>
+                              {(() => {
+                                const st = stageById.get(it.state.current_stage_id);
+                                const isHired = st?.stage_kind === "hired" || st?.name.toLowerCase().includes("assunt");
+                                if (!isHired) return null;
+                                return (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (!token) return;
+                                      setError(null);
+                                      const draft = createNewContract({
+                                        companyLegalName: "Azienda",
+                                        employeeFirstName: it.candidate.first_name,
+                                        employeeLastName: it.candidate.last_name,
+                                        roleTitle: positionTitle || "Posizione",
+                                        payMonthsPerYear: 13
+                                      });
+                                      void createHrStandardContract(token, {
+                                        title: draft.title,
+                                        party: { ...draft.party },
+                                        blocks: draft.blocks as unknown[],
+                                        recruitCandidateId: it.candidate.id,
+                                        recruitPositionId: positionId
+                                      })
+                                        .then((created) => {
+                                          router.push(`/contracts/${encodeURIComponent(created.id)}`);
+                                        })
+                                        .catch((e) =>
+                                          setError(e instanceof Error ? e.message : "Errore creazione contratto")
+                                        );
+                                    }}
+                                  >
+                                    Genera contratto
+                                  </Button>
+                                );
+                              })()}
+                            </div>
+                          </details>
                         </li>
                       ))}
                     </ul>
@@ -220,4 +276,3 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     </div>
   );
 }
-

@@ -8,19 +8,37 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { getToken } from "@/lib/auth-session";
 import {
+  attachRecruitCandidateToPosition,
   createRecruitCandidate,
   fetchRecruitCandidates,
   fetchRecruitPositions,
-  attachRecruitCandidateToPosition,
+  uploadRecruitCandidateDocument,
   type RecruitCandidateDto,
   type RecruitPositionDto
 } from "@/lib/api";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\+?[0-9][0-9\s().\-/]{4,39}$/;
+
+function mapServerFieldToForm(property: string): string {
+  const map: Record<string, string> = {
+    firstName: "firstName",
+    lastName: "lastName",
+    email: "email",
+    phone: "phone",
+    notes: "notes",
+    privacyNoticeVersion: "privacyNoticeVersion",
+    consentRecordedAt: "consentRecordedAt"
+  };
+  return map[property] ?? property;
+}
 
 export default function RecruitingCandidatesPage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [candidates, setCandidates] = useState<RecruitCandidateDto[]>([]);
   const [positions, setPositions] = useState<RecruitPositionDto[]>([]);
@@ -31,8 +49,31 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [privacyNoticeVersion, setPrivacyNoticeVersion] = useState("");
+  const [consentAck, setConsentAck] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const canCreate = firstName.trim() && lastName.trim();
+  const clientValidation = useMemo(() => {
+    const fe: Record<string, string> = {};
+    if (email.trim() && !EMAIL_RE.test(email.trim())) {
+      fe.email = "Email non valida";
+    }
+    if (phone.trim() && !PHONE_RE.test(phone.trim())) {
+      fe.phone = "Telefono non valido";
+    }
+    if (notes.length > 4000) {
+      fe.notes = "Massimo 4000 caratteri";
+    }
+    if (privacyNoticeVersion.length > 64) {
+      fe.privacyNoticeVersion = "Massimo 64 caratteri";
+    }
+    return fe;
+  }, [email, phone, notes, privacyNoticeVersion]);
+
+  const canCreate =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    Object.keys(clientValidation).length === 0;
 
   useEffect(() => {
     const t = getToken();
@@ -56,25 +97,59 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
 
   const openPositions = useMemo(() => positions.filter((p) => p.status === "open"), [positions]);
 
+  function mergeFieldError(err: Error): void {
+    const withFields = err as Error & { fieldErrors?: { property: string; message: string }[] };
+    if (withFields.fieldErrors?.length) {
+      const fe: Record<string, string> = {};
+      for (const f of withFields.fieldErrors) {
+        fe[mapServerFieldToForm(f.property)] = f.message;
+      }
+      setFieldErrors(fe);
+    }
+  }
+
   async function onCreate(): Promise<void> {
     if (!token) return;
     setError(null);
+    setFieldErrors({});
+    if (Object.keys(clientValidation).length > 0) {
+      setFieldErrors(clientValidation);
+      return;
+    }
     try {
       const created = await createRecruitCandidate(token, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
-        ...(notes.trim() ? { notes: notes.trim() } : {})
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(privacyNoticeVersion.trim() ? { privacyNoticeVersion: privacyNoticeVersion.trim() } : {}),
+        ...(consentAck ? { consentRecordedAt: new Date().toISOString() } : {})
       });
+      for (const file of pendingFiles) {
+        const lower = file.name.toLowerCase();
+        const isCv = lower.includes("cv") || lower.includes("curriculum");
+        await uploadRecruitCandidateDocument(token, created.id, file, {
+          kind: isCv ? "cv" : "other",
+          label: file.name
+        });
+      }
       setCandidates((prev) => [created, ...prev]);
       setFirstName("");
       setLastName("");
       setEmail("");
       setPhone("");
       setNotes("");
+      setPrivacyNoticeVersion("");
+      setConsentAck(false);
+      setPendingFiles([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore creazione candidato");
+      if (e instanceof Error) {
+        mergeFieldError(e);
+        setError(e.message);
+      } else {
+        setError("Errore creazione candidato");
+      }
     }
   }
 
@@ -88,6 +163,8 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
       setError(e instanceof Error ? e.message : "Errore associazione candidato");
     }
   }
+
+  const fe = { ...clientValidation, ...fieldErrors };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -107,7 +184,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Nuovo candidato</CardTitle>
-          <CardDescription>Inserimento rapido (MVP).</CardDescription>
+          <CardDescription>Inserimento con validazione e allegati (CV, attestati, lettere — max 15 MB ciascuno).</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
@@ -121,11 +198,25 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Email</span>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={fe.email ? "border-rose-500" : undefined}
+              />
+              {fe.email ? <p className="text-xs text-rose-600">{fe.email}</p> : null}
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Telefono</span>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input
+                type="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className={fe.phone ? "border-rose-500" : undefined}
+              />
+              {fe.phone ? <p className="text-xs text-rose-600">{fe.phone}</p> : null}
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Note</span>
@@ -134,6 +225,45 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
+              {fe.notes ? <p className="text-xs text-rose-600">{fe.notes}</p> : null}
+            </label>
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+                Versione informativa privacy (opzionale, es. v2026-04)
+              </span>
+              <Input
+                value={privacyNoticeVersion}
+                onChange={(e) => setPrivacyNoticeVersion(e.target.value)}
+                className={fe.privacyNoticeVersion ? "border-rose-500" : undefined}
+              />
+              {fe.privacyNoticeVersion ? <p className="text-xs text-rose-600">{fe.privacyNoticeVersion}</p> : null}
+            </label>
+            <label className="flex items-start gap-2 text-sm md:col-span-2">
+              <input
+                type="checkbox"
+                checked={consentAck}
+                onChange={(e) => setConsentAck(e.target.checked)}
+                className="mt-1"
+              />
+              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+                Registra consenso / base giuridica per il trattamento dei dati del candidato (timestamp server alla creazione).
+                Il testo legale è responsabilità del datore di lavoro.
+              </span>
+            </label>
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+                Allegati da caricare dopo la creazione (PDF, DOC/DOCX, PNG, JPEG)
+              </span>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,image/png,image/jpeg,application/pdf"
+                className="w-full text-sm text-synapse-text dark:text-white"
+                onChange={(e) => setPendingFiles(Array.from(e.target.files ?? []))}
+              />
+              {pendingFiles.length > 0 ? (
+                <p className="text-xs text-synapse-muted">{pendingFiles.length} file in coda</p>
+              ) : null}
             </label>
           </div>
           <div className="mt-4 flex gap-2">
@@ -213,4 +343,3 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
     </div>
   );
 }
-

@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException
+} from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
 
 export interface RecruitPositionRow {
@@ -21,6 +28,20 @@ export interface RecruitCandidateRow {
   phone: string | null;
   notes: string;
   created_at: string;
+  privacy_notice_version: string | null;
+  consent_recorded_at: string | null;
+}
+
+export interface RecruitCandidateDocumentRow {
+  id: string;
+  candidate_id: string;
+  kind: "cv" | "other";
+  label: string;
+  created_at: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  byte_size: number | null;
 }
 
 export interface RecruitCandidatePositionStateSummary {
@@ -49,6 +70,16 @@ export interface RecruitCandidateStageStateRow {
   updated_at: string;
 }
 
+const RECRUIT_DOC_BUCKET = "recruit-candidate-files";
+const RECRUIT_DOC_MAX_BYTES = 15 * 1024 * 1024;
+const RECRUIT_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg"
+]);
+
 @Injectable()
 export class RecruitingService {
   constructor(private readonly store: HrDataStore) {}
@@ -61,6 +92,40 @@ export class RecruitingService {
     if (v == null) return "";
     if (typeof v === "string") return v;
     return new Date(v as string | number | Date).toISOString();
+  }
+
+  private mapCandidateRow(r: Record<string, unknown>): RecruitCandidateRow {
+    return {
+      id: String(r.id),
+      company_id: r.company_id as string,
+      first_name: r.first_name as string,
+      last_name: r.last_name as string,
+      email: (r.email as string | null) ?? null,
+      phone: (r.phone as string | null) ?? null,
+      notes: (r.notes as string) ?? "",
+      created_at: this.toIso(r.created_at),
+      privacy_notice_version: (r.privacy_notice_version as string | null | undefined) ?? null,
+      consent_recorded_at: r.consent_recorded_at != null ? this.toIso(r.consent_recorded_at) : null
+    };
+  }
+
+  async assertCandidateInCompany(candidateId: string, companyId: string): Promise<RecruitCandidateRow> {
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidates")
+      .select(
+        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
+      )
+      .eq("id", candidateId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Candidato non trovato");
+    }
+    return this.mapCandidateRow(data as Record<string, unknown>);
   }
 
   async listPositions(companyId: string): Promise<RecruitPositionRow[]> {
@@ -236,23 +301,16 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
-      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .select(
+        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
+      )
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
       .limit(300);
     if (error) {
       throw new InternalServerErrorException(`Lista candidati: ${error.message}`);
     }
-    return (data ?? []).map((r) => ({
-      id: String(r.id),
-      company_id: r.company_id as string,
-      first_name: r.first_name as string,
-      last_name: r.last_name as string,
-      email: (r.email as string | null) ?? null,
-      phone: (r.phone as string | null) ?? null,
-      notes: r.notes as string,
-      created_at: this.toIso(r.created_at)
-    }));
+    return (data ?? []).map((r) => this.mapCandidateRow(r as Record<string, unknown>));
   }
 
   async createCandidate(input: {
@@ -263,6 +321,8 @@ export class RecruitingService {
     phone?: string | null;
     notes?: string;
     createdByUserId: string;
+    privacyNoticeVersion?: string | null;
+    consentRecordedAt?: string | null;
   }): Promise<RecruitCandidateRow> {
     const sb = this.sb();
     const { data, error } = await sb
@@ -274,30 +334,27 @@ export class RecruitingService {
         email: input.email ?? null,
         phone: input.phone ?? null,
         notes: input.notes ?? "",
-        created_by_user_id: input.createdByUserId
+        created_by_user_id: input.createdByUserId,
+        privacy_notice_version: input.privacyNoticeVersion ?? null,
+        consent_recorded_at: input.consentRecordedAt ?? null
       })
-      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .select(
+        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
+      )
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(`Creazione candidato: ${error?.message ?? "nessun dato"}`);
     }
-    return {
-      id: String(data.id),
-      company_id: data.company_id as string,
-      first_name: data.first_name as string,
-      last_name: data.last_name as string,
-      email: (data.email as string | null) ?? null,
-      phone: (data.phone as string | null) ?? null,
-      notes: data.notes as string,
-      created_at: this.toIso(data.created_at)
-    };
+    return this.mapCandidateRow(data as Record<string, unknown>);
   }
 
   async getCandidate(candidateId: string): Promise<RecruitCandidateRow> {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
-      .select("id, company_id, first_name, last_name, email, phone, notes, created_at")
+      .select(
+        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
+      )
       .eq("id", candidateId)
       .maybeSingle();
     if (error) {
@@ -306,16 +363,7 @@ export class RecruitingService {
     if (!data) {
       throw new NotFoundException("Candidato non trovato");
     }
-    return {
-      id: String(data.id),
-      company_id: data.company_id as string,
-      first_name: data.first_name as string,
-      last_name: data.last_name as string,
-      email: (data.email as string | null) ?? null,
-      phone: (data.phone as string | null) ?? null,
-      notes: data.notes as string,
-      created_at: this.toIso(data.created_at)
-    };
+    return this.mapCandidateRow(data as Record<string, unknown>);
   }
 
   async listCandidateStates(candidateId: string): Promise<RecruitCandidatePositionStateSummary[]> {
@@ -386,6 +434,7 @@ export class RecruitingService {
     items: Array<{
       state: RecruitCandidateStageStateRow;
       candidate: RecruitCandidateRow;
+      can_undo_last_move: boolean;
     }>;
   }> {
     const { stages } = await this.ensureDefaultPipelineForPosition(positionId);
@@ -402,7 +451,7 @@ export class RecruitingService {
     const { data: rows, error } = await sb
       .from("recruit_candidate_stage_state")
       .select(
-        "id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( id, company_id, first_name, last_name, email, phone, notes, created_at )"
+        "id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at )"
       )
       .eq("position_id", positionId)
       .order("updated_at", { ascending: false });
@@ -423,23 +472,79 @@ export class RecruitingService {
           status: r.status as RecruitCandidateStageStateRow["status"],
           updated_at: this.toIso(r.updated_at)
         } as RecruitCandidateStageStateRow,
-        candidate: {
-          id: String(c.id),
-          company_id: c.company_id as string,
-          first_name: c.first_name as string,
-          last_name: c.last_name as string,
-          email: (c.email as string | null) ?? null,
-          phone: (c.phone as string | null) ?? null,
-          notes: c.notes as string,
-          created_at: this.toIso(c.created_at)
-        } as RecruitCandidateRow
+        candidate: this.mapCandidateRow(c)
       };
     });
-    return { position, stages, items };
+    const undoMap = await this.buildUndoFlagsForBoard(items);
+    return {
+      position,
+      stages,
+      items: items.map((it) => ({
+        ...it,
+        can_undo_last_move: undoMap.get(it.state.id) ?? false
+      }))
+    };
+  }
+
+  private async buildUndoFlagsForBoard(
+    items: Array<{ state: RecruitCandidateStageStateRow }>
+  ): Promise<Map<string, boolean>> {
+    const map = new Map<string, boolean>();
+    const ids = items.map((i) => i.state.id);
+    for (const it of items) {
+      map.set(it.state.id, false);
+    }
+    if (ids.length === 0) {
+      return map;
+    }
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_stage_transition_log")
+      .select("state_id, to_stage_id, created_at")
+      .in("state_id", ids)
+      .is("reverted_at", null)
+      .order("created_at", { ascending: false });
+    if (error) {
+      throw new InternalServerErrorException(`Audit pipeline: ${error.message}`);
+    }
+    const latestTo = new Map<string, string>();
+    for (const row of data ?? []) {
+      const sid = String((row as { state_id?: string }).state_id);
+      if (!latestTo.has(sid)) {
+        latestTo.set(sid, String((row as { to_stage_id?: string }).to_stage_id));
+      }
+    }
+    for (const it of items) {
+      const to = latestTo.get(it.state.id);
+      map.set(it.state.id, to != null && to === it.state.current_stage_id);
+    }
+    return map;
   }
 
   async moveCandidateToStage(input: { stateId: string; nextStageId: string; actorUserId: string }): Promise<RecruitCandidateStageStateRow> {
     const sb = this.sb();
+    const { data: before, error: e0 } = await sb
+      .from("recruit_candidate_stage_state")
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .eq("id", input.stateId)
+      .maybeSingle();
+    if (e0) {
+      throw new InternalServerErrorException(e0.message);
+    }
+    if (!before) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+    const fromStage = String(before.current_stage_id);
+    if (fromStage === input.nextStageId) {
+      return {
+        id: String(before.id),
+        candidate_id: String(before.candidate_id),
+        position_id: String(before.position_id),
+        current_stage_id: fromStage,
+        status: before.status as RecruitCandidateStageStateRow["status"],
+        updated_at: this.toIso(before.updated_at)
+      };
+    }
     const { data, error } = await sb
       .from("recruit_candidate_stage_state")
       .update({
@@ -454,6 +559,15 @@ export class RecruitingService {
     }
     if (!data) {
       throw new NotFoundException("Stato candidato non trovato");
+    }
+    const { error: logErr } = await sb.from("recruit_stage_transition_log").insert({
+      state_id: input.stateId,
+      from_stage_id: fromStage,
+      to_stage_id: input.nextStageId,
+      actor_user_id: input.actorUserId
+    });
+    if (logErr) {
+      throw new InternalServerErrorException(`Audit fase: ${logErr.message}`);
     }
     return {
       id: String(data.id),
@@ -471,12 +585,44 @@ export class RecruitingService {
     actorUserId: string;
   }): Promise<RecruitCandidateStageStateRow> {
     const sb = this.sb();
+    const { data: before, error: e0 } = await sb
+      .from("recruit_candidate_stage_state")
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .eq("id", input.stateId)
+      .maybeSingle();
+    if (e0) {
+      throw new InternalServerErrorException(e0.message);
+    }
+    if (!before) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+
+    let nextStageId: string | null = null;
+    if (input.status === "passed") {
+      const { stages } = await this.ensureDefaultPipelineForPosition(String(before.position_id));
+      const sorted = [...stages].sort((a, b) => a.stage_order - b.stage_order);
+      const idx = sorted.findIndex((s) => s.id === String(before.current_stage_id));
+      if (idx >= 0) {
+        for (let j = idx + 1; j < sorted.length; j++) {
+          if (sorted[j].stage_kind !== "rejected") {
+            nextStageId = sorted[j].id;
+            break;
+          }
+        }
+      }
+    }
+
+    const patch: Record<string, unknown> = {
+      status: input.status,
+      updated_by_user_id: input.actorUserId
+    };
+    if (nextStageId) {
+      patch.current_stage_id = nextStageId;
+    }
+
     const { data, error } = await sb
       .from("recruit_candidate_stage_state")
-      .update({
-        status: input.status,
-        updated_by_user_id: input.actorUserId
-      })
+      .update(patch)
       .eq("id", input.stateId)
       .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
       .maybeSingle();
@@ -486,6 +632,17 @@ export class RecruitingService {
     if (!data) {
       throw new NotFoundException("Stato candidato non trovato");
     }
+    if (nextStageId) {
+      const { error: logErr } = await sb.from("recruit_stage_transition_log").insert({
+        state_id: input.stateId,
+        from_stage_id: String(before.current_stage_id),
+        to_stage_id: nextStageId,
+        actor_user_id: input.actorUserId
+      });
+      if (logErr) {
+        throw new InternalServerErrorException(`Audit fase: ${logErr.message}`);
+      }
+    }
     return {
       id: String(data.id),
       candidate_id: String(data.candidate_id),
@@ -493,6 +650,257 @@ export class RecruitingService {
       current_stage_id: String(data.current_stage_id),
       status: data.status as RecruitCandidateStageStateRow["status"],
       updated_at: this.toIso(data.updated_at)
+    };
+  }
+
+  async undoLastStageMove(input: { stateId: string; actorUserId: string }): Promise<RecruitCandidateStageStateRow> {
+    const sb = this.sb();
+    const { data: stateRow, error: e0 } = await sb
+      .from("recruit_candidate_stage_state")
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .eq("id", input.stateId)
+      .maybeSingle();
+    if (e0) {
+      throw new InternalServerErrorException(e0.message);
+    }
+    if (!stateRow) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+    const { data: logs, error: e1 } = await sb
+      .from("recruit_stage_transition_log")
+      .select("id, from_stage_id, to_stage_id, created_at")
+      .eq("state_id", input.stateId)
+      .is("reverted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (e1) {
+      throw new InternalServerErrorException(e1.message);
+    }
+    const log = logs?.[0];
+    if (!log || String(log.to_stage_id) !== String(stateRow.current_stage_id)) {
+      throw new ConflictException("Nessuno spostamento da annullare");
+    }
+    const { data: updated, error: upErr } = await sb
+      .from("recruit_candidate_stage_state")
+      .update({
+        current_stage_id: String(log.from_stage_id),
+        updated_by_user_id: input.actorUserId
+      })
+      .eq("id", input.stateId)
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .maybeSingle();
+    if (upErr) {
+      throw new InternalServerErrorException(upErr.message);
+    }
+    if (!updated) {
+      throw new NotFoundException("Stato candidato non trovato");
+    }
+    const { error: revErr } = await sb
+      .from("recruit_stage_transition_log")
+      .update({ reverted_at: new Date().toISOString() })
+      .eq("id", log.id);
+    if (revErr) {
+      throw new InternalServerErrorException(revErr.message);
+    }
+    return {
+      id: String(updated.id),
+      candidate_id: String(updated.candidate_id),
+      position_id: String(updated.position_id),
+      current_stage_id: String(updated.current_stage_id),
+      status: updated.status as RecruitCandidateStageStateRow["status"],
+      updated_at: this.toIso(updated.updated_at)
+    };
+  }
+
+  async listCandidateDocuments(companyId: string, candidateId: string): Promise<RecruitCandidateDocumentRow[]> {
+    await this.assertCandidateInCompany(candidateId, companyId);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidate_documents")
+      .select("id, candidate_id, kind, label, created_at, storage_bucket, storage_path, mime_type, byte_size")
+      .eq("candidate_id", candidateId)
+      .order("created_at", { ascending: false });
+    if (error) {
+      throw new InternalServerErrorException(`Lista documenti: ${error.message}`);
+    }
+    return (data ?? []).map((r) => ({
+      id: String(r.id),
+      candidate_id: String(r.candidate_id),
+      kind: r.kind as "cv" | "other",
+      label: String(r.label ?? ""),
+      created_at: this.toIso(r.created_at),
+      storage_bucket: (r.storage_bucket as string | null) ?? null,
+      storage_path: (r.storage_path as string | null) ?? null,
+      mime_type: (r.mime_type as string | null) ?? null,
+      byte_size: r.byte_size != null ? Number(r.byte_size) : null
+    }));
+  }
+
+  async uploadCandidateDocument(input: {
+    companyId: string;
+    candidateId: string;
+    actorUserId: string;
+    buffer: Buffer;
+    originalName: string;
+    mimeType: string;
+    kind: "cv" | "other";
+    label?: string;
+  }): Promise<RecruitCandidateDocumentRow> {
+    await this.assertCandidateInCompany(input.candidateId, input.companyId);
+    const mime = (input.mimeType || "application/octet-stream").split(";")[0]?.trim() ?? "application/octet-stream";
+    if (!RECRUIT_ALLOWED_MIME.has(mime)) {
+      throw new BadRequestException("Tipo file non consentito");
+    }
+    if (input.buffer.length > RECRUIT_DOC_MAX_BYTES) {
+      throw new BadRequestException("File troppo grande (max 15 MB)");
+    }
+    const safeName = input.originalName.replace(/[^\w.\-]+/g, "_").slice(0, 120);
+    const objectPath = `${input.companyId}/${input.candidateId}/${randomUUID()}_${safeName}`;
+    const sb = this.sb();
+    const { error: upErr } = await sb.storage.from(RECRUIT_DOC_BUCKET).upload(objectPath, input.buffer, {
+      contentType: mime,
+      upsert: false
+    });
+    if (upErr) {
+      throw new InternalServerErrorException(`Upload: ${upErr.message}`);
+    }
+    const { data, error } = await sb
+      .from("recruit_candidate_documents")
+      .insert({
+        candidate_id: input.candidateId,
+        kind: input.kind,
+        label: input.label?.trim() ? input.label.trim() : input.kind === "cv" ? "CV" : "Allegato",
+        storage_bucket: RECRUIT_DOC_BUCKET,
+        storage_path: objectPath,
+        mime_type: mime,
+        byte_size: input.buffer.length,
+        uploaded_by_user_id: input.actorUserId
+      })
+      .select("id, candidate_id, kind, label, created_at, storage_bucket, storage_path, mime_type, byte_size")
+      .single();
+    if (error || !data) {
+      await sb.storage.from(RECRUIT_DOC_BUCKET).remove([objectPath]).catch(() => undefined);
+      throw new InternalServerErrorException(`Metadati documento: ${error?.message ?? "nessun dato"}`);
+    }
+    return {
+      id: String(data.id),
+      candidate_id: String(data.candidate_id),
+      kind: data.kind as "cv" | "other",
+      label: String(data.label ?? ""),
+      created_at: this.toIso(data.created_at),
+      storage_bucket: (data.storage_bucket as string | null) ?? null,
+      storage_path: (data.storage_path as string | null) ?? null,
+      mime_type: (data.mime_type as string | null) ?? null,
+      byte_size: data.byte_size != null ? Number(data.byte_size) : null
+    };
+  }
+
+  async deleteCandidateDocument(companyId: string, documentId: string): Promise<void> {
+    const sb = this.sb();
+    const { data: doc, error } = await sb
+      .from("recruit_candidate_documents")
+      .select("id, candidate_id, storage_bucket, storage_path, recruit_candidates ( company_id )")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!doc) {
+      throw new NotFoundException("Documento non trovato");
+    }
+    const nest = doc.recruit_candidates as { company_id?: string } | null;
+    if (!nest || nest.company_id !== companyId) {
+      throw new NotFoundException("Documento non trovato");
+    }
+    const buck = doc.storage_bucket as string | null;
+    const path = doc.storage_path as string | null;
+    if (buck && path) {
+      const { error: rmErr } = await sb.storage.from(buck).remove([path]);
+      if (rmErr) {
+        throw new InternalServerErrorException(`Rimozione storage: ${rmErr.message}`);
+      }
+    }
+    const { error: delErr } = await sb.from("recruit_candidate_documents").delete().eq("id", documentId);
+    if (delErr) {
+      throw new InternalServerErrorException(delErr.message);
+    }
+  }
+
+  async getCandidateDocumentFile(
+    companyId: string,
+    documentId: string
+  ): Promise<{ buffer: Buffer; mimeType: string; downloadName: string }> {
+    const sb = this.sb();
+    const { data: doc, error } = await sb
+      .from("recruit_candidate_documents")
+      .select("id, label, storage_bucket, storage_path, mime_type, recruit_candidates ( company_id )")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!doc) {
+      throw new NotFoundException("Documento non trovato");
+    }
+    const nest = doc.recruit_candidates as { company_id?: string } | null;
+    if (!nest || nest.company_id !== companyId) {
+      throw new NotFoundException("Documento non trovato");
+    }
+    const buck = String(doc.storage_bucket ?? "");
+    const path = String(doc.storage_path ?? "");
+    if (!buck || !path) {
+      throw new NotFoundException("File non disponibile");
+    }
+    const { data: blob, error: dErr } = await sb.storage.from(buck).download(path);
+    if (dErr || !blob) {
+      throw new InternalServerErrorException(dErr?.message ?? "Download fallito");
+    }
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const mime = (doc.mime_type as string) || "application/octet-stream";
+    const baseLabel = String(doc.label ?? "document").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+    const ext = mime.includes("pdf") ? ".pdf" : mime.includes("wordprocessingml") ? ".docx" : "";
+    return { buffer: buf, mimeType: mime, downloadName: `${baseLabel}${ext || ""}` };
+  }
+
+  async deleteCandidate(companyId: string, candidateId: string): Promise<void> {
+    await this.assertCandidateInCompany(candidateId, companyId);
+    const sb = this.sb();
+    const { data: docs, error: dErr } = await sb
+      .from("recruit_candidate_documents")
+      .select("storage_bucket, storage_path")
+      .eq("candidate_id", candidateId);
+    if (dErr) {
+      throw new InternalServerErrorException(dErr.message);
+    }
+    for (const d of docs ?? []) {
+      const b = d.storage_bucket as string | null;
+      const p = d.storage_path as string | null;
+      if (b && p) {
+        await sb.storage.from(b).remove([p]).catch(() => undefined);
+      }
+    }
+    const { error } = await sb.from("recruit_candidates").delete().eq("id", candidateId).eq("company_id", companyId);
+    if (error) {
+      throw new InternalServerErrorException(`Eliminazione candidato: ${error.message}`);
+    }
+  }
+
+  async exportCandidateJson(companyId: string, candidateId: string): Promise<Record<string, unknown>> {
+    const candidate = await this.assertCandidateInCompany(candidateId, companyId);
+    const states = await this.listCandidateStates(candidateId);
+    const documents = await this.listCandidateDocuments(companyId, candidateId);
+    return {
+      exportedAt: new Date().toISOString(),
+      candidate,
+      pipelineStates: states,
+      documents: documents.map((d) => ({
+        id: d.id,
+        kind: d.kind,
+        label: d.label,
+        created_at: d.created_at,
+        mime_type: d.mime_type,
+        byte_size: d.byte_size
+      }))
     };
   }
 }

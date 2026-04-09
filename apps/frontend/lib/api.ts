@@ -377,8 +377,14 @@ export interface UpdateUserPayload {
   teamId?: string | null;
 }
 
+interface ApiValidationErrorItem {
+  property: string;
+  message: string;
+}
+
 interface ApiErrorPayload {
-  message?: string | string[];
+  message?: string | string[] | Record<string, unknown>;
+  errors?: ApiValidationErrorItem[];
 }
 
 function getApiBaseUrl(): string {
@@ -506,17 +512,31 @@ async function fetchPaydayAttendance(
 
 async function parseError(response: Response): Promise<never> {
   let detail = `Errore API (${response.status})`;
+  let fieldErrors: ApiValidationErrorItem[] | undefined;
   try {
     const payload = (await response.json()) as ApiErrorPayload;
-    if (Array.isArray(payload.message)) {
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+      fieldErrors = payload.errors;
+      detail = payload.errors.map((e) => `${e.property}: ${e.message}`).join("; ");
+    } else if (Array.isArray(payload.message)) {
       detail = payload.message.join(", ");
-    } else if (payload.message) {
+    } else if (typeof payload.message === "string") {
       detail = payload.message;
+    } else if (payload.message && typeof payload.message === "object") {
+      const msg = payload.message as { errors?: ApiValidationErrorItem[]; message?: string };
+      if (Array.isArray(msg.errors) && msg.errors.length > 0) {
+        fieldErrors = msg.errors;
+        detail = msg.errors.map((e) => `${e.property}: ${e.message}`).join("; ");
+      } else if (typeof msg.message === "string") {
+        detail = msg.message;
+      }
     }
   } catch {
     // no-op
   }
-  throw new Error(detail);
+  const err = new Error(detail) as Error & { fieldErrors?: ApiValidationErrorItem[] };
+  err.fieldErrors = fieldErrors;
+  throw err;
 }
 
 export async function login(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
@@ -2197,6 +2217,20 @@ export interface RecruitCandidateDto {
   phone: string | null;
   notes: string;
   created_at: string;
+  privacy_notice_version?: string | null;
+  consent_recorded_at?: string | null;
+}
+
+export interface RecruitCandidateDocumentDto {
+  id: string;
+  candidate_id: string;
+  kind: "cv" | "other";
+  label: string;
+  created_at: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  byte_size: number | null;
 }
 
 export interface RecruitPipelineStageDto {
@@ -2253,7 +2287,15 @@ export async function fetchRecruitCandidates(token: string): Promise<RecruitCand
 
 export async function createRecruitCandidate(
   token: string,
-  payload: { firstName: string; lastName: string; email?: string; phone?: string; notes?: string }
+  payload: {
+    firstName: string;
+    lastName: string;
+    email?: string;
+    phone?: string;
+    notes?: string;
+    privacyNoticeVersion?: string;
+    consentRecordedAt?: string;
+  }
 ): Promise<RecruitCandidateDto> {
   const response = await fetch(buildApiUrl("/recruiting/candidates"), {
     method: "POST",
@@ -2262,6 +2304,88 @@ export async function createRecruitCandidate(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<RecruitCandidateDto>;
+}
+
+export async function deleteRecruitCandidate(token: string, candidateId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export async function exportRecruitCandidateJson(
+  token: string,
+  candidateId: string
+): Promise<Record<string, unknown>> {
+  const response = await fetch(buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}/export`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
+export async function fetchRecruitCandidateDocuments(
+  token: string,
+  candidateId: string
+): Promise<RecruitCandidateDocumentDto[]> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}/documents`),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: RecruitCandidateDocumentDto[] };
+  return body.items ?? [];
+}
+
+export async function uploadRecruitCandidateDocument(
+  token: string,
+  candidateId: string,
+  file: File,
+  options?: { kind?: "cv" | "other"; label?: string }
+): Promise<RecruitCandidateDocumentDto> {
+  const fd = new FormData();
+  fd.set("file", file);
+  fd.set("kind", options?.kind ?? "cv");
+  if (options?.label?.trim()) {
+    fd.set("label", options.label.trim());
+  }
+  const headers: HeadersInit = { Authorization: `Bearer ${token}` };
+  const response = await fetch(
+    buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}/documents`),
+    { method: "POST", headers, body: fd }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateDocumentDto>;
+}
+
+export async function deleteRecruitCandidateDocument(token: string, documentId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/recruiting/documents/${encodeURIComponent(documentId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export function recruitCandidateDocumentDownloadUrl(documentId: string): URL {
+  return new URL(buildApiUrl(`/recruiting/documents/${encodeURIComponent(documentId)}/file`));
+}
+
+export async function downloadRecruitCandidateDocumentFile(
+  token: string,
+  documentId: string,
+  filename: string
+): Promise<void> {
+  const url = recruitCandidateDocumentDownloadUrl(documentId).toString();
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) await parseError(response);
+  const blob = await response.blob();
+  const a = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+  a.href = objectUrl;
+  a.download = filename || "document";
+  a.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export async function fetchRecruitCandidateDetail(
@@ -2314,7 +2438,11 @@ export async function fetchRecruitBoard(
 ): Promise<{
   position: { id: string; title: string };
   stages: RecruitPipelineStageDto[];
-  items: Array<{ state: RecruitCandidateStageStateDto; candidate: RecruitCandidateDto }>;
+  items: Array<{
+    state: RecruitCandidateStageStateDto;
+    candidate: RecruitCandidateDto;
+    can_undo_last_move: boolean;
+  }>;
 }> {
   const response = await fetch(buildApiUrl(`/recruiting/board/${encodeURIComponent(positionId)}`), {
     headers: getAuthHeaders(token)
@@ -2323,7 +2451,11 @@ export async function fetchRecruitBoard(
   return response.json() as Promise<{
     position: { id: string; title: string };
     stages: RecruitPipelineStageDto[];
-    items: Array<{ state: RecruitCandidateStageStateDto; candidate: RecruitCandidateDto }>;
+    items: Array<{
+      state: RecruitCandidateStageStateDto;
+      candidate: RecruitCandidateDto;
+      can_undo_last_move: boolean;
+    }>;
   }>;
 }
 
@@ -2348,6 +2480,18 @@ export async function decideRecruitCandidate(
     method: "PATCH",
     headers: getAuthHeaders(token),
     body: JSON.stringify({ status: payload.status })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCandidateStageStateDto>;
+}
+
+export async function undoRecruitLastMove(
+  token: string,
+  stateId: string
+): Promise<RecruitCandidateStageStateDto> {
+  const response = await fetch(buildApiUrl(`/recruiting/state/${encodeURIComponent(stateId)}/undo-move`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<RecruitCandidateStageStateDto>;

@@ -1,5 +1,30 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { IsDateString, IsEmail, IsIn, IsOptional, IsString, MaxLength } from "class-validator";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { Transform } from "class-transformer";
+import {
+  IsDateString,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateIf
+} from "class-validator";
+import { memoryStorage } from "multer";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { RecruitingService } from "./recruiting.service";
@@ -27,18 +52,32 @@ class CreateCandidateDto {
   lastName!: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" && value.trim() === "" ? undefined : value))
+  @ValidateIf((_, v) => v != null && v !== "")
   @IsEmail()
   email?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" && value.trim() === "" ? undefined : value))
+  @ValidateIf((_, v) => v != null && v !== "")
   @IsString()
   @MaxLength(40)
+  @Matches(/^\+?[0-9][0-9\s().\-/]{4,39}$/, { message: "Telefono non valido" })
   phone?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(4000)
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  privacyNoticeVersion?: string;
+
+  @IsOptional()
+  @IsDateString()
+  consentRecordedAt?: string;
 }
 
 class AttachCandidateDto {
@@ -98,6 +137,19 @@ export class RecruitingController {
     return { items };
   }
 
+  @Get("candidates/:id/export")
+  @RequireNexaPermissions("nexa.recruiting:read")
+  async exportCandidate(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<unknown> {
+    return this.svc.exportCandidateJson(auth.tenantId ?? "comp-1", id);
+  }
+
+  @Get("candidates/:id/documents")
+  @RequireNexaPermissions("nexa.recruiting:read")
+  async listDocs(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ items: unknown[] }> {
+    const items = await this.svc.listCandidateDocuments(auth.tenantId ?? "comp-1", id);
+    return { items };
+  }
+
   @Get("candidates/:id")
   @RequireNexaPermissions("nexa.recruiting:read")
   async getCandidate(@Param("id") id: string): Promise<unknown> {
@@ -111,13 +163,22 @@ export class RecruitingController {
   async createCandidate(@CurrentAuth() auth: AuthContext, @Body() dto: CreateCandidateDto): Promise<unknown> {
     return this.svc.createCandidate({
       companyId: auth.tenantId ?? "comp-1",
-      firstName: dto.firstName,
-      lastName: dto.lastName,
+      firstName: dto.firstName.trim(),
+      lastName: dto.lastName.trim(),
       email: dto.email ?? null,
       phone: dto.phone ?? null,
       notes: dto.notes ?? "",
-      createdByUserId: auth.userId
+      createdByUserId: auth.userId,
+      privacyNoticeVersion: dto.privacyNoticeVersion ?? null,
+      consentRecordedAt: dto.consentRecordedAt ?? null
     });
+  }
+
+  @Delete("candidates/:id")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async deleteCandidate(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
+    await this.svc.deleteCandidate(auth.tenantId ?? "comp-1", id);
+    return { ok: true };
   }
 
   @Post("attach")
@@ -155,6 +216,66 @@ export class RecruitingController {
     @Body() dto: DecideDto
   ): Promise<unknown> {
     return this.svc.setCandidateDecision({ stateId, status: dto.status, actorUserId: auth.userId });
+  }
+
+  @Patch("state/:stateId/undo-move")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async undoMove(@CurrentAuth() auth: AuthContext, @Param("stateId") stateId: string): Promise<unknown> {
+    return this.svc.undoLastStageMove({ stateId, actorUserId: auth.userId });
+  }
+
+  @Post("candidates/:candidateId/documents")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 }
+    })
+  )
+  async uploadDoc(
+    @CurrentAuth() auth: AuthContext,
+    @Param("candidateId") candidateId: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body("kind") kindRaw?: string,
+    @Body("label") label?: string
+  ): Promise<unknown> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("File mancante");
+    }
+    const kind = kindRaw === "other" ? "other" : "cv";
+    return this.svc.uploadCandidateDocument({
+      companyId: auth.tenantId ?? "comp-1",
+      candidateId,
+      actorUserId: auth.userId,
+      buffer: file.buffer,
+      originalName: file.originalname || "upload",
+      mimeType: file.mimetype || "application/octet-stream",
+      kind,
+      label: label?.trim() ? label.trim() : undefined
+    });
+  }
+
+  @Delete("documents/:documentId")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async deleteDoc(@CurrentAuth() auth: AuthContext, @Param("documentId") documentId: string): Promise<{ ok: true }> {
+    await this.svc.deleteCandidateDocument(auth.tenantId ?? "comp-1", documentId);
+    return { ok: true };
+  }
+
+  @Get("documents/:documentId/file")
+  @RequireNexaPermissions("nexa.recruiting:read")
+  async docFile(
+    @CurrentAuth() auth: AuthContext,
+    @Param("documentId") documentId: string
+  ): Promise<StreamableFile> {
+    const { buffer, mimeType, downloadName } = await this.svc.getCandidateDocumentFile(
+      auth.tenantId ?? "comp-1",
+      documentId
+    );
+    return new StreamableFile(buffer, {
+      type: mimeType,
+      disposition: `attachment; filename="${downloadName.replace(/"/g, "")}"`
+    });
   }
 }
 
