@@ -26,8 +26,9 @@ services:
     region: frankfurt
     branch: main
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && node scripts/supabase-remote-push.mjs --optional && pnpm run build:backend:render
-    # corepack: su Render la fase start non eredita sempre il PATH della build; senza pnpm il servizio va in crash.
-    startCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/backend start
+    # Avvio senza Corepack/pnpm: in start, corepack prepare può andare in timeout verso registry.npmjs.org
+    # (UND_ERR_CONNECT_TIMEOUT) anche se la build è ok. Lo script @payday/backend è solo "node dist/main.js".
+    startCommand: node apps/backend/dist/main.js
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
@@ -63,7 +64,8 @@ services:
     branch: main
     # @payday/frontend prebuild compila @payday/domain (main → dist/). Anche senza step esplicito qui, Next non va in errore module-not-found.
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
-    startCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm --filter @payday/frontend start
+    # Stesso motivo del backend: niente fetch npm nello start. Percorso next dipende da node_modules locale post-pnpm install.
+    startCommand: cd apps/frontend && node ./node_modules/next/dist/bin/next start -H 0.0.0.0
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
