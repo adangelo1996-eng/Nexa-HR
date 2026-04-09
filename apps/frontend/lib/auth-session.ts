@@ -188,6 +188,15 @@ export function getSessionUser(): SessionUser | null {
 }
 
 export function clearSession(): void {
+  // Best-effort server logout to revoke refresh token cookie.
+  try {
+    const env = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim();
+    const origin = (env && env.length > 0 ? env : "http://localhost:4000").replace(/\/+$/, "");
+    const apiBase = origin.endsWith("/api") ? origin : `${origin}/api`;
+    void fetch(`${apiBase}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);
+  } catch {
+    // no-op
+  }
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";

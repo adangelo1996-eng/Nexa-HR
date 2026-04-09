@@ -259,6 +259,37 @@ export default function CostCalculatorPage(): React.JSX.Element {
 
           <Card>
             <CardHeader>
+              <CardTitle>Risultati (anno)</CardTitle>
+              <CardDescription>
+                Totali su {payMonthsPerYear} mensilità (stima indicativa).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
+                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Netto stimato</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {formatEuro(result.annual.netEuros)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
+                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Lordo (anno)</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
+                    {formatEuro(result.annual.grossEuros)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
+                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Costo azienda</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
+                    {formatEuro(result.annual.companyCostEuros)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Assunzioni usate</CardTitle>
               <CardDescription>Valori centralizzati e versionabili (MVP).</CardDescription>
             </CardHeader>

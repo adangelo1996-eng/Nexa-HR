@@ -1,6 +1,6 @@
 "use client";
 
-import { getSessionUser, saveSession, type SessionUser, type UserRole } from "./auth-session";
+import { clearSession, getSessionUser, saveSession, type SessionUser, type UserRole } from "./auth-session";
 
 export interface Payslip {
   id: string;
@@ -397,6 +397,65 @@ function getAuthHeaders(token: string): HeadersInit {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json"
   };
+}
+
+const __nativeFetch = globalThis.fetch.bind(globalThis);
+
+// Shadow global fetch inside this module to ensure:
+// - credentials: "include" for backend API (cookie-based refresh)
+// - silent refresh on 401 for authed requests
+async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const urlStr =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : "url" in input
+          ? String(input.url)
+          : String(input);
+
+  const apiBase = getApiBaseUrl();
+  const isBackendApi = urlStr.startsWith(apiBase);
+  if (!isBackendApi) {
+    return __nativeFetch(input, init);
+  }
+
+  const withCreds: RequestInit = { ...init, credentials: "include" };
+  const res = await __nativeFetch(urlStr, withCreds);
+
+  const headers = new Headers(withCreds.headers);
+  const hasBearer = headers.has("Authorization");
+  const isRefreshCall = urlStr.startsWith(buildApiUrl("/auth/refresh"));
+  const isLogoutCall = urlStr.startsWith(buildApiUrl("/auth/logout"));
+  if (!hasBearer || isRefreshCall || isLogoutCall) {
+    return res;
+  }
+
+  if (res.status !== 401) {
+    return res;
+  }
+
+  try {
+    const refresh = await __nativeFetch(buildApiUrl("/auth/refresh"), {
+      method: "POST",
+      credentials: "include"
+    });
+    if (!refresh.ok) {
+      clearSession();
+      return res;
+    }
+    const payload = (await refresh.json()) as { token: string; user: SessionUser };
+    if (payload?.token && payload?.user) {
+      saveSession(payload.token, payload.user);
+      headers.set("Authorization", `Bearer ${payload.token}`);
+      const retry = await __nativeFetch(urlStr, { ...withCreds, headers });
+      return retry;
+    }
+  } catch {
+    // fall through: keep original 401
+  }
+  clearSession();
+  return res;
 }
 
 /** True se le timbrature passano dall'Edge Supabase (API Nest team non disponibili). */
@@ -2125,6 +2184,8 @@ export interface RecruitPositionDto {
   job_description: string;
   status: "open" | "closed";
   created_at: string;
+  job_code?: string;
+  due_date?: string | null;
 }
 
 export interface RecruitCandidateDto {
@@ -2164,7 +2225,7 @@ export async function fetchRecruitPositions(token: string): Promise<RecruitPosit
 
 export async function createRecruitPosition(
   token: string,
-  payload: { title: string; jobDescription: string }
+  payload: { title: string; jobDescription: string; dueDate?: string | null }
 ): Promise<RecruitPositionDto> {
   const response = await fetch(buildApiUrl("/recruiting/positions"), {
     method: "POST",
@@ -2173,6 +2234,14 @@ export async function createRecruitPosition(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function deleteRecruitPosition(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/recruiting/positions/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export async function fetchRecruitCandidates(token: string): Promise<RecruitCandidateDto[]> {
@@ -2297,6 +2366,8 @@ export interface HrStandardContractDto {
   lastExportedDocumentId?: string;
   recruitCandidateId?: string;
   recruitPositionId?: string;
+  signedAt?: string;
+  signatures?: Record<string, unknown>;
 }
 
 export async function fetchHrStandardContracts(token: string): Promise<HrStandardContractDto[]> {
@@ -2363,6 +2434,54 @@ export async function deleteHrStandardContract(token: string, id: string): Promi
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
+}
+
+export async function exportHrStandardContractPdf(token: string, id: string): Promise<HrStandardContractDto> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}/export`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+export async function signHrStandardContract(
+  token: string,
+  id: string,
+  payload: { companySignerName: string; employeeSignerName: string }
+): Promise<HrStandardContractDto> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}/sign`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+export async function fetchHrStandardContractVersions(
+  token: string,
+  id: string
+): Promise<Array<{ version: number; created_at: string; note: string }>> {
+  const response = await fetch(buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}/versions`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: Array<{ version: number; created_at: string; note: string }> };
+  return body.items ?? [];
+}
+
+export async function restoreHrStandardContractVersion(
+  token: string,
+  id: string,
+  version: number
+): Promise<HrStandardContractDto> {
+  const response = await fetch(
+    buildApiUrl(`/hr-contracts/${encodeURIComponent(id)}/restore/${encodeURIComponent(String(version))}`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
 }
 
 export type ThirdPartyCostFrequency = "monthly" | "annual" | "one_time" | "other";

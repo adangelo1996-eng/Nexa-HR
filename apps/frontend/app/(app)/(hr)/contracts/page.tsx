@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { getToken } from "@/lib/auth-session";
 import { createHrStandardContract, deleteHrStandardContract, fetchHrStandardContracts } from "@/lib/api";
-import { createNewContract, type ContractPartyInfo, type HrContractDoc } from "@/lib/contracts";
+import { createNewContractFromTemplate, type ContractPartyInfo, type HrContractDoc, type HrContractTemplateKey } from "@/lib/contracts";
 
 function shortIso(iso: string): string {
   return iso.slice(0, 10);
@@ -21,6 +21,7 @@ export default function ContractsListPage(): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [template, setTemplate] = useState<HrContractTemplateKey>("indeterminato");
   const [party, setParty] = useState<ContractPartyInfo>({
     companyLegalName: "Azienda",
     companyAddress: "",
@@ -91,6 +92,19 @@ export default function ContractsListPage(): React.JSX.Element {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-synapse-muted dark:text-[#c8c8c8]">Template</span>
+              <select
+                value={template}
+                onChange={(e) => setTemplate(e.target.value as HrContractTemplateKey)}
+                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+              >
+                <option value="indeterminato">Indeterminato</option>
+                <option value="determinato">Determinato</option>
+                <option value="apprendistato">Apprendistato</option>
+                <option value="consulenza">Consulenza</option>
+              </select>
+            </label>
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Ragione sociale</span>
               <Input
@@ -187,7 +201,7 @@ export default function ContractsListPage(): React.JSX.Element {
                 }
                 setCreating(true);
                 setError(null);
-                const draft = createNewContract(party);
+                const draft = createNewContractFromTemplate(party, template);
                 void createHrStandardContract(token, {
                   title: draft.title,
                   party: { ...draft.party },

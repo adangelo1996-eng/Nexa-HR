@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
 
 export interface RecruitPositionRow {
@@ -8,6 +8,8 @@ export interface RecruitPositionRow {
   job_description: string;
   status: "open" | "closed";
   created_at: string;
+  job_code: string;
+  due_date: string | null;
 }
 
 export interface RecruitCandidateRow {
@@ -65,7 +67,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_positions")
-      .select("id, company_id, title, job_description, status, created_at")
+      .select("id, company_id, title, job_description, status, created_at, job_code, due_date")
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
       .limit(200);
@@ -78,8 +80,15 @@ export class RecruitingService {
       title: r.title as string,
       job_description: r.job_description as string,
       status: r.status as RecruitPositionRow["status"],
-      created_at: this.toIso(r.created_at)
+      created_at: this.toIso(r.created_at),
+      job_code: String((r as { job_code?: string }).job_code ?? ""),
+      due_date: (r as { due_date?: string | null }).due_date != null ? String((r as { due_date?: string }).due_date) : null
     }));
+  }
+
+  private formatJobCode(year: number, n: number): string {
+    const seq = String(Math.max(1, Math.floor(n))).padStart(3, "0");
+    return `HR-${year}-${seq}`;
   }
 
   async createPosition(input: {
@@ -87,8 +96,18 @@ export class RecruitingService {
     title: string;
     jobDescription: string;
     createdByUserId: string;
+    dueDate?: string | null;
   }): Promise<RecruitPositionRow> {
     const sb = this.sb();
+    const year = new Date().getUTCFullYear();
+    const { data: nextN, error: seqErr } = await sb.rpc("recruit_next_job_code_number", {
+      p_company_id: input.companyId,
+      p_year: year
+    });
+    if (seqErr) {
+      throw new InternalServerErrorException(`Job code progressivo: ${seqErr.message}`);
+    }
+    const jobCode = this.formatJobCode(year, Number(nextN ?? 1));
     const { data, error } = await sb
       .from("recruit_positions")
       .insert({
@@ -96,9 +115,11 @@ export class RecruitingService {
         title: input.title,
         job_description: input.jobDescription,
         status: "open",
-        created_by_user_id: input.createdByUserId
+        created_by_user_id: input.createdByUserId,
+        job_code: jobCode,
+        due_date: input.dueDate ?? null
       })
-      .select("id, company_id, title, job_description, status, created_at")
+      .select("id, company_id, title, job_description, status, created_at, job_code, due_date")
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(`Creazione posizione: ${error?.message ?? "nessun dato"}`);
@@ -109,8 +130,46 @@ export class RecruitingService {
       title: data.title as string,
       job_description: data.job_description as string,
       status: data.status as RecruitPositionRow["status"],
-      created_at: this.toIso(data.created_at)
+      created_at: this.toIso(data.created_at),
+      job_code: String((data as { job_code?: string }).job_code ?? ""),
+      due_date: (data as { due_date?: string | null }).due_date != null ? String((data as { due_date?: string }).due_date) : null
     };
+  }
+
+  async deleteOpenPosition(companyId: string, positionId: string): Promise<void> {
+    const sb = this.sb();
+    const { data: pos, error: posErr } = await sb
+      .from("recruit_positions")
+      .select("id, company_id, status")
+      .eq("id", positionId)
+      .maybeSingle();
+    if (posErr || !pos) {
+      throw new NotFoundException("Posizione non trovata");
+    }
+    if (String((pos as { company_id?: string }).company_id) !== companyId) {
+      throw new NotFoundException("Posizione non trovata");
+    }
+    if (String((pos as { status?: string }).status) !== "open") {
+      throw new ConflictException("La posizione non è aperta");
+    }
+    const linked = await sb
+      .from("recruit_candidate_stage_state")
+      .select("id", { count: "exact", head: true })
+      .eq("position_id", positionId);
+    if (linked.error) {
+      throw new InternalServerErrorException(`Verifica candidati: ${linked.error.message}`);
+    }
+    if ((linked.count ?? 0) > 0) {
+      throw new ConflictException("Impossibile eliminare: candidati collegati. Chiudi la posizione.");
+    }
+    const { error: delErr } = await sb
+      .from("recruit_positions")
+      .delete()
+      .eq("id", positionId)
+      .eq("company_id", companyId);
+    if (delErr) {
+      throw new InternalServerErrorException(`Eliminazione posizione: ${delErr.message}`);
+    }
   }
 
   async ensureDefaultPipelineForPosition(positionId: string): Promise<{ pipelineId: string; stages: RecruitPipelineStageRow[] }> {

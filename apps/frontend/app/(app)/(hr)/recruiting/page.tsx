@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { getToken } from "@/lib/auth-session";
 import {
   createRecruitPosition,
+  deleteRecruitPosition,
   fetchRecruitPositions,
   type RecruitPositionDto
 } from "@/lib/api";
@@ -22,6 +23,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
 
   const [title, setTitle] = useState("");
   const [jd, setJd] = useState("");
+  const [dueDate, setDueDate] = useState<string>("");
   const canCreate = title.trim().length > 0 && jd.trim().length > 0;
 
   useEffect(() => {
@@ -45,10 +47,15 @@ export default function RecruitingHomePage(): React.JSX.Element {
     if (!token) return;
     setError(null);
     try {
-      const created = await createRecruitPosition(token, { title: title.trim(), jobDescription: jd.trim() });
+      const created = await createRecruitPosition(token, {
+        title: title.trim(),
+        jobDescription: jd.trim(),
+        dueDate: dueDate.trim() ? dueDate.trim() : null
+      });
       setPositions((prev) => [created, ...prev]);
       setTitle("");
       setJd("");
+      setDueDate("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore creazione posizione");
     }
@@ -74,13 +81,17 @@ export default function RecruitingHomePage(): React.JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Nuova posizione</CardTitle>
-          <CardDescription>Definisci titolo e job description (MVP).</CardDescription>
+          <CardDescription>Definisci titolo, job description, scadenza e crea un Job ID progressivo.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Titolo</span>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-synapse-muted dark:text-[#c8c8c8]">Scadenza (entro quando serve il candidato)</span>
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#c8c8c8]">Job description</span>
@@ -132,7 +143,10 @@ export default function RecruitingHomePage(): React.JSX.Element {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-synapse-text dark:text-white">{p.title}</p>
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">ID: {p.id}</p>
+                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">
+                      Job ID: {p.job_code || "—"}
+                      {p.due_date ? ` • scadenza ${String(p.due_date).slice(0, 10)}` : ""}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link
@@ -141,6 +155,19 @@ export default function RecruitingHomePage(): React.JSX.Element {
                     >
                       Apri pipeline
                     </Link>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        if (!token) return;
+                        if (!window.confirm("Eliminare la posizione aperta?")) return;
+                        void deleteRecruitPosition(token, p.id)
+                          .then(() => setPositions((prev) => prev.filter((x) => x.id !== p.id)))
+                          .catch((e) => setError(e instanceof Error ? e.message : "Errore eliminazione"));
+                      }}
+                    >
+                      Elimina
+                    </Button>
                   </div>
                 </li>
               ))}

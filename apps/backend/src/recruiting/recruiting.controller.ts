@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from "class-validator";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { IsDateString, IsEmail, IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { RecruitingService } from "./recruiting.service";
@@ -11,6 +11,10 @@ class CreatePositionDto {
 
   @IsString()
   jobDescription!: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
 }
 
 class CreateCandidateDto {
@@ -75,8 +79,16 @@ export class RecruitingController {
       companyId: auth.tenantId ?? "comp-1",
       title: dto.title,
       jobDescription: dto.jobDescription,
-      createdByUserId: auth.userId
+      createdByUserId: auth.userId,
+      dueDate: dto.dueDate ?? null
     });
+  }
+
+  @Delete("positions/:id")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async deletePosition(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
+    await this.svc.deleteOpenPosition(auth.tenantId ?? "comp-1", id);
+    return { ok: true };
   }
 
   @Get("candidates")

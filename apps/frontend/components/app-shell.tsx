@@ -291,6 +291,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, [searchQ, user]);
 
   const onLogout = useCallback((): void => {
+    // clearSession already does best-effort server logout
     clearSession();
     router.push("/login");
   }, [router]);

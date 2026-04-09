@@ -112,6 +112,16 @@ class PatchStandardContractDto {
   lastExportedDocumentId?: string;
 }
 
+class SignContractDto {
+  @IsString()
+  @MaxLength(160)
+  companySignerName!: string;
+
+  @IsString()
+  @MaxLength(160)
+  employeeSignerName!: string;
+}
+
 @Controller("hr-contracts")
 @UseGuards(NexaPermissionGuard)
 export class HrContractsController {
@@ -165,5 +175,37 @@ export class HrContractsController {
   async remove(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
     await this.svc.delete(auth.tenantId ?? "comp-1", id);
     return { ok: true };
+  }
+
+  @Get(":id/versions")
+  @RequireNexaPermissions("nexa.standard_contracts:read")
+  async versions(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ items: unknown[] }> {
+    const items = await this.svc.listVersions(auth.tenantId ?? "comp-1", id);
+    return { items };
+  }
+
+  @Post(":id/restore/:version")
+  @RequireNexaPermissions("nexa.standard_contracts:write")
+  async restore(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Param("version") version: string
+  ): Promise<unknown> {
+    return this.svc.restoreVersion(auth.tenantId ?? "comp-1", id, Number(version), auth.userId);
+  }
+
+  @Post(":id/sign")
+  @RequireNexaPermissions("nexa.standard_contracts:write")
+  async sign(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() dto: SignContractDto): Promise<unknown> {
+    return this.svc.signContract(auth.tenantId ?? "comp-1", id, auth.userId, {
+      companySignerName: dto.companySignerName,
+      employeeSignerName: dto.employeeSignerName
+    });
+  }
+
+  @Post(":id/export")
+  @RequireNexaPermissions("nexa.standard_contracts:write")
+  async exportPdf(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<unknown> {
+    return this.svc.exportPdf(auth.tenantId ?? "comp-1", id, auth.userId);
   }
 }

@@ -39,8 +39,9 @@ async function bootstrap(): Promise<void> {
         const allowed = isExactMatch || isRenderDomain || isVercelPreview || isLocalhost;
         callback(null, allowed);
       },
+      credentials: true,
       methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Accept", "Authorization"],
+      allowedHeaders: ["Content-Type", "Accept", "Authorization", "Cookie"],
       preflightContinue: false,
       optionsSuccessStatus: 204
     }

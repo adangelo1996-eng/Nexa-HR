@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import type { HrContractDoc } from "../contracts";
 
 export function renderContractToPdf(doc: HrContractDoc): Blob {
+  // Kept for legacy/local export; production export is generated server-side.
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
   const marginX = 48;

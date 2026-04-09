@@ -772,6 +772,28 @@ export class HrDataStore {
     return mem ? { ...mem, role: coercePlatformRole(mem.role) } : null;
   }
 
+  async findUserById(id: string): Promise<User | null> {
+    const normalized = String(id ?? "").trim();
+    if (!normalized) {
+      return null;
+    }
+    await this.ensureSeedUsers();
+    if (this.useDb) {
+      const { data, error } = await this.supabase!
+        .from("users")
+        .select("*")
+        .eq("id", normalized)
+        .maybeSingle();
+      if (error) {
+        return null;
+      }
+      const row = data as User | null;
+      return row ? this.mapUserRowFromDatabase(row) : null;
+    }
+    const mem = this.users.find((item) => item.id === normalized);
+    return mem ? { ...mem, role: coercePlatformRole(mem.role) } : null;
+  }
+
   private async ensureSeedReferenceData(): Promise<void> {
     if (!this.useDb || this.referenceDataEnsured) {
       return;
