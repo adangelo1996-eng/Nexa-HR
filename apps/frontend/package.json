@@ -6,7 +6,7 @@
     "dev": "corepack pnpm exec next dev -p 3000",
     "prebuild": "corepack pnpm --filter @payday/domain build",
     "build": "corepack pnpm exec next build",
-    "start": "corepack pnpm exec next start -H 0.0.0.0",
+    "start": "node ./node_modules/next/dist/bin/next start -H 0.0.0.0",
     "lint": "corepack pnpm exec next lint",
     "test": "echo \"no tests yet\""
   },
