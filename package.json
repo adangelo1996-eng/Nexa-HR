@@ -20,6 +20,7 @@
     "build:frontend": "corepack pnpm --filter @payday/frontend build",
     "start:backend": "corepack pnpm --filter @payday/backend start",
     "start:frontend": "corepack pnpm --filter @payday/frontend start",
+    "start:frontend:render": "node scripts/render-start-nexa-frontend.mjs",
     "supabase:login": "corepack pnpm dlx supabase login",
     "supabase:link": "corepack pnpm dlx supabase link --workdir infra/supabase",
     "supabase:db:push": "corepack pnpm dlx supabase db push --workdir infra/supabase",

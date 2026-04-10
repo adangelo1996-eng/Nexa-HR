@@ -64,8 +64,8 @@ services:
     branch: main
     # @payday/frontend prebuild compila @payday/domain (main → dist/). Anche senza step esplicito qui, Next non va in errore module-not-found.
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
-    # Stesso motivo del backend: niente fetch npm nello start. Percorso next dipende da node_modules locale post-pnpm install.
-    startCommand: cd apps/frontend && node ./node_modules/next/dist/bin/next start -H 0.0.0.0
+    # Niente `pnpm` nello start: il binario pnpm su Render passa da Corepack e può rifare fetch verso registry.npmjs.org (timeout).
+    startCommand: node scripts/render-start-nexa-frontend.mjs
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
