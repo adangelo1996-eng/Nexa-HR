@@ -128,7 +128,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Pipeline</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Schede compatte: espandi per spostare fase, avanzare (con passaggio automatico alla colonna successiva su
           «Avanza») o annullare l’ultimo spostamento.
         </p>
@@ -168,7 +168,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                 </CardHeader>
                 <CardContent>
                   {stageItems.length === 0 ? (
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Nessuno.</p>
+                    <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Nessuno.</p>
                   ) : (
                     <ul className="space-y-2">
                       {stageItems.map((it) => (
@@ -178,12 +178,12 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                               <span className="text-sm font-medium text-synapse-text dark:text-white">
                                 {it.candidate.first_name} {it.candidate.last_name}
                               </span>
-                              <span className="shrink-0 text-[10px] text-synapse-muted dark:text-[#c8c8c8]">
+                              <span className="shrink-0 text-[10px] text-synapse-muted dark:text-[#b4c9dc]">
                                 {it.state.status}
                               </span>
                             </summary>
                             <div className="space-y-2 border-t border-[var(--card-border)] px-2 pb-2 pt-2">
-                              <p className="text-[11px] text-synapse-muted dark:text-[#c8c8c8]">
+                              <p className="text-[11px] text-synapse-muted dark:text-[#b4c9dc]">
                                 {it.candidate.email ?? "—"}
                               </p>
                               <Link
@@ -195,7 +195,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                               <select
                                 value={it.state.current_stage_id}
                                 onChange={(e) => void onMove(it.state.id, e.target.value)}
-                                className="w-full rounded-md border border-slate-300/90 bg-white/90 px-2 py-1 text-xs text-synapse-text outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                                className="w-full rounded-md border border-slate-300/90 bg-white/90 px-2 py-1 text-xs text-synapse-text outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                               >
                                 {stages.map((opt) => (
                                   <option key={opt.id} value={opt.id}>

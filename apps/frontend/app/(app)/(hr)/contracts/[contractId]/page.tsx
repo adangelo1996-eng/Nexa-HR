@@ -99,7 +99,7 @@ export default function ContractEditorPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Caricamento contratto…</p>
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Caricamento contratto…</p>
       </div>
     );
   }
@@ -221,7 +221,7 @@ export default function ContractEditorPage(): React.JSX.Element {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">{localDoc.title}</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Stato: <strong className="text-synapse-text dark:text-white">{localDoc.status.toUpperCase()}</strong>
         </p>
       </header>
@@ -234,7 +234,7 @@ export default function ContractEditorPage(): React.JSX.Element {
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Ragione sociale</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Ragione sociale</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.companyLegalName}
@@ -244,7 +244,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Indirizzo azienda</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo azienda</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.companyAddress ?? ""}
@@ -254,7 +254,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Nome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Nome</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.employeeFirstName}
@@ -264,7 +264,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Cognome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Cognome</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.employeeLastName}
@@ -274,7 +274,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Indirizzo lavoratore</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo lavoratore</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.employeeAddress ?? ""}
@@ -284,7 +284,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Mansione</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Mansione</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.roleTitle ?? ""}
@@ -294,7 +294,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Sede di lavoro</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Sede di lavoro</span>
               <Input
                 disabled={!canEdit}
                 value={localDoc.party.workLocation ?? ""}
@@ -304,7 +304,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Data inizio</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Data inizio</span>
               <Input
                 disabled={!canEdit}
                 type="date"
@@ -315,7 +315,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Mensilità</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Mensilità</span>
               <select
                 disabled={!canEdit}
                 value={localDoc.party.payMonthsPerYear ?? 13}
@@ -324,7 +324,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                     d ? { ...d, party: { ...d.party, payMonthsPerYear: Number(e.target.value) as 12 | 13 | 14 } } : d
                   )
                 }
-                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
               >
                 <option value={12}>12</option>
                 <option value={13}>13</option>
@@ -332,7 +332,7 @@ export default function ContractEditorPage(): React.JSX.Element {
               </select>
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">RAL</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">RAL</span>
               <Input
                 disabled={!canEdit}
                 type="number"
@@ -374,11 +374,11 @@ export default function ContractEditorPage(): React.JSX.Element {
           {localDoc.status === "approved" ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Firmatario azienda</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Firmatario azienda</span>
                 <Input disabled={!canEdit} value={signCompany} onChange={(e) => setSignCompany(e.target.value)} />
               </label>
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Firmatario lavoratore</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Firmatario lavoratore</span>
                 <Input disabled={!canEdit} value={signEmployee} onChange={(e) => setSignEmployee(e.target.value)} />
               </label>
             </div>
@@ -396,14 +396,14 @@ export default function ContractEditorPage(): React.JSX.Element {
         </CardHeader>
         <CardContent>
           {versions.length === 0 ? (
-            <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Nessuna versione registrata.</p>
+            <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessuna versione registrata.</p>
           ) : (
             <ul className="space-y-2">
               {versions.map((v) => (
                 <li key={v.version} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--card-border)] p-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-synapse-text dark:text-white">v{v.version}</p>
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">{String(v.created_at).slice(0, 19).replace("T", " ")}</p>
+                    <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">{String(v.created_at).slice(0, 19).replace("T", " ")}</p>
                   </div>
                   <Button
                     type="button"
@@ -445,7 +445,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <select
               value={addingBlockKey}
               onChange={(e) => setAddingBlockKey(e.target.value)}
-              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
             >
               <option value="">Aggiungi blocco…</option>
               {CONTRACT_BLOCK_LIBRARY.map((b) => (
@@ -522,7 +522,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                   </div>
                 </div>
                 <textarea
-                  className="mt-2 min-h-[120px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                  className="mt-2 min-h-[120px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                   disabled={!canEdit || Boolean(b.locked)}
                   value={b.content}
                   onChange={(e) =>

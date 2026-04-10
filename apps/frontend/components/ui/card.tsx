@@ -25,7 +25,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>): React.JSX.Element {
   return (
-    <p className={cn("text-sm text-synapse-muted dark:text-[#c8c8c8]", className)} {...props} />
+    <p className={cn("text-sm text-synapse-muted dark:text-[#b4c9dc]", className)} {...props} />
   );
 }
 

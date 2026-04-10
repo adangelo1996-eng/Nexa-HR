@@ -65,7 +65,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Colloqui e selezione</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Hub recruiting: posizioni aperte, candidati e pipeline a fasi.
         </p>
         <div className="flex flex-wrap gap-2 pt-2">
@@ -86,17 +86,17 @@ export default function RecruitingHomePage(): React.JSX.Element {
         <CardContent>
           <div className="grid gap-3">
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Titolo</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Titolo</span>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Scadenza (entro quando serve il candidato)</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Scadenza (entro quando serve il candidato)</span>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Job description</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Job description</span>
               <textarea
-                className="min-h-[140px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                className="min-h-[140px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                 value={jd}
                 onChange={(e) => setJd(e.target.value)}
               />
@@ -133,7 +133,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
         <CardContent>
           {loading ? <p className="text-sm text-synapse-muted">Caricamento…</p> : null}
           {!loading && openPositions.length === 0 ? (
-            <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Nessuna posizione aperta.</p>
+            <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessuna posizione aperta.</p>
           ) : (
             <ul className="space-y-2">
               {openPositions.map((p) => (
@@ -143,7 +143,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-synapse-text dark:text-white">{p.title}</p>
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">
+                    <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
                       Job ID: {p.job_code || "—"}
                       {p.due_date ? ` • scadenza ${String(p.due_date).slice(0, 10)}` : ""}
                     </p>

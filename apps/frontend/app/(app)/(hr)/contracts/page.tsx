@@ -74,7 +74,7 @@ export default function ContractsListPage(): React.JSX.Element {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Contratti standard</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Crea un contratto indeterminato a blocchi, modifica il contenuto e poi esporta in PDF. I dati sono salvati sul server.
         </p>
       </header>
@@ -93,11 +93,11 @@ export default function ContractsListPage(): React.JSX.Element {
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Template</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Template</span>
               <select
                 value={template}
                 onChange={(e) => setTemplate(e.target.value as HrContractTemplateKey)}
-                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
               >
                 <option value="indeterminato">Indeterminato</option>
                 <option value="determinato">Determinato</option>
@@ -106,53 +106,53 @@ export default function ContractsListPage(): React.JSX.Element {
               </select>
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Ragione sociale</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Ragione sociale</span>
               <Input
                 value={party.companyLegalName}
                 onChange={(e) => setParty((p) => ({ ...p, companyLegalName: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Indirizzo azienda</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo azienda</span>
               <Input
                 value={party.companyAddress ?? ""}
                 onChange={(e) => setParty((p) => ({ ...p, companyAddress: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Nome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Nome</span>
               <Input
                 value={party.employeeFirstName}
                 onChange={(e) => setParty((p) => ({ ...p, employeeFirstName: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Cognome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Cognome</span>
               <Input
                 value={party.employeeLastName}
                 onChange={(e) => setParty((p) => ({ ...p, employeeLastName: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Indirizzo lavoratore</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo lavoratore</span>
               <Input
                 value={party.employeeAddress ?? ""}
                 onChange={(e) => setParty((p) => ({ ...p, employeeAddress: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Mansione</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Mansione</span>
               <Input value={party.roleTitle ?? ""} onChange={(e) => setParty((p) => ({ ...p, roleTitle: e.target.value }))} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Sede di lavoro</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Sede di lavoro</span>
               <Input
                 value={party.workLocation ?? ""}
                 onChange={(e) => setParty((p) => ({ ...p, workLocation: e.target.value }))}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Data inizio</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Data inizio</span>
               <Input
                 type="date"
                 value={(party.startDateIso ?? "").slice(0, 10)}
@@ -160,7 +160,7 @@ export default function ContractsListPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">RAL</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">RAL</span>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -171,11 +171,11 @@ export default function ContractsListPage(): React.JSX.Element {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Mensilità</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Mensilità</span>
               <select
                 value={party.payMonthsPerYear ?? 13}
                 onChange={(e) => setParty((p) => ({ ...p, payMonthsPerYear: Number(e.target.value) as 12 | 13 | 14 }))}
-                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
               >
                 <option value={12}>12</option>
                 <option value={13}>13</option>
@@ -230,9 +230,9 @@ export default function ContractsListPage(): React.JSX.Element {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Caricamento…</p>
+            <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Caricamento…</p>
           ) : contracts.length === 0 ? (
-            <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Nessun contratto creato.</p>
+            <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessun contratto creato.</p>
           ) : (
             <ul className="space-y-2">
               {contracts.map((c) => (
@@ -242,7 +242,7 @@ export default function ContractsListPage(): React.JSX.Element {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-synapse-text dark:text-white">{c.title}</p>
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">
+                    <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
                       {c.status.toUpperCase()} • aggiornato {shortIso(c.updatedAt)}
                     </p>
                   </div>

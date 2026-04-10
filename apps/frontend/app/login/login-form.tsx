@@ -203,19 +203,19 @@ export default function LoginForm(): React.JSX.Element {
               >
                 ACCESSO
               </h2>
-              <p className="lead m-0 mb-5 text-[0.88rem] leading-relaxed text-[var(--prom-muted)] dark:text-[#c8c8c8]">
+              <p className="lead m-0 mb-5 text-[0.88rem] leading-relaxed text-[var(--prom-muted)] dark:text-[#b4c9dc]">
                 Stesso account Supabase delle altre app (es.{" "}
                 <strong className="text-[var(--prom-text)] dark:text-white">admin@synapse.com</strong>).
               </p>
               {warmingUp ? (
-                <p className="mb-3 text-[0.85rem] text-[var(--prom-muted)] dark:text-[#c8c8c8]">
+                <p className="mb-3 text-[0.85rem] text-[var(--prom-muted)] dark:text-[#b4c9dc]">
                   Sto preparando il server… (standby Render)
                 </p>
               ) : null}
               <form onSubmit={onSubmit}>
                 <label
                   htmlFor="nexa-email"
-                  className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[var(--prom-muted)] dark:text-[#c8c8c8]"
+                  className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[var(--prom-muted)] dark:text-[#b4c9dc]"
                 >
                   EMAIL
                 </label>
@@ -233,7 +233,7 @@ export default function LoginForm(): React.JSX.Element {
 
                 <label
                   htmlFor="nexa-password"
-                  className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[var(--prom-muted)] dark:text-[#c8c8c8]"
+                  className="mb-1.5 block text-[0.72rem] uppercase tracking-[0.14em] text-[var(--prom-muted)] dark:text-[#b4c9dc]"
                 >
                   PASSWORD
                 </label>

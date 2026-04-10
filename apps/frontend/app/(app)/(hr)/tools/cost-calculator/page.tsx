@@ -62,7 +62,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">
           Calcolatore costo azienda / netto
         </h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Tool dinamico con stima indicativa: variando ore, RAL o netto target, i valori si ricalcolano in tempo reale.
         </p>
       </header>
@@ -76,11 +76,11 @@ export default function CostCalculatorPage(): React.JSX.Element {
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Modalità</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Modalità</span>
                 <select
                   value={mode}
                   onChange={(e) => setMode(e.target.value as CostCalculatorInputMode)}
-                  className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                  className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                 >
                   <option value="ral">Inserisco RAL</option>
                   <option value="net">Inserisco netto mensile target</option>
@@ -88,11 +88,11 @@ export default function CostCalculatorPage(): React.JSX.Element {
               </label>
 
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Mensilità</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Mensilità</span>
                 <select
                   value={payMonthsPerYear}
                   onChange={(e) => setPayMonthsPerYear(Number(e.target.value) as 12 | 13 | 14)}
-                  className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                  className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                 >
                   <option value={12}>12</option>
                   <option value={13}>13</option>
@@ -101,7 +101,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
               </label>
 
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Ore contratto / settimana</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Ore contratto / settimana</span>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -113,7 +113,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
               </label>
 
               <label className="space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Ore full-time / settimana</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Ore full-time / settimana</span>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -126,7 +126,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
 
               {mode === "ral" ? (
                 <label className="space-y-1 text-sm md:col-span-2">
-                  <span className="text-synapse-muted dark:text-[#c8c8c8]">RAL (EUR)</span>
+                  <span className="text-synapse-muted dark:text-[#b4c9dc]">RAL (EUR)</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -138,7 +138,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
                 </label>
               ) : (
                 <label className="space-y-1 text-sm md:col-span-2">
-                  <span className="text-synapse-muted dark:text-[#c8c8c8]">Netto mensile target (EUR)</span>
+                  <span className="text-synapse-muted dark:text-[#b4c9dc]">Netto mensile target (EUR)</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -180,7 +180,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
                 </label>
               </div>
               <label className="block space-y-1 text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Altro (note)</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Altro (note)</span>
                 <Input value={agevOtherNotes} onChange={(e) => setAgevOtherNotes(e.target.value)} />
               </label>
             </div>
@@ -196,19 +196,19 @@ export default function CostCalculatorPage(): React.JSX.Element {
             <CardContent>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Netto stimato</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Netto stimato</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
                     {formatEuro(result.monthly.netEuros)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Lordo (mese)</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Lordo (mese)</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
                     {formatEuro(result.monthly.grossEuros)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Costo azienda</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Costo azienda</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
                     {formatEuro(result.monthly.companyCostEuros)}
                   </p>
@@ -222,7 +222,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
                 <div className="mt-3 space-y-2 text-sm">
                   {result.breakdownCompanyCost.map((row) => (
                     <div key={row.key} className="flex items-center justify-between gap-3">
-                      <span className="text-synapse-muted dark:text-[#c8c8c8]">{row.label}</span>
+                      <span className="text-synapse-muted dark:text-[#b4c9dc]">{row.label}</span>
                       <span className="tabular-nums text-synapse-text dark:text-white">{formatEuro(row.euros)}</span>
                     </div>
                   ))}
@@ -235,19 +235,19 @@ export default function CostCalculatorPage(): React.JSX.Element {
                 </summary>
                 <div className="mt-3 space-y-2 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-synapse-muted dark:text-[#c8c8c8]">Contributi lavoratore (INPS)</span>
+                    <span className="text-synapse-muted dark:text-[#b4c9dc]">Contributi lavoratore (INPS)</span>
                     <span className="tabular-nums text-synapse-text dark:text-white">
                       {formatEuro(result.monthly.employeeInpsEuros)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-synapse-muted dark:text-[#c8c8c8]">IRPEF stimata</span>
+                    <span className="text-synapse-muted dark:text-[#b4c9dc]">IRPEF stimata</span>
                     <span className="tabular-nums text-synapse-text dark:text-white">
                       {formatEuro(result.monthly.estimatedIrpefEuros)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-synapse-muted dark:text-[#c8c8c8]">Addizionali (stima)</span>
+                    <span className="text-synapse-muted dark:text-[#b4c9dc]">Addizionali (stima)</span>
                     <span className="tabular-nums text-synapse-text dark:text-white">
                       {formatEuro(result.monthly.estimatedAddizionaliEuros)}
                     </span>
@@ -267,19 +267,19 @@ export default function CostCalculatorPage(): React.JSX.Element {
             <CardContent>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Netto stimato</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Netto stimato</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
                     {formatEuro(result.annual.netEuros)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Lordo (anno)</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Lordo (anno)</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
                     {formatEuro(result.annual.grossEuros)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                  <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Costo azienda</p>
+                  <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Costo azienda</p>
                   <p className="mt-1 text-lg font-semibold tabular-nums text-synapse-text dark:text-white">
                     {formatEuro(result.annual.companyCostEuros)}
                   </p>
@@ -294,7 +294,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
               <CardDescription>Valori centralizzati e versionabili (MVP).</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-1 text-sm text-synapse-muted dark:text-[#c8c8c8]">
+              <ul className="space-y-1 text-sm text-synapse-muted dark:text-[#b4c9dc]">
                 <li>INPS lavoratore: {result.assumptions.employeeInpsPercent.toFixed(2)}%</li>
                 <li>INPS datore: {result.assumptions.employerInpsPercent.toFixed(2)}%</li>
                 <li>INAIL: {result.assumptions.inailPercent.toFixed(2)}%</li>

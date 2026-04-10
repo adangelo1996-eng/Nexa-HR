@@ -132,7 +132,7 @@ export default function CandidateDetailPage(): React.JSX.Element {
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Candidato</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Dettaglio, allegati e strumenti privacy.</p>
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Dettaglio, allegati e strumenti privacy.</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Link
             href="/recruiting/candidates"
@@ -164,12 +164,12 @@ export default function CandidateDetailPage(): React.JSX.Element {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              <p className="text-sm text-synapse-muted dark:text-[#c8c8c8] whitespace-pre-wrap">
+              <p className="text-sm text-synapse-muted dark:text-[#b4c9dc] whitespace-pre-wrap">
                 {data.candidate.notes?.trim() ? data.candidate.notes : "Nessuna nota."}
               </p>
               {(data.candidate.privacy_notice_version != null && data.candidate.privacy_notice_version !== "") ||
               data.candidate.consent_recorded_at != null ? (
-                <div className="rounded-md border border-[var(--card-border)] p-3 text-xs text-synapse-muted dark:text-[#c8c8c8]">
+                <div className="rounded-md border border-[var(--card-border)] p-3 text-xs text-synapse-muted dark:text-[#b4c9dc]">
                   {data.candidate.privacy_notice_version ? (
                     <p>Informativa (versione): {data.candidate.privacy_notice_version}</p>
                   ) : null}
@@ -188,7 +188,7 @@ export default function CandidateDetailPage(): React.JSX.Element {
             </CardHeader>
             <CardContent className="space-y-3">
               <label className="block text-sm">
-                <span className="text-synapse-muted dark:text-[#c8c8c8]">Carica file</span>
+                <span className="text-synapse-muted dark:text-[#b4c9dc]">Carica file</span>
                 <input
                   type="file"
                   className="mt-1 w-full text-sm text-synapse-text dark:text-white"
@@ -243,7 +243,7 @@ export default function CandidateDetailPage(): React.JSX.Element {
                   {data.states.map((s) => (
                     <li key={s.state_id} className="rounded-lg border border-[var(--card-border)] p-3">
                       <p className="text-sm font-medium text-synapse-text dark:text-white">{s.position_title}</p>
-                      <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">Esito: {s.status}</p>
+                      <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Esito: {s.status}</p>
                       <div className="mt-2">
                         <Link
                           href={`/recruiting/pipelines/${encodeURIComponent(s.position_id)}`}

@@ -170,7 +170,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Candidati</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Anagrafica breve per tracciare la selezione.</p>
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Anagrafica breve per tracciare la selezione.</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Link
             href="/recruiting"
@@ -189,15 +189,15 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Nome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Nome</span>
               <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Cognome</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Cognome</span>
               <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Email</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Email</span>
               <Input
                 type="email"
                 autoComplete="email"
@@ -208,7 +208,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
               {fe.email ? <p className="text-xs text-rose-600">{fe.email}</p> : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Telefono</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Telefono</span>
               <Input
                 type="tel"
                 autoComplete="tel"
@@ -219,16 +219,16 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
               {fe.phone ? <p className="text-xs text-rose-600">{fe.phone}</p> : null}
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">Note</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Note</span>
               <textarea
-                className="min-h-[90px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+                className="min-h-[90px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
               {fe.notes ? <p className="text-xs text-rose-600">{fe.notes}</p> : null}
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">
                 Versione informativa privacy (opzionale, es. v2026-04)
               </span>
               <Input
@@ -245,13 +245,13 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
                 onChange={(e) => setConsentAck(e.target.checked)}
                 className="mt-1"
               />
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">
                 Registra consenso / base giuridica per il trattamento dei dati del candidato (timestamp server alla creazione).
                 Il testo legale è responsabilità del datore di lavoro.
               </span>
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#c8c8c8]">
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">
                 Allegati da caricare dopo la creazione (PDF, DOC/DOCX, PNG, JPEG)
               </span>
               <input
@@ -282,11 +282,11 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
         </CardHeader>
         <CardContent>
           <label className="space-y-1 text-sm">
-            <span className="text-synapse-muted dark:text-[#c8c8c8]">Posizione</span>
+            <span className="text-synapse-muted dark:text-[#b4c9dc]">Posizione</span>
             <select
               value={positionId}
               onChange={(e) => setPositionId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
             >
               <option value="">Seleziona…</option>
               {openPositions.map((p) => (
@@ -307,7 +307,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
         <CardContent>
           {loading ? <p className="text-sm text-synapse-muted">Caricamento…</p> : null}
           {!loading && candidates.length === 0 ? (
-            <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">Nessun candidato.</p>
+            <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessun candidato.</p>
           ) : (
             <ul className="space-y-2">
               {candidates.map((c) => (
@@ -319,7 +319,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
                     <p className="truncate text-sm font-medium text-synapse-text dark:text-white">
                       {c.first_name} {c.last_name}
                     </p>
-                    <p className="text-xs text-synapse-muted dark:text-[#c8c8c8]">
+                    <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
                       {c.email ?? "—"} • {c.phone ?? "—"}
                     </p>
                   </div>

@@ -124,7 +124,7 @@ export default function ThirdPartyLicensesPage(): React.JSX.Element {
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Utenze e licenze terze</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#c8c8c8]">
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Inventario strumenti (es. Power BI, ChatGPT), posti acquistati, costi e assegnazioni ai dipendenti.
         </p>
         <div className="pt-2">
@@ -179,15 +179,15 @@ export default function ThirdPartyLicensesPage(): React.JSX.Element {
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs">
-            <span className="text-synapse-muted dark:text-[#c8c8c8]">Tool / piano</span>
+            <span className="text-synapse-muted dark:text-[#b4c9dc]">Tool / piano</span>
             <Input value={toolFilter} onChange={(e) => setToolFilter(e.target.value)} placeholder="Cerca…" />
           </label>
           <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs">
-            <span className="text-synapse-muted dark:text-[#c8c8c8]">Assegnatario</span>
+            <span className="text-synapse-muted dark:text-[#b4c9dc]">Assegnatario</span>
             <select
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
             >
               <option value="">Tutti</option>
               {assigneeOptions.map((n) => (
@@ -248,7 +248,7 @@ export default function ThirdPartyLicensesPage(): React.JSX.Element {
               onChange={(e) =>
                 setForm((f) => ({ ...f, costFrequency: e.target.value as ThirdPartyCostFrequency }))
               }
-              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm dark:border-white/15 dark:bg-[#141414]/90 dark:text-white"
+              className="w-full rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
             >
               {(Object.keys(FREQ_LABEL) as ThirdPartyCostFrequency[]).map((k) => (
                 <option key={k} value={k}>

@@ -44,7 +44,7 @@ function AdminNavMobileStrip(): React.JSX.Element {
               "shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
               isActive
                 ? "bg-synapse-gold/20 text-synapse-text ring-1 ring-synapse-gold/35 dark:bg-white/[0.1] dark:text-white"
-                : "border border-transparent text-synapse-muted hover:bg-black/[0.06] dark:text-[#c8c8c8]/90 dark:hover:bg-white/[0.08]"
+                : "border border-transparent text-synapse-muted hover:bg-black/[0.06] dark:text-[#b4c9dc]/90 dark:hover:bg-white/[0.08]"
             ].join(" ")}
           >
             {item.label}
@@ -99,7 +99,7 @@ export function AdminSidebar(): React.JSX.Element {
                   "flex items-center rounded-lg px-2 py-2 transition-colors sm:px-3",
                   isActive
                     ? "bg-synapse-gold/15 text-synapse-text ring-1 ring-synapse-gold/30 dark:bg-white/[0.08] dark:text-white dark:ring-synapse-gold-bright/35"
-                    : "text-synapse-muted hover:bg-black/[0.04] hover:text-synapse-text dark:text-[#c8c8c8]/90 dark:hover:bg-white/[0.06] dark:hover:text-white"
+                    : "text-synapse-muted hover:bg-black/[0.04] hover:text-synapse-text dark:text-[#b4c9dc]/90 dark:hover:bg-white/[0.06] dark:hover:text-white"
                 ].join(" ")}
               >
                 <span className="leading-tight">{item.label}</span>

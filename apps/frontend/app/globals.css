@@ -73,29 +73,30 @@
   --glass-shadow: 0 14px 36px rgba(26, 31, 24, 0.07);
 }
 
+/* Tema scuro: 50-884 Blu marine — Pantone 288 C (#002D72) e scale derivate */
 html.dark {
   color-scheme: dark;
-  --prom-bg: #0b0b0b;
-  --prom-surface: #141414;
-  --prom-surface-soft: #1d1d1d;
-  --prom-line: rgba(179, 179, 179, 0.35);
-  --prom-line-strong: rgba(179, 179, 179, 0.75);
+  --prom-bg: #011528;
+  --prom-surface: #052642;
+  --prom-surface-soft: #0a335a;
+  --prom-line: rgba(180, 200, 220, 0.32);
+  --prom-line-strong: rgba(200, 218, 235, 0.72);
   --prom-text: #ffffff;
-  --prom-muted: #c8c8c8;
-  --prom-gold: #6b8fa3;
-  --prom-gold-soft: #4a6678;
-  --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(179, 179, 179, 0.08), transparent 62%),
-    radial-gradient(900px 520px at 0% 110%, rgba(120, 120, 120, 0.1), transparent 64%),
-    linear-gradient(165deg, #050505, #0f0f0f 45%, var(--prom-bg) 85%);
-  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
-  --bar-border: rgba(255, 255, 255, 0.18);
-  --bar-shadow: 0 14px 32px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  --card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-  --card-border: rgba(255, 255, 255, 0.12);
-  --card-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.55), 0 0 24px rgba(154, 170, 189, 0.12);
-  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  --prom-muted: #b4c9dc;
+  --prom-gold: #6eb0e0;
+  --prom-gold-soft: #3d85b5;
+  --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(0, 45, 114, 0.22), transparent 62%),
+    radial-gradient(900px 520px at 0% 110%, rgba(0, 35, 90, 0.18), transparent 64%),
+    linear-gradient(165deg, #000a18, #031b36 45%, var(--prom-bg) 85%);
+  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  --bar-border: rgba(200, 220, 240, 0.2);
+  --bar-shadow: 0 14px 32px rgba(0, 8, 24, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  --card-border: rgba(200, 218, 235, 0.14);
+  --card-shadow: 0 20px 50px -20px rgba(0, 4, 16, 0.65), 0 0 28px rgba(0, 45, 114, 0.2);
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  --glass-border: rgba(200, 218, 235, 0.16);
+  --glass-shadow: 0 16px 40px rgba(0, 6, 20, 0.42);
 }
 
 body {
@@ -122,9 +123,9 @@ body {
 html.dark .nexa-login-shell {
   color: #ffffff;
   background:
-    radial-gradient(1100px 640px at 100% -20%, rgba(179, 179, 179, 0.08), transparent 62%),
-    radial-gradient(900px 520px at 0% 110%, rgba(120, 120, 120, 0.1), transparent 64%),
-    linear-gradient(165deg, #050505, #0f0f0f 45%, #0b0b0b 85%);
+    radial-gradient(1100px 640px at 100% -20%, rgba(0, 45, 114, 0.22), transparent 62%),
+    radial-gradient(900px 520px at 0% 110%, rgba(0, 35, 90, 0.18), transparent 64%),
+    linear-gradient(165deg, #000a18, #031b36 45%, var(--prom-bg) 85%);
 }
 
 .card {
@@ -208,8 +209,8 @@ html.dark .dashboard-quick-action:hover:not(:disabled) {
     box-shadow: 0 8px 24px rgba(26, 31, 24, 0.08);
   }
   html.dark .synapse-nav-link:hover {
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 18px rgba(154, 170, 189, 0.15);
-    background: linear-gradient(140deg, rgba(154, 170, 189, 0.14), rgba(255, 255, 255, 0.04));
+    box-shadow: 0 12px 28px rgba(0, 8, 24, 0.45), 0 0 22px rgba(0, 45, 114, 0.28);
+    background: linear-gradient(140deg, rgba(110, 176, 224, 0.16), rgba(255, 255, 255, 0.04));
   }
 
   .synapse-nav-link-compact {
@@ -231,19 +232,19 @@ html.dark .dashboard-quick-action:hover:not(:disabled) {
   }
 }
 
-/* @xyflow/react: controlli e minimappa (default chiari) su shell dark Nexa */
+/* @xyflow/react: controlli e minimappa (default chiari) su shell dark Nexa — allineati al blu marine 288 C */
 html.dark .nexa-flow-controls.react-flow__controls {
-  background: rgba(15, 23, 42, 0.96);
-  border: 1px solid rgb(51 65 85);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  background: rgba(5, 38, 66, 0.96);
+  border: 1px solid rgba(110, 176, 224, 0.28);
+  box-shadow: 0 4px 24px rgba(0, 8, 24, 0.55);
 }
 html.dark .nexa-flow-controls .react-flow__controls-button {
-  background: rgb(15 23 42);
-  border-bottom: 1px solid rgb(51 65 85);
-  color: #e2e8f0;
+  background: rgb(5 38 66);
+  border-bottom: 1px solid rgba(110, 176, 224, 0.22);
+  color: #e2edf6;
 }
 html.dark .nexa-flow-controls .react-flow__controls-button:hover {
-  background: rgb(30 41 59);
+  background: rgb(10 51 90);
 }
 html.dark .nexa-flow-controls .react-flow__controls-button svg {
   fill: currentColor;
@@ -251,10 +252,10 @@ html.dark .nexa-flow-controls .react-flow__controls-button svg {
   max-height: 14px;
 }
 html.dark .nexa-flow-minimap.react-flow__minimap {
-  background-color: rgb(15 23 42) !important;
-  border: 1px solid rgb(51 65 85);
+  background-color: rgb(5 38 66) !important;
+  border: 1px solid rgba(110, 176, 224, 0.28);
   border-radius: 4px;
 }
 html.dark .nexa-orgchart-flow .react-flow__minimap-mask {
-  fill: rgba(15, 23, 42, 0.55);
+  fill: rgba(5, 38, 66, 0.55);
 }

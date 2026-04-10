@@ -27,19 +27,20 @@ const config: Config = {
       colors: {
         /* Accento blu di Prussia / grigio — i token “gold” restano per compatibilità classi */
         synapse: {
-          bg: "#0b0b0b",
+          /* Sfondo/superficie dark: scala da Pantone 288 C (#002d72) — 50-884 Blu marine */
+          bg: "#011528",
           "bg-light": "#ececec",
-          surface: "#141414",
+          surface: "#052642",
           "surface-light": "#ffffff",
           gold: "#3a5466",
-          "gold-bright": "#5d7a8f",
+          "gold-bright": "#6eb0e0",
           "gold-soft": "#2a3f4d",
           "gold-soft-dark": "#4a6578",
           text: "#1a1f18",
           muted: "#4d5248"
         },
-        bg: "#0b0b0b",
-        card: "#141414",
+        bg: "#011528",
+        card: "#052642",
         accent: "#3a5466"
       },
       boxShadow: {
