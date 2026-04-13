@@ -19,6 +19,7 @@ build/
 .env
 .env.*
 !.env.example
+.render-api-key
 
 # Apple Wallet — materiale di firma locale (la cartella certs resta nel repo vuota via .gitkeep)
 apps/backend/certs/*.pem
