@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -70,7 +69,6 @@ export interface RecruitCandidateStageStateRow {
   updated_at: string;
 }
 
-const RECRUIT_DOC_BUCKET = "recruit-candidate-files";
 const RECRUIT_DOC_MAX_BYTES = 15 * 1024 * 1024;
 const RECRUIT_ALLOWED_MIME = new Set([
   "application/pdf",
@@ -83,6 +81,10 @@ const RECRUIT_ALLOWED_MIME = new Set([
 /** Solo colonne da `040_recruiting_core.sql`. Dopo `049` sul DB, si possono riaggiungere privacy_notice_version e consent_recorded_at in select/insert. */
 const RECRUIT_CANDIDATE_DB_COLS =
   "id, company_id, first_name, last_name, email, phone, notes, created_at";
+
+/** Solo colonne da `040` per `recruit_candidate_documents` (storage/mime/size in `048`). */
+const RECRUIT_CANDIDATE_DOC_DB_COLS =
+  "id, candidate_id, kind, employee_document_id, label, created_at";
 
 @Injectable()
 export class RecruitingService {
@@ -496,19 +498,6 @@ export class RecruitingService {
       return map;
     }
     const sb = this.sb();
-    // #region agent log
-    fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
-      body: JSON.stringify({
-        sessionId: "04a85b",
-        location: "recruiting.service.ts:buildUndoFlagsForBoard:pre",
-        message: "audit log select start",
-        data: { hypothesisId: "H1-H2", stateIdsCount: ids.length },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     const { data, error } = await sb
       .from("recruit_stage_transition_log")
       .select("state_id, to_stage_id, created_at")
@@ -516,38 +505,8 @@ export class RecruitingService {
       .is("reverted_at", null)
       .order("created_at", { ascending: false });
     if (error) {
-      // #region agent log
-      fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
-        body: JSON.stringify({
-          sessionId: "04a85b",
-          location: "recruiting.service.ts:buildUndoFlagsForBoard:error",
-          message: "audit log select failed",
-          data: {
-            hypothesisId: "H1-H2",
-            code: (error as { code?: string }).code ?? null,
-            msgPrefix: String(error.message ?? "").slice(0, 120)
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
       throw new InternalServerErrorException(`Audit pipeline: ${error.message}`);
     }
-    // #region agent log
-    fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
-      body: JSON.stringify({
-        sessionId: "04a85b",
-        location: "recruiting.service.ts:buildUndoFlagsForBoard:ok",
-        message: "audit log select ok",
-        data: { hypothesisId: "H2", rowCount: (data ?? []).length },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     const latestTo = new Map<string, string>();
     for (const row of data ?? []) {
       const sid = String((row as { state_id?: string }).state_id);
@@ -758,7 +717,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidate_documents")
-      .select("id, candidate_id, kind, label, created_at, storage_bucket, storage_path, mime_type, byte_size")
+      .select(RECRUIT_CANDIDATE_DOC_DB_COLS)
       .eq("candidate_id", candidateId)
       .order("created_at", { ascending: false });
     if (error) {
@@ -770,10 +729,10 @@ export class RecruitingService {
       kind: r.kind as "cv" | "other",
       label: String(r.label ?? ""),
       created_at: this.toIso(r.created_at),
-      storage_bucket: (r.storage_bucket as string | null) ?? null,
-      storage_path: (r.storage_path as string | null) ?? null,
-      mime_type: (r.mime_type as string | null) ?? null,
-      byte_size: r.byte_size != null ? Number(r.byte_size) : null
+      storage_bucket: null,
+      storage_path: null,
+      mime_type: null,
+      byte_size: null
     }));
   }
 
@@ -795,32 +754,18 @@ export class RecruitingService {
     if (input.buffer.length > RECRUIT_DOC_MAX_BYTES) {
       throw new BadRequestException("File troppo grande (max 15 MB)");
     }
-    const safeName = input.originalName.replace(/[^\w.\-]+/g, "_").slice(0, 120);
-    const objectPath = `${input.companyId}/${input.candidateId}/${randomUUID()}_${safeName}`;
     const sb = this.sb();
-    const { error: upErr } = await sb.storage.from(RECRUIT_DOC_BUCKET).upload(objectPath, input.buffer, {
-      contentType: mime,
-      upsert: false
-    });
-    if (upErr) {
-      throw new InternalServerErrorException(`Upload: ${upErr.message}`);
-    }
+    /** Schema `040` senza colonne storage: solo metadati riga; upload binario su Storage richiede migrazione `048`. */
     const { data, error } = await sb
       .from("recruit_candidate_documents")
       .insert({
         candidate_id: input.candidateId,
         kind: input.kind,
-        label: input.label?.trim() ? input.label.trim() : input.kind === "cv" ? "CV" : "Allegato",
-        storage_bucket: RECRUIT_DOC_BUCKET,
-        storage_path: objectPath,
-        mime_type: mime,
-        byte_size: input.buffer.length,
-        uploaded_by_user_id: input.actorUserId
+        label: input.label?.trim() ? input.label.trim() : input.kind === "cv" ? "CV" : "Allegato"
       })
-      .select("id, candidate_id, kind, label, created_at, storage_bucket, storage_path, mime_type, byte_size")
+      .select(RECRUIT_CANDIDATE_DOC_DB_COLS)
       .single();
     if (error || !data) {
-      await sb.storage.from(RECRUIT_DOC_BUCKET).remove([objectPath]).catch(() => undefined);
       throw new InternalServerErrorException(`Metadati documento: ${error?.message ?? "nessun dato"}`);
     }
     return {
@@ -829,10 +774,10 @@ export class RecruitingService {
       kind: data.kind as "cv" | "other",
       label: String(data.label ?? ""),
       created_at: this.toIso(data.created_at),
-      storage_bucket: (data.storage_bucket as string | null) ?? null,
-      storage_path: (data.storage_path as string | null) ?? null,
-      mime_type: (data.mime_type as string | null) ?? null,
-      byte_size: data.byte_size != null ? Number(data.byte_size) : null
+      storage_bucket: null,
+      storage_path: null,
+      mime_type: null,
+      byte_size: null
     };
   }
 
@@ -840,7 +785,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data: doc, error } = await sb
       .from("recruit_candidate_documents")
-      .select("id, candidate_id, storage_bucket, storage_path, recruit_candidates ( company_id )")
+      .select("id, candidate_id, recruit_candidates ( company_id )")
       .eq("id", documentId)
       .maybeSingle();
     if (error) {
@@ -852,14 +797,6 @@ export class RecruitingService {
     const nest = doc.recruit_candidates as { company_id?: string } | null;
     if (!nest || nest.company_id !== companyId) {
       throw new NotFoundException("Documento non trovato");
-    }
-    const buck = doc.storage_bucket as string | null;
-    const path = doc.storage_path as string | null;
-    if (buck && path) {
-      const { error: rmErr } = await sb.storage.from(buck).remove([path]);
-      if (rmErr) {
-        throw new InternalServerErrorException(`Rimozione storage: ${rmErr.message}`);
-      }
     }
     const { error: delErr } = await sb.from("recruit_candidate_documents").delete().eq("id", documentId);
     if (delErr) {
@@ -874,7 +811,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data: doc, error } = await sb
       .from("recruit_candidate_documents")
-      .select("id, label, storage_bucket, storage_path, mime_type, recruit_candidates ( company_id )")
+      .select("id, label, recruit_candidates ( company_id )")
       .eq("id", documentId)
       .maybeSingle();
     if (error) {
@@ -887,39 +824,13 @@ export class RecruitingService {
     if (!nest || nest.company_id !== companyId) {
       throw new NotFoundException("Documento non trovato");
     }
-    const buck = String(doc.storage_bucket ?? "");
-    const path = String(doc.storage_path ?? "");
-    if (!buck || !path) {
-      throw new NotFoundException("File non disponibile");
-    }
-    const { data: blob, error: dErr } = await sb.storage.from(buck).download(path);
-    if (dErr || !blob) {
-      throw new InternalServerErrorException(dErr?.message ?? "Download fallito");
-    }
-    const buf = Buffer.from(await blob.arrayBuffer());
-    const mime = (doc.mime_type as string) || "application/octet-stream";
-    const baseLabel = String(doc.label ?? "document").replace(/[^\w.\-]+/g, "_").slice(0, 80);
-    const ext = mime.includes("pdf") ? ".pdf" : mime.includes("wordprocessingml") ? ".docx" : "";
-    return { buffer: buf, mimeType: mime, downloadName: `${baseLabel}${ext || ""}` };
+    /** Con schema `040` senza `048` non ci sono path Storage su DB; dopo `048` si può ripristinare download da bucket. */
+    throw new NotFoundException("File non disponibile");
   }
 
   async deleteCandidate(companyId: string, candidateId: string): Promise<void> {
     await this.assertCandidateInCompany(candidateId, companyId);
     const sb = this.sb();
-    const { data: docs, error: dErr } = await sb
-      .from("recruit_candidate_documents")
-      .select("storage_bucket, storage_path")
-      .eq("candidate_id", candidateId);
-    if (dErr) {
-      throw new InternalServerErrorException(dErr.message);
-    }
-    for (const d of docs ?? []) {
-      const b = d.storage_bucket as string | null;
-      const p = d.storage_path as string | null;
-      if (b && p) {
-        await sb.storage.from(b).remove([p]).catch(() => undefined);
-      }
-    }
     const { error } = await sb.from("recruit_candidates").delete().eq("id", candidateId).eq("company_id", companyId);
     if (error) {
       throw new InternalServerErrorException(`Eliminazione candidato: ${error.message}`);
