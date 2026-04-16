@@ -139,16 +139,20 @@ export class RecruitingService {
     if (error) {
       throw new InternalServerErrorException(`Recruiting list positions: ${error.message}`);
     }
-    return (data ?? []).map((r) => ({
-      id: String(r.id),
-      company_id: r.company_id as string,
-      title: r.title as string,
-      job_description: r.job_description as string,
-      status: r.status as RecruitPositionRow["status"],
-      created_at: this.toIso(r.created_at),
-      job_code: String((r as { job_code?: string }).job_code ?? ""),
-      due_date: (r as { due_date?: string | null }).due_date != null ? String((r as { due_date?: string }).due_date) : null
-    }));
+    return (data ?? []).map((r) => {
+      const rawStatus = String((r as { status?: string }).status ?? "open").trim().toLowerCase();
+      const status: RecruitPositionRow["status"] = rawStatus === "closed" ? "closed" : "open";
+      return {
+        id: String(r.id),
+        company_id: r.company_id as string,
+        title: r.title as string,
+        job_description: r.job_description as string,
+        status,
+        created_at: this.toIso(r.created_at),
+        job_code: String((r as { job_code?: string }).job_code ?? ""),
+        due_date: (r as { due_date?: string | null }).due_date != null ? String((r as { due_date?: string }).due_date) : null
+      };
+    });
   }
 
   private formatJobCode(year: number, n: number): string {
