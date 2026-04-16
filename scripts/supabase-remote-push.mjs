@@ -65,6 +65,8 @@ const optionalMigrate = process.argv.includes("--optional");
 
 const token = process.env.SUPABASE_ACCESS_TOKEN?.trim();
 const dbPassword = process.env.SUPABASE_DB_PASSWORD?.trim();
+/** Session pooler (IPv4) da Dashboard → Connect → Session mode — preferire alla URI direct se la rete non ha IPv6. */
+const poolerUrl = process.env.SUPABASE_POOLER_URL?.trim();
 const dbUrl =
   process.env.SUPABASE_DB_URL?.trim() || process.env.DATABASE_URL?.trim();
 
@@ -88,6 +90,25 @@ function run(args, extraEnv = {}) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
+if (poolerUrl) {
+  run(["db", "push", "--db-url", poolerUrl, "--yes", "--workdir", "infra/supabase"]);
+  console.log("Supabase: db push completato (SUPABASE_POOLER_URL).");
+  process.exit(0);
+}
+
+/**
+ * Token + password DB: `supabase link` ottiene la connection string corretta (pooler IPv4) via API.
+ * Ha priorità su --db-url: la URI direct `db.*.supabase.co` è spesso solo IPv6.
+ */
+if (token && dbPassword) {
+  run(["link", "--project-ref", projectRef, "--password", dbPassword, "--yes", "--workdir", "infra/supabase"], {
+    SUPABASE_ACCESS_TOKEN: token
+  });
+  run(["db", "push", "--yes", "--workdir", "infra/supabase"], { SUPABASE_ACCESS_TOKEN: token });
+  console.log("Supabase: db push completato (supabase link + push).");
+  process.exit(0);
+}
+
 if (dbUrl) {
   run(["db", "push", "--db-url", dbUrl, "--yes", "--workdir", "infra/supabase"]);
   console.log("Supabase: db push completato (SUPABASE_DB_URL).");
@@ -106,9 +127,3 @@ if (!token || !dbPassword) {
   );
   process.exit(1);
 }
-
-run(["link", "--project-ref", projectRef, "--password", dbPassword, "--yes", "--workdir", "infra/supabase"], {
-  SUPABASE_ACCESS_TOKEN: token
-});
-run(["db", "push", "--yes", "--workdir", "infra/supabase"], { SUPABASE_ACCESS_TOKEN: token });
-console.log("Supabase: db push completato.");
