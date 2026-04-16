@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AiPrivacyModule } from "./ai-privacy/ai-privacy.module";
 import { HebbHrModule } from "./ai/hebb-hr.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { CompensationModule } from "./compensation/compensation.module";
@@ -18,6 +19,7 @@ import { WorkforceModule } from "./workforce/workforce.module";
 
 @Module({
   imports: [
+    AiPrivacyModule,
     PlatformModule,
     WorkforceModule,
     TimeoffModule,

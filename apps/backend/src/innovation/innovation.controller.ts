@@ -14,6 +14,7 @@ class StartJobDto {
   payload?: Record<string, unknown>;
 }
 
+// Outbound verso LLM: usare `AiPrivacyGateway` in `src/ai-privacy`.
 @Controller("innovation")
 @UseGuards(NexaPermissionGuard)
 export class InnovationController {
