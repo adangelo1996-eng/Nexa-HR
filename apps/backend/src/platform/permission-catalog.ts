@@ -203,6 +203,41 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
     "Utenze e licenze terze",
     "Consultare inventario licenze (Power BI, ChatGPT, ecc.) e assegnazioni.",
     "Gestire catalogo licenze, costi e assegnazioni agli utenti."
+  ),
+  ...cat(
+    "nexa_hr",
+    "corporate_policies",
+    "Corporate Policies",
+    "Consultare policy e documenti aziendali condivisi.",
+    "Caricare o aggiornare documenti Corporate Policies (titolo, descrizione, file)."
+  ),
+  ...cat(
+    "nexa_hr",
+    "ai_assistant",
+    "Assistente HR (AI)",
+    "Usare l’assistente contestuale su dati e policy consentiti.",
+    "Avviare azioni assistite dall’assistente dove previsto."
+  ),
+  ...cat(
+    "nexa_hr",
+    "ai_nl_query",
+    "Ricerca HR in linguaggio naturale",
+    "Eseguire interrogazioni guidate in linguaggio naturale su dati consentiti.",
+    "Salvare viste o report da ricerche NL ove previsto."
+  ),
+  ...cat(
+    "nexa_hr",
+    "ai_anomalies",
+    "Anomalie presenze / payroll",
+    "Consultare segnalazioni anomalie e code di controllo.",
+    "Gestire stato risoluzione o note operative sulle anomalie."
+  ),
+  ...cat(
+    "nexa_hr",
+    "ai_triage",
+    "Triage richieste HR (AI)",
+    "Classificare e prioritizzare richieste con supporto AI.",
+    "Applicare triage o assegnazioni suggerite ove previsto."
   )
 ];
 
@@ -327,7 +362,17 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.standard_contracts:read",
     "nexa.standard_contracts:write",
     "nexa.third_party_licenses:read",
-    "nexa.third_party_licenses:write"
+    "nexa.third_party_licenses:write",
+    "nexa.corporate_policies:read",
+    "nexa.corporate_policies:write",
+    "nexa.ai_assistant:read",
+    "nexa.ai_assistant:write",
+    "nexa.ai_nl_query:read",
+    "nexa.ai_nl_query:write",
+    "nexa.ai_anomalies:read",
+    "nexa.ai_anomalies:write",
+    "nexa.ai_triage:read",
+    "nexa.ai_triage:write"
   ],
   "read:self": [
     "nexa.attendance:read",
@@ -342,7 +387,12 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.expenses:write",
     "nexa.lifecycle:read",
     "nexa.lifecycle:write",
-    "nexa.innovation:read"
+    "nexa.innovation:read",
+    "nexa.corporate_policies:read",
+    "nexa.ai_assistant:read",
+    "nexa.ai_nl_query:read",
+    "nexa.ai_anomalies:read",
+    "nexa.ai_triage:read"
   ],
   "read:payslip:self": ["nexa.payslips:read"],
   "read:payslip:team": ["nexa.payslips:read", "nexa.org:read"]

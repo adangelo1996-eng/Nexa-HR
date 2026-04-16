@@ -11,6 +11,7 @@ import {
   ChevronDown,
   FileText,
   KeyRound,
+  Library,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -74,6 +75,14 @@ const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
       { href: "/organigramma", label: "Organigramma", icon: Network },
       { href: "/expenses", label: "Spese", icon: Receipt },
       { href: "/payslips", label: "Cedolini", icon: FileText }
+    ]
+  },
+  {
+    id: "assistenza",
+    title: "Assistenza",
+    items: [
+      { href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles },
+      { href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library }
     ]
   },
   {

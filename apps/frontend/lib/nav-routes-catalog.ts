@@ -18,6 +18,8 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/recruiting" as Route, label: "Colloqui e selezione" },
   { href: "/contracts" as Route, label: "Contratti standard" },
   { href: "/payroll-hebb", label: "Hebb - Payroll" },
+  { href: "/ai-hub" as Route, label: "Centro AI HR" },
+  { href: "/corporate-policies" as Route, label: "Corporate Policies" },
   { href: "/admin", label: "Admin" },
   { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
   { href: "/admin/data-import" as Route, label: "Import Excel dipendenti" },

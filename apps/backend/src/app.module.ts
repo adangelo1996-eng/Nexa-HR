@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AiHrModule } from "./ai-hr/ai-hr.module";
 import { AiPrivacyModule } from "./ai-privacy/ai-privacy.module";
 import { HebbHrModule } from "./ai/hebb-hr.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
@@ -35,7 +36,8 @@ import { WorkforceModule } from "./workforce/workforce.module";
     RecruitingModule,
     HrContractsModule,
     ThirdPartyLicensesModule,
-    HebbHrModule
+    HebbHrModule,
+    AiHrModule
   ]
 })
 export class AppModule {}

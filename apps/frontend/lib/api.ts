@@ -3299,3 +3299,136 @@ export async function patchPersonnelBudgetAnalysisNote(
   if (!response.ok) await parseError(response);
   return response.json() as Promise<PersonnelBudgetAnalysisNoteDto>;
 }
+
+export interface CorporatePolicyDocumentDto {
+  id: string;
+  company_id: string;
+  title: string;
+  description: string;
+  mime_type: string | null;
+  byte_size: number | null;
+  version: number;
+  created_by_user_id: string | null;
+  created_at: string;
+}
+
+export async function fetchCorporatePolicies(token: string): Promise<CorporatePolicyDocumentDto[]> {
+  const response = await fetch(buildApiUrl("/corporate-policies"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items?: CorporatePolicyDocumentDto[] };
+  return body.items ?? [];
+}
+
+export async function uploadCorporatePolicy(
+  token: string,
+  payload: {
+    title: string;
+    description: string;
+    mimeType?: string;
+    originalName?: string;
+    bodyBase64: string;
+  }
+): Promise<CorporatePolicyDocumentDto> {
+  const response = await fetch(buildApiUrl("/corporate-policies/upload"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { item: CorporatePolicyDocumentDto };
+  return body.item;
+}
+
+export async function downloadCorporatePolicyBlob(token: string, documentId: string): Promise<Blob> {
+  const response = await fetch(buildApiUrl(`/corporate-policies/${encodeURIComponent(documentId)}/file`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.blob();
+}
+
+export interface AiNlCatalogEntryDto {
+  id: string;
+  label: string;
+  description: string;
+  requiredPermissions: string[];
+}
+
+export async function fetchAiNlQueryCatalog(token: string): Promise<AiNlCatalogEntryDto[]> {
+  const response = await fetch(buildApiUrl("/ai/hr/nl-query/catalog"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { queries?: AiNlCatalogEntryDto[] };
+  return body.queries ?? [];
+}
+
+export async function postAiAssistant(
+  token: string,
+  payload: { message: string; page?: string }
+): Promise<{ reply: string; sources: string[] }> {
+  const response = await fetch(buildApiUrl("/ai/hr/assistant"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ reply: string; sources: string[] }>;
+}
+
+export async function postAiNlQueryRun(
+  token: string,
+  payload: { queryId: string }
+): Promise<{ queryId: string; table: Record<string, unknown>[]; summary: string }> {
+  const response = await fetch(buildApiUrl("/ai/hr/nl-query/run"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ queryId: string; table: Record<string, unknown>[]; summary: string }>;
+}
+
+export async function postAiNlQuerySaveView(
+  token: string,
+  payload: { label: string; queryId: string }
+): Promise<{ ok: boolean; label: string; queryId: string }> {
+  const response = await fetch(buildApiUrl("/ai/hr/nl-query/save-view"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: boolean; label: string; queryId: string }>;
+}
+
+export async function postAiAnomalies(token: string): Promise<{
+  items: { code: string; severity: string; message: string }[];
+  explanation: string;
+}> {
+  const response = await fetch(buildApiUrl("/ai/hr/anomalies"), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    items: { code: string; severity: string; message: string }[];
+    explanation: string;
+  }>;
+}
+
+export async function postAiTriage(
+  token: string,
+  payload: { text: string }
+): Promise<{ category: string; priority: string; rationale: string; suggestedPath: string | null }> {
+  const response = await fetch(buildApiUrl("/ai/hr/triage"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    category: string;
+    priority: string;
+    rationale: string;
+    suggestedPath: string | null;
+  }>;
+}
