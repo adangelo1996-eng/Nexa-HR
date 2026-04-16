@@ -69,8 +69,40 @@ const sql = readFileSync(migrationPath, "utf8");
 
 const require = createRequire(import.meta.url);
 const { Client } = require(join(root, "apps", "backend", "node_modules", "pg"));
+const { resolve4, resolve6 } = await import("node:dns/promises");
 
-const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+/** Hostname-only DNS: su Windows `dns.lookup` spesso fallisce per `db.*.supabase.co` (solo AAAA). */
+async function resolveTcpHost(hostname) {
+  try {
+    const r = await resolve4(hostname);
+    return { address: r[0], family: 4 };
+  } catch {
+    const r = await resolve6(hostname);
+    return { address: r[0], family: 6 };
+  }
+}
+
+function parsePgConnectionString(conn) {
+  const u = new URL(conn.replace(/^postgresql:/i, "http:"));
+  return {
+    host: u.hostname,
+    port: Number(u.port || 5432),
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, "") || "postgres"
+  };
+}
+
+const cfg = parsePgConnectionString(dbUrl);
+const { address } = await resolveTcpHost(cfg.host);
+const client = new Client({
+  host: address,
+  port: cfg.port,
+  user: cfg.user,
+  password: cfg.password,
+  database: cfg.database,
+  ssl: { rejectUnauthorized: false, servername: cfg.host }
+});
 try {
   await client.connect();
   await client.query(sql);
@@ -82,6 +114,12 @@ try {
     console.error(
       "Il host nel connection string non esiste o non risolve DNS. In Supabase: Settings → Database → copia URI " +
         "Session mode del progetto effettivo usato da Render; aggiorna DATABASE_URL / SUPABASE_DB_URL."
+    );
+  }
+  if (/ENETUNREACH|ECONNREFUSED/i.test(msg)) {
+    console.error(
+      "Rete senza route IPv6 verso db.*.supabase.co oppure firewall: usa Connection pooling (host pooler, IPv4) " +
+        "dal dashboard, oppure esegui lo SQL in Supabase → SQL Editor, oppure `pnpm supabase:db:push:remote` da una rete che raggiunge Postgres."
     );
   }
   process.exit(1);

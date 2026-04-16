@@ -28,6 +28,7 @@
     "supabase:migrate:optional": "node scripts/supabase-remote-push.mjs --optional",
     "supabase:db:push:remote": "node scripts/supabase-remote-push.mjs",
     "supabase:apply-049-privacy": "node scripts/apply-recruit-privacy-columns-049.mjs",
+    "supabase:verify": "node scripts/verify-render-supabase-alignment.mjs",
     "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
     "backend:env:pull-render": "node scripts/render-pull-backend-env.mjs",
     "render:frontend:start-command": "node scripts/render-update-frontend-start.mjs",
