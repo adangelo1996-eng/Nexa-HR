@@ -80,6 +80,10 @@ const RECRUIT_ALLOWED_MIME = new Set([
   "image/jpeg"
 ]);
 
+/** Solo colonne da `040_recruiting_core.sql`. Dopo `049` sul DB, si possono riaggiungere privacy_notice_version e consent_recorded_at in select/insert. */
+const RECRUIT_CANDIDATE_DB_COLS =
+  "id, company_id, first_name, last_name, email, phone, notes, created_at";
+
 @Injectable()
 export class RecruitingService {
   constructor(private readonly store: HrDataStore) {}
@@ -113,9 +117,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
-      .select(
-        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
-      )
+      .select(RECRUIT_CANDIDATE_DB_COLS)
       .eq("id", candidateId)
       .eq("company_id", companyId)
       .maybeSingle();
@@ -305,9 +307,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
-      .select(
-        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
-      )
+      .select(RECRUIT_CANDIDATE_DB_COLS)
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
       .limit(300);
@@ -338,13 +338,9 @@ export class RecruitingService {
         email: input.email ?? null,
         phone: input.phone ?? null,
         notes: input.notes ?? "",
-        created_by_user_id: input.createdByUserId,
-        privacy_notice_version: input.privacyNoticeVersion ?? null,
-        consent_recorded_at: input.consentRecordedAt ?? null
+        created_by_user_id: input.createdByUserId
       })
-      .select(
-        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
-      )
+      .select(RECRUIT_CANDIDATE_DB_COLS)
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(`Creazione candidato: ${error?.message ?? "nessun dato"}`);
@@ -356,9 +352,7 @@ export class RecruitingService {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
-      .select(
-        "id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at"
-      )
+      .select(RECRUIT_CANDIDATE_DB_COLS)
       .eq("id", candidateId)
       .maybeSingle();
     if (error) {
@@ -455,7 +449,7 @@ export class RecruitingService {
     const { data: rows, error } = await sb
       .from("recruit_candidate_stage_state")
       .select(
-        "id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( id, company_id, first_name, last_name, email, phone, notes, created_at, privacy_notice_version, consent_recorded_at )"
+        `id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( ${RECRUIT_CANDIDATE_DB_COLS} )`
       )
       .eq("position_id", positionId)
       .order("updated_at", { ascending: false });
