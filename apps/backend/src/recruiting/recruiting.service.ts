@@ -496,6 +496,19 @@ export class RecruitingService {
       return map;
     }
     const sb = this.sb();
+    // #region agent log
+    fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
+      body: JSON.stringify({
+        sessionId: "04a85b",
+        location: "recruiting.service.ts:buildUndoFlagsForBoard:pre",
+        message: "audit log select start",
+        data: { hypothesisId: "H1-H2", stateIdsCount: ids.length },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     const { data, error } = await sb
       .from("recruit_stage_transition_log")
       .select("state_id, to_stage_id, created_at")
@@ -503,8 +516,38 @@ export class RecruitingService {
       .is("reverted_at", null)
       .order("created_at", { ascending: false });
     if (error) {
+      // #region agent log
+      fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
+        body: JSON.stringify({
+          sessionId: "04a85b",
+          location: "recruiting.service.ts:buildUndoFlagsForBoard:error",
+          message: "audit log select failed",
+          data: {
+            hypothesisId: "H1-H2",
+            code: (error as { code?: string }).code ?? null,
+            msgPrefix: String(error.message ?? "").slice(0, 120)
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       throw new InternalServerErrorException(`Audit pipeline: ${error.message}`);
     }
+    // #region agent log
+    fetch("http://127.0.0.1:7671/ingest/04747ddd-3563-481e-aa3a-8135cb5f9a9b", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "04a85b" },
+      body: JSON.stringify({
+        sessionId: "04a85b",
+        location: "recruiting.service.ts:buildUndoFlagsForBoard:ok",
+        message: "audit log select ok",
+        data: { hypothesisId: "H2", rowCount: (data ?? []).length },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     const latestTo = new Map<string, string>();
     for (const row of data ?? []) {
       const sid = String((row as { state_id?: string }).state_id);
