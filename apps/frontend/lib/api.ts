@@ -3439,11 +3439,19 @@ export interface AiNlCatalogEntryDto {
   requiredPermissions: string[];
 }
 
-export async function fetchAiNlQueryCatalog(token: string): Promise<AiNlCatalogEntryDto[]> {
+export interface AiHrCatalogResponseDto {
+  queries: AiNlCatalogEntryDto[];
+  capabilities: { llmActive: boolean };
+}
+
+export async function fetchAiNlQueryCatalog(token: string): Promise<AiHrCatalogResponseDto> {
   const response = await fetch(buildApiUrl("/ai/hr/nl-query/catalog"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
-  const body = (await response.json()) as { queries?: AiNlCatalogEntryDto[] };
-  return body.queries ?? [];
+  const body = (await response.json()) as { queries?: AiNlCatalogEntryDto[]; capabilities?: { llmActive?: boolean } };
+  return {
+    queries: body.queries ?? [],
+    capabilities: { llmActive: body.capabilities?.llmActive === true }
+  };
 }
 
 export async function postAiAssistant(

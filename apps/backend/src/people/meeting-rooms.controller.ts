@@ -1,14 +1,29 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards
+} from "@nestjs/common";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
-import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { NexaPermissionGuard } from "../platform/nexa-permission.guard";
+import { PermissionsService } from "../platform/permissions.service";
 import { CreateMeetingRoomBookingDto, CreateMeetingRoomDto } from "./meeting-rooms.dto";
 
 @Controller("meeting-rooms")
 @UseGuards(RoleGuard, NexaPermissionGuard)
 @RequireRole("user")
 export class MeetingRoomsController {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly permissions: PermissionsService
+  ) {}
 
   @Get()
   async list(@CurrentAuth() auth: AuthContext): Promise<{ items: Awaited<ReturnType<HrDataStore["listMeetingRooms"]>> }> {
@@ -16,11 +31,17 @@ export class MeetingRoomsController {
   }
 
   @Post()
-  @RequireNexaPermissions("nexa.meeting_rooms:write")
   async create(
     @CurrentAuth() auth: AuthContext,
     @Body() dto: CreateMeetingRoomDto
   ): Promise<{ item: Awaited<ReturnType<HrDataStore["createMeetingRoom"]>> }> {
+    const u = await this.store.findUserById(auth.userId);
+    const email = (u?.email ?? "").trim();
+    const mayCreate =
+      auth.role === "superuser" || (await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, email));
+    if (!mayCreate) {
+      throw new ForbiddenException("Solo superuser o amministratore Synapse possono creare sale riunioni");
+    }
     return { item: await this.store.createMeetingRoom(auth.userId, dto) };
   }
 
@@ -59,4 +80,3 @@ export class MeetingRoomsController {
     return { ok: true };
   }
 }
-

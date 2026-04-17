@@ -5,11 +5,13 @@ import { CorporatePoliciesService } from "../corporate-policies/corporate-polici
 import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
 import { AiAuditService } from "./ai-audit.service";
+import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 
 const SCHEMA_ASSISTANT = "ai_assistant_v1";
 const SCHEMA_NL = "ai_nl_query_v1";
 const SCHEMA_ANOMALIES = "ai_anomalies_v1";
 const SCHEMA_TRIAGE = "ai_triage_v1";
+const SCHEMA_TRIAGE_RATIONALE = "ai_triage_rationale_v1";
 
 export interface NlQueryCatalogEntry {
   id: string;
@@ -25,11 +27,13 @@ export class AiHrService {
     private readonly policies: CorporatePoliciesService,
     private readonly gateway: AiPrivacyGateway,
     private readonly audit: AiAuditService,
-    private readonly permissions: PermissionsService
+    private readonly permissions: PermissionsService,
+    private readonly openAi: AiOpenAiRefinementService
   ) {}
 
-  nlQueryCatalog(): { queries: NlQueryCatalogEntry[] } {
+  nlQueryCatalog(): { queries: NlQueryCatalogEntry[]; capabilities: { llmActive: boolean } } {
     return {
+      capabilities: { llmActive: this.openAi.isActive() },
       queries: [
         {
           id: "my_leave_balance",
@@ -53,6 +57,16 @@ export class AiHrService {
     };
   }
 
+  private async depseudoAfterOptionalRefine(
+    sessionId: string,
+    pseudo: { pseudonymized: unknown; schemaVersion: string },
+    openAiSchema: string
+  ): Promise<unknown> {
+    const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, openAiSchema);
+    const modelJson = refined ?? pseudo.pseudonymized;
+    return this.gateway.fromModelResponse(sessionId, modelJson);
+  }
+
   async assistant(
     auth: { userId: string; role: AuthRole },
     body: { message: string; page?: string | null }
@@ -71,12 +85,12 @@ export class AiHrService {
         sources.push("leave_balance");
       }
       const snippets = await this.policies.listSnippetsForAi(me.companyId);
-      facts.policySnippets = snippets;
+      facts.policySnippets = snippets.map((s) => ({ title: s.title }));
       sources.push("corporate_policies_meta");
       const draft = this.buildAssistantDraft(facts, body.message);
-      const wrapped = { envelope: { text: draft } };
+      const wrapped = { envelope: { text: draft, facts } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_ASSISTANT);
-      const cleared = (await this.gateway.fromModelResponse(sessionId, pseudo.pseudonymized)) as {
+      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ASSISTANT)) as {
         envelope?: { text?: string };
       };
       const reply = typeof cleared.envelope?.text === "string" ? cleared.envelope.text : draft;
@@ -113,10 +127,10 @@ export class AiHrService {
     }
     if (lines.length === 0) {
       lines.push(
-        "Posso aiutarti su ferie e policy aziendali. Chiedi ad esempio del saldo ferie o consulta la sezione Corporate Policies per i documenti."
+        "Posso darti una mano su ferie, permessi e linee guida già pubblicate dalla tua azienda. Prova a chiedermi quanto ti resta di ferie, oppure apri Corporate Policies per leggere i documenti."
       );
     }
-    lines.push("Per richieste di ferie o malattia usa i moduli dedicati nell’app.");
+    lines.push("Per inviare una richiesta di ferie, permesso o malattia usa i moduli nell’app: lì resta la richiesta ufficiale.");
     return lines.join("\n");
   }
 
@@ -131,7 +145,7 @@ export class AiHrService {
     }
     for (const p of entry.requiredPermissions) {
       if (!(await this.permissions.userHasAll(auth.userId, [p]))) {
-        throw new ForbiddenException(`Permesso richiesto: ${p}`);
+        throw new ForbiddenException("Non hai accesso a questa informazione. Se ti serve, chiedi a HR.");
       }
     }
     const me = await this.store.getUser(auth.userId);
@@ -169,10 +183,13 @@ export class AiHrService {
             ]
           : [];
       }
-      const summaryDraft = `Risultati per "${entry.label}": ${table.length} riga/e.`;
+      const summaryDraft =
+        table.length === 0
+          ? `Non ci sono righe da mostrare per «${entry.label}».`
+          : `Ecco il riepilogo richiesto («${entry.label}»): ${table.length} ${table.length === 1 ? "riga" : "righe"}.`;
       const wrapped = { envelope: { summary: summaryDraft, rows: table } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_NL);
-      const cleared = (await this.gateway.fromModelResponse(sessionId, pseudo.pseudonymized)) as {
+      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_NL)) as {
         envelope?: { summary?: string; rows?: Record<string, unknown>[] };
       };
       const summary = cleared.envelope?.summary ?? summaryDraft;
@@ -262,7 +279,7 @@ export class AiHrService {
       const explainDraft = this.buildAnomalyExplanation(items);
       const wrapped = { envelope: { items, explanation: explainDraft } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_ANOMALIES);
-      const cleared = (await this.gateway.fromModelResponse(sessionId, pseudo.pseudonymized)) as {
+      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ANOMALIES)) as {
         envelope?: { explanation?: string; items?: typeof items };
       };
       const explanation =
@@ -287,9 +304,9 @@ export class AiHrService {
 
   private buildAnomalyExplanation(items: { code: string; severity: string; message: string }[]): string {
     if (items.length === 0) {
-      return "Nessuna anomalia rilevata dalle regole attuali su ferie e cedolini.";
+      return "Tutto tranquillo: al momento non emergono segnali da segnalarti su ferie e cedolini.";
     }
-    return items.map((i) => `[${i.severity}] ${i.message}`).join(" ");
+    return "Ecco cosa abbiamo notato, in parole semplici:";
   }
 
   async triage(
@@ -306,6 +323,24 @@ export class AiHrService {
       };
       const text = typeof clearedText.envelope?.text === "string" ? clearedText.envelope.text : body.text;
       const result = this.ruleBasedTriage(text);
+      let rationaleOut = result.rationale;
+      if (this.openAi.isActive()) {
+        const rationaleWrapped = {
+          envelope: {
+            rationaleSeed: result.rationale,
+            category: result.category,
+            priority: result.priority,
+            suggestedPath: result.suggestedPath
+          }
+        };
+        const pseudoR = await this.gateway.toModelPayload(sessionId, rationaleWrapped, SCHEMA_TRIAGE_RATIONALE);
+        const clearedR = (await this.depseudoAfterOptionalRefine(sessionId, pseudoR, SCHEMA_TRIAGE_RATIONALE)) as {
+          envelope?: { rationale?: string };
+        };
+        if (typeof clearedR.envelope?.rationale === "string" && clearedR.envelope.rationale.trim()) {
+          rationaleOut = clearedR.envelope.rationale.trim();
+        }
+      }
       await this.audit.append({
         companyId: me.companyId,
         userId: auth.userId,
@@ -315,10 +350,13 @@ export class AiHrService {
         sessionId,
         inputForFingerprint: { len: body.text.length },
         dataSources: ["triage_rules"],
-        responseSizeBytes: Buffer.byteLength(JSON.stringify(result), "utf8"),
+        responseSizeBytes: Buffer.byteLength(
+          JSON.stringify({ ...result, rationale: rationaleOut }),
+          "utf8"
+        ),
         outcome: "ok"
       });
-      return result;
+      return { ...result, rationale: rationaleOut };
     } finally {
       await this.gateway.endSession(sessionId);
     }
@@ -335,7 +373,7 @@ export class AiHrService {
       return {
         category: "urgent",
         priority: "high",
-        rationale: "Testo con indicatori di urgenza: instradare a HR entro breve.",
+        rationale: "Il testo sembra richiedere attenzione veloce: conviene contattare HR o il responsabile al più presto.",
         suggestedPath: "/workflow"
       };
     }
@@ -343,7 +381,7 @@ export class AiHrService {
       return {
         category: "leave",
         priority: "normal",
-        rationale: "Richiesta legata a assenze/ferie.",
+        rationale: "Sembra una richiesta su ferie, permessi o assenze.",
         suggestedPath: "/workflow"
       };
     }
@@ -351,7 +389,7 @@ export class AiHrService {
       return {
         category: "payroll",
         priority: "normal",
-        rationale: "Richiesta legata a retribuzione o cedolini.",
+        rationale: "Sembra riguardare stipendio, trattenute o cedolini.",
         suggestedPath: "/payslips"
       };
     }
@@ -359,14 +397,14 @@ export class AiHrService {
       return {
         category: "sickness",
         priority: "normal",
-        rationale: "Richiesta legata a malattia o certificati.",
+        rationale: "Sembra riguardare malattia, certificati o permessi per visita medica.",
         suggestedPath: "/workflow"
       };
     }
     return {
       category: "general",
       priority: "low",
-      rationale: "Classificazione generica: approfondire con HR se necessario.",
+      rationale: "Non abbiamo riconosciuto un tema specifico: in caso di dubbio rivolgiti a HR.",
       suggestedPath: "/settings"
     };
   }

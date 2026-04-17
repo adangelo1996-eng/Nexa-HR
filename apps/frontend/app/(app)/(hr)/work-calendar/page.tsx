@@ -535,6 +535,12 @@ function assertMayOpenCalendarDayModal(me: SessionUser | null, dayIso: string): 
   return dayIso.slice(0, 10) >= calendarDateTodayIsoRome();
 }
 
+/** Creazione / duplicazione sale: solo superuser JWT o console Synapse admin (`canNexaAdmin`). */
+function mayCreateMeetingRooms(me: SessionUser | null): boolean {
+  if (!me) return false;
+  return me.role === "superuser" || me.canNexaAdmin === true;
+}
+
 /** Solo il dipendente della riga (o superuser) può togliere assenze approvate future; HR vede ma non il pulsante. */
 function canRemoveApprovedFutureAsEmployee(viewer: SessionUser | null, rowUserId: string): boolean {
   if (!viewer) return false;
@@ -870,6 +876,39 @@ export default function WorkCalendarPage(): React.JSX.Element {
       return { iso, dow };
     });
   }, [year, month]);
+
+  const openNewMeetingRoomForm = useCallback(() => {
+    if (!me || !mayCreateMeetingRooms(me)) return;
+    const iso = days.find((d) => assertMayOpenCalendarDayModal(me, d.iso))?.iso;
+    if (!iso) {
+      setError("In questo mese non c'è un giorno su cui puoi aprire il modulo (solo date future, salvo permessi HR).");
+      return;
+    }
+    const placeholderRoom: MeetingRoomDto = {
+      id: "__new__",
+      name: "",
+      location: null,
+      seats: null,
+      hasScreen: true,
+      hasProjector: false,
+      hasWhiteboard: true,
+      hasVideoConference: false,
+      extraFeatures: []
+    };
+    setRoomModal({
+      day: iso,
+      row: { id: "room:__new__", fullName: "Nuova sala", room: placeholderRoom }
+    });
+    setRoomCreateName("");
+    setRoomCreateLocation("");
+    setRoomCreateSeats("");
+    setRoomCreateHasScreen(true);
+    setRoomCreateHasProjector(false);
+    setRoomCreateHasWhiteboard(true);
+    setRoomCreateHasVideo(false);
+    setRoomCreateExtras("");
+    setRoomModalStep("room_create");
+  }, [days, me]);
 
   const tbodyItems = useMemo(
     () => {
@@ -1930,13 +1969,31 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 );
               }
               if (item.kind === "rooms") {
+                const mayManageRooms = mayCreateMeetingRooms(me);
                 return (
                   <tr key="rooms-header">
                     <td
                       colSpan={1 + days.length}
                       className="border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-text)]"
                     >
-                      {item.label}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        {mayManageRooms ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 shrink-0 px-2 text-[10px] font-semibold normal-case"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openNewMeetingRoomForm();
+                            }}
+                          >
+                            {rooms.length === 0 ? "Aggiungi prima sala" : "Aggiungi sala"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -3055,13 +3112,23 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     variant="ghost"
                     size="sm"
                     className="mb-1 -ml-2 h-8 px-2 text-[11px]"
-                    onClick={() => setRoomModalStep("room_menu")}
+                    onClick={() => {
+                      if (roomModalStep === "room_create" && roomModal.row.room.id === "__new__") {
+                        setRoomModal(null);
+                        setRoomModalStep("room_menu");
+                        return;
+                      }
+                      setRoomModalStep("room_menu");
+                    }}
                   >
                     ← Indietro
                   </Button>
                 ) : null}
                 <h2 id="room-modal-title" className="text-base font-semibold text-[var(--prom-text)]">
-                  {formatItalianDateLong(roomModal.day.slice(0, 10))} · {roomModal.row.room.name}
+                  {formatItalianDateLong(roomModal.day.slice(0, 10))} ·{" "}
+                  {roomModal.row.room.id === "__new__"
+                    ? roomCreateName.trim() || "Nuova sala"
+                    : roomModal.row.room.name}
                 </h2>
                 <p className="mt-1 text-xs text-[var(--prom-muted)]">
                   {roomModal.row.room.location ? roomModal.row.room.location : "Sala riunioni"}
@@ -3116,7 +3183,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 >
                   Prenota
                 </button>
-                {me?.role === "superuser" || me?.canAccessHrExtendedConsole ? (
+                {mayCreateMeetingRooms(me) ? (
                   <button
                     type="button"
                     className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_70%,transparent)] px-4 py-3 text-left text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)]"
@@ -3203,7 +3270,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
             {roomModalStep === "room_create" ? (
               <div className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
                 <p className="text-[11px] text-[var(--prom-muted)]">
-                  Creazione sala: solo utenti autorizzati.
+                  Creazione sala: solo superuser o amministratore Synapse.
                 </p>
                 <label className="block text-[11px] text-[var(--prom-muted)]">
                   Nome

@@ -4,10 +4,11 @@ import { CorporatePoliciesModule } from "../corporate-policies/corporate-policie
 import { AiAuditService } from "./ai-audit.service";
 import { AiHrController } from "./ai-hr.controller";
 import { AiHrService } from "./ai-hr.service";
+import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 
 @Module({
   imports: [AiPrivacyModule, CorporatePoliciesModule],
   controllers: [AiHrController],
-  providers: [AiHrService, AiAuditService]
+  providers: [AiHrService, AiAuditService, AiOpenAiRefinementService]
 })
 export class AiHrModule {}

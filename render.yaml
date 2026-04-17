@@ -57,6 +57,13 @@ services:
         sync: false
       - key: NEXA_SWISS_PAYROLL_ENABLED
         sync: false
+      # Centro AI HR (OpenAI): chiave solo su Render; abilitare esplicitamente il refine LLM.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: NEXA_AI_OPENAI_ENABLED
+        sync: false
+      - key: NEXA_OPENAI_MODEL
+        sync: false
 
   - type: web
     name: nexa-hr-frontend
