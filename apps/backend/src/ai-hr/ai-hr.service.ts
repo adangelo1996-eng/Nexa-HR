@@ -1,10 +1,19 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import type { User } from "@payday/domain";
 import type { AuthRole } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { CorporatePoliciesService } from "../corporate-policies/corporate-policies.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
+import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 import { AiAuditService } from "./ai-audit.service";
+import {
+  AI_HR_ROUTE_HINTS,
+  NEXA_HR_AGENT_ID,
+  NEXA_HR_AGENT_VERSION,
+  NEXA_HR_PLATFORM_NAV
+} from "./ai-hr-agent";
+import { assertMessageHasNoKnownPersonFullNames } from "./ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 
 const SCHEMA_ASSISTANT = "ai_assistant_v1";
@@ -18,6 +27,15 @@ export interface NlQueryCatalogEntry {
   label: string;
   description: string;
   requiredPermissions: string[];
+}
+
+export type AssistantScopeMode = "self" | "user" | "team" | "cost_center";
+
+export interface AssistantScopePayload {
+  mode: AssistantScopeMode;
+  userId?: string;
+  teamId?: string;
+  costCenterId?: string;
 }
 
 @Injectable()
@@ -69,21 +87,43 @@ export class AiHrService {
 
   async assistant(
     auth: { userId: string; role: AuthRole },
-    body: { message: string; page?: string | null }
+    body: { message: string; page?: string | null; scope?: AssistantScopePayload }
   ): Promise<{ reply: string; sources: string[] }> {
     const me = await this.store.getUser(auth.userId);
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    assertMessageHasNoKnownPersonFullNames(body.message, companyUsers);
+
+    const { subjectUserIds, scopeKind } = await this.resolveAssistantSubjectUserIds(auth, me, body.scope);
+    const org = await this.hasOrgAiScope(auth, me);
+    const managed = await this.hasManagedAiScope(auth.userId);
+    const managedSet = managed ? await this.store.listManagedMemberIdsForApprover(auth.userId) : new Set<string>();
+
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
       const sources: string[] = [];
       const facts: Record<string, unknown> = {
         page: body.page ?? null,
-        message: body.message
+        message: body.message,
+        scopeKind,
+        scopeSubjects: subjectUserIds.map((id) => ({ id })),
+        subjectCount: subjectUserIds.length
       };
-      if (await this.permissions.userHasAll(auth.userId, ["nexa.leaves:read"])) {
-        const year = new Date().getFullYear();
-        facts.leaveBalance = await this.store.getLeaveBalance(auth.userId, year);
-        sources.push("leave_balance");
+      facts.snapshot = await this.buildAssistantSnapshot(auth, me, subjectUserIds, org, managedSet);
+      facts.routeHints = AI_HR_ROUTE_HINTS;
+      facts.platformCapabilities = NEXA_HR_PLATFORM_NAV;
+      facts.agent = { id: NEXA_HR_AGENT_ID, version: NEXA_HR_AGENT_VERSION };
+      sources.push("assistant_snapshot", "route_hints", "platform_capabilities", "nexa_hr_agent");
+
+      const canReadLeaves = await this.permissions.userHasAll(auth.userId, ["nexa.leaves:read"]);
+      const year = new Date().getFullYear();
+      if (subjectUserIds.length === 1 && canReadLeaves) {
+        const sid = subjectUserIds[0]!;
+        if (await this.canViewSubjectForAssistant(auth.userId, sid, org, managedSet)) {
+          facts.leaveBalance = await this.store.getLeaveBalance(sid, year);
+          sources.push("leave_balance");
+        }
       }
+
       const snippets = await this.policies.listSnippetsForAi(me.companyId);
       facts.policySnippets = snippets.map((s) => ({ title: s.title }));
       sources.push("corporate_policies_meta");
@@ -101,7 +141,12 @@ export class AiHrService {
         feature: "assistant",
         schemaVersion: SCHEMA_ASSISTANT,
         sessionId,
-        inputForFingerprint: { message: body.message, page: body.page },
+        inputForFingerprint: {
+          message: body.message,
+          page: body.page,
+          scopeKind,
+          subjectCount: subjectUserIds.length
+        },
         dataSources: sources,
         responseSizeBytes: Buffer.byteLength(reply, "utf8"),
         outcome: "ok"
@@ -112,9 +157,371 @@ export class AiHrService {
     }
   }
 
+  async getAssistantScopeOptions(auth: { userId: string; role: AuthRole }): Promise<{
+    modesAllowed: AssistantScopeMode[];
+    managedUsers?: { userId: string; label: string }[];
+    teams?: { teamId: string; name: string; costCenterId: string }[];
+    costCenters?: { costCenterId: string; label: string }[];
+  }> {
+    const me = await this.store.getUser(auth.userId);
+    const org = await this.hasOrgAiScope(auth, me);
+    const managed = await this.hasManagedAiScope(auth.userId);
+    const modes: AssistantScopeMode[] = ["self"];
+    const managedSet = managed ? await this.store.listManagedMemberIdsForApprover(auth.userId) : new Set<string>();
+    const all = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+
+    if (org) {
+      modes.push("user", "team", "cost_center");
+      const centers = (await this.store.listCostCenters()).filter(
+        (c) => !c.companyId || c.companyId === me.companyId
+      );
+      const teams: { teamId: string; name: string; costCenterId: string }[] = [];
+      for (const cc of centers) {
+        try {
+          const wt = await this.store.listWorkTeamsByCostCenter(cc.id);
+          for (const t of wt) {
+            teams.push({ teamId: t.id, name: t.name, costCenterId: cc.id });
+          }
+        } catch {
+          /* work_teams assente */
+        }
+      }
+      return {
+        modesAllowed: modes,
+        costCenters: centers.map((c) => ({ costCenterId: c.id, label: `${c.code} — ${c.name}` })),
+        teams
+      };
+    }
+
+    if (managed) {
+      modes.push("user", "team");
+      const managedUsers = [...managedSet]
+        .filter((id) => id !== auth.userId)
+        .map((id) => {
+          const u = all.find((x) => x.id === id);
+          return { userId: id, label: u?.fullName ?? id };
+        });
+      const teamIds = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
+      const teams: { teamId: string; name: string; costCenterId: string }[] = [];
+      for (const tid of teamIds) {
+        try {
+          const t = await this.store.getWorkTeam(tid);
+          teams.push({ teamId: t.id, name: t.name, costCenterId: t.costCenterId });
+        } catch {
+          /* skip */
+        }
+      }
+      return { modesAllowed: modes, managedUsers, teams };
+    }
+
+    return { modesAllowed: modes };
+  }
+
+  async searchAssistantOrgUsers(
+    auth: { userId: string; role: AuthRole },
+    q: string
+  ): Promise<{ users: { userId: string; label: string }[] }> {
+    const me = await this.store.getUser(auth.userId);
+    if (!(await this.hasOrgAiScope(auth, me))) {
+      throw new ForbiddenException("Ricerca anagrafica non consentita per il tuo profilo.");
+    }
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) {
+      throw new BadRequestException("Inserisci almeno 2 caratteri per la ricerca.");
+    }
+    const all = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    const users = all
+      .filter(
+        (u) =>
+          u.fullName.toLowerCase().includes(needle) ||
+          u.email.toLowerCase().includes(needle) ||
+          (u.firstName && u.firstName.toLowerCase().includes(needle)) ||
+          (u.lastName && u.lastName.toLowerCase().includes(needle))
+      )
+      .slice(0, 40)
+      .map((u) => ({ userId: u.id, label: u.fullName }));
+    return { users };
+  }
+
+  private async hasOrgAiScope(auth: { role: AuthRole }, me: User): Promise<boolean> {
+    if (auth.role === "superuser") {
+      return true;
+    }
+    if (isSynapseSuperuserEmail(me.email)) {
+      return true;
+    }
+    return this.permissions.userHasAll(me.id, ["nexa.ai_assistant:scope_org"]);
+  }
+
+  private async hasManagedAiScope(userId: string): Promise<boolean> {
+    return this.permissions.userHasAll(userId, ["nexa.ai_assistant:scope_managed"]);
+  }
+
+  private async canViewSubjectForAssistant(
+    actorId: string,
+    subjectId: string,
+    org: boolean,
+    managedSet: Set<string>
+  ): Promise<boolean> {
+    if (subjectId === actorId) {
+      return true;
+    }
+    if (org) {
+      const actor = await this.store.getUser(actorId);
+      const sub = await this.store.getUser(subjectId);
+      return sub.companyId === actor.companyId;
+    }
+    return managedSet.has(subjectId);
+  }
+
+  private async resolveAssistantSubjectUserIds(
+    auth: { userId: string; role: AuthRole },
+    me: User,
+    scope?: AssistantScopePayload
+  ): Promise<{ subjectUserIds: string[]; scopeKind: AssistantScopeMode }> {
+    const org = await this.hasOrgAiScope(auth, me);
+    const managed = await this.hasManagedAiScope(auth.userId);
+    const managedSet = managed ? await this.store.listManagedMemberIdsForApprover(auth.userId) : new Set<string>();
+
+    const mode: AssistantScopeMode = scope?.mode ?? "self";
+    if (mode === "self") {
+      return { subjectUserIds: [auth.userId], scopeKind: "self" };
+    }
+
+    if (mode === "user") {
+      const uid = scope?.userId?.trim();
+      if (!uid) {
+        throw new BadRequestException("Ambito «persona»: seleziona un dipendente.");
+      }
+      if (uid === auth.userId) {
+        return { subjectUserIds: [auth.userId], scopeKind: "user" };
+      }
+      if (!(await this.canViewSubjectForAssistant(auth.userId, uid, org, managedSet))) {
+        throw new ForbiddenException("Non puoi analizzare questa persona.");
+      }
+      return { subjectUserIds: [uid], scopeKind: "user" };
+    }
+
+    if (mode === "team") {
+      const tid = scope?.teamId?.trim();
+      if (!tid) {
+        throw new BadRequestException("Ambito «team»: seleziona un team.");
+      }
+      const team = await this.store.getWorkTeam(tid);
+      if (org) {
+        const cc = await this.store.getCostCenterById(team.costCenterId);
+        if (!cc || (cc.companyId && cc.companyId !== me.companyId)) {
+          throw new ForbiddenException("Team non valido per la tua azienda.");
+        }
+      } else if (managed) {
+        const led = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
+        if (!led.includes(tid)) {
+          throw new ForbiddenException("Puoi selezionare solo team di cui sei responsabile.");
+        }
+      } else {
+        throw new ForbiddenException("Ambito team non consentito.");
+      }
+      const members = (await this.store.listUsers()).filter((u) => u.teamId?.trim() === tid && u.companyId === me.companyId);
+      const ids = members.map((m) => m.id);
+      if (!ids.length) {
+        throw new BadRequestException("Nessun membro trovato per il team selezionato.");
+      }
+      return { subjectUserIds: ids, scopeKind: "team" };
+    }
+
+    if (mode === "cost_center") {
+      if (!org) {
+        throw new ForbiddenException("Solo HR / amministratori possono usare l’ambito centro di costo.");
+      }
+      const ccid = scope?.costCenterId?.trim();
+      if (!ccid) {
+        throw new BadRequestException("Ambito «centro di costo»: seleziona un centro.");
+      }
+      const cc = await this.store.getCostCenterById(ccid);
+      if (!cc || (cc.companyId && cc.companyId !== me.companyId)) {
+        throw new ForbiddenException("Centro di costo non valido.");
+      }
+      const members = (await this.store.listUsers()).filter((u) => u.costCenterId === ccid && u.companyId === me.companyId);
+      const ids = members.map((m) => m.id);
+      if (!ids.length) {
+        throw new BadRequestException("Nessun dipendente trovato per il centro di costo selezionato.");
+      }
+      return { subjectUserIds: ids, scopeKind: "cost_center" };
+    }
+
+    throw new BadRequestException("Ambito non valido.");
+  }
+
+  private async buildAssistantSnapshot(
+    auth: { userId: string },
+    me: User,
+    subjectUserIds: string[],
+    org: boolean,
+    managedSet: Set<string>
+  ): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    const actorId = auth.userId;
+
+    const canLeave = await this.permissions.userHasAll(actorId, ["nexa.leaves:read"]);
+    try {
+      if (canLeave && subjectUserIds.length === 1) {
+        const sid = subjectUserIds[0]!;
+        if (await this.canViewSubjectForAssistant(actorId, sid, org, managedSet)) {
+          const leaves = await this.store.listLeave(sid);
+          out.pendingMyLeaveRequestsCount = leaves.filter((l) => l.status === "pending").length;
+          const year = new Date().getFullYear();
+          const bal = await this.store.getLeaveBalance(sid, year);
+          out.leaveResidualDays = bal.residualDays;
+          out.leaveResidualIsLow = bal.residualDays <= 3;
+        }
+      } else if (canLeave && subjectUserIds.length > 1) {
+        let pending = 0;
+        let lowAny = false;
+        for (const sid of subjectUserIds) {
+          if (!(await this.canViewSubjectForAssistant(actorId, sid, org, managedSet))) {
+            continue;
+          }
+          const leaves = await this.store.listLeave(sid);
+          pending += leaves.filter((l) => l.status === "pending").length;
+          const y = new Date().getFullYear();
+          const bal = await this.store.getLeaveBalance(sid, y);
+          if (bal.residualDays <= 3) {
+            lowAny = true;
+          }
+        }
+        out.pendingLeaveRequestsInScope = pending;
+        out.leaveResidualIsLow = lowAny;
+        out.scopeIsMultiPerson = true;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const appr = await this.store.listApprovalsForUser(actorId, "pending");
+      out.pendingTeamApprovalsCount = Array.isArray(appr) ? appr.length : 0;
+    } catch {
+      out.pendingTeamApprovalsCount = 0;
+    }
+    try {
+      const notifs = await this.store.listUserNotifications(actorId, 40);
+      out.unreadNotificationsCount = notifs.filter((n) => !n.read).length;
+    } catch {
+      out.unreadNotificationsCount = 0;
+    }
+
+    try {
+      if (await this.permissions.userHasAll(actorId, ["nexa.expenses:read"])) {
+        if (subjectUserIds.length === 1) {
+          const sid = subjectUserIds[0]!;
+          if (sid === actorId) {
+            const claims = await this.store.listExpenseClaimsForRequester(actorId, me.role, "self");
+            const open = claims.filter(
+              (c) => c.status === "draft" || c.status === "submitted" || c.status === "pending_hr"
+            );
+            out.openExpenseClaimsCount = open.length;
+          } else if (await this.canViewSubjectForAssistant(actorId, sid, org, managedSet)) {
+            const sub = await this.store.getUser(sid);
+            const claims = await this.store.listExpenseClaimsForRequester(sid, sub.role, "self");
+            const open = claims.filter(
+              (c) => c.status === "draft" || c.status === "submitted" || c.status === "pending_hr"
+            );
+            out.openExpenseClaimsCountInScope = open.length;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      if (await this.permissions.userHasAll(actorId, ["nexa.payslips:read"])) {
+        if (subjectUserIds.length === 1) {
+          const sid = subjectUserIds[0]!;
+          if (sid === actorId) {
+            const slips = await this.store.listPayslipsWithNewFlag(actorId);
+            out.unreadNewPayslipsCount = slips.filter((s) => s.isNew).length;
+          } else if (await this.canViewSubjectForAssistant(actorId, sid, org, managedSet)) {
+            const slips = await this.store.listPayslipsWithNewFlag(actorId, sid);
+            out.unreadNewPayslipsCountInScope = slips.filter((s) => s.isNew).length;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return out;
+  }
+
   private buildAssistantDraft(facts: Record<string, unknown>, message: string): string {
     const m = message.toLowerCase();
     const lines: string[] = [];
+    const snap = facts.snapshot as Record<string, unknown> | undefined;
+    const wantsSituation =
+      /\burgent|urgenz|priorit|c['’]è da fare|cosa devo|subito|oggi devo|checklist|dimenticat|cosa manca|da fare\b/i.test(
+        m
+      );
+    const hasSignal =
+      snap &&
+      [
+        snap.pendingMyLeaveRequestsCount,
+        snap.pendingLeaveRequestsInScope,
+        snap.pendingTeamApprovalsCount,
+        snap.unreadNotificationsCount,
+        snap.openExpenseClaimsCount,
+        snap.openExpenseClaimsCountInScope,
+        snap.unreadNewPayslipsCount,
+        snap.unreadNewPayslipsCountInScope
+      ].some((v) => typeof v === "number" && v > 0);
+    const lowLeave = snap && snap.leaveResidualIsLow === true;
+
+    if (wantsSituation || hasSignal || lowLeave) {
+      lines.push("Situazione rapida (da dati aggiornati in app):");
+      if (typeof snap?.pendingMyLeaveRequestsCount === "number" && snap.pendingMyLeaveRequestsCount > 0) {
+        lines.push(
+          `• Richieste ferie/permesso in sospeso per il soggetto selezionato: ${snap.pendingMyLeaveRequestsCount} (Workflow).`
+        );
+      }
+      if (typeof snap?.pendingLeaveRequestsInScope === "number" && snap.pendingLeaveRequestsInScope > 0) {
+        lines.push(
+          `• Richieste ferie/permesso in sospeso (somma sul gruppo selezionato): ${snap.pendingLeaveRequestsInScope} (Workflow).`
+        );
+      }
+      if (typeof snap?.pendingTeamApprovalsCount === "number" && snap.pendingTeamApprovalsCount > 0) {
+        lines.push(
+          `• Come responsabile hai ${snap.pendingTeamApprovalsCount} approvazione/i in sospeso: apri Workflow → Approvazioni team.`
+        );
+      }
+      if (typeof snap?.unreadNotificationsCount === "number" && snap.unreadNotificationsCount > 0) {
+        lines.push(`• Notifiche non lette: ${snap.unreadNotificationsCount} (controlla il centro notifiche in alto nell’app).`);
+      }
+      if (typeof snap?.openExpenseClaimsCount === "number" && snap.openExpenseClaimsCount > 0) {
+        lines.push(`• Note spese da completare o in approvazione: ${snap.openExpenseClaimsCount} (sezione Spese).`);
+      }
+      if (typeof snap?.openExpenseClaimsCountInScope === "number" && snap.openExpenseClaimsCountInScope > 0) {
+        lines.push(
+          `• Note spese aperte nell’ambito selezionato: ${snap.openExpenseClaimsCountInScope} (sezione Spese).`
+        );
+      }
+      if (typeof snap?.unreadNewPayslipsCount === "number" && snap.unreadNewPayslipsCount > 0) {
+        lines.push(`• Cedolini nuovi o non segnati come letti: ${snap.unreadNewPayslipsCount} (sezione Cedolini).`);
+      }
+      if (typeof snap?.unreadNewPayslipsCountInScope === "number" && snap.unreadNewPayslipsCountInScope > 0) {
+        lines.push(
+          `• Cedolini non letti nell’ambito selezionato: ${snap.unreadNewPayslipsCountInScope} (sezione Cedolini).`
+        );
+      }
+      if (lowLeave && typeof snap?.leaveResidualDays === "number") {
+        lines.push(`• Ferie residue basse (${snap.leaveResidualDays} giorni): valuta se pianificare il riposo in Workflow.`);
+      }
+      if (lines.length === 1) {
+        lines.push(
+          "• Non risultano richieste tue in attesa, né approvazioni team pendenti, né notifiche non lette, né note spese aperte o cedolini nuovi secondo i dati che vediamo ora. Controlla comunque Workflow e le notifiche per sicurezza."
+        );
+      }
+    }
+
     const bal = facts.leaveBalance as { residualDays?: number; usedDays?: number; allocatedDays?: number } | undefined;
     if (bal && (m.includes("ferie") || m.includes("saldo") || m.includes("vacation"))) {
       lines.push(
@@ -127,10 +534,13 @@ export class AiHrService {
     }
     if (lines.length === 0) {
       lines.push(
-        "Posso darti una mano su ferie, permessi e linee guida già pubblicate dalla tua azienda. Prova a chiedermi quanto ti resta di ferie, oppure apri Corporate Policies per leggere i documenti."
+        "Sono il punto di accesso centrale per orientarti su Nexa HR: chiedi pure su ferie, cedolini, spese, policy, organigramma, report, turni o amministrazione — indico sempre dove andare nell’app."
       );
     }
-    lines.push("Per inviare una richiesta di ferie, permesso o malattia usa i moduli nell’app: lì resta la richiesta ufficiale.");
+    lines.push(
+      "Percorsi frequenti: Workflow (ferie/permessi/malattia); Approvazioni team se sei responsabile; Cedolini; Spese; Corporate Policies; Dashboard e Calendario lavoro per la giornata."
+    );
+    lines.push("Per inviare una richiesta ufficiale usa i moduli in Workflow: lì resta la traccia corretta.");
     return lines.join("\n");
   }
 
@@ -391,6 +801,14 @@ export class AiHrService {
         priority: "normal",
         rationale: "Sembra riguardare stipendio, trattenute o cedolini.",
         suggestedPath: "/payslips"
+      };
+    }
+    if (/spes[ae]|rimbor|scontrin|nota spes|chilometr|km\b/.test(t)) {
+      return {
+        category: "general",
+        priority: "normal",
+        rationale: "Sembra riguardare note spese o rimborsi.",
+        suggestedPath: "/expenses"
       };
     }
     if (/malatt|certificat/.test(t)) {

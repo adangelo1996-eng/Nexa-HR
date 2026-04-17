@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import OpenAI from "openai";
 import { AI_TOKEN_BODY_RE } from "../ai-privacy/ai-privacy.constants";
+import { getNexaHrConversationalAgentSystemPrompt } from "./ai-hr-agent";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 const REQUEST_MS = 55_000;
@@ -35,8 +36,11 @@ function systemPromptForSchema(schemaVersion: string): string {
   switch (schemaVersion) {
     case "ai_assistant_v1":
       return (
-        base +
-        " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso può contenere envelope.facts (dati strutturati) oltre a envelope.text (bozza): produci una sola envelope.text finale in italiano chiaro, empatica e concreta, fedele a numeri e fatti; non inventare dati assenti da facts o dalla bozza."
+        getNexaHrConversationalAgentSystemPrompt() +
+          "\n\n" +
+          base +
+          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.facts con: message, page, snapshot, routeHints, platformCapabilities (stesso contenuto percorsi), agent (id/versione), leaveBalance e policySnippets se presenti. " +
+          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; usa snapshot e bozza per priorità; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
       );
     case "ai_nl_query_v1":
       return (

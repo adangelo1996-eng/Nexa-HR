@@ -1,8 +1,26 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { IsString, MaxLength, MinLength } from "class-validator";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import { Type } from "class-transformer";
+import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext, type AuthRole } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AiHrService } from "./ai-hr.service";
+
+class AssistantScopeBodyDto {
+  @IsIn(["self", "user", "team", "cost_center"])
+  mode!: "self" | "user" | "team" | "cost_center";
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  teamId?: string;
+
+  @IsOptional()
+  @IsString()
+  costCenterId?: string;
+}
 
 class AssistantDto {
   @IsString()
@@ -13,6 +31,11 @@ class AssistantDto {
   @IsString()
   @MaxLength(256)
   page?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AssistantScopeBodyDto)
+  scope?: AssistantScopeBodyDto;
 }
 
 class NlRunDto {
@@ -50,7 +73,29 @@ export class AiHrController {
     @CurrentAuth() auth: AuthContext,
     @Body() body: AssistantDto
   ): Promise<{ reply: string; sources: string[] }> {
-    return this.aiHr.assistant({ userId: auth.userId, role: auth.role as AuthRole }, body);
+    return this.aiHr.assistant(
+      { userId: auth.userId, role: auth.role as AuthRole },
+      {
+        message: body.message,
+        page: body.page,
+        scope: body.scope
+      }
+    );
+  }
+
+  @Get("assistant/scope-options")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  getAssistantScopeOptions(@CurrentAuth() auth: AuthContext): ReturnType<AiHrService["getAssistantScopeOptions"]> {
+    return this.aiHr.getAssistantScopeOptions({ userId: auth.userId, role: auth.role as AuthRole });
+  }
+
+  @Get("assistant/org-users")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  searchAssistantOrgUsers(
+    @CurrentAuth() auth: AuthContext,
+    @Query("q") q: string
+  ): ReturnType<AiHrService["searchAssistantOrgUsers"]> {
+    return this.aiHr.searchAssistantOrgUsers({ userId: auth.userId, role: auth.role as AuthRole }, q ?? "");
   }
 
   @Get("nl-query/catalog")

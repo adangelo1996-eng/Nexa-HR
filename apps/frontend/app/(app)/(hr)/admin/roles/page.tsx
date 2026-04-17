@@ -31,6 +31,14 @@ const CATEGORY_LABEL: Record<keyof PermissionCatalogResponse, string> = {
   hub: "Synapse Central Hub"
 };
 
+/** Note operative sotto risorse sensibili del catalogo (Centro AI, ecc.). */
+const RESOURCE_FOOTNOTE: Partial<Record<string, string>> = {
+  ai_assistant_scope_managed:
+    "Abilita in Centro AI la scelta di una persona tra i riporti o un team di cui sei responsabile: i dati aggregati restano vincolati a quei soggetti.",
+  ai_assistant_scope_org:
+    "Abilita in Centro AI ricerca anagrafica e ambito su tutta l’organizzazione (persona, team, centro di costo): tipicamente HR o amministrazione."
+};
+
 function allCatalogIds(catalog: PermissionCatalogResponse): string[] {
   return [
     ...catalog.nexa_hr,
@@ -481,6 +489,11 @@ export default function AdminRolesPage(): React.JSX.Element {
                                 <span>Può modificare</span>
                               </label>
                             </div>
+                            {RESOURCE_FOOTNOTE[g.resourceKey] ? (
+                              <p className="mt-2 border-t border-slate-200/80 pt-2 text-[10px] leading-snug text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                                {RESOURCE_FOOTNOTE[g.resourceKey]}
+                              </p>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -565,6 +578,11 @@ export default function AdminRolesPage(): React.JSX.Element {
                             className="rounded-lg border border-slate-200/90 bg-white/85 p-3 shadow-sm dark:border-slate-600 dark:bg-slate-950/50"
                           >
                             <p className="text-xs font-medium text-slate-900 dark:text-slate-100">{g.labelIt}</p>
+                            <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
+                              {writeOn || g.write?.descriptionWriteIt
+                                ? g.write?.descriptionWriteIt
+                                : g.read?.descriptionReadIt}
+                            </p>
                             <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-800 dark:text-slate-200">
                               <label className="flex cursor-pointer items-center gap-2">
                                 <input
@@ -588,6 +606,11 @@ export default function AdminRolesPage(): React.JSX.Element {
                                 <span>Può modificare</span>
                               </label>
                             </div>
+                            {RESOURCE_FOOTNOTE[g.resourceKey] ? (
+                              <p className="mt-2 border-t border-slate-200/80 pt-2 text-[10px] leading-snug text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                                {RESOURCE_FOOTNOTE[g.resourceKey]}
+                              </p>
+                            ) : null}
                           </div>
                         );
                       })}

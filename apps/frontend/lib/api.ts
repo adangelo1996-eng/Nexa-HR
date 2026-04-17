@@ -3454,9 +3454,43 @@ export async function fetchAiNlQueryCatalog(token: string): Promise<AiHrCatalogR
   };
 }
 
+export type AiAssistantScopeMode = "self" | "user" | "team" | "cost_center";
+
+export interface AiAssistantScopePayload {
+  mode: AiAssistantScopeMode;
+  userId?: string;
+  teamId?: string;
+  costCenterId?: string;
+}
+
+export interface AiAssistantScopeOptionsDto {
+  modesAllowed: AiAssistantScopeMode[];
+  managedUsers?: { userId: string; label: string }[];
+  teams?: { teamId: string; name: string; costCenterId: string }[];
+  costCenters?: { costCenterId: string; label: string }[];
+}
+
+export async function fetchAiAssistantScopeOptions(token: string): Promise<AiAssistantScopeOptionsDto> {
+  const response = await fetch(buildApiUrl("/ai/hr/assistant/scope-options"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<AiAssistantScopeOptionsDto>;
+}
+
+export async function fetchAiAssistantOrgUsers(
+  token: string,
+  q: string
+): Promise<{ users: { userId: string; label: string }[] }> {
+  const params = new URLSearchParams({ q });
+  const response = await fetch(buildApiUrl(`/ai/hr/assistant/org-users?${params.toString()}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ users: { userId: string; label: string }[] }>;
+}
+
 export async function postAiAssistant(
   token: string,
-  payload: { message: string; page?: string }
+  payload: { message: string; page?: string; scope?: AiAssistantScopePayload }
 ): Promise<{ reply: string; sources: string[] }> {
   const response = await fetch(buildApiUrl("/ai/hr/assistant"), {
     method: "POST",

@@ -1,6 +1,6 @@
 import type { Route } from "next";
 
-/** Percorsi etichettati per ricerca globale, scorciatoie menu mobile e picker impostazioni. */
+/** Percorsi etichettati per ricerca globale, scorciatoie menu mobile e picker impostazioni. Tenere allineato a `apps/backend/src/ai-hr/ai-hr-agent.ts` (NEXA_HR_PLATFORM_NAV). */
 export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/attendance", label: "Presenze" },

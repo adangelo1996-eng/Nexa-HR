@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
@@ -20,12 +20,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  fetchAiAssistantOrgUsers,
+  fetchAiAssistantScopeOptions,
   fetchAiNlQueryCatalog,
   postAiAnomalies,
   postAiAssistant,
   postAiNlQueryRun,
   postAiNlQuerySaveView,
   postAiTriage,
+  type AiAssistantScopeMode,
+  type AiAssistantScopeOptionsDto,
+  type AiAssistantScopePayload,
   type AiNlCatalogEntryDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
@@ -156,6 +161,34 @@ function scrollToId(id: string): void {
 
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
+const SCOPE_MODE_LABEL: Record<AiAssistantScopeMode, string> = {
+  self: "Solo il mio profilo",
+  user: "Una persona",
+  team: "Un team",
+  cost_center: "Un centro di costo"
+};
+
+function effectiveScopeModes(options: AiAssistantScopeOptionsDto | null): AiAssistantScopeMode[] {
+  if (!options?.modesAllowed?.length) {
+    return ["self"];
+  }
+  const hasOrg = options.modesAllowed.includes("cost_center");
+  let list = [...options.modesAllowed];
+  if (!hasOrg) {
+    const mu = options.managedUsers ?? [];
+    if (!mu.length) {
+      list = list.filter((m) => m !== "user");
+    }
+  }
+  if (!(options.teams?.length ?? 0)) {
+    list = list.filter((m) => m !== "team");
+  }
+  if (!(options.costCenters?.length ?? 0)) {
+    list = list.filter((m) => m !== "cost_center");
+  }
+  return list.length ? list : ["self"];
+}
+
 export default function AiHubPage(): React.JSX.Element {
   const reduceMotion = useReducedMotion();
   const router = useRouter();
@@ -182,6 +215,18 @@ export default function AiHubPage(): React.JSX.Element {
   const [triageOut, setTriageOut] = useState<string | null>(null);
   const [triageBusy, setTriageBusy] = useState(false);
 
+  const [scopeOptions, setScopeOptions] = useState<AiAssistantScopeOptionsDto | null>(null);
+  const [scopeMode, setScopeMode] = useState<AiAssistantScopeMode>("self");
+  const [scopeUserId, setScopeUserId] = useState("");
+  const [scopeTeamId, setScopeTeamId] = useState("");
+  const [scopeCostCenterId, setScopeCostCenterId] = useState("");
+  const [orgUserQuery, setOrgUserQuery] = useState("");
+  const [orgUserResults, setOrgUserResults] = useState<{ userId: string; label: string }[]>([]);
+  const [orgUserSearchBusy, setOrgUserSearchBusy] = useState(false);
+
+  const allowedScopeModes = useMemo(() => effectiveScopeModes(scopeOptions), [scopeOptions]);
+  const isOrgAiScope = Boolean(scopeOptions?.modesAllowed.includes("cost_center"));
+
   const selectedCatalogEntry = useMemo(
     () => catalog.find((c) => c.id === selectedQueryId),
     [catalog, selectedQueryId]
@@ -202,6 +247,18 @@ export default function AiHubPage(): React.JSX.Element {
       setCatalog(pack.queries);
       setLlmActive(pack.capabilities.llmActive);
       if (pack.queries[0]) setSelectedQueryId(pack.queries[0].id);
+      try {
+        const scope = await fetchAiAssistantScopeOptions(t);
+        setScopeOptions(scope);
+      } catch {
+        setScopeOptions({ modesAllowed: ["self"] });
+      }
+      setScopeMode("self");
+      setScopeUserId("");
+      setScopeTeamId("");
+      setScopeCostCenterId("");
+      setOrgUserQuery("");
+      setOrgUserResults([]);
     } catch (e) {
       setError(friendlyError(e));
     }
@@ -211,16 +268,104 @@ export default function AiHubPage(): React.JSX.Element {
     void bootstrap();
   }, [bootstrap]);
 
+  useEffect(() => {
+    if (!allowedScopeModes.includes(scopeMode)) {
+      setScopeMode(allowedScopeModes[0] ?? "self");
+    }
+  }, [allowedScopeModes, scopeMode]);
+
+  useEffect(() => {
+    if (scopeMode === "team" && scopeOptions?.teams?.length) {
+      setScopeTeamId((prev) =>
+        prev && scopeOptions.teams!.some((x) => x.teamId === prev) ? prev : scopeOptions.teams![0]!.teamId
+      );
+    }
+    if (scopeMode === "cost_center" && scopeOptions?.costCenters?.length) {
+      setScopeCostCenterId((prev) =>
+        prev && scopeOptions.costCenters!.some((x) => x.costCenterId === prev)
+          ? prev
+          : scopeOptions.costCenters![0]!.costCenterId
+      );
+    }
+    if (scopeMode === "user" && !isOrgAiScope && scopeOptions?.managedUsers?.length) {
+      setScopeUserId((prev) =>
+        prev && scopeOptions.managedUsers!.some((x) => x.userId === prev)
+          ? prev
+          : scopeOptions.managedUsers![0]!.userId
+      );
+    }
+  }, [scopeMode, scopeOptions, isOrgAiScope]);
+
+  const orgSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const t = token ?? getToken();
+    if (!t || scopeMode !== "user" || !isOrgAiScope) {
+      setOrgUserResults([]);
+      setOrgUserSearchBusy(false);
+      return;
+    }
+    const q = orgUserQuery.trim();
+    if (q.length < 2) {
+      setOrgUserResults([]);
+      setOrgUserSearchBusy(false);
+      return;
+    }
+    if (orgSearchTimer.current) {
+      clearTimeout(orgSearchTimer.current);
+    }
+    setOrgUserSearchBusy(true);
+    orgSearchTimer.current = setTimeout(() => {
+      void fetchAiAssistantOrgUsers(t, q)
+        .then((r) => setOrgUserResults(r.users))
+        .catch(() => setOrgUserResults([]))
+        .finally(() => setOrgUserSearchBusy(false));
+    }, 350);
+    return () => {
+      if (orgSearchTimer.current) {
+        clearTimeout(orgSearchTimer.current);
+      }
+    };
+  }, [orgUserQuery, scopeMode, isOrgAiScope, token]);
+
   const runAssistant = async (): Promise<void> => {
     const t = token ?? getToken();
     if (!t || !assistantMsg.trim()) return;
     const userText = assistantMsg.trim();
+    let scope: AiAssistantScopePayload | undefined;
+    if (scopeMode !== "self" && allowedScopeModes.includes(scopeMode)) {
+      if (scopeMode === "user") {
+        const uid = scopeUserId.trim();
+        if (!uid) {
+          setError("Per l’ambito «Una persona» seleziona un dipendente dai menu (non scrivere il nome nel messaggio).");
+          return;
+        }
+        scope = { mode: "user", userId: uid };
+      } else if (scopeMode === "team") {
+        const tid = scopeTeamId.trim();
+        if (!tid) {
+          setError("Seleziona un team per continuare.");
+          return;
+        }
+        scope = { mode: "team", teamId: tid };
+      } else if (scopeMode === "cost_center") {
+        const cc = scopeCostCenterId.trim();
+        if (!cc) {
+          setError("Seleziona un centro di costo per continuare.");
+          return;
+        }
+        scope = { mode: "cost_center", costCenterId: cc };
+      }
+    }
     setAssistantBusy(true);
     setError(null);
     setThread((prev) => [...prev, { role: "user", text: userText }]);
     setAssistantMsg("");
     try {
-      const r = await postAiAssistant(t, { message: userText, page: pathname ?? undefined });
+      const r = await postAiAssistant(t, {
+        message: userText,
+        page: pathname ?? undefined,
+        ...(scope ? { scope } : {})
+      });
       setThread((prev) => [...prev, { role: "assistant", text: r.reply }]);
     } catch (e) {
       setError(friendlyError(e));
@@ -471,6 +616,149 @@ export default function AiHubPage(): React.JSX.Element {
               </button>
             ))}
           </div>
+          {scopeOptions && allowedScopeModes.length > 1 ? (
+            <div className="mt-5 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4">
+              <div>
+                <p className="text-xs font-semibold text-[var(--prom-text)]">Su quali dati vuoi orientarti?</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--prom-muted)]">
+                  Scegli l’ambito qui: non inserire nominativi nel messaggio — il sistema applica i permessi e anonimizza i
+                  dati sensibili prima dell’eventuale modello AI.
+                </p>
+              </div>
+              <label className="block text-[11px] font-medium text-[var(--prom-muted)]" htmlFor="ai-hub-scope-mode">
+                Ambito
+              </label>
+              <select
+                id="ai-hub-scope-mode"
+                className="h-11 w-full max-w-md rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)] px-3 text-sm text-[var(--prom-text)] focus-visible:ring-2 focus-visible:ring-[var(--prom-gold)] focus-visible:outline-none"
+                value={scopeMode}
+                onChange={(e) => {
+                  const v = e.target.value as AiAssistantScopeMode;
+                  setScopeMode(v);
+                  if (v !== "user") {
+                    setOrgUserQuery("");
+                    setOrgUserResults([]);
+                    setScopeUserId("");
+                  }
+                }}
+              >
+                {allowedScopeModes.map((m) => (
+                  <option key={m} value={m}>
+                    {SCOPE_MODE_LABEL[m]}
+                  </option>
+                ))}
+              </select>
+              {scopeMode === "user" && isOrgAiScope ? (
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-medium text-[var(--prom-muted)]" htmlFor="ai-hub-org-user-q">
+                    Cerca dipendente (minimo 2 caratteri)
+                  </label>
+                  <Input
+                    id="ai-hub-org-user-q"
+                    value={orgUserQuery}
+                    onChange={(e) => {
+                      setOrgUserQuery(e.target.value);
+                      setScopeUserId("");
+                    }}
+                    placeholder="Nome o email…"
+                    className="rounded-xl border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_96%,transparent)]"
+                  />
+                  {orgUserSearchBusy ? (
+                    <p className="text-[11px] text-[var(--prom-muted)]">Ricerca in corso…</p>
+                  ) : null}
+                  {orgUserResults.length > 0 ? (
+                    <ul
+                      className="max-h-36 overflow-y-auto rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] text-sm"
+                      role="listbox"
+                    >
+                      {orgUserResults.map((u) => (
+                        <li key={u.userId} className="border-b border-[var(--prom-line)] last:border-0">
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)]"
+                            onClick={() => {
+                              setScopeUserId(u.userId);
+                              setOrgUserQuery(u.label);
+                              setOrgUserResults([]);
+                            }}
+                          >
+                            {u.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {scopeUserId.trim() ? (
+                    <p className="text-[11px] text-[var(--prom-muted)]">
+                      Persona selezionata (id interno non visibile al modello in chiaro).
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {scopeMode === "user" && !isOrgAiScope && (scopeOptions.managedUsers?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-medium text-[var(--prom-muted)]" htmlFor="ai-hub-managed-user">
+                    Persona tra i riporti / team
+                  </label>
+                  <select
+                    id="ai-hub-managed-user"
+                    className="h-11 w-full max-w-md rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)] px-3 text-sm text-[var(--prom-text)] focus-visible:ring-2 focus-visible:ring-[var(--prom-gold)] focus-visible:outline-none"
+                    value={scopeUserId}
+                    onChange={(e) => setScopeUserId(e.target.value)}
+                  >
+                    {(scopeOptions.managedUsers ?? []).map((u) => (
+                      <option key={u.userId} value={u.userId}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {scopeMode === "team" && (scopeOptions.teams?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-medium text-[var(--prom-muted)]" htmlFor="ai-hub-team">
+                    Team
+                  </label>
+                  <select
+                    id="ai-hub-team"
+                    className="h-11 w-full max-w-md rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)] px-3 text-sm text-[var(--prom-text)] focus-visible:ring-2 focus-visible:ring-[var(--prom-gold)] focus-visible:outline-none"
+                    value={scopeTeamId}
+                    onChange={(e) => setScopeTeamId(e.target.value)}
+                  >
+                    {(scopeOptions.teams ?? []).map((t) => (
+                      <option key={t.teamId} value={t.teamId}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {scopeMode === "cost_center" && (scopeOptions.costCenters?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-medium text-[var(--prom-muted)]" htmlFor="ai-hub-cc">
+                    Centro di costo
+                  </label>
+                  <select
+                    id="ai-hub-cc"
+                    className="h-11 w-full max-w-md rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)] px-3 text-sm text-[var(--prom-text)] focus-visible:ring-2 focus-visible:ring-[var(--prom-gold)] focus-visible:outline-none"
+                    value={scopeCostCenterId}
+                    onChange={(e) => setScopeCostCenterId(e.target.value)}
+                  >
+                    {(scopeOptions.costCenters ?? []).map((c) => (
+                      <option key={c.costCenterId} value={c.costCenterId}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          ) : scopeOptions && allowedScopeModes.length === 1 ? (
+            <p className="mt-4 text-center text-[11px] leading-relaxed text-[var(--prom-muted)]">
+              L’ambito assistente è limitato al tuo profilo. Per analizzare altre persone servono permessi HR, admin o
+              responsabile di team.
+            </p>
+          ) : null}
           <div className="mt-6 flex max-h-[min(420px,52vh)] flex-col gap-4 overflow-hidden rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)]">
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
               {thread.length === 0 ? (

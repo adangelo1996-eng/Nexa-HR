@@ -220,6 +220,20 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
   ),
   ...cat(
     "nexa_hr",
+    "ai_assistant_scope_managed",
+    "Assistente AI — ambito team / riporti",
+    "Scegliere in Centro AI una persona tra i riporti o i membri dei team di cui si è responsabili.",
+    "Non usato (solo permesso di lettura catalogo)."
+  ),
+  ...cat(
+    "nexa_hr",
+    "ai_assistant_scope_org",
+    "Assistente AI — ambito organizzazione",
+    "Scegliere in Centro AI qualsiasi dipendente, team o centro di costo dell’azienda.",
+    "Non usato (solo permesso di lettura catalogo)."
+  ),
+  ...cat(
+    "nexa_hr",
     "ai_nl_query",
     "Ricerca HR in linguaggio naturale",
     "Eseguire interrogazioni guidate in linguaggio naturale su dati consentiti.",
@@ -342,6 +356,7 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
   "approve:sickness": ["nexa.approvals:write"],
   // Non mappare `nexa.admin_users:read` qui: `read:team` è per visibilità team/org, non console admin.
   "read:team": [
+    "nexa.ai_assistant:scope_managed",
     "nexa.org:read",
     "nexa.personnel_budget:read",
     "nexa.personnel_budget:write",
@@ -374,6 +389,7 @@ export const LEGACY_TO_NEW_KEYS: Record<string, string[]> = {
     "nexa.ai_triage:read",
     "nexa.ai_triage:write"
   ],
+  "nexa.admin_users:read": ["nexa.ai_assistant:scope_org"],
   "read:self": [
     "nexa.attendance:read",
     "nexa.attendance:write",
