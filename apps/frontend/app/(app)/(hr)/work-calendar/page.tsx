@@ -10,7 +10,10 @@ import {
   cancelPendingSicknessEvent,
   cancelSmartworkingRequest,
   cancelTravelRequest,
+  cancelMeetingRoomBooking,
   createLeavePlan,
+  createMeetingRoom,
+  createMeetingRoomBooking,
   createSmartworkingRequest,
   createTravelRequest,
   fetchAdminCostCenters,
@@ -18,6 +21,8 @@ import {
   fetchCurrentUser,
   fetchHrWorkCalendar,
   fetchLeaveBalance,
+  fetchMeetingRoomBookingEvents,
+  fetchMeetingRooms,
   fetchMeTeamWorkCalendar,
   fetchUserCalendar,
   fetchUsers,
@@ -29,6 +34,7 @@ import {
   updateTravelRequest,
   type CalendarEventDto,
   type LeaveBalance,
+  type MeetingRoomDto,
   type User
 } from "@/lib/api";
 import { calendarEventAbbrev } from "@/lib/calendar-event-labels";
@@ -44,11 +50,14 @@ import {
 } from "@/lib/auth-session";
 
 type RowUser = { id: string; fullName: string };
+type RoomRow = { id: string; fullName: string; room: MeetingRoomDto };
 
 type AdminTableRow =
   | { kind: "cc"; id: string; label: string }
   | { kind: "team"; id: string; label: string }
-  | { kind: "person"; row: RowUser };
+  | { kind: "person"; row: RowUser }
+  | { kind: "rooms"; label: string }
+  | { kind: "room"; row: RoomRow };
 
 function readMultiSelectValues(e: ChangeEvent<HTMLSelectElement>): string[] {
   return Array.from(e.target.selectedOptions, (opt) => opt.value);
@@ -85,6 +94,8 @@ function kindStyle(kind: CalendarEventDto["kind"]): string {
       return "border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] text-[var(--prom-text)]";
     case "office":
       return "border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] text-[var(--prom-text)]";
+    case "room_booking":
+      return "border-sky-500/40 bg-sky-500/15 text-sky-950 dark:text-sky-100";
     default:
       return "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]";
   }
@@ -384,6 +395,7 @@ function deriveTravelFormState(events: CalendarEventDto[], userId: string, trPen
 }
 
 type ModalStep = "menu" | "smartworking" | "leave" | "sickness" | "travel";
+type RoomModalStep = "room_menu" | "room_book" | "room_create";
 
 function eventTouchesDay(ev: CalendarEventDto, dayIso: string): boolean {
   const d = dayIso.slice(0, 10);
@@ -428,6 +440,7 @@ function filterManagerRows(me: SessionUser, allUsers: User[]): RowUser[] {
 
 function canShowCalendarEventActions(me: SessionUser | null, rowUserId: string): boolean {
   if (!me) return false;
+  if (rowUserId.startsWith("room:")) return false;
   if (!sessionCanSeeApprovalsAndHrExtras(me)) return me.id === rowUserId;
   return me.id === rowUserId || me.role === "superuser" || me.isTeamResponsible === true;
 }
@@ -620,6 +633,21 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [analyticsFilterUserIds, setAnalyticsFilterUserIds] = useState<string[]>([]);
   const [analyticsFilterRoles, setAnalyticsFilterRoles] = useState<UserRole[]>([]);
   const [analyticsFilterManagerIds, setAnalyticsFilterManagerIds] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<MeetingRoomDto[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomModal, setRoomModal] = useState<{ day: string; row: RoomRow } | null>(null);
+  const [roomModalStep, setRoomModalStep] = useState<RoomModalStep>("room_menu");
+  const [roomBookingTitle, setRoomBookingTitle] = useState("");
+  const [roomBookingStart, setRoomBookingStart] = useState("09:00");
+  const [roomBookingEnd, setRoomBookingEnd] = useState("10:00");
+  const [roomCreateName, setRoomCreateName] = useState("");
+  const [roomCreateLocation, setRoomCreateLocation] = useState("");
+  const [roomCreateSeats, setRoomCreateSeats] = useState<string>("");
+  const [roomCreateHasScreen, setRoomCreateHasScreen] = useState(true);
+  const [roomCreateHasWhiteboard, setRoomCreateHasWhiteboard] = useState(true);
+  const [roomCreateHasProjector, setRoomCreateHasProjector] = useState(false);
+  const [roomCreateHasVideo, setRoomCreateHasVideo] = useState(false);
+  const [roomCreateExtras, setRoomCreateExtras] = useState("");
 
   const load = useCallback(async (opts?: { silent?: boolean }): Promise<void> => {
     const t = getToken();
@@ -656,15 +684,29 @@ export default function WorkCalendarPage(): React.JSX.Element {
         fetchLeaveBalance(t, year).catch(() => null as LeaveBalance | null)
       ]);
 
+      const roomsP = (async () => {
+        setRoomsLoading(true);
+        try {
+          return await fetchMeetingRooms(t);
+        } catch {
+          return [] as MeetingRoomDto[];
+        } finally {
+          setRoomsLoading(false);
+        }
+      })();
+
       if (!sessionCanSeeApprovalsAndHrExtras(current)) {
         const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
           fetchMeTeamWorkCalendar(t, from, to),
           analyticsP
         ]);
+        const roomsList = await roomsP;
+        setRooms(roomsList);
+        const roomEvents = await fetchMeetingRoomBookingEvents(t, from, to).catch(() => [] as CalendarEventDto[]);
         setRowUsers(rows);
         setGroupedRows(null);
         setAllUsersForSelect([]);
-        setEvents(ev);
+        setEvents([...ev, ...roomEvents]);
         setMyAnalyticsEvents(myEv);
         setAnalyticsLeaveBalance(leaveBal);
       } else {
@@ -760,11 +802,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
         setGroupedRows(layout);
         setRowUsers(rows);
         const ids = fid ? [fid] : undefined;
-        const [ev, [myEv, leaveBal]] = await Promise.all([
+        const [ev, [myEv, leaveBal], roomsList, roomEvents] = await Promise.all([
           fetchHrWorkCalendar(t, { from, to, userIds: ids }),
-          analyticsP
+          analyticsP,
+          roomsP,
+          fetchMeetingRoomBookingEvents(t, from, to).catch(() => [] as CalendarEventDto[])
         ]);
-        setEvents(ev);
+        setRooms(roomsList);
+        setEvents([...ev, ...roomEvents]);
         setMyAnalyticsEvents(myEv);
         setAnalyticsLeaveBalance(leaveBal);
       }
@@ -827,8 +872,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
   }, [year, month]);
 
   const tbodyItems = useMemo(
-    () => groupedRows ?? rowUsers.map((row) => ({ kind: "person" as const, row })),
-    [groupedRows, rowUsers]
+    () => {
+      const base = (groupedRows ?? rowUsers.map((row) => ({ kind: "person" as const, row }))) as AdminTableRow[];
+      const roomRows: AdminTableRow[] = rooms
+        .map((r) => ({ kind: "room" as const, row: { id: `room:${r.id}`, fullName: r.name, room: r } }))
+        .sort((a, b) => (a.kind === "room" && b.kind === "room" ? a.row.fullName.localeCompare(b.row.fullName, "it") : 0));
+      return [
+        ...base,
+        { kind: "rooms" as const, label: "Sale riunioni" },
+        ...(roomRows.length ? roomRows : [{ kind: "team" as const, id: "__rooms_empty", label: "Nessuna sala configurata" }])
+      ];
+    },
+    [groupedRows, rowUsers, rooms]
   );
 
   const monthLabel = useMemo(
@@ -1874,6 +1929,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   </tr>
                 );
               }
+              if (item.kind === "rooms") {
+                return (
+                  <tr key="rooms-header">
+                    <td
+                      colSpan={1 + days.length}
+                      className="border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-text)]"
+                    >
+                      {item.label}
+                    </td>
+                  </tr>
+                );
+              }
               const row = item.row;
               return (
                 <tr key={row.id}>
@@ -1898,6 +1965,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           weekend ? "bg-[color-mix(in_srgb,var(--prom-muted)_8%,transparent)]" : ""
                         ].join(" ")}
                         onClick={() => {
+                          if (row.id.startsWith("room:")) {
+                            if (!assertMayOpenCalendarDayModal(me, iso)) {
+                              setError("Le date passate non sono modificabili. Contatta HR.");
+                              return;
+                            }
+                            setRoomModal({ day: iso, row: row as RoomRow });
+                            setRoomModalStep("room_menu");
+                            return;
+                          }
                           if (!assertMayOpenCalendarDayModal(me, iso)) {
                             setError("Le date passate non sono modificabili. Contatta HR.");
                             return;
@@ -1907,6 +1983,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
+                            if (row.id.startsWith("room:")) {
+                              if (!assertMayOpenCalendarDayModal(me, iso)) {
+                                setError("Le date passate non sono modificabili. Contatta HR.");
+                                return;
+                              }
+                              setRoomModal({ day: iso, row: row as RoomRow });
+                              setRoomModalStep("room_menu");
+                              return;
+                            }
                             if (!assertMayOpenCalendarDayModal(me, iso)) {
                               setError("Le date passate non sono modificabili. Contatta HR.");
                               return;
@@ -1924,7 +2009,12 @@ export default function WorkCalendarPage(): React.JSX.Element {
                               nonHrMayEditCalendarEvent(me, ev) &&
                               (isPendingWithMutableRequest(ev) ||
                                 canEditApprovedCalendarChip(me, row.id, ev));
-                            const showRemove = showActions && canRemoveCalendarRequest(ev, me, row.id);
+                            const showRemove =
+                              (showActions && canRemoveCalendarRequest(ev, me, row.id)) ||
+                              (row.id.startsWith("room:") &&
+                                ev.kind === "room_booking" &&
+                                typeof ev.meta?.bookingId === "string" &&
+                                (me?.role === "superuser" || String(ev.meta?.bookedByUserId ?? "") === me?.id));
                             const actions =
                               showEdit || showRemove ? (
                                 <span className="ml-0.5 inline-flex shrink-0 gap-0">
@@ -1946,7 +2036,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
                                       type="button"
                                       className="rounded p-0.5 text-[var(--prom-muted)] hover:bg-rose-500/20 hover:text-rose-700 dark:hover:text-rose-300"
                                       aria-label={
-                                        String(ev.meta?.status ?? "") === "rejected"
+                                        ev.kind === "room_booking"
+                                          ? "Annulla prenotazione sala"
+                                          : String(ev.meta?.status ?? "") === "rejected"
                                           ? "Rimuovi richiesta rifiutata"
                                           : String(ev.meta?.status ?? "") === "approved"
                                             ? "Rimuovi richiesta approvata futura"
@@ -1954,6 +2046,18 @@ export default function WorkCalendarPage(): React.JSX.Element {
                                       }
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (ev.kind === "room_booking" && typeof ev.meta?.bookingId === "string") {
+                                          void cancelMeetingRoomBooking(getToken() || "", String(ev.meta.bookingId))
+                                            .then(() => {
+                                              setEvents((prev) =>
+                                                prev.filter((x) => String(x.meta?.bookingId ?? "") !== String(ev.meta?.bookingId))
+                                              );
+                                            })
+                                            .catch((err) => {
+                                              setError(err instanceof Error ? err.message : "Annullamento fallito");
+                                            });
+                                          return;
+                                        }
                                         void cancelPendingFromChip(ev);
                                       }}
                                     >
@@ -2921,6 +3025,278 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 Chiudi
               </Button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {roomModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+          role="presentation"
+          onClick={() => {
+            setRoomModal(null);
+            setRoomModalStep("room_menu");
+          }}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="room-modal-title"
+            className="relative z-10 w-full max-w-lg rounded-2xl border border-[var(--glass-border)] p-5 shadow-[var(--glass-shadow)]"
+            style={{ background: "var(--glass-bg)", boxShadow: "var(--glass-shadow)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                {roomModalStep !== "room_menu" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mb-1 -ml-2 h-8 px-2 text-[11px]"
+                    onClick={() => setRoomModalStep("room_menu")}
+                  >
+                    ← Indietro
+                  </Button>
+                ) : null}
+                <h2 id="room-modal-title" className="text-base font-semibold text-[var(--prom-text)]">
+                  {formatItalianDateLong(roomModal.day.slice(0, 10))} · {roomModal.row.room.name}
+                </h2>
+                <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                  {roomModal.row.room.location ? roomModal.row.room.location : "Sala riunioni"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-lg leading-none"
+                aria-label="Chiudi"
+                onClick={() => {
+                  setRoomModal(null);
+                  setRoomModalStep("room_menu");
+                }}
+              >
+                ×
+              </Button>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_70%,transparent)] p-3 text-xs text-[var(--prom-text)]">
+              <p className="text-[11px] font-medium text-[var(--prom-muted)]">Caratteristiche</p>
+              <ul className="mt-2 grid gap-1">
+                <li>
+                  Posti:{" "}
+                  <span className="font-medium">{roomModal.row.room.seats != null ? roomModal.row.room.seats : "—"}</span>
+                </li>
+                <li>Schermo: <span className="font-medium">{roomModal.row.room.hasScreen ? "sì" : "no"}</span></li>
+                <li>Proiettore: <span className="font-medium">{roomModal.row.room.hasProjector ? "sì" : "no"}</span></li>
+                <li>Lavagna: <span className="font-medium">{roomModal.row.room.hasWhiteboard ? "sì" : "no"}</span></li>
+                <li>Video: <span className="font-medium">{roomModal.row.room.hasVideoConference ? "sì" : "no"}</span></li>
+                {roomModal.row.room.extraFeatures.length ? (
+                  <li>
+                    Altro:{" "}
+                    <span className="font-medium">{roomModal.row.room.extraFeatures.join(", ")}</span>
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+
+            {roomModalStep === "room_menu" ? (
+              <div className="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  className="rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-3 text-left text-sm font-medium text-sky-950 transition hover:bg-sky-500/15 dark:text-sky-100"
+                  onClick={() => {
+                    setRoomBookingTitle("");
+                    setRoomBookingStart("09:00");
+                    setRoomBookingEnd("10:00");
+                    setRoomModalStep("room_book");
+                  }}
+                >
+                  Prenota
+                </button>
+                {me?.role === "superuser" || me?.canAccessHrExtendedConsole ? (
+                  <button
+                    type="button"
+                    className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_70%,transparent)] px-4 py-3 text-left text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)]"
+                    onClick={() => {
+                      setRoomCreateName(roomModal.row.room.name);
+                      setRoomCreateLocation(roomModal.row.room.location ?? "");
+                      setRoomCreateSeats(roomModal.row.room.seats != null ? String(roomModal.row.room.seats) : "");
+                      setRoomCreateHasScreen(roomModal.row.room.hasScreen);
+                      setRoomCreateHasProjector(roomModal.row.room.hasProjector);
+                      setRoomCreateHasWhiteboard(roomModal.row.room.hasWhiteboard);
+                      setRoomCreateHasVideo(roomModal.row.room.hasVideoConference);
+                      setRoomCreateExtras(roomModal.row.room.extraFeatures.join(", "));
+                      setRoomModalStep("room_create");
+                    }}
+                  >
+                    Duplica come nuova sala
+                  </button>
+                ) : null}
+                {roomsLoading ? <p className="text-[11px] text-[var(--prom-muted)]">Caricamento sale…</p> : null}
+              </div>
+            ) : null}
+
+            {roomModalStep === "room_book" ? (
+              <div className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Titolo (opzionale)
+                  <input
+                    value={roomBookingTitle}
+                    onChange={(e) => setRoomBookingTitle(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-[11px] text-[var(--prom-muted)]">
+                    Inizio
+                    <input
+                      value={roomBookingStart}
+                      onChange={(e) => setRoomBookingStart(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                      placeholder="09:00"
+                    />
+                  </label>
+                  <label className="block text-[11px] text-[var(--prom-muted)]">
+                    Fine
+                    <input
+                      value={roomBookingEnd}
+                      onChange={(e) => setRoomBookingEnd(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                      placeholder="10:00"
+                    />
+                  </label>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const token = getToken();
+                    if (!token) return;
+                    const day = roomModal.day.slice(0, 10);
+                    const startsAt = `${day}T${roomBookingStart}:00.000Z`;
+                    const endsAt = `${day}T${roomBookingEnd}:00.000Z`;
+                    setSubmitting("room_booking");
+                    void createMeetingRoomBooking(token, roomModal.row.room.id, {
+                      startsAt,
+                      endsAt,
+                      ...(roomBookingTitle.trim() ? { title: roomBookingTitle.trim() } : {})
+                    })
+                      .then((ev) => {
+                        setEvents((prev) => [...prev, ev]);
+                        setRoomModalStep("room_menu");
+                      })
+                      .catch((err) => {
+                        setError(err instanceof Error ? err.message : "Prenotazione fallita");
+                      })
+                      .finally(() => setSubmitting(null));
+                  }}
+                  disabled={submitting === "room_booking"}
+                  className="w-full"
+                >
+                  {submitting === "room_booking" ? "Prenotazione…" : "Conferma prenotazione"}
+                </Button>
+              </div>
+            ) : null}
+
+            {roomModalStep === "room_create" ? (
+              <div className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
+                <p className="text-[11px] text-[var(--prom-muted)]">
+                  Creazione sala: solo utenti autorizzati.
+                </p>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Nome
+                  <input
+                    value={roomCreateName}
+                    onChange={(e) => setRoomCreateName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                  />
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Dove si trova (opzionale)
+                  <input
+                    value={roomCreateLocation}
+                    onChange={(e) => setRoomCreateLocation(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                  />
+                </label>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Posti (opzionale)
+                  <input
+                    value={roomCreateSeats}
+                    onChange={(e) => setRoomCreateSeats(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                    placeholder="8"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-xs text-[var(--prom-text)]">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={roomCreateHasScreen} onChange={(e) => setRoomCreateHasScreen(e.target.checked)} />
+                    Schermo
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={roomCreateHasProjector} onChange={(e) => setRoomCreateHasProjector(e.target.checked)} />
+                    Proiettore
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={roomCreateHasWhiteboard} onChange={(e) => setRoomCreateHasWhiteboard(e.target.checked)} />
+                    Lavagna
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={roomCreateHasVideo} onChange={(e) => setRoomCreateHasVideo(e.target.checked)} />
+                    Video
+                  </label>
+                </div>
+                <label className="block text-[11px] text-[var(--prom-muted)]">
+                  Altre caratteristiche (separate da virgola)
+                  <input
+                    value={roomCreateExtras}
+                    onChange={(e) => setRoomCreateExtras(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)]"
+                    placeholder="presa HDMI, aria condizionata, accesso disabili"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const token = getToken();
+                    if (!token) return;
+                    setSubmitting("room_create");
+                    const seats = roomCreateSeats.trim() ? Number(roomCreateSeats.trim()) : undefined;
+                    void createMeetingRoom(token, {
+                      name: roomCreateName,
+                      ...(roomCreateLocation.trim() ? { location: roomCreateLocation.trim() } : {}),
+                      ...(Number.isFinite(seats as number) ? { seats: seats as number } : {}),
+                      hasScreen: roomCreateHasScreen,
+                      hasProjector: roomCreateHasProjector,
+                      hasWhiteboard: roomCreateHasWhiteboard,
+                      hasVideoConference: roomCreateHasVideo,
+                      extraFeatures: roomCreateExtras
+                        .split(",")
+                        .map((x) => x.trim())
+                        .filter(Boolean)
+                    })
+                      .then(({ id }) => {
+                        void fetchMeetingRooms(token).then((items) => {
+                          setRooms(items);
+                          const created = items.find((r) => r.id === id);
+                          if (created && roomModal) {
+                            setRoomModal({ ...roomModal, row: { id: `room:${created.id}`, fullName: created.name, room: created } });
+                          }
+                          setRoomModalStep("room_menu");
+                        });
+                      })
+                      .catch((err) => setError(err instanceof Error ? err.message : "Creazione fallita"))
+                      .finally(() => setSubmitting(null));
+                  }}
+                  disabled={submitting === "room_create"}
+                  className="w-full"
+                >
+                  {submitting === "room_create" ? "Creazione…" : "Crea sala"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

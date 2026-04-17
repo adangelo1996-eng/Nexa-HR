@@ -1993,12 +1993,97 @@ export interface CalendarEventDto {
     | "office"
     | "holiday"
     | "rol"
-    | "travel";
+    | "travel"
+    | "room_booking";
   title: string;
   start: string;
   end?: string;
   userId?: string;
   meta?: Record<string, unknown>;
+}
+
+export interface MeetingRoomDto {
+  id: string;
+  name: string;
+  location: string | null;
+  seats: number | null;
+  hasScreen: boolean;
+  hasProjector: boolean;
+  hasWhiteboard: boolean;
+  hasVideoConference: boolean;
+  extraFeatures: string[];
+}
+
+export async function fetchMeetingRooms(token: string): Promise<MeetingRoomDto[]> {
+  const response = await fetch(buildApiUrl("/meeting-rooms"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: MeetingRoomDto[] };
+  return body.items ?? [];
+}
+
+export async function createMeetingRoom(
+  token: string,
+  input: {
+    name: string;
+    location?: string;
+    seats?: number;
+    hasScreen?: boolean;
+    hasProjector?: boolean;
+    hasWhiteboard?: boolean;
+    hasVideoConference?: boolean;
+    extraFeatures?: string[];
+  }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/meeting-rooms"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { item: { id: string } };
+  return { id: String(body.item.id) };
+}
+
+export async function fetchMeetingRoomBookingEvents(
+  token: string,
+  from?: string,
+  to?: string
+): Promise<CalendarEventDto[]> {
+  const q =
+    from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}` : "";
+  const response = await fetch(buildApiUrl(`/meeting-rooms/bookings${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { events: CalendarEventDto[] };
+  return body.events ?? [];
+}
+
+export async function createMeetingRoomBooking(
+  token: string,
+  roomId: string,
+  input: { startsAt: string; endsAt: string; title?: string }
+): Promise<CalendarEventDto> {
+  const response = await fetch(buildApiUrl(`/meeting-rooms/${roomId}/bookings`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { event: CalendarEventDto };
+  return body.event;
+}
+
+export async function cancelMeetingRoomBooking(token: string, bookingId: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/meeting-rooms/bookings/${bookingId}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export interface UserNotificationDto {

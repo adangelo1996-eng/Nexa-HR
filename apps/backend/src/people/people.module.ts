@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { WorkforceModule } from "../workforce/workforce.module";
 import { CompanySettingsController } from "./company-settings.controller";
+import { MeetingRoomsController } from "./meeting-rooms.controller";
 import { OrgController } from "./org.controller";
 import { PersonnelBudgetController } from "./personnel-budget.controller";
 import { UserController } from "./user.controller";
@@ -13,7 +14,8 @@ import { WorkCalendarController } from "./work-calendar.controller";
     OrgController,
     PersonnelBudgetController,
     WorkCalendarController,
-    CompanySettingsController
+    CompanySettingsController,
+    MeetingRoomsController
   ]
 })
 export class PeopleModule {}

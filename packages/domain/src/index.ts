@@ -346,7 +346,8 @@ export interface CalendarEvent {
     | "office"
     | "holiday"
     | "rol"
-    | "travel";
+    | "travel"
+    | "room_booking";
   title: string;
   start: string;
   end?: string;

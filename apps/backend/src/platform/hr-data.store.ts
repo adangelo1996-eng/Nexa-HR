@@ -4433,6 +4433,208 @@ export class HrDataStore {
     return { users, events };
   }
 
+  async listMeetingRooms(
+    requesterId: string
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      location: string | null;
+      seats: number | null;
+      hasScreen: boolean;
+      hasProjector: boolean;
+      hasWhiteboard: boolean;
+      hasVideoConference: boolean;
+      extraFeatures: string[];
+    }>
+  > {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) {
+      return [];
+    }
+    const { data, error } = await this.supabase!
+      .from("meeting_rooms")
+      .select("*")
+      .eq("company_id", me.companyId)
+      .order("name", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(`Lettura sale riunioni fallita: ${error.message}`);
+    }
+    return ((data as Record<string, unknown>[]) ?? []).map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      location: r.location ? String(r.location) : null,
+      seats: r.seats != null ? Number(r.seats) : null,
+      hasScreen: Boolean(r.has_screen),
+      hasProjector: Boolean(r.has_projector),
+      hasWhiteboard: Boolean(r.has_whiteboard),
+      hasVideoConference: Boolean(r.has_video_conference),
+      extraFeatures: Array.isArray(r.extra_features)
+        ? (r.extra_features as unknown[]).map((x) => String(x)).filter(Boolean)
+        : []
+    }));
+  }
+
+  async createMeetingRoom(
+    requesterId: string,
+    input: {
+      name: string;
+      location?: string;
+      seats?: number;
+      hasScreen?: boolean;
+      hasProjector?: boolean;
+      hasWhiteboard?: boolean;
+      hasVideoConference?: boolean;
+      extraFeatures?: string[];
+    }
+  ): Promise<{ id: string }> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) {
+      throw new BadRequestException("Sale riunioni non disponibili (DB non configurato)");
+    }
+    const name = input.name?.trim();
+    if (!name) {
+      throw new BadRequestException("Nome sala obbligatorio");
+    }
+    const payload = {
+      company_id: me.companyId,
+      name,
+      location: input.location?.trim() || null,
+      seats: input.seats ?? null,
+      has_screen: Boolean(input.hasScreen),
+      has_projector: Boolean(input.hasProjector),
+      has_whiteboard: Boolean(input.hasWhiteboard),
+      has_video_conference: Boolean(input.hasVideoConference),
+      extra_features: (input.extraFeatures ?? []).map((x) => x.trim()).filter(Boolean),
+      created_by_user_id: me.id
+    };
+    const { data, error } = await this.supabase!.from("meeting_rooms").insert(payload).select("id").maybeSingle();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Creazione sala fallita: ${error?.message ?? "unknown"}`);
+    }
+    return { id: String((data as Record<string, unknown>).id) };
+  }
+
+  async listMeetingRoomBookingEvents(
+    requesterId: string,
+    from?: string,
+    to?: string
+  ): Promise<CalendarEvent[]> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) return [];
+    const q = this.supabase!
+      .from("meeting_room_bookings")
+      .select("id, room_id, booked_by_user_id, title, starts_at, ends_at, canceled_at")
+      .eq("company_id", me.companyId)
+      .is("canceled_at", null)
+      .order("starts_at", { ascending: true });
+    const qb =
+      from || to
+        ? q
+            .gte("starts_at", from ? `${from.slice(0, 10)}T00:00:00.000Z` : undefined)
+            .lte("starts_at", to ? `${to.slice(0, 10)}T23:59:59.999Z` : undefined)
+        : q;
+    const { data, error } = await qb;
+    if (error) {
+      throw new InternalServerErrorException(`Lettura prenotazioni sale fallita: ${error.message}`);
+    }
+    const items = (data as Record<string, unknown>[]) ?? [];
+    return items.map((r) => {
+      const roomId = String(r.room_id);
+      return {
+        id: `cal-room-${String(r.id)}`,
+        kind: "room_booking",
+        title: String(r.title || "Prenotazione sala"),
+        start: String(r.starts_at),
+        end: String(r.ends_at),
+        userId: `room:${roomId}`,
+        meta: {
+          bookingId: String(r.id),
+          roomId,
+          bookedByUserId: String(r.booked_by_user_id)
+        }
+      };
+    });
+  }
+
+  async createMeetingRoomBookingEvent(
+    requesterId: string,
+    roomId: string,
+    input: { startsAt: string; endsAt: string; title?: string }
+  ): Promise<CalendarEvent> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) {
+      throw new BadRequestException("Prenotazioni sala non disponibili (DB non configurato)");
+    }
+    const startsAt = String(input.startsAt || "").trim();
+    const endsAt = String(input.endsAt || "").trim();
+    if (!startsAt || !endsAt) {
+      throw new BadRequestException("Orario non valido");
+    }
+    const title = input.title?.trim() || "";
+    const { data, error } = await this.supabase!
+      .from("meeting_room_bookings")
+      .insert({
+        company_id: me.companyId,
+        room_id: roomId,
+        booked_by_user_id: me.id,
+        title,
+        starts_at: startsAt,
+        ends_at: endsAt
+      })
+      .select("id, room_id, booked_by_user_id, title, starts_at, ends_at")
+      .maybeSingle();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Prenotazione sala fallita: ${error?.message ?? "unknown"}`);
+    }
+    const row = data as Record<string, unknown>;
+    return {
+      id: `cal-room-${String(row.id)}`,
+      kind: "room_booking",
+      title: String(row.title || "Prenotazione sala"),
+      start: String(row.starts_at),
+      end: String(row.ends_at),
+      userId: `room:${String(row.room_id)}`,
+      meta: {
+        bookingId: String(row.id),
+        roomId: String(row.room_id),
+        bookedByUserId: String(row.booked_by_user_id)
+      }
+    };
+  }
+
+  async cancelMeetingRoomBooking(requesterId: string, bookingId: string): Promise<void> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) return;
+    const { data, error } = await this.supabase!
+      .from("meeting_room_bookings")
+      .select("id, booked_by_user_id, company_id, canceled_at")
+      .eq("id", bookingId)
+      .maybeSingle();
+    if (error || !data) {
+      throw new NotFoundException("Prenotazione non trovata");
+    }
+    const row = data as Record<string, unknown>;
+    if (String(row.company_id) !== me.companyId) {
+      throw new ForbiddenException();
+    }
+    if (row.canceled_at) {
+      return;
+    }
+    const ownerId = String(row.booked_by_user_id);
+    const isAdmin = me.role === "superuser";
+    if (!isAdmin && ownerId !== me.id) {
+      throw new ForbiddenException();
+    }
+    const { error: upErr } = await this.supabase!
+      .from("meeting_room_bookings")
+      .update({ canceled_at: new Date().toISOString(), canceled_by_user_id: me.id })
+      .eq("id", bookingId);
+    if (upErr) {
+      throw new InternalServerErrorException(`Annullamento prenotazione fallito: ${upErr.message}`);
+    }
+  }
+
   private async buildCalendarEventsForUser(
     userId: string,
     from?: string,
