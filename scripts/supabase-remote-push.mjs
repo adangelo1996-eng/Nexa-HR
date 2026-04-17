@@ -123,7 +123,13 @@ if (!token || !dbPassword) {
     process.exit(0);
   }
   console.error(
-    "Imposta SUPABASE_DB_URL, oppure insieme SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD, poi rilancia."
+    "Imposta SUPABASE_DB_URL o DATABASE_URL, opz. SUPABASE_POOLER_URL (Session pooler IPv4), " +
+      "oppure insieme SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD, poi rilancia."
   );
+  if (process.env.GITHUB_ACTIONS === "true") {
+    console.error(
+      "GitHub Actions: Repository → Settings → Secrets and variables → Actions → aggiungi i secret indicati in .github/workflows/supabase-db-push.yml"
+    );
+  }
   process.exit(1);
 }

@@ -25,6 +25,8 @@ services:
     plan: free
     region: frankfurt
     branch: main
+    # Migrazioni DB: durante questa build, prima del compile (vedi supabase-remote-push.mjs). Serve la stringa
+    # Postgres su SUPABASE_DB_URL (o DATABASE_URL / token+password come in README); se manca, lo step viene saltato.
     buildCommand: corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install --frozen-lockfile && node scripts/supabase-remote-push.mjs --optional && pnpm run build:backend:render
     # Avvio senza Corepack/pnpm: in start, corepack prepare può andare in timeout verso registry.npmjs.org
     # (UND_ERR_CONNECT_TIMEOUT) anche se la build è ok. Lo script @payday/backend è solo "node dist/main.js".
