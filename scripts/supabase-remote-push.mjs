@@ -128,7 +128,7 @@ if (!token || !dbPassword) {
   );
   if (process.env.GITHUB_ACTIONS === "true") {
     console.error(
-      "GitHub Actions: Repository → Settings → Secrets and variables → Actions → aggiungi i secret indicati in .github/workflows/supabase-db-push.yml"
+      "Le migration Nexa-HR non passano da GitHub CI: usa la build backend su Render (render.yaml) oppure MCP Supabase da Cursor."
     );
   }
   process.exit(1);

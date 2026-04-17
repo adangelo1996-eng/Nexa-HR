@@ -1,0 +1,26 @@
+---
+description: Nexa-HR — operazioni su deploy e database solo tramite MCP Render e Supabase; automazione senza duplicare segreti su GitHub.
+alwaysApply: true
+---
+
+# Nexa-HR: MCP Render + Supabase (regola operativa)
+
+## Regola assoluta (sessione agente in Cursor)
+
+Per **Nexa-HR**, ogni attività che tocca **Render** (servizi, deploy, log, metriche, workspace quando serve) o **Supabase** (progetto DB, migrazioni, SQL controllato, advisors, tabelle, log) deve essere svolta **tramite i server MCP Render e Supabase** disponibili in Cursor (`plugin-render-render` / `plugin-supabase-supabase` o equivalenti `user-render` / `user-supabase` se configurati).
+
+- **Non** proporre come percorso predefinito la duplicazione di stringhe di connessione o PAT su **GitHub Actions** solo per far girare la pipeline: la fonte operativa resta **Render** (variabili del servizio) e gli **MCP** per verifiche e interventi dall’agente.
+- **Non** rimandare al dashboard web per operazioni che gli MCP possono eseguire (liste deploy, push migrazioni, advisors, ecc.), salvo se l’MCP risulta **non autorizzato** o **non disponibile**: in quel caso dichiarare il blocco una volta e indicare solo il recupero minimo (es. autorizzare MCP, selezionare workspace Render).
+
+## Automazione (push codice → database)
+
+I runner **GitHub Actions non possono usare gli MCP di Cursor**. L’applicazione **automatica** delle migration SQL alla pubblicazione del codice avviene sulla **build del backend su Render** (`render.yaml` → `scripts/supabase-remote-push.mjs` con le variabili già definite sul servizio Render). Dopo modifiche a `infra/supabase/migrations/`, l’agente deve **verificare l’esito** con **MCP Supabase** (es. `list_migrations` o controllo equivalente), non assumere il successo senza controllo.
+
+## Riassunto
+
+| Contesto | Strumento |
+|----------|-----------|
+| Agente: stato deploy, log, servizi Render | MCP Render |
+| Agente: migrazioni, schema, advisors, verifica post-change | MCP Supabase |
+| Push `main` / merge: applicare SQL sul DB remoto | Build backend **Render** (già in repo) |
+| GitHub Actions per `db push` | **Non usato** (nessun workflow in repo) |

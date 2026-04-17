@@ -34,6 +34,11 @@ Se un rischio non è correggibile subito, **issue o nota tecnica** con severity 
 
 ## Operatività: accessi esterni (Render / Supabase)
 
+Regola di progetto (sempre attiva in `.cursor/rules/nexa-hr-mcp-render-supabase.mdc`):
+
+- Per **Render** e **Supabase**, l'agente usa **solo gli MCP** collegati in Cursor (deploy, log, migrazioni, advisors, ecc.). Non usare come default la configurazione di secret su GitHub Actions per sostituire Render.
+- L'**automazione** delle migration al push è sulla **build backend Render** (`supabase-remote-push.mjs`); non c'è workflow GitHub per `db push`. Dopo cambi SQL, verificare il DB con **MCP Supabase**.
+
 Quando un task richiede azioni su sistemi esterni (es. leggere env su Render, applicare migrazioni Supabase):
 
 - Verificare subito se l’integrazione/connessione è **autorizzata** (evitare loop di tentativi “alla cieca”).
