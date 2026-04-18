@@ -50,6 +50,30 @@ class ContractPartyDto {
   @IsOptional()
   @IsIn([12, 13, 14])
   payMonthsPerYear?: 12 | 13 | 14;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  endDateIso?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  fixedTermReason?: string;
+
+  @IsOptional()
+  @IsNumber()
+  weeklyHours?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  intermittentWorkDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  projectScopeSummary?: string;
 }
 
 class ContractBlockDto {
