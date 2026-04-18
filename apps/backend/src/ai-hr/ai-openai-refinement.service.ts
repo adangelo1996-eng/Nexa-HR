@@ -39,8 +39,8 @@ function systemPromptForSchema(schemaVersion: string): string {
         getNexaHrConversationalAgentSystemPrompt() +
           "\n\n" +
           base +
-          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.facts con: message, page, snapshot, routeHints, platformCapabilities (stesso contenuto percorsi), agent (id/versione), leaveBalance e policySnippets se presenti. " +
-          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; usa snapshot e bozza per priorità; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
+          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.facts con: message, page, snapshot (può includere smartWorkingInsight, smartWorkingMultiScopeSummary, conteggi ferie/spese/cedolini, ecc.), routeHints, platformCapabilities (stesso contenuto percorsi), agent (id/versione), leaveBalance e policySnippets se presenti. " +
+          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. smart working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
       );
     case "ai_nl_query_v1":
       return (

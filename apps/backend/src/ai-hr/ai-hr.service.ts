@@ -3,7 +3,7 @@ import type { User } from "@payday/domain";
 import type { AuthRole } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { CorporatePoliciesService } from "../corporate-policies/corporate-policies.service";
-import { HrDataStore } from "../platform/hr-data.store";
+import { HrDataStore, type SmartworkingRequestRow } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
 import { isSynapseSuperuserEmail } from "../platform/synapse-superuser";
 import { AiAuditService } from "./ai-audit.service";
@@ -451,13 +451,104 @@ export class AiHrService {
       /* ignore */
     }
 
+    try {
+      if (await this.permissions.userHasAll(actorId, ["nexa.attendance:read"])) {
+        const end = new Date();
+        const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 3, 1));
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const windowStart = `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-01`;
+        const windowEnd = end.toISOString().slice(0, 10);
+
+        if (subjectUserIds.length === 1) {
+          const sid = subjectUserIds[0]!;
+          if (await this.canViewSubjectForAssistant(actorId, sid, org, managedSet)) {
+            const rows = await this.store.listMySmartworking(sid);
+            out.smartWorkingInsight = this.summarizeSmartworkingWindow(rows, windowStart, windowEnd);
+          }
+        } else if (subjectUserIds.length > 1) {
+          const byMonth = new Map<string, number>();
+          let totalApproved = 0;
+          for (const sid of subjectUserIds) {
+            if (!(await this.canViewSubjectForAssistant(actorId, sid, org, managedSet))) {
+              continue;
+            }
+            const rows = await this.store.listMySmartworking(sid);
+            const one = this.summarizeSmartworkingWindow(rows, windowStart, windowEnd);
+            totalApproved += one.approvedInWindow;
+            for (const { month, approvedDays } of one.months) {
+              byMonth.set(month, (byMonth.get(month) ?? 0) + approvedDays);
+            }
+          }
+          out.smartWorkingMultiScopeSummary = {
+            windowStart,
+            windowEnd,
+            totalApprovedDays: totalApproved,
+            months: [...byMonth.entries()]
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([month, approvedDays]) => ({ month, approvedDays }))
+          };
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     return out;
+  }
+
+  private summarizeSmartworkingWindow(
+    rows: SmartworkingRequestRow[],
+    windowStart: string,
+    windowEnd: string
+  ): {
+    windowStart: string;
+    windowEnd: string;
+    months: { month: string; approvedDays: number }[];
+    topWeekdays: { label: string; count: number }[];
+    pendingInWindow: number;
+    approvedInWindow: number;
+  } {
+    const wdLabels = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+    const byMonth = new Map<string, number>();
+    const byWd = new Map<number, number>();
+    let pendingInWindow = 0;
+    let approvedInWindow = 0;
+    for (const r of rows) {
+      if (r.day < windowStart || r.day > windowEnd) {
+        continue;
+      }
+      if (r.status === "pending") {
+        pendingInWindow++;
+        continue;
+      }
+      if (r.status !== "approved") {
+        continue;
+      }
+      approvedInWindow++;
+      const ym = r.day.slice(0, 7);
+      byMonth.set(ym, (byMonth.get(ym) ?? 0) + 1);
+      const wd = new Date(`${r.day}T12:00:00Z`).getUTCDay();
+      byWd.set(wd, (byWd.get(wd) ?? 0) + 1);
+    }
+    const months = [...byMonth.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, approvedDays]) => ({ month, approvedDays }));
+    const topWeekdays = [...byWd.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([wd, count]) => ({ label: wdLabels[wd] ?? String(wd), count }));
+    return { windowStart, windowEnd, months, topWeekdays, pendingInWindow, approvedInWindow };
   }
 
   private buildAssistantDraft(facts: Record<string, unknown>, message: string): string {
     const m = message.toLowerCase();
     const lines: string[] = [];
     const snap = facts.snapshot as Record<string, unknown> | undefined;
+    const asksSmartWorking =
+      /smart\s*working|smartworking|lavoro\s*agile|lavoro\s*ibrid|ibrido|in\s+remoto|da\s+casa|telelavoro/i.test(
+        message
+      );
+    const asksCorporateDoc = /policy|policies|document|regolamento|corporate/i.test(m);
     const wantsSituation =
       /\burgent|urgenz|priorit|c['’]è da fare|cosa devo|subito|oggi devo|checklist|dimenticat|cosa manca|da fare\b/i.test(
         m
@@ -475,6 +566,63 @@ export class AiHrService {
         snap.unreadNewPayslipsCountInScope
       ].some((v) => typeof v === "number" && v > 0);
     const lowLeave = snap && snap.leaveResidualIsLow === true;
+
+    if (asksSmartWorking) {
+      lines.push("Smart working (da richieste registrate in Nexa HR):");
+      const ins = snap?.smartWorkingInsight as
+        | {
+            windowStart: string;
+            windowEnd: string;
+            months: { month: string; approvedDays: number }[];
+            topWeekdays: { label: string; count: number }[];
+            pendingInWindow: number;
+            approvedInWindow: number;
+          }
+        | undefined;
+      const multi = snap?.smartWorkingMultiScopeSummary as
+        | {
+            windowStart: string;
+            windowEnd: string;
+            totalApprovedDays: number;
+            months: { month: string; approvedDays: number }[];
+          }
+        | undefined;
+      if (ins) {
+        if (ins.approvedInWindow === 0 && ins.pendingInWindow === 0) {
+          lines.push(
+            `Dal ${ins.windowStart} al ${ins.windowEnd} non risultano giorni smart working approvati né richieste ancora in sospeso per il soggetto selezionato. Controlla Smart working (/smartworking) o il calendario.`
+          );
+        } else {
+          lines.push(
+            `Periodo: dal ${ins.windowStart} al ${ins.windowEnd}. Giornate approvate: ${ins.approvedInWindow}; ancora in valutazione nel periodo: ${ins.pendingInWindow}.`
+          );
+          if (ins.months.length) {
+            lines.push(`Riepilogo mensile (approvate): ${ins.months.map((x) => `${x.month}: ${x.approvedDays}`).join(", ")}.`);
+          }
+          if (ins.topWeekdays.length && ins.approvedInWindow > 0) {
+            lines.push(
+              `Giorni della settimana più frequenti tra le approvate: ${ins.topWeekdays.map((w) => `${w.label} (${w.count})`).join(", ")}.`
+            );
+          }
+          lines.push("Per il dettaglio giorno per giorno: Smart working (/smartworking) o Calendario lavoro (/work-calendar).");
+        }
+      } else if (multi) {
+        lines.push(
+          `Nel gruppo selezionato, dal ${multi.windowStart} al ${multi.windowEnd}, risultano ${multi.totalApprovedDays} giornate smart working approvate (somma sulle persone visibili).`
+        );
+        if (multi.months.length) {
+          lines.push(`Per mese (somma): ${multi.months.map((x) => `${x.month}: ${x.approvedDays}`).join(", ")}.`);
+        }
+        lines.push(
+          "Per capire le abitudini di una singola persona, imposta l’ambito «Una persona» oppure apri Smart working (/smartworking)."
+        );
+      } else {
+        lines.push(
+          "Non risultano dati smart working visibili per questo ambito con i permessi attuali (serve almeno consultazione presenze / dati del soggetto). Verifica ambito e permessi, oppure apri Smart working (/smartworking)."
+        );
+      }
+      lines.push("");
+    }
 
     if (wantsSituation || hasSignal || lowLeave) {
       lines.push("Situazione rapida (da dati aggiornati in app):");
@@ -529,7 +677,7 @@ export class AiHrService {
       );
     }
     const pol = facts.policySnippets as { title: string }[] | undefined;
-    if (pol?.length) {
+    if (pol?.length && (!asksSmartWorking || asksCorporateDoc)) {
       lines.push(`Documenti Corporate Policies disponibili: ${pol.map((p) => p.title).join(", ")}.`);
     }
     if (lines.length === 0) {
