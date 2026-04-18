@@ -1,6 +1,7 @@
 /**
  * Testi guida per pagine con esperienza «Centro AI HR» (popup aiuto in pagina).
- * La voce di menu «HEBB AI for HR» elenca solo il Centro AI quando l’LLM è attivo su backend.
+ * La voce di menu «HEBB AI for HR» elenca le route che chiamano l’LLM (Centro AI, workforce planning, turnover)
+ * quando l’LLM è attivo su backend e i permessi di navigazione coincidono.
  */
 
 export const HEBB_AI_PAGE_KEYS = [

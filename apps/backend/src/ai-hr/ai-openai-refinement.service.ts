@@ -18,14 +18,54 @@ function collectTokensFromJson(value: unknown): Set<string> {
   return found;
 }
 
-function tokensPreservedInOutput(pseudonymizedInput: unknown, modelOutput: unknown): boolean {
-  const needed = collectTokensFromJson(pseudonymizedInput);
+function collectTokensFromString(s: string): Set<string> {
+  const found = new Set<string>();
+  const re = new RegExp(AI_TOKEN_BODY_RE.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    found.add(m[0]);
+  }
+  return found;
+}
+
+/**
+ * Token da preservare nel JSON di output del modello.
+ * Per schemi dove il modello riscrive solo una stringa (es. `envelope.text`), i token in `facts`
+ * non devono comparire nell'output: richiederli causava sempre fallback.
+ */
+function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unknown): Set<string> {
+  if (schemaVersion === "ai_assistant_v1") {
+    const env = (pseudonymizedInput as { envelope?: { text?: unknown } })?.envelope;
+    return typeof env?.text === "string" ? collectTokensFromString(env.text) : new Set();
+  }
+  if (schemaVersion === "ai_triage_rationale_v1") {
+    const env = (pseudonymizedInput as { envelope?: { rationaleSeed?: unknown } })?.envelope;
+    return typeof env?.rationaleSeed === "string" ? collectTokensFromString(env.rationaleSeed) : new Set();
+  }
+  return collectTokensFromJson(pseudonymizedInput);
+}
+
+function tokensPreservedInOutput(
+  schemaVersion: string,
+  pseudonymizedInput: unknown,
+  modelOutput: unknown
+): boolean {
+  const needed = tokensModelMustPreserve(schemaVersion, pseudonymizedInput);
   if (needed.size === 0) return true;
   const out = JSON.stringify(modelOutput);
   for (const t of needed) {
     if (!out.includes(t)) return false;
   }
   return true;
+}
+
+function stripMarkdownJsonFence(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith("```")) {
+    s = s.replace(/^```(?:json)?\s*/i, "");
+    s = s.replace(/\s*```$/i, "");
+  }
+  return s.trim();
 }
 
 function systemPromptForSchema(schemaVersion: string): string {
@@ -40,7 +80,8 @@ function systemPromptForSchema(schemaVersion: string): string {
         getNexaHrConversationalAgentSystemPrompt() +
           "\n\n" +
           base +
-          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.facts con: message, page, snapshot (può includere smartWorkingInsight, smartWorkingMultiScopeSummary, conteggi ferie/spese/cedolini, ecc.), routeHints, platformCapabilities (stesso contenuto percorsi), agent (id/versione), leaveBalance e policySnippets se presenti. " +
+          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.text (bozza in italiano) e envelope.facts (message, page, snapshot, routeHints, platformCapabilities, agent, leaveBalance, policySnippets, ecc.): usa i facts solo come contesto, non ripeterli nel JSON di output. " +
+          "Se envelope.text contiene token __nexa_ref:...__, copiali IDENTICI nella tua envelope.text. " +
           "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. smart working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
       );
     case "ai_nl_query_v1":
@@ -56,7 +97,8 @@ function systemPromptForSchema(schemaVersion: string): string {
     case "ai_triage_rationale_v1":
       return (
         base +
-        " Schema: {\"envelope\":{\"rationale\":\"stringa\"}}. Scrivi envelope.rationale in italiano chiaro per un dipendente, partendo dai campi rationaleSeed, category, priority e suggestedPath del JSON in ingresso; non inventare fatti."
+        " Schema: {\"envelope\":{\"rationale\":\"stringa\"}}. Scrivi envelope.rationale in italiano chiaro per un dipendente, partendo dai campi rationaleSeed, category, priority e suggestedPath del JSON in ingresso; non inventare fatti. " +
+        "Se rationaleSeed contiene token __nexa_ref:...__, copiali IDENTICI in envelope.rationale."
       );
     case "ai_narrative_aggregate_v1":
       return (
@@ -94,12 +136,13 @@ export class AiOpenAiRefinementService {
 
     const system = systemPromptForSchema(schemaVersion);
     const userJson = JSON.stringify(pseudonymized);
+    const maxTokens = schemaVersion === "ai_assistant_v1" ? 4096 : 2048;
 
     try {
       const completion = await client.chat.completions.create({
         model,
         temperature: 0.35,
-        max_tokens: 2048,
+        max_tokens: maxTokens,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: system },
@@ -113,14 +156,15 @@ export class AiOpenAiRefinementService {
       });
       const raw = completion.choices[0]?.message?.content?.trim();
       if (!raw) return null;
+      const forParse = stripMarkdownJsonFence(raw);
       let parsed: unknown;
       try {
-        parsed = JSON.parse(raw) as unknown;
+        parsed = JSON.parse(forParse) as unknown;
       } catch {
         this.logger.warn("OpenAI response not JSON");
         return null;
       }
-      if (!tokensPreservedInOutput(pseudonymized, parsed)) {
+      if (!tokensPreservedInOutput(schemaVersion, pseudonymized, parsed)) {
         this.logger.warn("OpenAI output dropped privacy tokens; falling back");
         return null;
       }

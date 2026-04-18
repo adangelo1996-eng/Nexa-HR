@@ -403,12 +403,19 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     if (!user || hideSensitiveHrBecausePreview || !sessionCanUseNexaAiOpenAiLlm(user)) {
       return null;
     }
+    const items: NavItem[] = [
+      { href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles },
+      { href: "/workforce-planning" as Route, label: "Workforce planning (sintesi AI)", icon: BarChart2 }
+    ];
+    if (showHrToolsNav) {
+      items.push({ href: "/insights" as Route, label: "Turnover e retention (sintesi AI)", icon: TrendingUp });
+    }
     return {
       id: "hebb-ai-hr",
       title: "HEBB AI for HR",
-      items: [{ href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles }]
+      items
     };
-  }, [user, hideSensitiveHrBecausePreview]);
+  }, [user, hideSensitiveHrBecausePreview, showHrToolsNav]);
 
   const mainNavSections = useMemo(() => {
     const parts: { id: string; title: string; items: NavItem[] }[] = [];
