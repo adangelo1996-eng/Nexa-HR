@@ -1,6 +1,7 @@
 /**
  * Agente conversazionale del Centro AI HR: identità, regole e mappa della piattaforma.
- * Allineare i percorsi a `apps/frontend/lib/nav-routes-catalog.ts` quando cambia la navigazione.
+ * Allineare i percorsi a `apps/frontend/lib/nav-routes-catalog.ts` e al raggruppamento menu «Hebb AI for HR» in
+ * `apps/frontend/components/app-shell.tsx` quando cambia la navigazione.
  */
 
 export const NEXA_HR_AGENT_ID = "nexa_hr_platform_agent";

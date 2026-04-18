@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Activity,
   BarChart2,
   Bell,
+  Calculator,
   ClipboardList,
   Calendar,
   ChevronRight,
@@ -15,6 +17,7 @@ import {
   FileText,
   KeyRound,
   Library,
+  ListChecks,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -26,6 +29,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  TrendingUp,
   Upload,
   User,
   UserCog,
@@ -62,7 +66,8 @@ type NavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean }
 
 const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
 
-const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
+/** Sezioni principali senza «Hebb AI for HR» e senza «Profilo» (composti in `mainNavSections`). */
+const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
   {
     id: "work",
     title: "Tempo e attività",
@@ -77,7 +82,6 @@ const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
     title: "Compensi e dati",
     items: [
       { href: "/organigramma", label: "Organigramma", icon: Network },
-      { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 },
       { href: "/expenses", label: "Spese", icon: Receipt },
       { href: "/payslips", label: "Cedolini", icon: FileText }
     ]
@@ -85,17 +89,15 @@ const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
   {
     id: "assistenza",
     title: "Assistenza",
-    items: [
-      { href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles },
-      { href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library }
-    ]
-  },
-  {
-    id: "profile",
-    title: "Profilo",
-    items: [{ href: "/settings", label: "Impostazioni", icon: Settings }]
+    items: [{ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library }]
   }
 ];
+
+const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
+  id: "profile",
+  title: "Profilo",
+  items: [{ href: "/settings", label: "Impostazioni", icon: Settings }]
+};
 
 function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
   if (exact) {
@@ -322,32 +324,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
     const hrOps: NavItem[] = [];
     if (showHrToolsNav) {
-      hrOps.push({
-        href: "/tools/cost-calculator" as Route,
-        label: "Calcolatore costo/netto",
-        icon: Sparkles
-      });
-      hrOps.push({
-        href: "/tools/payroll-sim-assisted" as Route,
-        label: "Simulatore cedolino assistito",
-        icon: Wallet2
-      });
-      hrOps.push({
-        href: "/tools/skills-gap" as Route,
-        label: "Skills gap (ruoli)",
-        icon: BarChart2
-      });
-      hrOps.push({ href: "/hr-alerts" as Route, label: "Alert HR", icon: Bell });
-      hrOps.push({
-        href: "/process-bottlenecks" as Route,
-        label: "Ottimizzazione processi",
-        icon: BarChart2
-      });
-      hrOps.push({
-        href: "/tools/hitl-proposals" as Route,
-        label: "Code worker HITL",
-        icon: ClipboardList
-      });
       hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
       hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
       hrOps.push({
@@ -355,9 +331,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         label: "Utenze e licenze terze",
         icon: KeyRound
       });
-    }
-    if (showPayrollNav) {
-      hrOps.push({ href: "/payroll-hebb" as Route, label: "Hebb - Payroll", icon: Sparkles });
     }
     if (showBudgetNav) {
       hrOps.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
@@ -378,23 +351,65 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       hrBlocks.push({ id: "hr-admin", title: "Amministrazione", items: hrAdmin });
     }
     return hrBlocks;
-  }, [showPayrollNav, showBudgetNav, showOrgExpensesNav, showAdminNav]);
+  }, [showHrToolsNav, showBudgetNav, showOrgExpensesNav, showAdminNav]);
+
+  const hebbAiNavSection = useMemo((): { id: string; title: string; items: NavItem[] } | null => {
+    if (!user || hideSensitiveHrBecausePreview) {
+      return null;
+    }
+    const items: NavItem[] = [];
+    items.push({ href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles });
+    if (sessionCanSeeApprovalsAndHrExtras(user)) {
+      items.push({
+        href: "/manager-copilot" as Route,
+        label: "Pannello manager",
+        icon: ClipboardList
+      });
+    }
+    items.push({ href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 });
+    if (showHrToolsNav) {
+      items.push({ href: "/insights" as Route, label: "Turnover e retention", icon: TrendingUp });
+      items.push({
+        href: "/tools/payroll-sim-assisted" as Route,
+        label: "Simulatore cedolino assistito",
+        icon: Wallet2
+      });
+      items.push({
+        href: "/tools/cost-calculator" as Route,
+        label: "Calcolatore costo/netto",
+        icon: Calculator
+      });
+      items.push({
+        href: "/tools/skills-gap" as Route,
+        label: "Skills gap (ruoli)",
+        icon: BarChart2
+      });
+      items.push({ href: "/hr-alerts" as Route, label: "Alert HR", icon: Bell });
+      items.push({
+        href: "/process-bottlenecks" as Route,
+        label: "Ottimizzazione processi",
+        icon: Activity
+      });
+      items.push({
+        href: "/tools/hitl-proposals" as Route,
+        label: "Code worker HITL",
+        icon: ListChecks
+      });
+    }
+    if (showPayrollNav) {
+      items.push({ href: "/payroll-hebb" as Route, label: "Hebb — Payroll", icon: Sparkles });
+    }
+    return { id: "hebb-ai-hr", title: "Hebb AI for HR", items };
+  }, [user, hideSensitiveHrBecausePreview, showHrToolsNav, showPayrollNav]);
 
   const mainNavSections = useMemo(() => {
-    const showManager = sessionCanSeeApprovalsAndHrExtras(user ?? undefined);
-    return NAV_SECTIONS_MAIN.map((sec) => {
-      if (sec.id !== "work" || !showManager) {
-        return sec;
-      }
-      return {
-        ...sec,
-        items: [
-          ...sec.items,
-          { href: "/manager-copilot" as Route, label: "Pannello manager", icon: ClipboardList }
-        ]
-      };
-    });
-  }, [user]);
+    const parts: { id: string; title: string; items: NavItem[] }[] = [...NAV_CORE_MAIN];
+    if (hebbAiNavSection) {
+      parts.push(hebbAiNavSection);
+    }
+    parts.push(NAV_PROFILE_SECTION);
+    return parts;
+  }, [hebbAiNavSection]);
 
   const allCollapsibleSections = useMemo(
     () => [...mainNavSections, ...sidebarHrSections],

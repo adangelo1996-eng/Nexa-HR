@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { calculateItalyCompanyCost, type CostCalculatorInputMode } from "@payday/domain";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { Input } from "@/components/ui/input";
 
 function formatEuro(n: number): string {
@@ -57,17 +59,13 @@ export default function CostCalculatorPage(): React.JSX.Element {
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">
-          Calcolatore costo azienda / netto
-        </h1>
-        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
-          Tool dinamico con stima indicativa: variando ore, RAL o netto target, i valori si ricalcolano in tempo reale.
-        </p>
-      </header>
-
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+    <HebbAiExperienceShell
+      contentMax="wide"
+      title="Calcolatore costo azienda / netto"
+      subtitle="Stima indicativa in tempo reale nel browser: modifica ore, RAL o netto target e agevolazioni per vedere costo azienda e netto evolversi istantaneamente (nessuna chiamata server)."
+      headerTrailing={<HebbAiPageHelpButton pageKey="cost-calculator" />}
+    >
+      <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Input</CardTitle>
@@ -311,7 +309,7 @@ export default function CostCalculatorPage(): React.JSX.Element {
           </Card>
         </div>
       </div>
-    </div>
+    </HebbAiExperienceShell>
   );
 }
 

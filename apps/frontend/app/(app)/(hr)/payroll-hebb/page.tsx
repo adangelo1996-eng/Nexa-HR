@@ -29,6 +29,12 @@ import {
 import { payslipDisplayCurrency } from "@/lib/nexa-swiss-payroll-flag";
 import { Button } from "@/components/ui/button";
 import { DraftPayslipPreviewDialog } from "./draft-payslip-preview-dialog";
+import {
+  HebbAiExperienceShell,
+  HebbAiGlassPanel,
+  hebbAiLinkClassName
+} from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 
 function formatEuro(n: number): string {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n);
@@ -333,9 +339,13 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
 
   if (!token || !sessionUser) {
     return (
-      <div className="space-y-4">
-        <p className="text-slate-700 dark:text-slate-300">Caricamento…</p>
-      </div>
+      <HebbAiExperienceShell
+        contentMax="standard"
+        title="Hebb — Payroll"
+        subtitle="Caricamento sessione e permessi…"
+      >
+        <HebbAiGlassPanel className="py-14 text-center text-sm text-[var(--prom-muted)]">Attendere prego.</HebbAiGlassPanel>
+      </HebbAiExperienceShell>
     );
   }
 
@@ -343,33 +353,44 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
     return null;
   }
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-10 px-2 pb-10 sm:px-0">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Hebb - Payroll</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Unica area per simulazione Hebb, calcolo singolo in bozza ed elaborazione batch in bozza; la pubblicazione ai
-          dipendenti è un passaggio separato.
-          Valori da validare con il consulente del lavoro.
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-500">
-          Addizionali comunali (Como) da{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">addizionali_como_2025.md</code> /{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">scripts/gen-como-rates.mjs</code>.
-        </p>
-        <p className="text-xs text-slate-600 dark:text-slate-400">
-          Il calcolo cedolino per una competenza <strong>YYYY-MM</strong> è consentito dal{" "}
-          <strong>5° giorno di calendario</strong> dopo l’ultimo giorno di quel mese. In generazione bozza/PDF il
-          backend usa le <strong>variabili (straordinari, ferie, malattia, smart working)</strong> dal{" "}
-          <strong>mese precedente</strong> rispetto al periodo di competenza, salvo impostazioni diverse nel batch; le{" "}
-          <strong>note spese approvate</strong> della competenza sono incluse nel netto come rimborsi.
-        </p>
-        <Link href="/" className="text-sm text-slate-600 underline hover:text-slate-900 dark:hover:text-slate-200">
-          Torna alla dashboard
-        </Link>
-      </header>
+  const linkCn = hebbAiLinkClassName();
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+  return (
+    <HebbAiExperienceShell
+      contentMax="standard"
+      title="Hebb — Payroll"
+      subtitle="Simulazione Hebb, calcolo singolo in bozza ed elaborazione batch. La pubblicazione ai dipendenti è un passaggio separato. Validare sempre con il consulente del lavoro."
+      headerTrailing={<HebbAiPageHelpButton pageKey="payroll-hebb" />}
+    >
+      <HebbAiGlassPanel className="space-y-4 text-sm leading-relaxed text-[var(--prom-muted)]">
+        <p>
+          Addizionali comunali (Como) da{" "}
+          <code className="rounded-md border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] px-1.5 py-0.5 font-mono text-xs text-[var(--prom-text)]">
+            addizionali_como_2025.md
+          </code>{" "}
+          /{" "}
+          <code className="rounded-md border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] px-1.5 py-0.5 font-mono text-xs text-[var(--prom-text)]">
+            scripts/gen-como-rates.mjs
+          </code>
+          .
+        </p>
+        <p>
+          Il calcolo cedolino per una competenza <strong className="text-[var(--prom-text)]">YYYY-MM</strong> è consentito dal{" "}
+          <strong className="text-[var(--prom-text)]">5° giorno di calendario</strong> dopo l’ultimo giorno di quel mese. In
+          generazione bozza/PDF il backend usa le{" "}
+          <strong className="text-[var(--prom-text)]">variabili (straordinari, ferie, malattia, smart working)</strong> dal{" "}
+          <strong className="text-[var(--prom-text)]">mese precedente</strong> rispetto al periodo di competenza, salvo
+          impostazioni diverse nel batch; le <strong className="text-[var(--prom-text)]">note spese approvate</strong> della
+          competenza sono incluse nel netto come rimborsi.
+        </p>
+        <p>
+          <Link href="/" className={linkCn}>
+            Torna alla dashboard
+          </Link>
+        </p>
+      </HebbAiGlassPanel>
+
+      <section className="rounded-3xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] p-6 shadow-[var(--card-shadow)] backdrop-blur-md dark:bg-[color-mix(in_srgb,var(--prom-surface)_75%,transparent)] md:p-8">
         <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-50">Simulazione rapida (anagrafica)</h2>
         <p className="mb-4 text-xs text-slate-500">
           Anteprima senza salvare cedolino; usa i dati del tuo profilo. Mese variabili:{" "}
@@ -486,7 +507,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <section className="rounded-3xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] p-6 shadow-[var(--card-shadow)] backdrop-blur-md dark:bg-[color-mix(in_srgb,var(--prom-surface)_75%,transparent)] md:p-8">
         <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-50">Calcolo singolo dipendente</h2>
         <p className="mb-4 text-xs text-slate-600 dark:text-slate-400">
           Salva una <strong>bozza</strong> nel database (come il batch). Il dipendente vede il cedolino solo dopo{" "}
@@ -590,7 +611,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         )}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <section className="space-y-4 rounded-3xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] p-6 shadow-[var(--card-shadow)] backdrop-blur-md dark:bg-[color-mix(in_srgb,var(--prom-surface)_75%,transparent)] md:p-8">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Elaborazione batch (bozze)</h2>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Genera cedolini in <strong>bozza</strong> per tutti i dipendenti IT; pubblica quando sei pronto. I dipendenti
@@ -665,7 +686,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         ) : null}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <section className="space-y-4 rounded-3xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] p-6 shadow-[var(--card-shadow)] backdrop-blur-md dark:bg-[color-mix(in_srgb,var(--prom-surface)_75%,transparent)] md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Bozze da pubblicare</h2>
           <Button type="button" variant="secondary" size="sm" disabled={loadingDrafts} onClick={() => void loadDrafts()}>
@@ -721,6 +742,6 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
         }}
         pdfLoading={pdfLoading}
       />
-    </div>
+    </HebbAiExperienceShell>
   );
 }

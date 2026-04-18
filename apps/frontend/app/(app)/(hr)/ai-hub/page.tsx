@@ -34,6 +34,8 @@ import {
   type AiNlCatalogEntryDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 
 const ASSISTANT_SUGGESTIONS = [
   { label: "Ferie", text: "Quanto mi resta di ferie quest’anno?" },
@@ -448,37 +450,25 @@ export default function AiHubPage(): React.JSX.Element {
     }
   };
 
+  const hubEyebrow = (
+    <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
+      <Activity className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
+      Il cuore intelligente di <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
+    </p>
+  );
+
   return (
-    <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden pb-20">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-95"
-        style={{
-          background:
-            "radial-gradient(1000px 560px at 12% -10%, rgba(0,45,114,0.28), transparent 58%), radial-gradient(780px 460px at 95% 8%, rgba(58,84,102,0.22), transparent 52%), radial-gradient(640px 400px at 48% 110%, rgba(0,45,114,0.14), transparent 48%), var(--page-gradient)"
-        }}
-      />
-      <div
-        className="pointer-events-none absolute left-1/2 top-20 h-80 w-80 -translate-x-1/2 rounded-full blur-3xl motion-safe:animate-pulse"
-        style={{
-          background: "radial-gradient(circle, rgba(0,45,114,0.38) 0%, transparent 72%)"
-        }}
-      />
-
-      <div className="relative mx-auto max-w-5xl px-4 pt-8 md:px-8 md:pt-12">
-        <header className="text-center">
-          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
-            <Activity className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
-            Il cuore intelligente di <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
-          </p>
-          <h1 className="font-synapse text-balance text-3xl font-semibold tracking-tight text-[var(--prom-text)] md:text-5xl">
-            Centro AI HR
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--prom-muted)] md:text-lg">
-            Qui trovi una guida gentile su ferie, numeri che ti riguardano e piccoli controlli utili — spiegati come in
-            una conversazione, non come un manuale tecnico.
-          </p>
-        </header>
-
+    <HebbAiExperienceShell
+      eyebrow={hubEyebrow}
+      title="Centro AI HR"
+      subtitle={
+        <>
+          Qui trovi una guida gentile su ferie, numeri che ti riguardano e piccoli controlli utili — spiegati come in
+          una conversazione, non come un manuale tecnico.
+        </>
+      }
+      headerTrailing={<HebbAiPageHelpButton pageKey="ai-hub" />}
+    >
         <motion.nav
           className="mx-auto mt-10 flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
           {...motionProps}
@@ -1018,7 +1008,6 @@ export default function AiHubPage(): React.JSX.Element {
         <footer className="mt-14 text-center text-xs leading-relaxed text-[var(--prom-muted)]">
           Ogni utilizzo viene registrato in modo anonimo per migliorare il servizio e rispettare le norme sulla privacy.
         </footer>
-      </div>
-    </div>
+    </HebbAiExperienceShell>
   );
 }

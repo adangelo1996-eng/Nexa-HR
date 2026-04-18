@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchHrAlerts, postHrAlertAck, postHrAlertsEvaluate } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import {
+  HebbAiErrorBanner,
+  HebbAiExperienceShell,
+  HebbAiGlassPanel,
+  HebbAiGlassTile
+} from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 
 export default function HrAlertsPage(): React.JSX.Element {
   const [items, setItems] = useState<
@@ -70,46 +77,46 @@ export default function HrAlertsPage(): React.JSX.Element {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Alert HR</h1>
-          <p className="mt-1 text-sm text-[var(--prom-muted)]">
-            Regole collegate a metriche turnover (blocco 2). Valuta per creare alert deduplicati e notifiche in-app per
-            admin HR.
-          </p>
+    <HebbAiExperienceShell
+      contentMax="standard"
+      title="Alert HR"
+      subtitle="Regole collegate a metriche HR (turnover e altro). Valuta per creare alert deduplicati e notifiche in-app per gli admin."
+      headerTrailing={
+        <div className="flex shrink-0 items-center gap-2">
+          <HebbAiPageHelpButton pageKey="hr-alerts" />
+          <Button type="button" disabled={busy} onClick={() => void evaluate()}>
+            {busy ? "Valutazione…" : "Esegui regole"}
+          </Button>
         </div>
-        <Button type="button" disabled={busy} onClick={() => void evaluate()}>
-          {busy ? "Valutazione…" : "Esegui regole"}
-        </Button>
-      </div>
+      }
+    >
+      {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
-      {error ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p>
-      ) : null}
-
-      <ul className="space-y-2">
+      <ul className="space-y-4">
         {items.map((a) => (
-          <li key={a.id} className="rounded-lg border border-[var(--prom-line)] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="text-xs uppercase text-[var(--prom-muted)]">{a.severity}</p>
-                <p className="font-medium text-[var(--prom-text)]">{a.title}</p>
-                <p className="mt-1 text-sm text-[var(--prom-muted)]">{a.body}</p>
-                <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                  {a.ruleKey} · {new Date(a.createdAt).toLocaleString("it-IT")}
-                </p>
+          <li key={a.id}>
+            <HebbAiGlassTile>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--prom-gold)]">{a.severity}</p>
+                  <p className="mt-1 font-semibold text-[var(--prom-text)]">{a.title}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--prom-muted)]">{a.body}</p>
+                  <p className="mt-2 font-mono text-[11px] text-[var(--prom-muted)]">
+                    {a.ruleKey} · {new Date(a.createdAt).toLocaleString("it-IT")}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => void ack(a.id)}>
+                  Segna letto
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={() => void ack(a.id)}>
-                Segna letto
-              </Button>
-            </div>
+            </HebbAiGlassTile>
           </li>
         ))}
       </ul>
+
       {items.length === 0 && !error ? (
-        <p className="text-sm text-[var(--prom-muted)]">Nessun alert aperto.</p>
+        <HebbAiGlassPanel className="py-12 text-center text-sm text-[var(--prom-muted)]">Nessun alert aperto.</HebbAiGlassPanel>
       ) : null}
-    </div>
+    </HebbAiExperienceShell>
   );
 }

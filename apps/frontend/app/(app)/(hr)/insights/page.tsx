@@ -9,6 +9,13 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import {
+  HebbAiErrorBanner,
+  HebbAiExperienceShell,
+  HebbAiGlassPanel,
+  HebbAiGlassTile
+} from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 
 export default function InsightsPage(): React.JSX.Element {
   const [items, setItems] = useState<TurnoverRetentionItem[]>([]);
@@ -116,54 +123,64 @@ export default function InsightsPage(): React.JSX.Element {
   const maxTrend = trend.reduce((m, p) => Math.max(m, p.avgScore), 0) || 1;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Turnover e retention</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--prom-muted)]">
-            Score rule-based (modello {modelVersion || "—"}) da tenure, ferie e contratto. I dati sono snapshot per
-            azienda: aggiorna il job dopo cambi anagrafici. Trend su medie settimanali degli snapshot salvati.
-          </p>
+    <HebbAiExperienceShell
+      contentMax="wide"
+      title="Turnover e retention"
+      subtitle={
+        <>
+          Score rule-based (modello <span className="font-semibold text-[var(--prom-text)]">{modelVersion || "—"}</span>)
+          da tenure, ferie e contratto. Snapshot per azienda: aggiorna dopo cambi anagrafici. Trend su medie settimanali
+          salvate.
           {lastRunAt ? (
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+            <span className="mt-2 block text-sm text-[var(--prom-muted)]">
               Ultimo run: {new Date(lastRunAt).toLocaleString("it-IT")}
-            </p>
+            </span>
           ) : (
-            <p className="mt-1 text-xs text-amber-800">Nessuno snapshot: usa &quot;Aggiorna segnali&quot;.</p>
+            <span className="mt-2 block text-sm text-amber-800 dark:text-amber-200/90">
+              Nessuno snapshot: usa &quot;Aggiorna segnali&quot;.
+            </span>
           )}
+        </>
+      }
+      headerTrailing={
+        <div className="flex shrink-0 items-start gap-2">
+          <HebbAiPageHelpButton pageKey="insights" />
+          <Button type="button" disabled={refreshing} onClick={() => void onRefreshSignals()}>
+            {refreshing ? "Aggiornamento…" : "Aggiorna segnali"}
+          </Button>
         </div>
-        <Button type="button" disabled={refreshing} onClick={() => void onRefreshSignals()}>
-          {refreshing ? "Aggiornamento…" : "Aggiorna segnali"}
-        </Button>
-      </div>
+      }
+    >
+      <HebbAiGlassPanel className="py-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]" htmlFor="insights-cc">
+            Centro di costo
+          </label>
+          <select
+            id="insights-cc"
+            className="rounded-xl border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] px-3 py-2 text-sm text-[var(--prom-text)] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--prom-gold)]"
+            value={costCenterId}
+            onChange={(e) => setCostCenterId(e.target.value)}
+          >
+            <option value="">Tutti</option>
+            {costCenterOptions.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+          {busy ? <span className="text-xs text-[var(--prom-muted)]">Caricamento…</span> : null}
+        </div>
+      </HebbAiGlassPanel>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs font-medium text-[var(--prom-muted)]">Centro di costo</label>
-        <select
-          className="rounded-md border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
-          value={costCenterId}
-          onChange={(e) => setCostCenterId(e.target.value)}
-        >
-          <option value="">Tutti</option>
-          {costCenterOptions.map((id) => (
-            <option key={id} value={id}>
-              {id}
-            </option>
-          ))}
-        </select>
-        {busy ? <span className="text-xs text-[var(--prom-muted)]">Caricamento…</span> : null}
-      </div>
-
-      {error ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p>
-      ) : null}
+      {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
       {turnoverPayload ? (
-        <div className="rounded-xl border border-[var(--prom-line)] p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Narrativa aggregata (senza nominativi)</h2>
+        <HebbAiGlassPanel>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Narrativa aggregata (senza nominativi)</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-[var(--prom-muted)]">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
                 <input type="checkbox" checked={narrativeLlm} onChange={(e) => setNarrativeLlm(e.target.checked)} />
                 Raffinamento LLM
               </label>
@@ -173,12 +190,12 @@ export default function InsightsPage(): React.JSX.Element {
             </div>
           </div>
           {narrative ? (
-            <div className="mt-3 space-y-2 text-sm text-[var(--prom-text)]">
+            <div className="mt-6 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4">
               <p className="text-xs text-[var(--prom-muted)]">
                 {narrative.llmApplied ? "Template + LLM" : "Solo template"} — audit registrato.
               </p>
-              <p className="font-medium">{narrative.title}</p>
-              <ul className="list-inside list-disc text-xs text-[var(--prom-muted)]">
+              <p className="font-synapse text-base font-semibold text-[var(--prom-text)]">{narrative.title}</p>
+              <ul className="list-inside list-disc text-sm text-[var(--prom-muted)]">
                 {narrative.bullets.map((b) => (
                   <li key={b}>{b}</li>
                 ))}
@@ -186,58 +203,58 @@ export default function InsightsPage(): React.JSX.Element {
               <p className="text-xs leading-relaxed text-[var(--prom-muted)]">{narrative.summary}</p>
             </div>
           ) : (
-            <p className="mt-2 text-xs text-[var(--prom-muted)]">
+            <p className="mt-4 text-sm text-[var(--prom-muted)]">
               Inviamo solo score e trend aggregati, non nomi o ID dipendenti.
             </p>
           )}
-        </div>
+        </HebbAiGlassPanel>
       ) : null}
 
       {trend.length > 0 ? (
-        <div className="rounded-xl border border-[var(--prom-line)] p-4">
-          <h2 className="text-sm font-semibold text-[var(--prom-text)]">Trend score (media settimanale)</h2>
-          <div className="mt-3 flex h-28 items-end gap-1">
+        <HebbAiGlassPanel>
+          <h2 className="text-lg font-semibold text-[var(--prom-text)]">Trend score (media settimanale)</h2>
+          <div className="mt-6 flex h-36 items-end gap-1.5 border-t border-[var(--prom-line)] pt-4">
             {trend.map((p) => (
-              <div key={p.weekStart} className="flex flex-1 flex-col items-center gap-1">
+              <div key={p.weekStart} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                 <div
-                  className="w-full rounded-t bg-[#002D72]/85"
-                  style={{ height: `${Math.max(6, (p.avgScore / maxTrend) * 100)}%` }}
+                  className="w-full max-w-[2.5rem] rounded-t-md bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_50%,#002d72)] shadow-md"
+                  style={{ height: `${Math.max(12, (p.avgScore / maxTrend) * 120)}px` }}
                   title={`${p.weekStart}: ${p.avgScore} (n=${p.sampleSize})`}
                 />
-                <span className="max-w-full truncate text-[10px] text-[var(--prom-muted)]">
+                <span className="max-w-full truncate text-[10px] font-medium text-[var(--prom-muted)]">
                   {p.weekStart.slice(5)}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </HebbAiGlassPanel>
       ) : null}
 
-      <ul className="space-y-2">
+      <ul className="space-y-3">
         {items.map((row) => (
-          <li key={row.userId} className="rounded-lg border border-[var(--prom-line)] p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div>
-                <span className="font-medium text-[var(--prom-text)]">{row.fullName}</span>
-                {row.costCenterId ? (
-                  <span className="ml-2 text-xs text-[var(--prom-muted)]">CC {row.costCenterId}</span>
-                ) : null}
+          <li key={row.userId}>
+            <HebbAiGlassTile>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <span className="font-semibold text-[var(--prom-text)]">{row.fullName}</span>
+                  {row.costCenterId ? (
+                    <span className="ml-2 text-xs text-[var(--prom-muted)]">CC {row.costCenterId}</span>
+                  ) : null}
+                </div>
+                <div className="text-right text-sm">
+                  <span className="font-semibold tabular-nums text-[var(--prom-gold)]">{row.score}</span>
+                  <span className="ml-2 text-xs text-[var(--prom-muted)]">conf. {Math.round(row.confidence * 100)}%</span>
+                </div>
               </div>
-              <div className="text-right text-sm">
-                <span className="tabular-nums font-semibold text-[var(--prom-gold)]">{row.score}</span>
-                <span className="ml-2 text-xs text-[var(--prom-muted)]">
-                  conf. {Math.round(row.confidence * 100)}%
-                </span>
-              </div>
-            </div>
-            <ul className="mt-2 list-inside list-disc text-xs text-[var(--prom-muted)]">
-              {row.reasons.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
+              <ul className="mt-3 list-inside list-disc text-xs leading-relaxed text-[var(--prom-muted)]">
+                {row.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </HebbAiGlassTile>
           </li>
         ))}
       </ul>
-    </div>
+    </HebbAiExperienceShell>
   );
 }

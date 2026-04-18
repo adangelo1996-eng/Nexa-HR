@@ -5,6 +5,13 @@ import Link from "next/link";
 import { postPayrollWhatIf } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import {
+  HebbAiErrorBanner,
+  HebbAiExperienceShell,
+  HebbAiGlassPanel,
+  hebbAiLinkClassName
+} from "@/components/hebb-ai-experience-shell";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { Input } from "@/components/ui/input";
 
 export default function PayrollSimAssistedPage(): React.JSX.Element {
@@ -14,6 +21,8 @@ export default function PayrollSimAssistedPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Awaited<ReturnType<typeof postPayrollWhatIf>> | null>(null);
+
+  const linkCn = hebbAiLinkClassName();
 
   const run = async (): Promise<void> => {
     const t = getToken();
@@ -37,63 +46,83 @@ export default function PayrollSimAssistedPage(): React.JSX.Element {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Simulatore cedolino assistito</h1>
-        <p className="mt-1 text-sm text-[var(--prom-muted)]">
+    <HebbAiExperienceShell
+      contentMax="standard"
+      title="Simulatore cedolino assistito"
+      subtitle={
+        <>
           What-if sul motore payroll IT (stesso calcolo di{" "}
-          <Link href="/payroll-hebb" className="font-medium text-[#002D72] underline">
+          <Link href="/payroll-hebb" className={linkCn}>
             Hebb — Payroll
           </Link>
           ), senza salvare il cedolino. Richiede permesso report HR. Nessun invio a modelli esterni: solo backend Nexa.
-        </p>
-      </div>
-
-      <div className="space-y-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] p-4">
-        <label className="block text-xs font-medium text-[var(--prom-muted)]">Periodo competenza (YYYY-MM)</label>
-        <Input value={period} onChange={(e) => setPeriod(e.target.value)} className="max-w-xs" />
-        <label className="block text-xs font-medium text-[var(--prom-muted)]">
-          Lordo mensile override (opzionale, EUR)
-        </label>
-        <Input
-          value={grossOverride}
-          onChange={(e) => setGrossOverride(e.target.value)}
-          placeholder="Es. 4500"
-          className="max-w-xs"
-        />
-        <label className="flex items-center gap-2 text-sm text-[var(--prom-text)]">
-          <input type="checkbox" checked={usePrev} onChange={(e) => setUsePrev(e.target.checked)} />
+        </>
+      }
+      headerTrailing={<HebbAiPageHelpButton pageKey="payroll-sim-assisted" />}
+    >
+      <HebbAiGlassPanel>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              Periodo competenza (YYYY-MM)
+            </label>
+            <Input
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="rounded-xl border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)]"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              Lordo mensile override (EUR, opzionale)
+            </label>
+            <Input
+              value={grossOverride}
+              onChange={(e) => setGrossOverride(e.target.value)}
+              placeholder="Es. 4500"
+              className="rounded-xl border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)]"
+            />
+          </div>
+        </div>
+        <label className="mt-6 flex cursor-pointer items-center gap-3 text-sm text-[var(--prom-text)]">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-[var(--prom-line-strong)]"
+            checked={usePrev}
+            onChange={(e) => setUsePrev(e.target.checked)}
+          />
           Usa variabili mese precedente (come in Hebb)
         </label>
-        <Button type="button" disabled={busy} onClick={() => void run()}>
+        <Button type="button" className="mt-6 h-11 rounded-xl font-semibold" disabled={busy} onClick={() => void run()}>
           {busy ? "Calcolo…" : "Calcola simulazione"}
         </Button>
-      </div>
+      </HebbAiGlassPanel>
 
-      {error ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p>
-      ) : null}
+      {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
       {result ? (
-        <div className="space-y-2 rounded-xl border border-[var(--prom-line)] p-4">
-          <p className="text-sm font-semibold text-[var(--prom-text)]">
+        <HebbAiGlassPanel>
+          <p className="font-synapse text-lg font-semibold text-[var(--prom-text)]">
             Netto stimato:{" "}
             {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(result.netSalary)}
           </p>
-          <ul className="max-h-64 overflow-y-auto text-xs text-[var(--prom-muted)]">
+          <ul className="mt-4 max-h-72 space-y-1 overflow-y-auto rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] p-3 text-xs text-[var(--prom-muted)]">
             {(result.lines ?? []).map((line) => (
-              <li key={`${line.code}-${line.description}`} className="flex justify-between gap-2 border-b border-[var(--prom-line)] py-1">
+              <li
+                key={`${line.code}-${line.description}`}
+                className="flex justify-between gap-2 border-b border-[var(--prom-line)] py-2 last:border-0"
+              >
                 <span>
                   <span className="font-mono text-[var(--prom-text)]">{line.code}</span> {line.description}
                 </span>
-                <span className="shrink-0 tabular-nums">
+                <span className="shrink-0 tabular-nums text-[var(--prom-text)]">
                   {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(line.amount)}
                 </span>
               </li>
             ))}
           </ul>
-        </div>
+        </HebbAiGlassPanel>
       ) : null}
-    </div>
+    </HebbAiExperienceShell>
   );
 }
