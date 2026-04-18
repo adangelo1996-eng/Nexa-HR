@@ -79,16 +79,23 @@ export class AiHrService {
     sessionId: string,
     pseudo: { pseudonymized: unknown; schemaVersion: string },
     openAiSchema: string
-  ): Promise<unknown> {
+  ): Promise<{ result: unknown; refineApplied: boolean }> {
     const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, openAiSchema);
-    const modelJson = refined ?? pseudo.pseudonymized;
-    return this.gateway.fromModelResponse(sessionId, modelJson);
+    const refineApplied = refined != null;
+    const modelJson = refineApplied ? refined : pseudo.pseudonymized;
+    const result = await this.gateway.fromModelResponse(sessionId, modelJson);
+    return { result, refineApplied };
   }
 
   async assistant(
     auth: { userId: string; role: AuthRole },
     body: { message: string; page?: string | null; scope?: AssistantScopePayload }
-  ): Promise<{ reply: string; sources: string[] }> {
+  ): Promise<{
+    reply: string;
+    sources: string[];
+    llm: { configured: boolean; refineApplied: boolean };
+    privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
+  }> {
     const me = await this.store.getUser(auth.userId);
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
     assertMessageHasNoKnownPersonFullNames(body.message, companyUsers);
@@ -130,10 +137,13 @@ export class AiHrService {
       const draft = this.buildAssistantDraft(facts, body.message);
       const wrapped = { envelope: { text: draft, facts } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_ASSISTANT);
-      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ASSISTANT)) as {
-        envelope?: { text?: string };
-      };
-      const reply = typeof cleared.envelope?.text === "string" ? cleared.envelope.text : draft;
+      const { result: cleared, refineApplied } = await this.depseudoAfterOptionalRefine(
+        sessionId,
+        pseudo,
+        SCHEMA_ASSISTANT
+      );
+      const clearedEnv = cleared as { envelope?: { text?: string } };
+      const reply = typeof clearedEnv.envelope?.text === "string" ? clearedEnv.envelope.text : draft;
       await this.audit.append({
         companyId: me.companyId,
         userId: auth.userId,
@@ -151,7 +161,12 @@ export class AiHrService {
         responseSizeBytes: Buffer.byteLength(reply, "utf8"),
         outcome: "ok"
       });
-      return { reply, sources };
+      return {
+        reply,
+        sources,
+        llm: { configured: this.openAi.isActive(), refineApplied },
+        privacy: { pseudonymizedTokenCount: pseudo.tokenCount, schemaVersion: SCHEMA_ASSISTANT }
+      };
     } finally {
       await this.gateway.endSession(sessionId);
     }
@@ -747,11 +762,10 @@ export class AiHrService {
           : `Ecco il riepilogo richiesto («${entry.label}»): ${table.length} ${table.length === 1 ? "riga" : "righe"}.`;
       const wrapped = { envelope: { summary: summaryDraft, rows: table } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_NL);
-      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_NL)) as {
-        envelope?: { summary?: string; rows?: Record<string, unknown>[] };
-      };
-      const summary = cleared.envelope?.summary ?? summaryDraft;
-      const rowsOut = Array.isArray(cleared.envelope?.rows) ? cleared.envelope!.rows! : table;
+      const { result: cleared } = await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_NL);
+      const clearedNl = cleared as { envelope?: { summary?: string; rows?: Record<string, unknown>[] } };
+      const summary = clearedNl.envelope?.summary ?? summaryDraft;
+      const rowsOut = Array.isArray(clearedNl.envelope?.rows) ? clearedNl.envelope!.rows! : table;
       await this.audit.append({
         companyId: me.companyId,
         userId: auth.userId,
@@ -837,11 +851,10 @@ export class AiHrService {
       const explainDraft = this.buildAnomalyExplanation(items);
       const wrapped = { envelope: { items, explanation: explainDraft } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_ANOMALIES);
-      const cleared = (await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ANOMALIES)) as {
-        envelope?: { explanation?: string; items?: typeof items };
-      };
+      const { result: cleared } = await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ANOMALIES);
+      const clearedAn = cleared as { envelope?: { explanation?: string; items?: typeof items } };
       const explanation =
-        typeof cleared.envelope?.explanation === "string" ? cleared.envelope.explanation : explainDraft;
+        typeof clearedAn.envelope?.explanation === "string" ? clearedAn.envelope.explanation : explainDraft;
       await this.audit.append({
         companyId: me.companyId,
         userId: auth.userId,
@@ -854,7 +867,7 @@ export class AiHrService {
         responseSizeBytes: Buffer.byteLength(JSON.stringify({ items, explanation }), "utf8"),
         outcome: "ok"
       });
-      return { items: cleared.envelope?.items ?? items, explanation };
+      return { items: clearedAn.envelope?.items ?? items, explanation };
     } finally {
       await this.gateway.endSession(sessionId);
     }
@@ -892,11 +905,10 @@ export class AiHrService {
           }
         };
         const pseudoR = await this.gateway.toModelPayload(sessionId, rationaleWrapped, SCHEMA_TRIAGE_RATIONALE);
-        const clearedR = (await this.depseudoAfterOptionalRefine(sessionId, pseudoR, SCHEMA_TRIAGE_RATIONALE)) as {
-          envelope?: { rationale?: string };
-        };
-        if (typeof clearedR.envelope?.rationale === "string" && clearedR.envelope.rationale.trim()) {
-          rationaleOut = clearedR.envelope.rationale.trim();
+        const { result: clearedR } = await this.depseudoAfterOptionalRefine(sessionId, pseudoR, SCHEMA_TRIAGE_RATIONALE);
+        const clearedT = clearedR as { envelope?: { rationale?: string } };
+        if (typeof clearedT.envelope?.rationale === "string" && clearedT.envelope.rationale.trim()) {
+          rationaleOut = clearedT.envelope.rationale.trim();
         }
       }
       await this.audit.append({

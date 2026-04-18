@@ -16,6 +16,7 @@ import { RealtimeModule } from "./realtime/realtime.module";
 import { SchedulingModule } from "./scheduling/scheduling.module";
 import { ThirdPartyLicensesModule } from "./third-party-licenses/third-party-licenses.module";
 import { TimeoffModule } from "./timeoff/timeoff.module";
+import { SuiteIntegrationsModule } from "./suite/suite.module";
 import { WorkforceModule } from "./workforce/workforce.module";
 
 @Module({
@@ -37,7 +38,8 @@ import { WorkforceModule } from "./workforce/workforce.module";
     HrContractsModule,
     ThirdPartyLicensesModule,
     HebbHrModule,
-    AiHrModule
+    AiHrModule,
+    SuiteIntegrationsModule
   ]
 })
 export class AppModule {}

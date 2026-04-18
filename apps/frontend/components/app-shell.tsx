@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart2,
+  Bell,
+  ClipboardList,
   Calendar,
   ChevronRight,
   Clock3,
@@ -41,6 +44,7 @@ import {
   getToken,
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
+  sessionCanSeeApprovalsAndHrExtras,
   sessionCanViewOrgExpenseClaims,
   type SessionUser
 } from "@/lib/auth-session";
@@ -73,6 +77,7 @@ const NAV_SECTIONS_MAIN: { id: string; title: string; items: NavItem[] }[] = [
     title: "Compensi e dati",
     items: [
       { href: "/organigramma", label: "Organigramma", icon: Network },
+      { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 },
       { href: "/expenses", label: "Spese", icon: Receipt },
       { href: "/payslips", label: "Cedolini", icon: FileText }
     ]
@@ -322,6 +327,27 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         label: "Calcolatore costo/netto",
         icon: Sparkles
       });
+      hrOps.push({
+        href: "/tools/payroll-sim-assisted" as Route,
+        label: "Simulatore cedolino assistito",
+        icon: Wallet2
+      });
+      hrOps.push({
+        href: "/tools/skills-gap" as Route,
+        label: "Skills gap (ruoli)",
+        icon: BarChart2
+      });
+      hrOps.push({ href: "/hr-alerts" as Route, label: "Alert HR", icon: Bell });
+      hrOps.push({
+        href: "/process-bottlenecks" as Route,
+        label: "Ottimizzazione processi",
+        icon: BarChart2
+      });
+      hrOps.push({
+        href: "/tools/hitl-proposals" as Route,
+        label: "Code worker HITL",
+        icon: ClipboardList
+      });
       hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
       hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
       hrOps.push({
@@ -354,9 +380,25 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     return hrBlocks;
   }, [showPayrollNav, showBudgetNav, showOrgExpensesNav, showAdminNav]);
 
+  const mainNavSections = useMemo(() => {
+    const showManager = sessionCanSeeApprovalsAndHrExtras(user ?? undefined);
+    return NAV_SECTIONS_MAIN.map((sec) => {
+      if (sec.id !== "work" || !showManager) {
+        return sec;
+      }
+      return {
+        ...sec,
+        items: [
+          ...sec.items,
+          { href: "/manager-copilot" as Route, label: "Pannello manager", icon: ClipboardList }
+        ]
+      };
+    });
+  }, [user]);
+
   const allCollapsibleSections = useMemo(
-    () => [...NAV_SECTIONS_MAIN, ...sidebarHrSections],
-    [sidebarHrSections]
+    () => [...mainNavSections, ...sidebarHrSections],
+    [mainNavSections, sidebarHrSections]
   );
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -404,7 +446,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </span>
       </Link>
       <SidebarNavLink item={NAV_DASHBOARD} pathname={pathname} onNavigate={closeMobile} />
-      {NAV_SECTIONS_MAIN.map((section) => (
+      {mainNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}
           section={section}

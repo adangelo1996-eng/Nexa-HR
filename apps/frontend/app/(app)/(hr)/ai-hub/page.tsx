@@ -200,6 +200,11 @@ export default function AiHubPage(): React.JSX.Element {
   const [assistantMsg, setAssistantMsg] = useState("");
   const [assistantBusy, setAssistantBusy] = useState(false);
   const [thread, setThread] = useState<ChatTurn[]>([]);
+  const [assistantLastRun, setAssistantLastRun] = useState<{
+    llm: { configured: boolean; refineApplied: boolean };
+    privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
+    sources: string[];
+  } | null>(null);
 
   const [catalog, setCatalog] = useState<AiNlCatalogEntryDto[]>([]);
   const [selectedQueryId, setSelectedQueryId] = useState<string>("");
@@ -366,6 +371,7 @@ export default function AiHubPage(): React.JSX.Element {
         page: pathname ?? undefined,
         ...(scope ? { scope } : {})
       });
+      setAssistantLastRun({ llm: r.llm, privacy: r.privacy, sources: r.sources });
       setThread((prev) => [...prev, { role: "assistant", text: r.reply }]);
     } catch (e) {
       setError(friendlyError(e));
@@ -801,6 +807,52 @@ export default function AiHubPage(): React.JSX.Element {
                 {assistantBusy ? "Sto pensando…" : "Invia"}
                 {!assistantBusy ? <ArrowRight className="ml-2 inline h-4 w-4 align-text-bottom" aria-hidden /> : null}
               </Button>
+              {assistantLastRun ? (
+                <details className="mt-4 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] px-3 py-2 text-[11px] text-[var(--prom-muted)]">
+                  <summary className="cursor-pointer font-medium text-[var(--prom-text)]">
+                    Ultima risposta: modello AI o bozza? Cosa è stato inviato
+                  </summary>
+                  <ul className="mt-2 list-inside list-disc space-y-1.5 leading-relaxed">
+                    <li>
+                      <strong className="text-[var(--prom-text)]">Stato globale</strong> (da catalogo NL in alto):{" "}
+                      {llmActive
+                        ? "OpenAI abilitata in configurazione (chiave + NEXA_AI_OPENAI_ENABLED=true)."
+                        : "OpenAI non abilitata: le risposte usano solo la bozza locale."}
+                    </li>
+                    <li>
+                      <strong className="text-[var(--prom-text)]">Questa richiesta</strong>: il modello ha riscritto il
+                      testo dopo la pseudonimizzazione?{" "}
+                      <strong className="text-[var(--prom-text)]">
+                        {assistantLastRun.llm.refineApplied ? "Sì." : "No (bozza / errore modello / JSON non valido)."}
+                      </strong>{" "}
+                      {assistantLastRun.llm.configured
+                        ? "Il backend era configurato per chiamare OpenAI."
+                        : "Il backend non era configurato per chiamare OpenAI."}
+                    </li>
+                    <li>
+                      Nel JSON inviato al modello (se chiamato) compaiono token di anonimizzazione:{" "}
+                      <strong className="text-[var(--prom-text)]">{assistantLastRun.privacy.pseudonymizedTokenCount}</strong>{" "}
+                      (conteggio vault). Schema:{" "}
+                      <code className="rounded bg-[color-mix(in_srgb,var(--prom-line)_40%,transparent)] px-1">
+                        {assistantLastRun.privacy.schemaVersion || "—"}
+                      </code>
+                      .
+                    </li>
+                    <li>
+                      <strong className="text-[var(--prom-text)]">Fonti dati</strong> usate per costruire i fatti:{" "}
+                      {assistantLastRun.sources.length ? assistantLastRun.sources.join(", ") : "—"}.
+                    </li>
+                  </ul>
+                  <p className="mt-2 border-t border-[var(--prom-line)] pt-2 text-[10px] leading-relaxed opacity-95">
+                    Struttura tipica verso il modello: oggetto con <code className="rounded px-0.5">envelope.text</code>{" "}
+                    (bozza in italiano) e <code className="rounded px-0.5">envelope.facts</code> (messaggio utente,{" "}
+                    <code className="rounded px-0.5">snapshot</code>, percorsi app, eventuale saldo ferie, titoli policy).
+                    UUID e campi sensibili previsti dal registry diventano token{" "}
+                    <code className="rounded px-0.5">__nexa_ref:…</code>. Il testo libero della domanda resta nel JSON
+                    come lo hai scritto: non passare nomi di colleghi nel messaggio.
+                  </p>
+                </details>
+              ) : null}
             </div>
           </div>
         </motion.section>

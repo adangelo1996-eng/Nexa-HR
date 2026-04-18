@@ -9,6 +9,7 @@ import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 @Module({
   imports: [AiPrivacyModule, CorporatePoliciesModule],
   controllers: [AiHrController],
-  providers: [AiHrService, AiAuditService, AiOpenAiRefinementService]
+  providers: [AiHrService, AiAuditService, AiOpenAiRefinementService],
+  exports: [AiAuditService, AiOpenAiRefinementService]
 })
 export class AiHrModule {}

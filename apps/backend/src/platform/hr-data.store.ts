@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ForbiddenException,
@@ -640,6 +641,48 @@ export class HrDataStore {
     }
   >();
   private readonly personnelBudgetAnalysisNotesMem = new Map<string, PersonnelBudgetAnalysisNoteDto>();
+  /** Dev senza DB: ultimi run turnover per companyId. */
+  private readonly turnoverSignalRunsMem = new Map<
+    string,
+    Array<{
+      runId: string;
+      computedAt: string;
+      rows: Array<{
+        userId: string;
+        score: number;
+        confidence: number;
+        reasons: string[];
+        signals: Record<string, number>;
+        modelVersion: string;
+      }>;
+    }>
+  >();
+  private readonly hrAlertsMem: Array<{
+    id: string;
+    company_id: string;
+    rule_key: string;
+    severity: string;
+    title: string;
+    body: string;
+    metric_payload: Record<string, unknown>;
+    dedupe_key: string;
+    status: string;
+    created_at: string;
+    acknowledged_at: string | null;
+    acknowledged_by_user_id: string | null;
+  }> = [];
+  private readonly hitlProposalsMem: Array<{
+    id: string;
+    company_id: string;
+    actor_user_id: string;
+    kind: string;
+    status: string;
+    payload: Record<string, unknown>;
+    rationale: string;
+    created_at: string;
+    decided_at: string | null;
+    decided_by_user_id: string | null;
+  }> = [];
   private costCenters: CostCenter[] = [
     {
       id: "cc-1",
@@ -4926,6 +4969,49 @@ export class HrDataStore {
     return { headcount, budgetEur, pendingExpenseCount };
   }
 
+  /**
+   * Cockpit workforce planning: riepilogo organico + serie costo mensile (stesso motore di forecast-payroll)
+   * con scenari what-if leggeri (base / +2 FTE / costo flat senza crescita sintetica).
+   */
+  async getWorkforceCockpit(
+    scenario: "base" | "growth" | "freeze",
+    months = 6
+  ): Promise<{
+    scenario: "base" | "growth" | "freeze";
+    summary: {
+      headcount: number;
+      monthlyPayrollMassEur: number;
+      pendingExpenseCount: number;
+    };
+    series: Array<{ month: string; costEur: number }>;
+  }> {
+    const m = Math.min(12, Math.max(1, months));
+    const dash = await this.getHrDashboardSummary();
+    const users = await this.listUsers();
+    const staff = users.filter((u) => u.role !== "superuser");
+    const headcount = staff.length;
+    const monthlyPayrollMassEur =
+      Math.round(staff.reduce((acc, u) => acc + (Number(u.baseSalaryMonthly) || 5800), 0) * 100) / 100;
+    const baseSeries = await this.payrollForecastNextMonths(m);
+    let series = baseSeries.map((r) => ({ month: r.month, costEur: r.costEur }));
+    if (scenario === "freeze") {
+      const flat = Math.round(monthlyPayrollMassEur);
+      series = baseSeries.map((r) => ({ month: r.month, costEur: flat }));
+    } else if (scenario === "growth") {
+      const addFte = headcount > 0 ? (monthlyPayrollMassEur / headcount) * 2 : 0;
+      series = baseSeries.map((r) => ({ month: r.month, costEur: Math.round(r.costEur + addFte) }));
+    }
+    return {
+      scenario,
+      summary: {
+        headcount,
+        monthlyPayrollMassEur,
+        pendingExpenseCount: dash.pendingExpenseCount
+      },
+      series
+    };
+  }
+
   private mapExpenseRow(r: Record<string, unknown>): ExpenseClaim {
     const receiptB64 = r.receiptBodyBase64 != null ? String(r.receiptBodyBase64) : "";
     const sha = r.receiptSha256 != null ? String(r.receiptSha256) : null;
@@ -6899,6 +6985,917 @@ export class HrDataStore {
       }));
 
     return { day: d, costCenters };
+  }
+
+  private tenureMonthsFromHire(hireDate?: string | null): number | null {
+    const raw = hireDate?.trim();
+    if (!raw) {
+      return null;
+    }
+    const h = new Date(`${raw.slice(0, 10)}T12:00:00.000Z`);
+    if (Number.isNaN(h.getTime())) {
+      return null;
+    }
+    const now = new Date();
+    let months =
+      (now.getUTCFullYear() - h.getUTCFullYear()) * 12 + (now.getUTCMonth() - h.getUTCMonth());
+    if (now.getUTCDate() < h.getUTCDate()) {
+      months -= 1;
+    }
+    return Math.max(0, months);
+  }
+
+  private computeTurnoverRuleV1Snapshot(
+    user: User,
+    leaveResidualDays: number
+  ): { score: number; confidence: number; reasons: string[]; signals: Record<string, number> } {
+    const signals: Record<string, number> = {};
+    const reasons: string[] = [];
+    let score = 22;
+    let parts = 0;
+
+    const tenureM = this.tenureMonthsFromHire(user.hireDate);
+    if (tenureM == null) {
+      score += 8;
+      reasons.push("Data di assunzione assente o non valida (segnale debole)");
+      signals.tenureMonths = -1;
+    } else {
+      signals.tenureMonths = tenureM;
+      parts += 1;
+      if (tenureM < 6) {
+        score += 18;
+        reasons.push("Tenure nei primi 6 mesi (maggiore incertezza retention)");
+      } else if (tenureM < 24) {
+        score += 10;
+        reasons.push("Tenure sotto i 24 mesi");
+      } else if (tenureM >= 120) {
+        score -= 12;
+        reasons.push("Tenure elevata (proxy retention positiva)");
+      }
+    }
+
+    const contractH = user.weeklyContractHours ?? 40;
+    signals.weeklyContractHours = contractH;
+    parts += 1;
+    if (contractH >= 42) {
+      score += 14;
+      reasons.push("Contratto a ore elevate");
+    }
+
+    signals.leaveResidualDays = leaveResidualDays;
+    parts += 1;
+    if (leaveResidualDays < 3) {
+      score += 16;
+      reasons.push("Saldo ferie residuo molto basso");
+    } else if (leaveResidualDays < 8) {
+      score += 8;
+      reasons.push("Saldo ferie contenuto");
+    }
+
+    const allowance = user.vacationAllowanceDays ?? 22;
+    signals.vacationAllowanceDays = allowance;
+    parts += 1;
+    if (allowance < 20) {
+      score += 6;
+      reasons.push("Ferie contrattuali contenute");
+    }
+
+    if (reasons.length === 0) {
+      reasons.push("Profilo nella media (nessun segnale marcato)");
+    }
+
+    const confidence = Math.min(0.92, 0.42 + parts * 0.12);
+    return { score: Math.max(0, Math.min(100, Math.round(score))), confidence, reasons, signals };
+  }
+
+  async refreshTurnoverSignalsForCompany(
+    companyId: string
+  ): Promise<{ inserted: number; runId: string; computedAt: string }> {
+    const runId = randomUUID();
+    const computedAt = new Date().toISOString();
+    const users = (await this.listUsers()).filter(
+      (u) => u.companyId === companyId && u.role !== "superuser"
+    );
+    const y = new Date().getFullYear();
+    const rowsPayload: Array<{
+      company_id: string;
+      user_id: string;
+      run_id: string;
+      score: number;
+      confidence: number;
+      reasons: string[];
+      signals: Record<string, number>;
+      model_version: string;
+      computed_at: string;
+    }> = [];
+
+    for (const u of users) {
+      const bal = await this.getLeaveBalance(u.id, y);
+      const snap = this.computeTurnoverRuleV1Snapshot(u, bal.residualDays);
+      rowsPayload.push({
+        company_id: companyId,
+        user_id: u.id,
+        run_id: runId,
+        score: snap.score,
+        confidence: snap.confidence,
+        reasons: snap.reasons,
+        signals: snap.signals,
+        model_version: "rule-v1",
+        computed_at: computedAt
+      });
+    }
+
+    if (!this.useDb) {
+      const prev = this.turnoverSignalRunsMem.get(companyId) ?? [];
+      this.turnoverSignalRunsMem.set(companyId, [
+        {
+          runId,
+          computedAt,
+          rows: rowsPayload.map((r) => ({
+            userId: r.user_id,
+            score: r.score,
+            confidence: r.confidence,
+            reasons: r.reasons as string[],
+            signals: r.signals,
+            modelVersion: r.model_version
+          }))
+        },
+        ...prev
+      ].slice(0, 24));
+      return { inserted: rowsPayload.length, runId, computedAt };
+    }
+
+    if (rowsPayload.length === 0) {
+      return { inserted: 0, runId, computedAt };
+    }
+
+    const chunk = 80;
+    for (let i = 0; i < rowsPayload.length; i += chunk) {
+      const slice = rowsPayload.slice(i, i + chunk);
+      const { error } = await this.supabase!.from("hr_turnover_signals").insert(slice);
+      if (error) {
+        throw new InternalServerErrorException(`Salvataggio turnover fallito: ${error.message}`);
+      }
+    }
+    return { inserted: rowsPayload.length, runId, computedAt };
+  }
+
+  async listCostCenterIdsForCompany(companyId: string): Promise<string[]> {
+    const users = (await this.listUsers()).filter(
+      (u) => u.companyId === companyId && u.role !== "superuser"
+    );
+    const s = new Set<string>();
+    for (const u of users) {
+      const c = u.costCenterId?.trim();
+      if (c) {
+        s.add(c);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, "it"));
+  }
+
+  async getLatestTurnoverRetention(
+    companyId: string,
+    costCenterId?: string | null
+  ): Promise<
+    Array<{
+      userId: string;
+      fullName: string;
+      costCenterId: string | null;
+      score: number;
+      confidence: number;
+      reasons: string[];
+      signals: Record<string, number>;
+      modelVersion: string;
+      runId: string;
+      computedAt: string;
+    }>
+  > {
+    const users = await this.listUsers();
+    const byId = new Map(users.map((u) => [u.id, u]));
+
+    if (!this.useDb) {
+      const runs = this.turnoverSignalRunsMem.get(companyId) ?? [];
+      const last = runs[0];
+      if (!last) {
+        return [];
+      }
+      const cc = costCenterId?.trim();
+      return last.rows
+        .map((r) => {
+          const u = byId.get(r.userId);
+          return {
+            userId: r.userId,
+            fullName: u?.fullName ?? r.userId,
+            costCenterId: u?.costCenterId ?? null,
+            score: r.score,
+            confidence: r.confidence,
+            reasons: r.reasons,
+            signals: r.signals,
+            modelVersion: r.modelVersion,
+            runId: last.runId,
+            computedAt: last.computedAt
+          };
+        })
+        .filter((row) => !cc || (row.costCenterId?.trim() ?? "") === cc)
+        .sort((a, b) => b.score - a.score);
+    }
+
+    const { data: tip, error: e1 } = await this.supabase!
+      .from("hr_turnover_signals")
+      .select("run_id,computed_at")
+      .eq("company_id", companyId)
+      .order("computed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (e1) {
+      throw new BadRequestException(`Lettura turnover fallita: ${e1.message}`);
+    }
+    if (!tip?.run_id) {
+      return [];
+    }
+    const { data: raw, error: e2 } = await this.supabase!
+      .from("hr_turnover_signals")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("run_id", tip.run_id);
+    if (e2) {
+      throw new BadRequestException(`Lettura turnover fallita: ${e2.message}`);
+    }
+    const cc = costCenterId?.trim();
+    const list = (raw ?? []) as Array<{
+      user_id: string;
+      score: number;
+      confidence: number;
+      reasons: unknown;
+      signals: unknown;
+      model_version: string;
+      run_id: string;
+      computed_at: string;
+    }>;
+    return list
+      .map((r) => {
+        const u = byId.get(r.user_id);
+        return {
+          userId: r.user_id,
+          fullName: u?.fullName ?? r.user_id,
+          costCenterId: u?.costCenterId ?? null,
+          score: Number(r.score),
+          confidence: Number(r.confidence),
+          reasons: Array.isArray(r.reasons) ? (r.reasons as string[]) : [],
+          signals: (r.signals && typeof r.signals === "object" ? r.signals : {}) as Record<string, number>,
+          modelVersion: String(r.model_version ?? "rule-v1"),
+          runId: r.run_id,
+          computedAt: r.computed_at
+        };
+      })
+      .filter((row) => !cc || (row.costCenterId?.trim() ?? "") === cc)
+      .sort((a, b) => b.score - a.score);
+  }
+
+  async getTurnoverRetentionTrend(
+    companyId: string,
+    weeks = 8
+  ): Promise<Array<{ weekStart: string; avgScore: number; sampleSize: number }>> {
+    const w = Math.min(52, Math.max(2, Math.floor(weeks)));
+    const from = new Date();
+    from.setUTCDate(from.getUTCDate() - w * 7);
+    const fromIso = from.toISOString();
+
+    type Agg = { sum: number; n: number };
+    const bucket = new Map<string, Agg>();
+
+    const addRow = (computedAt: string, score: number): void => {
+      const d = new Date(computedAt);
+      const day = d.getUTCDay();
+      const diff = (day + 6) % 7;
+      const monday = new Date(d);
+      monday.setUTCDate(d.getUTCDate() - diff);
+      const key = monday.toISOString().slice(0, 10);
+      const cur = bucket.get(key) ?? { sum: 0, n: 0 };
+      cur.sum += score;
+      cur.n += 1;
+      bucket.set(key, cur);
+    };
+
+    if (!this.useDb) {
+      const runs = this.turnoverSignalRunsMem.get(companyId) ?? [];
+      for (const run of runs) {
+        for (const r of run.rows) {
+          addRow(run.computedAt, r.score);
+        }
+      }
+    } else {
+      const { data, error } = await this.supabase!
+        .from("hr_turnover_signals")
+        .select("computed_at,score")
+        .eq("company_id", companyId)
+        .gte("computed_at", fromIso)
+        .order("computed_at", { ascending: true });
+      if (error) {
+        throw new BadRequestException(`Trend turnover fallito: ${error.message}`);
+      }
+      for (const row of data ?? []) {
+        addRow(String((row as { computed_at: string }).computed_at), Number((row as { score: number }).score));
+      }
+    }
+
+    return [...bucket.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([weekStart, v]) => ({
+        weekStart,
+        avgScore: v.n ? Math.round((v.sum / v.n) * 10) / 10 : 0,
+        sampleSize: v.n
+      }));
+  }
+
+  async getManagerCopilotDashboard(
+    actorUserId: string,
+    opts: { includeTurnover: boolean }
+  ): Promise<{
+    pendingTotal: number;
+    pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
+    teamHeadcount: number;
+    teamSmartworkingPending: number;
+    teamTurnoverAvgScore: number | null;
+    topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
+    routes: {
+      approvals: string;
+      smartworking: string;
+      insights: string;
+      workforcePlanning: string;
+    };
+  }> {
+    const actor = await this.getUser(actorUserId);
+    const team = await this.listUsersByManager(actorUserId);
+    const teamIds = new Set(team.map((u) => u.id));
+
+    const pending = await this.listApprovalsForUser(actorUserId, "pending");
+    const pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>> = {};
+    let teamSw = 0;
+    for (const p of pending) {
+      pendingByType[p.type] = (pendingByType[p.type] ?? 0) + 1;
+      if (p.type === "smartworking" && teamIds.has(p.requestedBy)) {
+        teamSw += 1;
+      }
+    }
+
+    let teamTurnoverAvg: number | null = null;
+    const companyId = (actor.companyId || "").trim();
+    if (opts.includeTurnover && companyId && teamIds.size > 0) {
+      const latest = await this.getLatestTurnoverRetention(companyId);
+      const scores = latest.filter((r) => teamIds.has(r.userId)).map((r) => r.score);
+      if (scores.length > 0) {
+        teamTurnoverAvg = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+      }
+    }
+
+    const topPendingPreview = pending.slice(0, 10).map((p) => ({
+      type: p.type,
+      requesterName: p.requesterName,
+      at: p.at
+    }));
+
+    return {
+      pendingTotal: pending.length,
+      pendingByType,
+      teamHeadcount: team.length,
+      teamSmartworkingPending: teamSw,
+      teamTurnoverAvgScore: teamTurnoverAvg,
+      topPendingPreview,
+      routes: {
+        approvals: "/workflow/approvals",
+        smartworking: "/smartworking",
+        insights: "/insights",
+        workforcePlanning: "/workforce-planning"
+      }
+    };
+  }
+
+  async getSkillsGapReport(
+    companyId: string,
+    roleIdFilter?: string | null
+  ): Promise<
+    Array<{
+      roleId: string;
+      roleName: string;
+      skillId: string;
+      skillCode: string;
+      skillName: string;
+      minLevel: number;
+      avgUserLevel: number;
+      gap: number;
+      headcountInRole: number;
+    }>
+  > {
+    if (!this.useDb) {
+      return [
+        {
+          roleId: "r3",
+          roleName: "Dipendente (demo)",
+          skillId: "mem-skill",
+          skillCode: "DEMO",
+          skillName: "Dato competenze non persistito (modalità senza DB)",
+          minLevel: 3,
+          avgUserLevel: 1,
+          gap: 2,
+          headcountInRole: 1
+        }
+      ];
+    }
+
+    const sb = this.supabase!;
+    let reqQuery = sb
+      .from("hr_role_skill_requirements")
+      .select("role_id, min_level, skill_id")
+      .eq("company_id", companyId);
+    if (roleIdFilter?.trim()) {
+      reqQuery = reqQuery.eq("role_id", roleIdFilter.trim());
+    }
+    const { data: reqs, error: e1 } = await reqQuery;
+    if (e1) {
+      throw new BadRequestException(`Lettura fabbisogni competenze: ${e1.message}`);
+    }
+    const reqRows = (reqs ?? []) as Array<{ role_id: string; min_level: number; skill_id: string }>;
+    if (reqRows.length === 0) {
+      return [];
+    }
+
+    const skillIds = [...new Set(reqRows.map((r) => r.skill_id))];
+    const { data: skills, error: e2 } = await sb.from("hr_skills").select("id, code, name").in("id", skillIds);
+    if (e2) {
+      throw new BadRequestException(`Lettura skills: ${e2.message}`);
+    }
+    const skillById = new Map((skills ?? []).map((s: { id: string; code: string; name: string }) => [s.id, s]));
+
+    const { data: roleRows } = await sb.from("roles").select("id, name");
+    const roleNameById = new Map((roleRows ?? []).map((r: { id: string; name: string }) => [r.id, r.name]));
+
+    const { data: usRows, error: e3 } = await sb
+      .from("hr_user_skills")
+      .select("user_id, skill_id, level")
+      .eq("company_id", companyId);
+    if (e3) {
+      throw new BadRequestException(`Lettura user skills: ${e3.message}`);
+    }
+    const userSkillLevel = new Map<string, number>();
+    for (const row of (usRows ?? []) as Array<{ user_id: string; skill_id: string; level: number }>) {
+      userSkillLevel.set(`${row.user_id}|${row.skill_id}`, Number(row.level) || 0);
+    }
+
+    const users = (await this.listUsers()).filter(
+      (u) => u.companyId === companyId && u.role !== "superuser"
+    );
+
+    const out: Array<{
+      roleId: string;
+      roleName: string;
+      skillId: string;
+      skillCode: string;
+      skillName: string;
+      minLevel: number;
+      avgUserLevel: number;
+      gap: number;
+      headcountInRole: number;
+    }> = [];
+
+    for (const req of reqRows) {
+      const sk = skillById.get(req.skill_id);
+      if (!sk) {
+        continue;
+      }
+      const inRole = users.filter((u) => (u.roleId ?? "").trim() === req.role_id);
+      const headcount = inRole.length;
+      let sum = 0;
+      for (const u of inRole) {
+        sum += userSkillLevel.get(`${u.id}|${req.skill_id}`) ?? 0;
+      }
+      const avgUserLevel = headcount > 0 ? Math.round((sum / headcount) * 10) / 10 : 0;
+      const minLevel = Number(req.min_level) || 1;
+      const gap = Math.max(0, Math.round((minLevel - avgUserLevel) * 10) / 10);
+      out.push({
+        roleId: req.role_id,
+        roleName: roleNameById.get(req.role_id) ?? req.role_id,
+        skillId: req.skill_id,
+        skillCode: sk.code,
+        skillName: sk.name,
+        minLevel,
+        avgUserLevel,
+        gap,
+        headcountInRole: headcount
+      });
+    }
+
+    return out.sort((a, b) => b.gap - a.gap || a.roleName.localeCompare(b.roleName, "it"));
+  }
+
+  async listHrAlerts(
+    companyId: string,
+    status?: "open" | "ack" | "dismissed"
+  ): Promise<
+    Array<{
+      id: string;
+      companyId: string;
+      ruleKey: string;
+      severity: string;
+      title: string;
+      body: string;
+      metricPayload: Record<string, unknown>;
+      dedupeKey: string;
+      status: string;
+      createdAt: string;
+      acknowledgedAt: string | null;
+      acknowledgedByUserId: string | null;
+    }>
+  > {
+    const mapRow = (r: {
+      id: string;
+      company_id: string;
+      rule_key: string;
+      severity: string;
+      title: string;
+      body: string;
+      metric_payload: unknown;
+      dedupe_key: string;
+      status: string;
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by_user_id: string | null;
+    }) => ({
+      id: r.id,
+      companyId: r.company_id,
+      ruleKey: r.rule_key,
+      severity: r.severity,
+      title: r.title,
+      body: r.body,
+      metricPayload:
+        r.metric_payload && typeof r.metric_payload === "object"
+          ? (r.metric_payload as Record<string, unknown>)
+          : {},
+      dedupeKey: r.dedupe_key,
+      status: r.status,
+      createdAt: r.created_at,
+      acknowledgedAt: r.acknowledged_at,
+      acknowledgedByUserId: r.acknowledged_by_user_id
+    });
+
+    if (!this.useDb) {
+      return this.hrAlertsMem
+        .filter((a) => a.company_id === companyId && (!status || a.status === status))
+        .map(mapRow)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    let q = this.supabase!
+      .from("hr_alerts")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (status) {
+      q = q.eq("status", status);
+    }
+    const { data, error } = await q;
+    if (error) {
+      throw new BadRequestException(`Lettura alert HR: ${error.message}`);
+    }
+    return (data ?? []).map((r) => mapRow(r as never));
+  }
+
+  async acknowledgeHrAlert(companyId: string, alertId: string, actorUserId: string): Promise<void> {
+    const now = new Date().toISOString();
+    if (!this.useDb) {
+      const row = this.hrAlertsMem.find((a) => a.id === alertId && a.company_id === companyId);
+      if (!row) {
+        throw new NotFoundException("Alert non trovato");
+      }
+      row.status = "ack";
+      row.acknowledged_at = now;
+      row.acknowledged_by_user_id = actorUserId;
+      return;
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_alerts")
+      .update({
+        status: "ack",
+        acknowledged_at: now,
+        acknowledged_by_user_id: actorUserId
+      })
+      .eq("id", alertId)
+      .eq("company_id", companyId)
+      .eq("status", "open")
+      .select("id");
+    if (error) {
+      throw new BadRequestException(`Aggiornamento alert: ${error.message}`);
+    }
+    if (!data?.length) {
+      throw new NotFoundException("Alert non trovato o già gestito");
+    }
+  }
+
+  async evaluateHrAlertsForCompany(companyId: string): Promise<{ created: number; notified: number }> {
+    let created = 0;
+    let notified = 0;
+    const recipients = (await this.listUsers()).filter(
+      (u) =>
+        u.companyId === companyId &&
+        (u.role === "superuser" || u.roleId === "r1" || u.roleId === "r-super")
+    );
+
+    const maybeCreate = async (input: {
+      ruleKey: string;
+      severity: "info" | "warning" | "critical";
+      title: string;
+      body: string;
+      dedupeKey: string;
+      metricPayload: Record<string, unknown>;
+    }): Promise<void> => {
+      if (!this.useDb) {
+        const exists = this.hrAlertsMem.some(
+          (a) => a.company_id === companyId && a.dedupe_key === input.dedupeKey && a.status === "open"
+        );
+        if (exists) {
+          return;
+        }
+        const id = randomUUID();
+        const createdAt = new Date().toISOString();
+        this.hrAlertsMem.unshift({
+          id,
+          company_id: companyId,
+          rule_key: input.ruleKey,
+          severity: input.severity,
+          title: input.title,
+          body: input.body,
+          metric_payload: input.metricPayload,
+          dedupe_key: input.dedupeKey,
+          status: "open",
+          created_at: createdAt,
+          acknowledged_at: null,
+          acknowledged_by_user_id: null
+        });
+        created += 1;
+        for (const u of recipients) {
+          await this.insertUserNotification({
+            id: randomUUID(),
+            userId: u.id,
+            title: input.title,
+            body: input.body,
+            read: false,
+            createdAt: createdAt,
+            kind: "hr_alert",
+            actionPath: "/hr-alerts"
+          });
+          notified += 1;
+        }
+        return;
+      }
+
+      const { data: existing } = await this.supabase!
+        .from("hr_alerts")
+        .select("id")
+        .eq("company_id", companyId)
+        .eq("dedupe_key", input.dedupeKey)
+        .eq("status", "open")
+        .maybeSingle();
+      if (existing?.id) {
+        return;
+      }
+      const { data: ins, error } = await this.supabase!
+        .from("hr_alerts")
+        .insert({
+          company_id: companyId,
+          rule_key: input.ruleKey,
+          severity: input.severity,
+          title: input.title,
+          body: input.body,
+          metric_payload: input.metricPayload,
+          dedupe_key: input.dedupeKey,
+          status: "open"
+        })
+        .select("id,created_at")
+        .single();
+      if (error) {
+        this.logger.warn(`[hr_alerts] insert skip: ${error.message}`);
+        return;
+      }
+      created += 1;
+      const idStr = String((ins as { id: string }).id);
+      const at = String((ins as { created_at: string }).created_at ?? new Date().toISOString());
+      for (const u of recipients) {
+        await this.insertUserNotification({
+          id: randomUUID(),
+          userId: u.id,
+          title: input.title,
+          body: input.body,
+          read: false,
+          createdAt: at,
+          kind: "hr_alert",
+          actionPath: "/hr-alerts"
+        });
+        notified += 1;
+      }
+    };
+
+    try {
+      const trend = await this.getTurnoverRetentionTrend(companyId, 6);
+      const last = trend.length ? trend[trend.length - 1] : undefined;
+      if (last && last.sampleSize > 0 && last.avgScore >= 58) {
+        await maybeCreate({
+          ruleKey: "turnover_weekly_avg",
+          severity: last.avgScore >= 75 ? "critical" : "warning",
+          title: "Media score turnover elevata (settimana)",
+          body: `La media settimanale degli score di turnover snapshot per la settimana ${last.weekStart} è ${last.avgScore} (campione ${last.sampleSize}). Verificare insight HR.`,
+          dedupeKey: `turnover_trend|${last.weekStart}|v1`,
+          metricPayload: { weekStart: last.weekStart, avgScore: last.avgScore, sampleSize: last.sampleSize }
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`[hr_alerts] turnover rule: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    try {
+      const items = await this.getLatestTurnoverRetention(companyId);
+      const hot = items.filter((x) => x.score >= 78).length;
+      if (hot >= 2) {
+        await maybeCreate({
+          ruleKey: "turnover_hotspots",
+          severity: "warning",
+          title: "Molti profili ad alto score turnover",
+          body: `${hot} persone nell'ultimo run hanno score ≥ 78. Controllare Turnover e retention.`,
+          dedupeKey: `turnover_hotspots|${items[0]?.runId ?? "norun"}|v1`,
+          metricPayload: { count: hot, runId: items[0]?.runId ?? null }
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`[hr_alerts] hotspots rule: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    return { created, notified };
+  }
+
+  async getProcessCycleMetrics(companyId: string): Promise<{
+    companyId: string;
+    windowDays: number;
+    samples: { leave: number; expense: number; onboarding: number };
+    medianHoursLeaveApproval: number | null;
+    medianDaysExpenseToPaid: number | null;
+    medianDaysOnboarding: number | null;
+    note: string;
+  }> {
+    void companyId;
+    return {
+      companyId,
+      windowDays: 90,
+      samples: { leave: 0, expense: 0, onboarding: 0 },
+      medianHoursLeaveApproval: null,
+      medianDaysExpenseToPaid: null,
+      medianDaysOnboarding: null,
+      note:
+        "v0 stub: servono timestamp normalizzati (richiesta vs decisione) su ferie, note spese e onboarding; la dashboard userà query parametriche quando il modello dati sarà allineato."
+    };
+  }
+
+  async createHitlProposal(
+    companyId: string,
+    actorUserId: string,
+    input: { kind: string; payload: Record<string, unknown>; rationale: string }
+  ): Promise<{ id: string }> {
+    const kind = input.kind.trim().slice(0, 80);
+    const rationale = input.rationale.trim().slice(0, 4000);
+    if (!kind) {
+      throw new BadRequestException("kind obbligatorio");
+    }
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    if (!this.useDb) {
+      this.hitlProposalsMem.unshift({
+        id,
+        company_id: companyId,
+        actor_user_id: actorUserId,
+        kind,
+        status: "proposed",
+        payload: input.payload ?? {},
+        rationale,
+        created_at: createdAt,
+        decided_at: null,
+        decided_by_user_id: null
+      });
+      return { id };
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_hitl_proposals")
+      .insert({
+        company_id: companyId,
+        actor_user_id: actorUserId,
+        kind,
+        status: "proposed",
+        payload: input.payload ?? {},
+        rationale
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Creazione proposta HITL fallita: ${error?.message ?? "unknown"}`);
+    }
+    return { id: String((data as { id: string }).id) };
+  }
+
+  async listHitlProposals(companyId: string): Promise<
+    Array<{
+      id: string;
+      kind: string;
+      status: string;
+      rationale: string;
+      payload: Record<string, unknown>;
+      createdAt: string;
+      decidedAt: string | null;
+      actorUserId: string;
+      decidedByUserId: string | null;
+    }>
+  > {
+    const mapRow = (r: {
+      id: string;
+      kind: string;
+      status: string;
+      rationale: string;
+      payload: unknown;
+      created_at: string;
+      decided_at: string | null;
+      actor_user_id: string;
+      decided_by_user_id: string | null;
+    }) => ({
+      id: r.id,
+      kind: r.kind,
+      status: r.status,
+      rationale: r.rationale,
+      payload: r.payload && typeof r.payload === "object" ? (r.payload as Record<string, unknown>) : {},
+      createdAt: r.created_at,
+      decidedAt: r.decided_at,
+      actorUserId: r.actor_user_id,
+      decidedByUserId: r.decided_by_user_id
+    });
+    if (!this.useDb) {
+      return this.hitlProposalsMem
+        .filter((x) => x.company_id === companyId)
+        .map((r) =>
+          mapRow({
+            id: r.id,
+            kind: r.kind,
+            status: r.status,
+            rationale: r.rationale,
+            payload: r.payload,
+            created_at: r.created_at,
+            decided_at: r.decided_at,
+            actor_user_id: r.actor_user_id,
+            decided_by_user_id: r.decided_by_user_id
+          })
+        );
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_hitl_proposals")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) {
+      throw new BadRequestException(`Lettura HITL: ${error.message}`);
+    }
+    return (data ?? []).map((r) => mapRow(r as never));
+  }
+
+  async decideHitlProposal(
+    companyId: string,
+    proposalId: string,
+    actorUserId: string,
+    approve: boolean
+  ): Promise<{ id: string; status: string }> {
+    const now = new Date().toISOString();
+    const status = approve ? "approved" : "rejected";
+    if (!this.useDb) {
+      const row = this.hitlProposalsMem.find((x) => x.id === proposalId && x.company_id === companyId);
+      if (!row || row.status !== "proposed") {
+        throw new NotFoundException("Proposta non trovata o già chiusa");
+      }
+      row.status = status;
+      row.decided_at = now;
+      row.decided_by_user_id = actorUserId;
+      return { id: proposalId, status };
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_hitl_proposals")
+      .update({
+        status,
+        decided_at: now,
+        decided_by_user_id: actorUserId
+      })
+      .eq("id", proposalId)
+      .eq("company_id", companyId)
+      .eq("status", "proposed")
+      .select("id,status")
+      .single();
+    if (error || !data) {
+      throw new NotFoundException("Proposta non trovata o già chiusa");
+    }
+    return { id: String((data as { id: string }).id), status: String((data as { status: string }).status) };
   }
 
   async getPeopleInsightsRisk(): Promise<Array<{ userId: string; fullName: string; score: number; reasons: string[] }>> {

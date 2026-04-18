@@ -57,6 +57,14 @@ function systemPromptForSchema(schemaVersion: string): string {
         base +
         " Schema: {\"envelope\":{\"rationale\":\"stringa\"}}. Scrivi envelope.rationale in italiano chiaro per un dipendente, partendo dai campi rationaleSeed, category, priority e suggestedPath del JSON in ingresso; non inventare fatti."
       );
+    case "ai_narrative_aggregate_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"title\":\"stringa\",\"bullets\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
+        "L'ingresso ha envelope.facts (solo numeri aggregati, nessun nominativo) e envelope.narrativeSeed (bozza in italiano). " +
+        "Migliora stile e chiarezza di title, bullets (max 5) e summary in italiano, senza aggiungere cifre o fatti assenti da envelope.facts; " +
+        "non introdurre nomi di persone."
+      );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
   }

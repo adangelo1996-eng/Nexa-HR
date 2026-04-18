@@ -3004,6 +3004,324 @@ export async function fetchPeopleInsights(
   };
 }
 
+export type TurnoverRetentionItem = {
+  userId: string;
+  fullName: string;
+  costCenterId: string | null;
+  score: number;
+  confidence: number;
+  reasons: string[];
+  signals: Record<string, number>;
+  modelVersion: string;
+  runId: string;
+  computedAt: string;
+};
+
+export async function fetchTurnoverRetention(
+  token: string,
+  options?: { costCenterId?: string; trendWeeks?: number }
+): Promise<{
+  items: TurnoverRetentionItem[];
+  trend: Array<{ weekStart: string; avgScore: number; sampleSize: number }>;
+  companyId: string;
+  modelVersion: string;
+  costCenterOptions: string[];
+}> {
+  const params = new URLSearchParams();
+  if (options?.costCenterId) {
+    params.set("costCenterId", options.costCenterId);
+  }
+  if (options?.trendWeeks != null) {
+    params.set("trendWeeks", String(options.trendWeeks));
+  }
+  const q = params.toString();
+  const response = await fetch(buildApiUrl(`/analytics/turnover-retention${q ? `?${q}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: TurnoverRetentionItem[];
+    trend: Array<{ weekStart: string; avgScore: number; sampleSize: number }>;
+    companyId: string;
+    modelVersion: string;
+    costCenterOptions: string[];
+  };
+}
+
+export async function postTurnoverRetentionRefresh(
+  token: string
+): Promise<{ inserted: number; runId: string; computedAt: string }> {
+  const response = await fetch(buildApiUrl("/analytics/turnover-retention/refresh"), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { inserted: number; runId: string; computedAt: string };
+}
+
+export async function fetchHrAlerts(
+  token: string,
+  status?: "open" | "ack" | "dismissed"
+): Promise<{
+  items: Array<{
+    id: string;
+    companyId: string;
+    ruleKey: string;
+    severity: string;
+    title: string;
+    body: string;
+    metricPayload: Record<string, unknown>;
+    dedupeKey: string;
+    status: string;
+    createdAt: string;
+    acknowledgedAt: string | null;
+    acknowledgedByUserId: string | null;
+  }>;
+}> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const response = await fetch(buildApiUrl(`/analytics/hr-alerts${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: Array<{
+      id: string;
+      companyId: string;
+      ruleKey: string;
+      severity: string;
+      title: string;
+      body: string;
+      metricPayload: Record<string, unknown>;
+      dedupeKey: string;
+      status: string;
+      createdAt: string;
+      acknowledgedAt: string | null;
+      acknowledgedByUserId: string | null;
+    }>;
+  };
+}
+
+export async function postHrAlertsEvaluate(token: string): Promise<{ created: number; notified: number }> {
+  const response = await fetch(buildApiUrl("/analytics/hr-alerts/evaluate"), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { created: number; notified: number };
+}
+
+export async function postHrAlertAck(token: string, alertId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl(`/analytics/hr-alerts/${encodeURIComponent(alertId)}/ack`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { ok: true };
+}
+
+export async function fetchProcessCycleMetrics(token: string): Promise<{
+  companyId: string;
+  windowDays: number;
+  samples: { leave: number; expense: number; onboarding: number };
+  medianHoursLeaveApproval: number | null;
+  medianDaysExpenseToPaid: number | null;
+  medianDaysOnboarding: number | null;
+  note: string;
+}> {
+  const response = await fetch(buildApiUrl("/analytics/process-cycle-times"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    companyId: string;
+    windowDays: number;
+    samples: { leave: number; expense: number; onboarding: number };
+    medianHoursLeaveApproval: number | null;
+    medianDaysExpenseToPaid: number | null;
+    medianDaysOnboarding: number | null;
+    note: string;
+  };
+}
+
+export async function fetchHitlProposals(token: string): Promise<{
+  items: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    rationale: string;
+    payload: Record<string, unknown>;
+    createdAt: string;
+    decidedAt: string | null;
+    actorUserId: string;
+    decidedByUserId: string | null;
+  }>;
+}> {
+  const response = await fetch(buildApiUrl("/analytics/hitl/proposals"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: Array<{
+      id: string;
+      kind: string;
+      status: string;
+      rationale: string;
+      payload: Record<string, unknown>;
+      createdAt: string;
+      decidedAt: string | null;
+      actorUserId: string;
+      decidedByUserId: string | null;
+    }>;
+  };
+}
+
+export async function postHitlProposal(
+  token: string,
+  body: { kind: string; payload: Record<string, unknown>; rationale: string }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/analytics/hitl/proposals"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function postHitlProposalDecision(
+  token: string,
+  proposalId: string,
+  approve: boolean
+): Promise<{ id: string; status: string }> {
+  const response = await fetch(
+    buildApiUrl(`/analytics/hitl/proposals/${encodeURIComponent(proposalId)}/decision`),
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ approve })
+    }
+  );
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string; status: string };
+}
+
+export async function fetchSuiteAggregateEvents(token: string): Promise<{
+  items: Array<{
+    id: string;
+    direction: string;
+    consumers: readonly string[];
+    description: string;
+  }>;
+}> {
+  const response = await fetch(buildApiUrl("/integrations/suite/aggregate-events"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: Array<{
+      id: string;
+      direction: string;
+      consumers: readonly string[];
+      description: string;
+    }>;
+  };
+}
+
+export async function fetchSkillsGap(
+  token: string,
+  roleId?: string
+): Promise<{
+  items: Array<{
+    roleId: string;
+    roleName: string;
+    skillId: string;
+    skillCode: string;
+    skillName: string;
+    minLevel: number;
+    avgUserLevel: number;
+    gap: number;
+    headcountInRole: number;
+  }>;
+}> {
+  const q = roleId?.trim() ? `?roleId=${encodeURIComponent(roleId.trim())}` : "";
+  const response = await fetch(buildApiUrl(`/analytics/skills-gap${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    items: Array<{
+      roleId: string;
+      roleName: string;
+      skillId: string;
+      skillCode: string;
+      skillName: string;
+      minLevel: number;
+      avgUserLevel: number;
+      gap: number;
+      headcountInRole: number;
+    }>;
+  };
+}
+
+export async function fetchManagerCopilot(token: string): Promise<{
+  pendingTotal: number;
+  pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
+  teamHeadcount: number;
+  teamSmartworkingPending: number;
+  teamTurnoverAvgScore: number | null;
+  topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
+  routes: {
+    approvals: string;
+    smartworking: string;
+    insights: string;
+    workforcePlanning: string;
+  };
+}> {
+  const response = await fetch(buildApiUrl("/analytics/manager-copilot"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    pendingTotal: number;
+    pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
+    teamHeadcount: number;
+    teamSmartworkingPending: number;
+    teamTurnoverAvgScore: number | null;
+    topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
+    routes: {
+      approvals: string;
+      smartworking: string;
+      insights: string;
+      workforcePlanning: string;
+    };
+  };
+}
+
+export async function postAnalyticsNarrative(
+  token: string,
+  body: { topic: string; payload: Record<string, unknown>; useLlm?: boolean }
+): Promise<{
+  title: string;
+  bullets: string[];
+  summary: string;
+  llmApplied: boolean;
+  templateOnly: boolean;
+}> {
+  const response = await fetch(buildApiUrl("/analytics/narrative"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    title: string;
+    bullets: string[];
+    summary: string;
+    llmApplied: boolean;
+    templateOnly: boolean;
+  };
+}
+
 export async function fetchPayrollForecast(
   token: string,
   months?: number
@@ -3014,6 +3332,58 @@ export async function fetchPayrollForecast(
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as { series: Array<{ month: string; costEur: number }> };
+}
+
+export type WorkforceCockpitScenario = "base" | "growth" | "freeze";
+
+export async function fetchWorkforceCockpit(
+  token: string,
+  scenario: WorkforceCockpitScenario,
+  months?: number
+): Promise<{
+  scenario: WorkforceCockpitScenario;
+  summary: { headcount: number; monthlyPayrollMassEur: number; pendingExpenseCount: number };
+  series: Array<{ month: string; costEur: number }>;
+}> {
+  const params = new URLSearchParams({ scenario });
+  if (months != null) params.set("months", String(months));
+  const response = await fetch(buildApiUrl(`/analytics/workforce-cockpit?${params.toString()}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    scenario: WorkforceCockpitScenario;
+    summary: { headcount: number; monthlyPayrollMassEur: number; pendingExpenseCount: number };
+    series: Array<{ month: string; costEur: number }>;
+  };
+}
+
+export async function postPayrollWhatIf(
+  token: string,
+  body: {
+    userId?: string;
+    period?: string;
+    grossMonthlySalaryOverride?: number;
+    usePreviousMonthVariables?: boolean;
+  }
+): Promise<{
+  netSalary: number;
+  grossSalary?: number;
+  lines: Array<{ code: string; description: string; amount: number }>;
+  [key: string]: unknown;
+}> {
+  const response = await fetch(buildApiUrl("/analytics/payroll-what-if"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    netSalary: number;
+    grossSalary?: number;
+    lines: Array<{ code: string; description: string; amount: number }>;
+    [key: string]: unknown;
+  };
 }
 
 export async function fetchAttendanceReport(
@@ -3488,17 +3858,39 @@ export async function fetchAiAssistantOrgUsers(
   return response.json() as Promise<{ users: { userId: string; label: string }[] }>;
 }
 
+export interface AiAssistantResponseMeta {
+  llm: { configured: boolean; refineApplied: boolean };
+  privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
+}
+
 export async function postAiAssistant(
   token: string,
   payload: { message: string; page?: string; scope?: AiAssistantScopePayload }
-): Promise<{ reply: string; sources: string[] }> {
+): Promise<{ reply: string; sources: string[] } & AiAssistantResponseMeta> {
   const response = await fetch(buildApiUrl("/ai/hr/assistant"), {
     method: "POST",
     headers: getAuthHeaders(token),
     body: JSON.stringify(payload)
   });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{ reply: string; sources: string[] }>;
+  const body = (await response.json()) as Record<string, unknown>;
+  const reply = typeof body.reply === "string" ? body.reply : "";
+  const sources = Array.isArray(body.sources) ? (body.sources as string[]) : [];
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    reply,
+    sources,
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
 }
 
 export async function postAiNlQueryRun(

@@ -72,7 +72,7 @@ export class AiHrController {
   postAssistant(
     @CurrentAuth() auth: AuthContext,
     @Body() body: AssistantDto
-  ): Promise<{ reply: string; sources: string[] }> {
+  ): ReturnType<AiHrService["assistant"]> {
     return this.aiHr.assistant(
       { userId: auth.userId, role: auth.role as AuthRole },
       {
