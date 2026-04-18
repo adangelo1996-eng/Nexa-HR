@@ -1,6 +1,6 @@
 /**
- * Testi guida per le pagine raggruppate sotto «Hebb AI for HR» (menu + popup aiuto).
- * Allineare a navigazione in `components/app-shell.tsx`.
+ * Testi guida per pagine con esperienza «Centro AI HR» (popup aiuto in pagina).
+ * La voce di menu «HEBB AI for HR» elenca solo il Centro AI quando l’LLM è attivo su backend.
  */
 
 export const HEBB_AI_PAGE_KEYS = [
@@ -58,15 +58,15 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "workforce-planning": {
     title: "Workforce planning",
     summary:
-      "Cockpit su headcount e costo massa stipendi con scenari what-if (base, crescita, freeze) collegati al forecast payroll.",
+      "Vista sintetica su organico e costo stipendi mensile, con proiezione a sei mesi. Puoi confrontare scenari rapidi o impostare un what-if con teste in più/meno, un importo fisso mensile e una scala percentuale sul forecast.",
     howToUse: [
-      "Scegli lo scenario e l’orizzonte temporale per confrontare serie storiche e proiezioni.",
-      "Usa la narrativa aggregata (opzionale LLM) solo su dati già aggregati mostrati in pagina.",
-      "Per il dettaglio per centro di costo passa a Budget personale e Forecast costi."
+      "Inizia da «Scenario base» per vedere i numeri attuali, poi prova «+2 FTE» o «Costi flat» per confronti immediati.",
+      "Scegli «What-if libero» e modifica FTE, euro fissi al mese e percentuale sulla curva: il grafico si aggiorna mentre imposti i valori.",
+      "Usa «Genera sintesi» per un testo di commento sui soli aggregati visibili; il raffinamento con AI compare solo se l’ambiente lo consente."
     ],
     bestPractices: [
-      "Richiede permesso report HR: se vedi errore 403 chiedi l’abilitazione all’amministratore.",
-      "Allinea gli input anagrafici prima di presentare numeri a stakeholder."
+      "Serve il permesso report HR: in caso di 403 contatta l’amministratore.",
+      "Prima di riunioni di budget, verifica che anagrafica e RAL siano aggiornate."
     ]
   },
   "manager-copilot": {
@@ -85,14 +85,14 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   insights: {
     title: "Turnover e retention",
     summary:
-      "Score e trend rule-based da tenure, ferie e contratto; filtri per centro di costo e narrativa su aggregati (senza nominativi nel payload verso l’LLM).",
+      "Elenco ordinato per rischio sintetico (non è una diagnosi medica o legale), con trend nel tempo. Il filtro centri di costo mostra il nome del reparto come in anagrafica aziendale.",
     howToUse: [
-      "Dopo cambi anagrafici importanti usa «Aggiorna segnali» per ricalcolare gli snapshot.",
-      "Seleziona il centro di costo per analisi perimetrali.",
-      "Attiva la narrativa LLM solo quando ti serve testo esecutivo per report; verifica sempre i numeri in tabella."
+      "Dopo cambi importanti in anagrafica premi «Aggiorna segnali» per allineare i punteggi.",
+      "Filtra per centro di costo per limitare la vista al tuo perimetro.",
+      "«Genera sintesi» produce un commento su medie e trend; il passaggio in AI è opzionale e solo se abilitato in ambiente."
     ],
     bestPractices: [
-      "Interpreta lo score come segnale da incrociare con contesto HR, non come verdetto automatico.",
+      "Incrocia sempre i punteggi con colloqui e contesto: sono indicatori di attenzione.",
       "Richiede permesso report HR."
     ]
   },

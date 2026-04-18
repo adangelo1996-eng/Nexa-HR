@@ -114,12 +114,27 @@ export class AnalyticsController {
   @RequireNexaPermissions("nexa.reports_hr:read")
   async workforceCockpit(
     @Query("scenario") scenario?: string,
-    @Query("months") months?: string
+    @Query("months") months?: string,
+    @Query("fteDelta") fteDelta?: string,
+    @Query("monthlyFlatDeltaEur") monthlyFlatDeltaEur?: string,
+    @Query("seriesScalePercent") seriesScalePercent?: string
   ): Promise<Awaited<ReturnType<HrDataStore["getWorkforceCockpit"]>>> {
     const sc =
-      scenario === "growth" || scenario === "freeze" ? scenario : ("base" as const);
+      scenario === "growth" || scenario === "freeze" || scenario === "custom"
+        ? scenario
+        : ("base" as const);
     const mo = months ? Math.min(12, Math.max(1, Number(months) || 6)) : 6;
-    return this.store.getWorkforceCockpit(sc, mo);
+    const custom =
+      sc === "custom"
+        ? {
+            fteDelta: fteDelta != null && fteDelta !== "" ? Number(fteDelta) : 0,
+            monthlyFlatDeltaEur:
+              monthlyFlatDeltaEur != null && monthlyFlatDeltaEur !== "" ? Number(monthlyFlatDeltaEur) : 0,
+            seriesScalePercent:
+              seriesScalePercent != null && seriesScalePercent !== "" ? Number(seriesScalePercent) : 100
+          }
+        : undefined;
+    return this.store.getWorkforceCockpit(sc, mo, custom);
   }
 
   @Get("hr-dashboard/summary")
@@ -212,7 +227,7 @@ export class AnalyticsController {
     trend: Awaited<ReturnType<HrDataStore["getTurnoverRetentionTrend"]>>;
     companyId: string;
     modelVersion: string;
-    costCenterOptions: string[];
+    costCenters: Array<{ id: string; label: string }>;
   }> {
     const viewer = await this.store.getUser(auth.userId);
     const companyId = (viewer.companyId || auth.tenantId || "").trim();
@@ -220,12 +235,12 @@ export class AnalyticsController {
       throw new ForbiddenException("Azienda non disponibile per l'utente");
     }
     const weeks = trendWeeks ? Math.min(52, Math.max(2, Number(trendWeeks) || 8)) : 8;
-    const [items, trend, costCenterOptions] = await Promise.all([
+    const [items, trend, costCenters] = await Promise.all([
       this.store.getLatestTurnoverRetention(companyId, costCenterId?.trim() || undefined),
       this.store.getTurnoverRetentionTrend(companyId, weeks),
-      this.store.listCostCenterIdsForCompany(companyId)
+      this.store.listCostCentersForTurnoverFilter(companyId)
     ]);
-    return { items, trend, companyId, modelVersion: "rule-v1", costCenterOptions };
+    return { items, trend, companyId, modelVersion: "rule-v1", costCenters };
   }
 
   @Post("narrative")

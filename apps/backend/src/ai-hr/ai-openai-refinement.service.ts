@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import OpenAI from "openai";
 import { AI_TOKEN_BODY_RE } from "../ai-privacy/ai-privacy.constants";
+import { isNexaAiOpenAiLlmEnabled } from "../platform/nexa-ai-llm-env";
 import { getNexaHrConversationalAgentSystemPrompt } from "./ai-hr-agent";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
@@ -75,9 +76,7 @@ export class AiOpenAiRefinementService {
   private readonly logger = new Logger(AiOpenAiRefinementService.name);
 
   isActive(): boolean {
-    const key = process.env.OPENAI_API_KEY?.trim();
-    const on = process.env.NEXA_AI_OPENAI_ENABLED === "true";
-    return on && !!key;
+    return isNexaAiOpenAiLlmEnabled();
   }
 
   /**

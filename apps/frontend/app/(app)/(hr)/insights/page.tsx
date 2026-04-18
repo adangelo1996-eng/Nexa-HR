@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  fetchCurrentUser,
   fetchTurnoverRetention,
   postAnalyticsNarrative,
   postTurnoverRetentionRefresh,
   type TurnoverRetentionItem
 } from "@/lib/api";
-import { getToken } from "@/lib/auth-session";
+import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import {
   HebbAiErrorBanner,
@@ -22,7 +23,7 @@ export default function InsightsPage(): React.JSX.Element {
   const [trend, setTrend] = useState<Array<{ weekStart: string; avgScore: number; sampleSize: number }>>([]);
   const [modelVersion, setModelVersion] = useState("");
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
-  const [costCenterOptions, setCostCenterOptions] = useState<string[]>([]);
+  const [costCenters, setCostCenters] = useState<Array<{ id: string; label: string }>>([]);
   const [costCenterId, setCostCenterId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,6 +50,7 @@ export default function InsightsPage(): React.JSX.Element {
     setBusy(true);
     setError(null);
     try {
+      await fetchCurrentUser(t).catch(() => undefined);
       const res = await fetchTurnoverRetention(t, {
         costCenterId: costCenterId.trim() || undefined,
         trendWeeks: 10
@@ -56,7 +58,7 @@ export default function InsightsPage(): React.JSX.Element {
       setItems(res.items);
       setTrend(res.trend);
       setModelVersion(res.modelVersion);
-      setCostCenterOptions(res.costCenterOptions ?? []);
+      setCostCenters(res.costCenters ?? []);
       setLastRunAt(res.items[0]?.computedAt ?? null);
       setTurnoverPayload({
         items: res.items,
@@ -128,16 +130,16 @@ export default function InsightsPage(): React.JSX.Element {
       title="Turnover e retention"
       subtitle={
         <>
-          Score rule-based (modello <span className="font-semibold text-[var(--prom-text)]">{modelVersion || "—"}</span>)
-          da tenure, ferie e contratto. Snapshot per azienda: aggiorna dopo cambi anagrafici. Trend su medie settimanali
-          salvate.
+          Indicatore sintetico di rischio turnover (versione {modelVersion || "—"}) calcolato su dati HR già presenti in
+          Nexa (anzianità, ferie, tipo di contratto). È un supporto alla valutazione, non una diagnosi automatica. Il
+          trend mostra la media settimanale degli score.
           {lastRunAt ? (
             <span className="mt-2 block text-sm text-[var(--prom-muted)]">
-              Ultimo run: {new Date(lastRunAt).toLocaleString("it-IT")}
+              Ultimo aggiornamento: {new Date(lastRunAt).toLocaleString("it-IT")}
             </span>
           ) : (
             <span className="mt-2 block text-sm text-amber-800 dark:text-amber-200/90">
-              Nessuno snapshot: usa &quot;Aggiorna segnali&quot;.
+              Nessun dato ancora calcolato: premi &quot;Aggiorna segnali&quot;.
             </span>
           )}
         </>
@@ -162,10 +164,10 @@ export default function InsightsPage(): React.JSX.Element {
             value={costCenterId}
             onChange={(e) => setCostCenterId(e.target.value)}
           >
-            <option value="">Tutti</option>
-            {costCenterOptions.map((id) => (
-              <option key={id} value={id}>
-                {id}
+            <option value="">Tutti i centri di costo</option>
+            {costCenters.map((cc) => (
+              <option key={cc.id} value={cc.id}>
+                {cc.label}
               </option>
             ))}
           </select>
@@ -178,14 +180,16 @@ export default function InsightsPage(): React.JSX.Element {
       {turnoverPayload ? (
         <HebbAiGlassPanel>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Narrativa aggregata (senza nominativi)</h2>
+            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Sintesi in linguaggio naturale</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
-                <input type="checkbox" checked={narrativeLlm} onChange={(e) => setNarrativeLlm(e.target.checked)} />
-                Raffinamento LLM
-              </label>
+              {sessionCanUseNexaAiOpenAiLlm(getSessionUser()) ? (
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
+                  <input type="checkbox" checked={narrativeLlm} onChange={(e) => setNarrativeLlm(e.target.checked)} />
+                  Raffinamento con AI (solo su numeri aggregati)
+                </label>
+              ) : null}
               <Button type="button" size="sm" variant="outline" disabled={narrativeBusy} onClick={() => void runNarrative()}>
-                {narrativeBusy ? "Generazione…" : "Genera sintesi turnover"}
+                {narrativeBusy ? "Generazione…" : "Genera sintesi"}
               </Button>
             </div>
           </div>

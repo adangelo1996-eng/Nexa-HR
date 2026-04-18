@@ -69,6 +69,11 @@ export interface SessionUser {
   companyCcnl?: string | null;
   /** Permesso catalogo budget (backend); la sezione `/personnel-budget` in UI è mostrata solo con `canNexaAdmin`. */
   canAccessPersonnelBudgetArea?: boolean;
+  /**
+   * LLM OpenAI disponibile su questo backend (`NEXA_AI_OPENAI_ENABLED` + `OPENAI_API_KEY`).
+   * Da `GET /users/me` / login.
+   */
+  nexaAiOpenAiEnabled?: boolean;
 }
 
 function normalizeStoredRole(role: unknown): UserRole {
@@ -140,6 +145,13 @@ export function sessionCanAccessPersonnelBudgetArea(
   u: Pick<SessionUser, "canAccessPersonnelBudgetArea"> | null | undefined
 ): boolean {
   return u?.canAccessPersonnelBudgetArea === true;
+}
+
+/** Centro AI HR e raffinamento LLM opzionale (narrative): solo se il backend espone il flag a true. */
+export function sessionCanUseNexaAiOpenAiLlm(
+  u: Pick<SessionUser, "nexaAiOpenAiEnabled"> | null | undefined
+): boolean {
+  return u?.nexaAiOpenAiEnabled === true;
 }
 
 /** Timbrature altrui / azioni HR su presenze: HR esteso o centro HR (`canManageTeamAttendance`). */

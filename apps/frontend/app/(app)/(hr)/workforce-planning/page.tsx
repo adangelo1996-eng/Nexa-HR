@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchWorkforceCockpit, postAnalyticsNarrative, type WorkforceCockpitScenario } from "@/lib/api";
-import { getToken } from "@/lib/auth-session";
+import { fetchCurrentUser, fetchWorkforceCockpit, postAnalyticsNarrative, type WorkforceCockpitScenario } from "@/lib/api";
+import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   HebbAiErrorBanner,
   HebbAiExperienceShell,
@@ -27,9 +28,14 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     llmApplied: boolean;
   } | null>(null);
 
-  const load = useCallback(async (): Promise<void> => {
+  const [customFte, setCustomFte] = useState(0);
+  const [customFlat, setCustomFlat] = useState(0);
+  const [customScale, setCustomScale] = useState(100);
+
+  const loadPreset = useCallback(async (): Promise<void> => {
     const t = getToken();
     if (!t) return;
+    await fetchCurrentUser(t).catch(() => undefined);
     setError(null);
     try {
       const r = await fetchWorkforceCockpit(t, scenario, 6);
@@ -39,9 +45,39 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     }
   }, [scenario]);
 
+  const loadCustom = useCallback(async (): Promise<void> => {
+    const t = getToken();
+    if (!t) return;
+    await fetchCurrentUser(t).catch(() => undefined);
+    setError(null);
+    try {
+      const r = await fetchWorkforceCockpit(t, "custom", 6, {
+        fteDelta: customFte,
+        monthlyFlatDeltaEur: customFlat,
+        seriesScalePercent: customScale
+      });
+      setData(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore caricamento");
+    }
+  }, [customFte, customFlat, customScale]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (scenario === "custom") {
+      return;
+    }
+    void loadPreset();
+  }, [scenario, loadPreset]);
+
+  useEffect(() => {
+    if (scenario !== "custom") {
+      return;
+    }
+    const h = setTimeout(() => {
+      void loadCustom();
+    }, 450);
+    return () => clearTimeout(h);
+  }, [scenario, customFte, customFlat, customScale, loadCustom]);
 
   const max = Math.max(1, ...(data?.series.map((s) => s.costEur) ?? [1]));
 
@@ -58,7 +94,8 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
         payload: {
           scenario: data.scenario,
           summary: data.summary,
-          series: data.series
+          series: data.series,
+          custom: data.custom ?? null
         },
         useLlm: narrativeLlm
       });
@@ -71,6 +108,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   };
 
   const linkCn = hebbAiLinkClassName();
+  const llmAllowed = sessionCanUseNexaAiOpenAiLlm(getSessionUser());
 
   return (
     <HebbAiExperienceShell
@@ -78,8 +116,9 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
       title="Workforce planning"
       subtitle={
         <>
-          Riepilogo organico e costo massa stipendi mensile, con scenari what-if sullo stesso motore del forecast
-          payroll. Per il dettaglio per centro di costo apri{" "}
+          Quante persone ci sono oggi e quanto costa la massa stipendi al mese, con una proiezione a sei mesi. Puoi
+          confrontare scenari predefiniti o costruire un what-if con i tuoi numeri (variazioni di testa, importo fisso
+          aggiuntivo, scala sui costi previsti). Per il dettaglio per reparto usa{" "}
           <Link href="/personnel-budget" className={linkCn}>
             Budget personale
           </Link>{" "}
@@ -92,14 +131,15 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
       }
       headerTrailing={<HebbAiPageHelpButton pageKey="workforce-planning" />}
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+      <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
         {(
           [
-            ["base", "Scenario base"],
-            ["growth", "+2 FTE (stima costo)"],
-            ["freeze", "Costo flat (no crescita)"]
+            ["base", "Scenario base", "A"],
+            ["growth", "+2 FTE (stima)", "+"],
+            ["freeze", "Costi flat", "═"],
+            ["custom", "What-if libero", "?"]
           ] as const
-        ).map(([key, label]) => (
+        ).map(([key, label, badge]) => (
           <button
             key={key}
             type="button"
@@ -112,12 +152,62 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
             ].join(" ")}
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#002D72] to-[#1a4d8c] text-xs font-bold text-white">
-              {key === "base" ? "A" : key === "growth" ? "+" : "═"}
+              {badge}
             </span>
             <span className="min-w-0 text-sm font-semibold text-[var(--prom-text)]">{label}</span>
           </button>
         ))}
       </div>
+
+      {scenario === "custom" ? (
+        <HebbAiGlassPanel className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Parametri what-if</h2>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--prom-muted)]">
+              I valori si applicano con un breve ritardo mentre digiti. La massa stipendi attuale viene usata per stimare
+              l’effetto di teste in più o in meno; l’importo fisso si somma ogni mese; la percentuale moltiplica l’intera
+              curva del forecast (0–300%).
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              <span className="font-semibold text-[var(--prom-text)]">Teste equivalenti (FTE)</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={Number.isNaN(customFte) ? "" : customFte}
+                onChange={(e) => setCustomFte(Math.round(Number(e.target.value) || 0))}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              <span className="font-semibold text-[var(--prom-text)]">Euro fissi al mese (±)</span>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={Number.isNaN(customFlat) ? "" : customFlat}
+                onChange={(e) => setCustomFlat(Number(e.target.value) || 0)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              <span className="font-semibold text-[var(--prom-text)]">Scala su forecast (%)</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={300}
+                value={Number.isNaN(customScale) ? "" : customScale}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setCustomScale(Number.isFinite(n) ? Math.min(300, Math.max(0, n)) : 100);
+                }}
+              />
+            </label>
+          </div>
+          <Button type="button" size="sm" variant="outline" onClick={() => void loadCustom()}>
+            Ricalcola subito
+          </Button>
+        </HebbAiGlassPanel>
+      ) : null}
 
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
@@ -126,13 +216,13 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
           <div className="grid gap-4 sm:grid-cols-3">
             <HebbAiGlassTile>
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Headcount (esclusi superuser)
+                Persone in organico (senza superuser)
               </p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.headcount}</p>
             </HebbAiGlassTile>
             <HebbAiGlassTile>
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Massa RAL mensile stimata
+                Stima massa retributiva mensile
               </p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
                 {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
@@ -168,17 +258,19 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
 
           <HebbAiGlassPanel>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-[var(--prom-text)]">Narrativa su aggregati</h2>
+              <h2 className="text-lg font-semibold text-[var(--prom-text)]">Sintesi in linguaggio naturale</h2>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
-                  <input
-                    type="checkbox"
-                    className="rounded border-[var(--prom-line-strong)]"
-                    checked={narrativeLlm}
-                    onChange={(e) => setNarrativeLlm(e.target.checked)}
-                  />
-                  Raffinamento LLM (se abilitato)
-                </label>
+                {llmAllowed ? (
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
+                    <input
+                      type="checkbox"
+                      className="rounded border-[var(--prom-line-strong)]"
+                      checked={narrativeLlm}
+                      onChange={(e) => setNarrativeLlm(e.target.checked)}
+                    />
+                    Raffinamento con AI (solo aggregati)
+                  </label>
+                ) : null}
                 <Button type="button" size="sm" variant="outline" disabled={narrativeBusy} onClick={() => void runNarrative()}>
                   {narrativeBusy ? "Generazione…" : "Genera sintesi"}
                 </Button>
@@ -187,7 +279,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
             {narrative ? (
               <div className="mt-6 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4 text-sm text-[var(--prom-text)]">
                 <p className="text-xs text-[var(--prom-muted)]">
-                  Fonte: template interno{narrative.llmApplied ? " + LLM su numeri aggregati" : ""} (audit Nexa).
+                  Fonte: testo guidato dai dati in pagina{narrative.llmApplied ? ", con passaggio opzionale in AI" : ""}.
                 </p>
                 <p className="font-synapse text-base font-semibold">{narrative.title}</p>
                 <ul className="list-inside list-disc space-y-1 text-xs leading-relaxed text-[var(--prom-muted)]">
@@ -199,7 +291,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
               </div>
             ) : (
               <p className="mt-4 text-sm text-[var(--prom-muted)]">
-                Solo dati aggregati del cockpit vengono inviati al servizio narrative (nessun nominativo).
+                Vengono usati solo numeri di riepilogo già mostrati qui sopra, senza elenco di persone.
               </p>
             )}
           </HebbAiGlassPanel>

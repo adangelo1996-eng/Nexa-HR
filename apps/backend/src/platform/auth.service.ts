@@ -4,6 +4,7 @@ import type { AuthRole } from "./auth";
 import { getAuthJwtSecret } from "./auth-jwt-secret";
 import { userCanManageTeamAttendance } from "./hr-attendance-access.util";
 import { HrDataStore } from "./hr-data.store";
+import { isNexaAiOpenAiLlmEnabled } from "./nexa-ai-llm-env";
 import { PermissionsService } from "./permissions.service";
 import crypto from "node:crypto";
 import type { Request, Response } from "express";
@@ -21,6 +22,8 @@ interface LoginUser {
   canExportAttendanceReports: boolean;
   canAccessPayrollArea: boolean;
   canAccessPersonnelBudgetArea: boolean;
+  /** LLM OpenAI attivo su questo ambiente (stesso criterio di `GET /users/me`). */
+  nexaAiOpenAiEnabled: boolean;
 }
 
 interface SynapseSsoPayload {
@@ -152,6 +155,7 @@ export class AuthService {
       | "canExportAttendanceReports"
       | "canAccessPayrollArea"
       | "canAccessPersonnelBudgetArea"
+      | "nexaAiOpenAiEnabled"
     >
   > {
     const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(user.id, user.role, user.email);
@@ -185,7 +189,8 @@ export class AuthService {
       canAccessHrWorkflowExtras,
       canExportAttendanceReports,
       canAccessPayrollArea,
-      canAccessPersonnelBudgetArea
+      canAccessPersonnelBudgetArea,
+      nexaAiOpenAiEnabled: isNexaAiOpenAiLlmEnabled()
     };
   }
 

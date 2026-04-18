@@ -29,6 +29,7 @@ import {
 } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
+import { isNexaAiOpenAiLlmEnabled } from "../platform/nexa-ai-llm-env";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AttendanceTeamService } from "../workforce/attendance-team.service";
 import { PermissionsService } from "../platform/permissions.service";
@@ -665,6 +666,7 @@ export class UserController {
     const companyRow = await this.store.getCompanySettings(user.companyId);
     return {
       ...user,
+      nexaAiOpenAiEnabled: isNexaAiOpenAiLlmEnabled(),
       isSynapseSuperuser: isSynapseSuperuserEmail(user.email),
       canNexaAdmin,
       canAccessHrExtendedConsole,

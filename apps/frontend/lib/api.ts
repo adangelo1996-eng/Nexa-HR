@@ -3025,7 +3025,7 @@ export async function fetchTurnoverRetention(
   trend: Array<{ weekStart: string; avgScore: number; sampleSize: number }>;
   companyId: string;
   modelVersion: string;
-  costCenterOptions: string[];
+  costCenters: Array<{ id: string; label: string }>;
 }> {
   const params = new URLSearchParams();
   if (options?.costCenterId) {
@@ -3044,7 +3044,7 @@ export async function fetchTurnoverRetention(
     trend: Array<{ weekStart: string; avgScore: number; sampleSize: number }>;
     companyId: string;
     modelVersion: string;
-    costCenterOptions: string[];
+    costCenters: Array<{ id: string; label: string }>;
   };
 }
 
@@ -3334,19 +3334,26 @@ export async function fetchPayrollForecast(
   return (await response.json()) as { series: Array<{ month: string; costEur: number }> };
 }
 
-export type WorkforceCockpitScenario = "base" | "growth" | "freeze";
+export type WorkforceCockpitScenario = "base" | "growth" | "freeze" | "custom";
 
 export async function fetchWorkforceCockpit(
   token: string,
   scenario: WorkforceCockpitScenario,
-  months?: number
+  months?: number,
+  custom?: { fteDelta?: number; monthlyFlatDeltaEur?: number; seriesScalePercent?: number }
 ): Promise<{
   scenario: WorkforceCockpitScenario;
   summary: { headcount: number; monthlyPayrollMassEur: number; pendingExpenseCount: number };
   series: Array<{ month: string; costEur: number }>;
+  custom?: { fteDelta: number; monthlyFlatDeltaEur: number; seriesScalePercent: number };
 }> {
   const params = new URLSearchParams({ scenario });
   if (months != null) params.set("months", String(months));
+  if (scenario === "custom" && custom) {
+    if (custom.fteDelta != null) params.set("fteDelta", String(custom.fteDelta));
+    if (custom.monthlyFlatDeltaEur != null) params.set("monthlyFlatDeltaEur", String(custom.monthlyFlatDeltaEur));
+    if (custom.seriesScalePercent != null) params.set("seriesScalePercent", String(custom.seriesScalePercent));
+  }
   const response = await fetch(buildApiUrl(`/analytics/workforce-cockpit?${params.toString()}`), {
     headers: getAuthHeaders(token)
   });
@@ -3355,6 +3362,7 @@ export async function fetchWorkforceCockpit(
     scenario: WorkforceCockpitScenario;
     summary: { headcount: number; monthlyPayrollMassEur: number; pendingExpenseCount: number };
     series: Array<{ month: string; costEur: number }>;
+    custom?: { fteDelta: number; monthlyFlatDeltaEur: number; seriesScalePercent: number };
   };
 }
 

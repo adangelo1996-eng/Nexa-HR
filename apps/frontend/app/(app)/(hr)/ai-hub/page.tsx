@@ -23,6 +23,7 @@ import {
   fetchAiAssistantOrgUsers,
   fetchAiAssistantScopeOptions,
   fetchAiNlQueryCatalog,
+  fetchCurrentUser,
   postAiAnomalies,
   postAiAssistant,
   postAiNlQueryRun,
@@ -250,6 +251,11 @@ export default function AiHubPage(): React.JSX.Element {
     setToken(t);
     setError(null);
     try {
+      const me = await fetchCurrentUser(t);
+      if (me.nexaAiOpenAiEnabled !== true) {
+        router.replace("/");
+        return;
+      }
       const pack = await fetchAiNlQueryCatalog(t);
       setCatalog(pack.queries);
       setLlmActive(pack.capabilities.llmActive);

@@ -4971,19 +4971,29 @@ export class HrDataStore {
 
   /**
    * Cockpit workforce planning: riepilogo organico + serie costo mensile (stesso motore di forecast-payroll)
-   * con scenari what-if leggeri (base / +2 FTE / costo flat senza crescita sintetica).
+   * con scenari what-if (base / +2 FTE / costo flat / custom con parametri liberi).
    */
   async getWorkforceCockpit(
-    scenario: "base" | "growth" | "freeze",
-    months = 6
+    scenario: "base" | "growth" | "freeze" | "custom",
+    months = 6,
+    custom?: {
+      fteDelta?: number;
+      monthlyFlatDeltaEur?: number;
+      seriesScalePercent?: number;
+    }
   ): Promise<{
-    scenario: "base" | "growth" | "freeze";
+    scenario: "base" | "growth" | "freeze" | "custom";
     summary: {
       headcount: number;
       monthlyPayrollMassEur: number;
       pendingExpenseCount: number;
     };
     series: Array<{ month: string; costEur: number }>;
+    custom?: {
+      fteDelta: number;
+      monthlyFlatDeltaEur: number;
+      seriesScalePercent: number;
+    };
   }> {
     const m = Math.min(12, Math.max(1, months));
     const dash = await this.getHrDashboardSummary();
@@ -4994,12 +5004,28 @@ export class HrDataStore {
       Math.round(staff.reduce((acc, u) => acc + (Number(u.baseSalaryMonthly) || 5800), 0) * 100) / 100;
     const baseSeries = await this.payrollForecastNextMonths(m);
     let series = baseSeries.map((r) => ({ month: r.month, costEur: r.costEur }));
+    let customApplied: { fteDelta: number; monthlyFlatDeltaEur: number; seriesScalePercent: number } | undefined;
     if (scenario === "freeze") {
       const flat = Math.round(monthlyPayrollMassEur);
       series = baseSeries.map((r) => ({ month: r.month, costEur: flat }));
     } else if (scenario === "growth") {
       const addFte = headcount > 0 ? (monthlyPayrollMassEur / headcount) * 2 : 0;
       series = baseSeries.map((r) => ({ month: r.month, costEur: Math.round(r.costEur + addFte) }));
+    } else if (scenario === "custom") {
+      const fteDelta = Number.isFinite(custom?.fteDelta) ? Math.round(Number(custom!.fteDelta)) : 0;
+      const monthlyFlatDeltaEur = Number.isFinite(custom?.monthlyFlatDeltaEur)
+        ? Number(custom!.monthlyFlatDeltaEur)
+        : 0;
+      const rawPct = Number.isFinite(custom?.seriesScalePercent) ? Number(custom!.seriesScalePercent) : 100;
+      const seriesScalePercent = Math.min(300, Math.max(0, rawPct));
+      const scale = seriesScalePercent / 100;
+      const avgPerHead = headcount > 0 ? monthlyPayrollMassEur / headcount : 5800;
+      const fteCost = fteDelta * avgPerHead;
+      series = baseSeries.map((r) => ({
+        month: r.month,
+        costEur: Math.round(r.costEur * scale + fteCost + monthlyFlatDeltaEur)
+      }));
+      customApplied = { fteDelta, monthlyFlatDeltaEur, seriesScalePercent };
     }
     return {
       scenario,
@@ -5008,7 +5034,8 @@ export class HrDataStore {
         monthlyPayrollMassEur,
         pendingExpenseCount: dash.pendingExpenseCount
       },
-      series
+      series,
+      ...(customApplied ? { custom: customApplied } : {})
     };
   }
 
@@ -7152,6 +7179,27 @@ export class HrDataStore {
       }
     }
     return [...s].sort((a, b) => a.localeCompare(b, "it"));
+  }
+
+  /**
+   * Centri di costo presenti in anagrafica dipendenti, con etichetta leggibile da tabella `cost_centers`
+   * (nome + codice). Gli ID restano quelli usati nei filtri API.
+   */
+  async listCostCentersForTurnoverFilter(companyId: string): Promise<Array<{ id: string; label: string }>> {
+    const ids = await this.listCostCenterIdsForCompany(companyId);
+    const centers = await this.listCostCenters();
+    const byId = new Map(
+      centers
+        .filter((c) => !c.companyId || c.companyId === companyId)
+        .map((c) => [c.id, c] as const)
+    );
+    return ids
+      .map((id) => {
+        const c = byId.get(id);
+        const label = c ? `${c.name} (${c.code})` : id;
+        return { id, label };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "it"));
   }
 
   async getLatestTurnoverRetention(
