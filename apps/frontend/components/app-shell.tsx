@@ -152,54 +152,67 @@ function SidebarCollapsibleSection(props: {
 }): React.JSX.Element {
   const { section, pathname, open, onOpenChange, onNavigate, beforeNavigate } = props;
   const pc = section.portalCategory;
+  const panelId = `sidebar-nav-${section.id}`;
+  const btnId = `${panelId}-btn`;
+
   return (
-    <details
-      className="group mx-0 border-b border-transparent py-0.5 last:border-b-0"
-      open={open}
-      onToggle={(e) => onOpenChange(section.id, e.currentTarget.open)}
-    >
-      <summary
+    <div className="mx-0 border-b border-transparent py-0.5 last:border-b-0">
+      <button
+        type="button"
+        id={btnId}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => onOpenChange(section.id, !open)}
         className={
           pc
-            ? `mx-2 flex cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 marker:content-none [&::-webkit-details-marker]:hidden ${portalCategoryGlassColumnHeaderClass(pc, "compact")}`
-            : `mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--prom-muted)] transition-[background,color] marker:content-none hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)] [&::-webkit-details-marker]:hidden ${
+            ? `mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${portalCategoryGlassColumnHeaderClass(pc, "compact")}`
+            : `mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--prom-muted)] transition-[background,color,opacity] duration-300 hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)] ${
                 open ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)] text-[var(--prom-text)]" : ""
               }`
         }
       >
         <span className={pc ? "min-w-0 flex-1 pr-1" : ""}>{section.title}</span>
         <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 md:h-4 md:w-4 ${
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.33,1,0.68,1)] md:h-4 md:w-4 ${
             pc ? "text-white/70 dark:text-white/60" : "text-[var(--prom-muted)] opacity-70"
           } ${open ? "rotate-90" : ""}`}
           aria-hidden
         />
-      </summary>
-      <div className="mt-0.5 space-y-1 pb-1">
-        {section.subgroups.map((sg) => (
-          <div key={`${section.id}-${sg.id}`}>
-            {pc ? (
-              <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
-            ) : (
-              <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                {sg.title}
+      </button>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={btnId}
+        className={`overflow-hidden transition-[max-height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+          open ? "max-h-[min(120rem,3200px)]" : "max-h-0"
+        }`}
+      >
+        <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
+          {section.subgroups.map((sg) => (
+            <div key={`${section.id}-${sg.id}`}>
+              {pc ? (
+                <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
+              ) : (
+                <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                  {sg.title}
+                </div>
+              )}
+              <div className="mt-0.5 space-y-0.5">
+                {sg.items.map((item) => (
+                  <SidebarNavLink
+                    key={`${section.id}-${sg.id}-${item.href}`}
+                    item={item}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                    beforeNavigate={beforeNavigate}
+                  />
+                ))}
               </div>
-            )}
-            <div className="mt-0.5 space-y-0.5">
-              {sg.items.map((item) => (
-                <SidebarNavLink
-                  key={`${section.id}-${sg.id}-${item.href}`}
-                  item={item}
-                  pathname={pathname}
-                  onNavigate={onNavigate}
-                  beforeNavigate={beforeNavigate}
-                />
-              ))}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </details>
+    </div>
   );
 }
 

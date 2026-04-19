@@ -53,6 +53,19 @@ export function portalSubgroupGlassClass(portalCategory: string, density: "compa
   return `rounded-lg border border-white/10 ${sizing} ${tint} backdrop-blur-md`;
 }
 
+/** Bordo superiore sulle card mappa portale (stessa famiglia cromatica della categoria). */
+export function portalCategoryTileTopAccentClass(category: string): string {
+  const map: Record<string, string> = {
+    Quotidiano: "border-t-2 border-t-cyan-400/85",
+    "Persone e organizzazione": "border-t-2 border-t-emerald-400/85",
+    "HEBB AI for HR": "border-t-2 border-t-violet-400/85",
+    "Selezione e documenti": "border-t-2 border-t-amber-400/85",
+    "Analisi e pianificazione": "border-t-2 border-t-sky-400/85",
+    "Amministrazione e dati": "border-t-2 border-t-orange-400/85"
+  };
+  return map[category] ?? "border-t-2 border-t-white/25";
+}
+
 /** Link pagina sotto una categoria (bordo sinistro nella tinta della categoria). */
 export function portalLeafLinkClass(category: string): string {
   const map: Record<string, string> = {

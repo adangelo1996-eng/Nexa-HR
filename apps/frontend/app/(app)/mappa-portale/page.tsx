@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
 import { fetchCurrentUser } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanNexaAdmin, type SessionUser } from "@/lib/auth-session";
 import {
   portalCategoryGlassColumnHeaderClass,
-  portalLeafLinkClass,
-  portalSubgroupGlassClass
+  portalCategoryTileTopAccentClass
 } from "@/lib/nav-visual-accents";
-import { buildPortalColumns } from "@/lib/nexa-portal-column-layout";
-import { PORTAL_CATEGORY_ORDER } from "@/lib/portal-mappa";
+import { groupPortalTiles, PORTAL_CATEGORY_ORDER } from "@/lib/portal-mappa";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
@@ -33,86 +32,93 @@ export default function MappaPortalePage(): React.JSX.Element {
 
   const hideSensitiveHr = Boolean(employeeView && sessionCanNexaAdmin(user ?? undefined));
 
-  const columns = useMemo(
-    () => buildPortalColumns(user, hideSensitiveHr),
-    [user, hideSensitiveHr]
-  );
-  const byCat = useMemo(() => new Map(columns.map((c) => [c.portalCategory, c])), [columns]);
+  const grouped = useMemo(() => groupPortalTiles(user, hideSensitiveHr), [user, hideSensitiveHr]);
 
   return (
-    <div className="relative w-full bg-[color-mix(in_srgb,#020b1a_96%,var(--prom-surface))] pb-12 pt-5 sm:pt-6">
+    <div className="relative isolate min-h-[72vh] overflow-hidden rounded-[2rem] border border-[color-mix(in_srgb,#002D72_28%,var(--prom-line))] bg-[color-mix(in_srgb,#020b1a_96%,var(--prom-surface))] px-4 py-8 sm:px-8">
       <div
-        className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-[#002D72] opacity-[0.2] blur-[100px]"
+        className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-[#002D72] opacity-[0.22] blur-[100px]"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-sky-500 opacity-[0.1] blur-[110px]"
+        className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-sky-500 opacity-[0.12] blur-[110px]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/3 h-px w-[min(120%,900px)] -translate-x-1/2 bg-gradient-to-r from-transparent via-[#002D72]/40 to-transparent"
         aria-hidden
       />
 
-      <div className="relative z-[1] mx-auto w-[min(100%,1320px)] px-4 sm:px-6">
-        <header className="mx-auto mb-8 max-w-2xl text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-sky-200/80">Synapse · Nexa HR</p>
-          <h1
-            className="mt-2 bg-gradient-to-br from-white via-sky-100 to-[#7eb8ff] bg-clip-text text-2xl font-semibold tracking-tight text-transparent sm:text-3xl"
-            style={{ fontFamily: "var(--font-synapse-display, inherit)" }}
+      <header className="relative z-[1] mx-auto max-w-4xl text-center">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-sky-200/80">Synapse · Nexa HR</p>
+        <h1
+          className="mt-3 bg-gradient-to-br from-white via-sky-100 to-[#7eb8ff] bg-clip-text text-3xl font-semibold tracking-tight text-transparent sm:text-4xl"
+          style={{ fontFamily: "var(--font-synapse-display, inherit)" }}
+        >
+          Mappa del portale
+        </h1>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-sky-100/75">
+          Ogni riquadro è un accesso rapido. Passa il cursore per leggere in dissolvenza a cosa serve la pagina, prima
+          di aprirla.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] text-sky-200/70">
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1">
+            {user?.fullName ?? "Caricamento profilo…"}
+          </span>
+          <Link
+            href="/settings"
+            scroll={false}
+            className="rounded-full border border-sky-400/35 bg-sky-500/15 px-3 py-1 font-medium text-sky-100 backdrop-blur-sm transition-colors hover:border-sky-300/50 hover:bg-sky-500/25"
           >
-            Mappa del portale
-          </h1>
-          <p className="mx-auto mt-2 max-w-lg text-xs text-sky-100/70 sm:text-sm">
-            Sei aree tematiche; sotto ognuna le stesse sottosezioni del menu laterale.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] text-sky-200/70">
-            <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 backdrop-blur-sm">
-              {user?.fullName ?? "Profilo…"}
+            Impostazioni
+          </Link>
+          {hideSensitiveHr ? (
+            <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-amber-100/90">
+              Vista dipendente: sezioni HR riservate nascoste
             </span>
-            <Link
-              href="/settings"
-              scroll={false}
-              className="rounded-full border border-sky-400/35 bg-sky-500/15 px-3 py-1 font-medium text-sky-100 backdrop-blur-sm hover:border-sky-300/50 hover:bg-sky-500/25"
-            >
-              Impostazioni
-            </Link>
-            {hideSensitiveHr ? (
-              <span className="rounded-full border border-amber-400/25 bg-amber-500/10 px-3 py-1 text-amber-100/85 backdrop-blur-sm">
-                Vista dipendente
-              </span>
-            ) : null}
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-          {PORTAL_CATEGORY_ORDER.map((cat) => {
-            const col = byCat.get(cat);
-            return (
-              <div key={cat} className="flex min-w-0 flex-col gap-1">
-                <div className={portalCategoryGlassColumnHeaderClass(cat, "default")}>{cat}</div>
-                {col?.subgroups.length ? (
-                  col.subgroups.map((sg) => (
-                    <div key={sg.id} className="flex flex-col gap-1">
-                      <div className={portalSubgroupGlassClass(cat, "default")}>{sg.title}</div>
-                      <ul className="flex flex-col gap-1">
-                        {sg.tiles.map((tile) => (
-                          <li key={String(tile.href)}>
-                            <Link
-                              href={tile.href}
-                              scroll={false}
-                              className={`block rounded-md px-1 py-1 text-[13px] leading-snug transition-colors ${portalLeafLinkClass(cat)}`}
-                            >
-                              {tile.title}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))
-                ) : (
-                  <p className="px-1 py-2 text-[12px] text-sky-200/40">Nessuna pagina in quest’area.</p>
-                )}
-              </div>
-            );
-          })}
+          ) : null}
         </div>
+      </header>
+
+      <div className="relative z-[1] mx-auto mt-12 max-w-6xl space-y-14">
+        {PORTAL_CATEGORY_ORDER.map((cat) => {
+          const tiles = grouped.get(cat);
+          if (!tiles?.length) return null;
+          return (
+            <section key={cat}>
+              <div className="mb-5">
+                <div className={portalCategoryGlassColumnHeaderClass(cat, "default")}>{cat}</div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {tiles.map((tile) => (
+                  <Link
+                    key={String(tile.href)}
+                    href={tile.href}
+                    scroll={false}
+                    className={`group relative flex min-h-[148px] flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--prom-surface)_55%,#03152d)_0%,color-mix(in_srgb,#002D72_12%,transparent)_120%)] p-5 text-left shadow-[0_16px_40px_-24px_rgba(0,0,0,0.85)] transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,#002D72_45%,transparent)] hover:shadow-[0_28px_60px_-28px_rgba(0,45,114,0.55)] ${portalCategoryTileTopAccentClass(cat)}`}
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                      style={{
+                        background:
+                          "radial-gradient(120% 80% at 90% 0%, rgba(0,45,114,0.35), transparent 55%), radial-gradient(80% 60% at 0% 100%, rgba(56,189,248,0.12), transparent 50%)"
+                      }}
+                    />
+                    <div className="relative z-[1] flex flex-1 flex-col">
+                      <span className="line-clamp-2 text-base font-semibold leading-snug text-white">{tile.title}</span>
+                      <ArrowUpRight className="ml-auto mt-3 h-5 w-5 shrink-0 text-sky-300/50 transition duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-sky-200" />
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] p-4 opacity-0 transition-all duration-300 ease-out group-hover:translate-y-0 group-hover:opacity-100 translate-y-2">
+                      <div className="rounded-xl border border-sky-300/25 bg-slate-950/92 px-3 py-2.5 text-xs leading-snug text-sky-50 shadow-xl backdrop-blur-md ring-1 ring-[#002D72]/30">
+                        {tile.blurb}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
