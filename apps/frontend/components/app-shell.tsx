@@ -60,6 +60,7 @@ type NavItem = SixCatNavItem;
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
 const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
+const NAV_HR_RECAP: NavItem = { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
@@ -403,7 +404,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const onLogout = useCallback((): void => {
     // clearSession already does best-effort server logout
     clearSession();
-    router.push("/login");
+    if (typeof window !== "undefined") {
+      window.location.assign("/login");
+    } else {
+      router.replace("/login");
+    }
   }, [router]);
 
   const toggleEmployeeView = useCallback((): void => {
@@ -497,6 +502,14 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
+      {sessionCanAccessHrRecapDashboard(user ?? undefined) ? (
+        <SidebarNavLink
+          item={NAV_HR_RECAP}
+          pathname={pathname}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ) : null}
       <SidebarNavLink
         item={NAV_PORTAL_MAP}
         pathname={pathname}

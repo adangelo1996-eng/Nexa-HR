@@ -571,6 +571,10 @@ export async function fetchCurrentUser(token: string): Promise<SessionUser> {
     headers: getAuthHeaders(token)
   });
   if (!response.ok) {
+    /** 401: token scaduto — non mascherare con cache locale (es. workforce planning chiamava API con JWT invalido). */
+    if (response.status === 401) {
+      await parseError(response);
+    }
     const cached = getSessionUser();
     if (cached) {
       return cached;
@@ -3606,6 +3610,87 @@ export async function fetchPayrollForecast(
   return (await response.json()) as { series: Array<{ month: string; costEur: number }> };
 }
 
+export type PayrollForecastBreakdownDto = {
+  employerFactor: number;
+  series: Array<{
+    month: string;
+    ralMassMonthlyEur: number;
+    estimatedEmployerMonthlyEur: number;
+    totalMonthlyEur: number;
+  }>;
+  byCostCenter: Array<{
+    costCenterId: string | null;
+    label: string;
+    headcount: number;
+    monthlyRalMassEur: number;
+    monthlyTotalEur: number;
+  }>;
+  byTeam: Array<{
+    teamId: string;
+    teamName: string;
+    costCenterId: string;
+    headcount: number;
+    monthlyRalMassEur: number;
+    monthlyTotalEur: number;
+  }>;
+  employees: Array<{
+    userId: string;
+    fullName: string;
+    monthlyBaseEur: number;
+    ralAnnualEstimateEur: number;
+    monthlyTotalEstimateEur: number;
+    costCenterId?: string;
+    teamId?: string | null;
+  }>;
+};
+
+export async function fetchPayrollForecastBreakdown(
+  token: string,
+  months?: number
+): Promise<PayrollForecastBreakdownDto> {
+  const q = months != null ? `?months=${months}` : "";
+  const response = await fetch(buildApiUrl(`/analytics/forecast-payroll-breakdown${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as PayrollForecastBreakdownDto;
+}
+
+export type CompensationBenchEstimateBody = {
+  roleSource: "recruit" | "org" | "manual";
+  recruitPositionId?: string;
+  roleTitleManual?: string;
+  location: string;
+  seniorityYears: number;
+};
+
+export async function postCompensationBenchEstimate(
+  token: string,
+  body: CompensationBenchEstimateBody
+): Promise<{
+  ralLowEur: number;
+  ralMedianEur: number;
+  ralHighEur: number;
+  notesIt: string;
+  roleResolved: string;
+  llm: { active: boolean; refineApplied: boolean };
+}> {
+  const response = await fetch(buildApiUrl("/compensation/bench/estimate"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    ralLowEur: number;
+    ralMedianEur: number;
+    ralHighEur: number;
+    notesIt: string;
+    roleResolved: string;
+    llm: { active: boolean; refineApplied: boolean };
+  };
+}
+
 export type WorkforceCockpitScenario = "base" | "growth" | "freeze" | "custom";
 
 export async function fetchWorkforceCockpit(
@@ -3687,14 +3772,74 @@ export type ShiftProposalDto = { id: string; userId: string; startAt: string; en
 
 export async function fetchShiftProposals(
   token: string,
-  weekStart: string
+  weekStart: string,
+  opts?: { respectAbsences?: boolean }
 ): Promise<{ items: ShiftProposalDto[] }> {
+  const q = new URLSearchParams();
+  q.set("weekStart", weekStart);
+  if (opts?.respectAbsences) q.set("respectAbsences", "1");
+  const response = await fetch(buildApiUrl(`/scheduling/proposals?${q.toString()}`), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: ShiftProposalDto[] };
+}
+
+export type ShiftDto = ShiftProposalDto & { status?: string };
+
+export async function fetchSchedulingWeek(token: string, weekStart: string): Promise<{ items: ShiftDto[] }> {
   const response = await fetch(
-    buildApiUrl(`/scheduling/proposals?weekStart=${encodeURIComponent(weekStart)}`),
+    buildApiUrl(`/scheduling/week?weekStart=${encodeURIComponent(weekStart)}`),
     { headers: getAuthHeaders(token) }
   );
   if (!response.ok) await parseError(response);
-  return (await response.json()) as { items: ShiftProposalDto[] };
+  return (await response.json()) as { items: ShiftDto[] };
+}
+
+export async function postShiftsBulk(
+  token: string,
+  body: { items: Array<{ userId: string; startAt: string; endAt: string; premiumCode?: string }> }
+): Promise<{ items: ShiftDto[] }> {
+  const response = await fetch(buildApiUrl("/scheduling/shifts/bulk"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: ShiftDto[] };
+}
+
+export async function postPublishShiftsWeek(
+  token: string,
+  weekStart: string
+): Promise<{ published: number; notified: number }> {
+  const response = await fetch(buildApiUrl("/scheduling/publish-week"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ weekStart })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { published: number; notified: number };
+}
+
+export async function postCreateShift(
+  token: string,
+  body: { userId: string; startAt: string; endAt: string; premiumCode?: string }
+): Promise<ShiftDto> {
+  const response = await fetch(buildApiUrl("/scheduling/shifts"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ShiftDto;
+}
+
+export async function deleteShift(token: string, shiftId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl(`/scheduling/shifts/${encodeURIComponent(shiftId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { ok: true };
 }
 
 export async function submitLifecycleOffboard(

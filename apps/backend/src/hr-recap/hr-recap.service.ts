@@ -70,7 +70,7 @@ export class HrRecapService {
   }
 
   async listTasks(auth: AuthContext): Promise<{ tasks: HrRecapTaskDto[] }> {
-    const { companyId } = await this.assertHrRecap(auth);
+    const { companyId, me } = await this.assertHrRecap(auth);
     const approvals = await this.store.listCompanyPendingApprovalViewsForHrDashboard(companyId);
     const expenses = await this.store.listCompanyExpenseClaimsPendingHr(companyId);
     const contracts = await this.store.listHrStandardContractsUnsigned(companyId);
@@ -125,7 +125,8 @@ export class HrRecapService {
         subtitle: ct.recruit_candidate_id ? `Candidato collegato` : undefined,
         dueAt: ct.updated_at || null,
         href: `/contracts/${encodeURIComponent(ct.id)}`,
-        notifyUserId: null
+        /** Abilita «Sollecita» in UI: il sollecito reale va agli HR (vedi `postReminder` prefisso ctr). */
+        notifyUserId: me.id
       });
     }
 

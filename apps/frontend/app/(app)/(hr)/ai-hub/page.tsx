@@ -35,6 +35,7 @@ import {
   type AiNlCatalogEntryDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { AssistantMarkdownLite } from "@/components/assistant-markdown-lite";
 import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
@@ -801,7 +802,11 @@ export default function AiHubPage(): React.JSX.Element {
                           : "max-w-[92%] rounded-2xl rounded-bl-md border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] px-4 py-3 text-sm leading-relaxed text-[var(--prom-text)] shadow-sm"
                       }
                     >
-                      <p className="whitespace-pre-wrap">{m.text}</p>
+                      {m.role === "assistant" ? (
+                        <AssistantMarkdownLite text={m.text} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{m.text}</p>
+                      )}
                     </div>
                   </div>
                 ))

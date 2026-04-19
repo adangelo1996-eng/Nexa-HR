@@ -40,8 +40,8 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
   "HEBB AI for HR": [
     {
       id: "h-centro",
-      title: "Centro HR",
-      hrefs: ["/hr-center" as Route, "/hr-center/analisi" as Route, "/hr-center/recap" as Route, "/hr-center/budget-report" as Route]
+      title: "Analisi e report HR",
+      hrefs: ["/hr-center/analisi" as Route, "/hr-center/recap" as Route, "/hr-center/budget-report" as Route]
     },
     {
       id: "h-ai",

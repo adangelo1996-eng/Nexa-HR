@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchCurrentUser,
+  fetchPayrollForecastBreakdown,
   fetchTurnoverRetention,
   postAnalyticsNarrative,
   postTurnoverRetentionRefresh,
+  type PayrollForecastBreakdownDto,
   type TurnoverRetentionItem
 } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
@@ -100,6 +102,7 @@ export default function InsightsPage(): React.JSX.Element {
     avgScore: number;
     sampleSize: number;
   } | null>(null);
+  const [forecastCorr, setForecastCorr] = useState<PayrollForecastBreakdownDto | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -124,6 +127,12 @@ export default function InsightsPage(): React.JSX.Element {
         trend: res.trend,
         modelVersion: res.modelVersion
       });
+      try {
+        const fc = await fetchPayrollForecastBreakdown(t, 3);
+        setForecastCorr(fc);
+      } catch {
+        setForecastCorr(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento");
     } finally {
@@ -291,6 +300,51 @@ export default function InsightsPage(): React.JSX.Element {
           {busy ? <span className="text-xs text-[var(--prom-muted)]">Caricamento…</span> : null}
         </div>
       </HebbAiGlassPanel>
+
+      {forecastCorr ? (
+        <HebbAiGlassPanel>
+          <h2 className="text-lg font-semibold text-[var(--prom-text)]">Indicatori organico correlati</h2>
+          <p className="mt-2 text-sm text-[var(--prom-muted)]">
+            Stima forecast costi (report HR) sullo stesso perimetro aziendale: utile per incrociare rischio turnover con
+            peso retributivo. Valori indicativi, non payroll consuntivo.
+          </p>
+          <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <li className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2">
+              <span className="text-xs font-semibold uppercase text-[var(--prom-muted)]">Dipendenti in anagrafica</span>
+              <p className="mt-1 text-2xl font-semibold text-[var(--prom-text)]">{forecastCorr.employees.length}</p>
+            </li>
+            <li className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2">
+              <span className="text-xs font-semibold uppercase text-[var(--prom-muted)]">Costo stimato primo mese</span>
+              <p className="mt-1 text-2xl font-semibold text-[var(--prom-text)]">
+                {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                  forecastCorr.series[0]?.totalMonthlyEur ?? 0
+                )}
+              </p>
+            </li>
+            <li className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2 sm:col-span-2">
+              <span className="text-xs font-semibold uppercase text-[var(--prom-muted)]">Top 3 centri di costo per costo mensile stimato</span>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--prom-muted)]">
+                {forecastCorr.byCostCenter.slice(0, 3).map((c) => (
+                  <li key={c.costCenterId ?? "x"}>
+                    <span className="text-[var(--prom-text)]">{c.label}</span> —{" "}
+                    {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                      c.monthlyTotalEur
+                    )}{" "}
+                    <span className="text-xs">({c.headcount} persone)</span>
+                  </li>
+                ))}
+              </ol>
+            </li>
+          </ul>
+          <p className="mt-3 text-xs text-[var(--prom-muted)]">
+            Dettaglio completo:{" "}
+            <a href="/forecast" className="font-medium text-[var(--prom-gold)] underline">
+              Forecast costi
+            </a>
+            .
+          </p>
+        </HebbAiGlassPanel>
+      ) : null}
 
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 

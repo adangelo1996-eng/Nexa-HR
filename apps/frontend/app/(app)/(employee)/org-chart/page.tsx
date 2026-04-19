@@ -2,7 +2,7 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { OrgChart, type OrgChartNode } from "@/components/org-chart";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   type OrgChartResponse,
   type User
 } from "@/lib/api";
+import { CostCenterLink, EmployeeLink } from "@/components/nexa-entity-links";
 import { getToken, getSessionUser, type SessionUser, type UserRole } from "@/lib/auth-session";
 
 const ROLES: { value: UserRole; label: string }[] = [
@@ -32,6 +33,7 @@ export default function OrgChartPage(): React.JSX.Element {
   const [usersById, setUsersById] = useState<Record<string, User>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const chartHostRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -145,19 +147,43 @@ export default function OrgChartPage(): React.JSX.Element {
         <Button type="button" variant="secondary" size="sm" onClick={() => void load()}>
           Aggiorna
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const el = chartHostRef.current;
+            if (!el) return;
+            void (document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.());
+          }}
+        >
+          Schermo intero
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            window.print();
+          }}
+        >
+          Stampa / PDF
+        </Button>
       </div>
 
       {err ? <p className="text-sm text-rose-600 dark:text-rose-400">{err}</p> : null}
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
-      <OrgChart
-        nodes={data.nodes}
-        edges={data.edges}
-        framed={false}
-        heightClass="h-[min(560px,calc(100dvh-12rem))]"
-        highlightUserId={user?.id}
-        onNodeSelect={setSelected}
-      />
+      <div ref={chartHostRef} className="org-chart-print-area rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)] p-2">
+        <OrgChart
+          nodes={data.nodes}
+          edges={data.edges}
+          framed={false}
+          heightClass="h-[min(560px,calc(100dvh-12rem))]"
+          highlightUserId={user?.id}
+          onNodeSelect={setSelected}
+        />
+      </div>
 
       {data.nodes.length > 0 ? (
         <details className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] p-3 text-sm text-[var(--prom-text)] shadow-[var(--card-shadow)]">
@@ -192,13 +218,13 @@ export default function OrgChartPage(): React.JSX.Element {
         <>
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity"
+            className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-[2px] transition-opacity"
             aria-label="Chiudi pannello"
             onClick={() => setSelected(null)}
           />
           <aside
             className={
-              "fixed bottom-0 right-0 top-0 z-50 flex w-[min(100vw,400px)] flex-col overflow-y-auto border-l bg-[var(--prom-surface)] p-5 pb-8 shadow-[var(--card-shadow)] transition-transform " +
+              "fixed bottom-0 right-0 top-0 z-[210] flex w-[min(100vw,400px)] flex-col overflow-y-auto border-l bg-[var(--prom-surface)] p-5 pb-24 pt-20 shadow-[var(--card-shadow)] transition-transform sm:pt-16 " +
               (user?.id === selected.id
                 ? "border-[var(--prom-gold)] ring-2 ring-[color-mix(in_srgb,var(--prom-gold)_35%,transparent)]"
                 : "border-[var(--prom-line)]")
@@ -206,7 +232,15 @@ export default function OrgChartPage(): React.JSX.Element {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-tight text-[var(--prom-text)]">{selected.label}</h2>
+                <h2 className="text-lg font-semibold leading-tight text-[var(--prom-text)]">
+                  <EmployeeLink
+                    userId={selected.id}
+                    label={selected.label}
+                    managerId={detailUser?.managerId ?? selected.managerId}
+                    viewer={user}
+                    className="text-[var(--prom-text)] hover:text-[var(--prom-gold)] hover:underline"
+                  />
+                </h2>
                 <p className="mt-1 text-sm text-[var(--prom-muted)]">{selected.roleName ?? selected.role}</p>
               </div>
               <Button
@@ -226,7 +260,15 @@ export default function OrgChartPage(): React.JSX.Element {
               <div className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-3 py-2">
                 <dt className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">Sede</dt>
                 <dd className="mt-0.5 text-[var(--prom-text)]">
-                  {selected.costCenterName ?? centerLabel(selected.costCenterId)}
+                  {selected.costCenterId ? (
+                    <CostCenterLink
+                      costCenterId={selected.costCenterId}
+                      label={selected.costCenterName ?? centerLabel(selected.costCenterId)}
+                      viewer={user}
+                    />
+                  ) : (
+                    selected.costCenterName ?? centerLabel(selected.costCenterId)
+                  )}
                 </dd>
               </div>
               {(selected.email || detailUser?.email) ? (

@@ -2,6 +2,7 @@
 
 import type { Route } from "next";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
@@ -41,6 +42,7 @@ import {
   clearSession,
   getToken,
   getSessionUser,
+  sessionCanAccessHrRecapDashboard,
   sessionCanSeeApprovalsAndHrExtras,
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
@@ -93,6 +95,7 @@ function segmentDurationLabel(prevIso: string, nextIso: string): string | null {
 }
 
 export default function HomePage(): React.JSX.Element {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -144,6 +147,12 @@ export default function HomePage(): React.JSX.Element {
 
       setUser(me);
 
+      if (sessionCanAccessHrRecapDashboard(me)) {
+        setLoading(false);
+        router.replace("/hr-recap" as Route);
+        return;
+      }
+
       const todayDate = new Date().toISOString().slice(0, 10);
       try {
         const [
@@ -192,7 +201,7 @@ export default function HomePage(): React.JSX.Element {
     }
 
     void load();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!token) {

@@ -39,7 +39,11 @@ export function SessionIdleGuard(): null {
           return;
         }
         clearSession();
-        router.replace("/login");
+        if (typeof window !== "undefined") {
+          window.location.assign("/login");
+        } else {
+          router.replace("/login");
+        }
       }, IDLE_MS);
     };
 

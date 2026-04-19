@@ -4624,6 +4624,26 @@ export class HrDataStore {
     }
   }
 
+  /** Notifica in-app (campanella header) per eventi HR / report asincroni. */
+  async notifyUserInApp(input: {
+    userId: string;
+    title: string;
+    body?: string;
+    kind?: string;
+    actionPath?: string;
+  }): Promise<void> {
+    await this.insertUserNotification({
+      id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      userId: input.userId,
+      title: input.title,
+      body: input.body,
+      read: false,
+      createdAt: new Date().toISOString(),
+      kind: input.kind ?? "app",
+      actionPath: input.actionPath
+    });
+  }
+
   async listUserNotifications(userId: string, limit = 50): Promise<UserNotification[]> {
     const cap = Math.min(Math.max(limit, 1), 200);
     if (!this.useDb) {
@@ -6077,6 +6097,92 @@ export class HrDataStore {
     };
   }
 
+  private shiftWeekBoundsUtc(weekStart: string): { startIso: string; endIso: string } {
+    const d = new Date(`${weekStart.trim()}T00:00:00.000Z`);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException("weekStart non valido (YYYY-MM-DD)");
+    }
+    const end = new Date(d);
+    end.setUTCDate(end.getUTCDate() + 7);
+    return { startIso: d.toISOString(), endIso: end.toISOString() };
+  }
+
+  /** Blocca turni su ferie/assenze (pending o approved), malattia, smart working e trasferte. */
+  private async assertShiftNoAbsenceOverlap(userId: string, startAt: string, endAt: string): Promise<void> {
+    const sMs = new Date(startAt).getTime();
+    const eMs = new Date(endAt).getTime();
+    if (!Number.isFinite(sMs) || !Number.isFinite(eMs) || eMs <= sMs) {
+      throw new BadRequestException("Intervallo turno non valido");
+    }
+    const ds = startAt.slice(0, 10);
+    const de = endAt.slice(0, 10);
+    for (const lv of await this.listLeave(userId)) {
+      if (lv.status !== "pending" && lv.status !== "approved") continue;
+      if (lv.endDate >= ds && lv.startDate <= de) {
+        throw new BadRequestException(
+          `Turno in conflitto con assenza/ferie (${lv.startDate}–${lv.endDate}${lv.kind ? `, ${lv.kind}` : ""}).`
+        );
+      }
+    }
+    for (const sk of await this.listSickness(userId)) {
+      if (sk.status !== "pending" && sk.status !== "approved") continue;
+      if (sk.toDate >= ds && sk.fromDate <= de) {
+        throw new BadRequestException(`Turno in conflitto con malattia (${sk.fromDate}–${sk.toDate}).`);
+      }
+    }
+    for (const sw of await this.listMySmartworking(userId)) {
+      if (sw.status !== "pending" && sw.status !== "approved") continue;
+      if (sw.day >= ds && sw.day <= de) {
+        throw new BadRequestException(`Turno in conflitto con smart working il ${sw.day}.`);
+      }
+    }
+    for (const tr of await this.listMyTravel(userId)) {
+      if (tr.status !== "pending" && tr.status !== "approved") continue;
+      if (tr.day >= ds && tr.day <= de) {
+        throw new BadRequestException(`Turno in conflitto con trasferta il ${tr.day}.`);
+      }
+    }
+  }
+
+  private async assertShiftRestAndNoShiftOverlap(userId: string, startAt: string, endAt: string): Promise<void> {
+    const s = new Date(startAt).getTime();
+    const e = new Date(endAt).getTime();
+    const existing = await this.listShiftsForUser(userId);
+    const MIN_REST_MS = 11 * 60 * 60 * 1000;
+    for (const sh of existing) {
+      const a = new Date(sh.startAt).getTime();
+      const b = new Date(sh.endAt).getTime();
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      if (s < b && e > a) {
+        throw new BadRequestException("Turno sovrapposto a un altro già pianificato.");
+      }
+      if (e <= a && a - e < MIN_REST_MS) {
+        throw new BadRequestException("Riposo minimo tra turni non rispettato (11 ore).");
+      }
+      if (s >= b && s - b < MIN_REST_MS) {
+        throw new BadRequestException("Riposo minimo tra turni non rispettato (11 ore).");
+      }
+    }
+  }
+
+  private async listVisibleUserIdsForShiftPlanning(requesterId: string, requesterRole: User["role"]): Promise<Set<string>> {
+    const users = await this.listUsers();
+    const idSet = new Set<string>();
+    if (requesterRole === "superuser") {
+      for (const u of users) {
+        if (u.role !== "superuser") idSet.add(u.id);
+      }
+      return idSet;
+    }
+    idSet.add(requesterId);
+    for (const u of users) {
+      if (u.id === requesterId) continue;
+      if (await this.isManagerOf(requesterId, u.id)) idSet.add(u.id);
+      else if (await this.isUserLeadOfTeamContaining(requesterId, u.id)) idSet.add(u.id);
+    }
+    return idSet;
+  }
+
   async createShift(
     requesterId: string,
     requesterRole: User["role"],
@@ -6090,6 +6196,8 @@ export class HrDataStore {
         throw new BadRequestException("Puoi pianificare solo i membri del tuo team");
       }
     }
+    await this.assertShiftNoAbsenceOverlap(input.userId, input.startAt, input.endAt);
+    await this.assertShiftRestAndNoShiftOverlap(input.userId, input.startAt, input.endAt);
     const shift: Shift = {
       id: `sh-${Date.now()}`,
       userId: input.userId,
@@ -6112,6 +6220,78 @@ export class HrDataStore {
       this.shifts.push(shift);
     }
     return shift;
+  }
+
+  async createShiftsBulk(
+    requesterId: string,
+    requesterRole: User["role"],
+    items: Array<{ userId: string; startAt: string; endAt: string; premiumCode?: string }>
+  ): Promise<Shift[]> {
+    const out: Shift[] = [];
+    for (const it of items) {
+      out.push(await this.createShift(requesterId, requesterRole, it));
+    }
+    return out;
+  }
+
+  async listShiftsForPlannerWeek(
+    requesterId: string,
+    requesterRole: User["role"],
+    weekStart: string
+  ): Promise<Shift[]> {
+    const { startIso, endIso } = this.shiftWeekBoundsUtc(weekStart);
+    const allowed = await this.listVisibleUserIdsForShiftPlanning(requesterId, requesterRole);
+    if (!this.useDb) {
+      return this.shifts
+        .filter((s) => s.startAt >= startIso && s.startAt < endIso && allowed.has(s.userId))
+        .sort((a, b) => (a.startAt === b.startAt ? a.userId.localeCompare(b.userId) : a.startAt.localeCompare(b.startAt)));
+    }
+    const { data, error } = await this.supabase!
+      .from("shifts")
+      .select("*")
+      .gte("startAt", startIso)
+      .lt("startAt", endIso)
+      .order("startAt", { ascending: true });
+    if (error) {
+      throw new BadRequestException(`Lettura turni settimanali fallita: ${error.message}`);
+    }
+    return (data ?? [])
+      .map((r) => this.mapShiftRow(r as Record<string, unknown>))
+      .filter((s) => allowed.has(s.userId));
+  }
+
+  async publishShiftsWeek(
+    requesterId: string,
+    requesterRole: User["role"],
+    weekStart: string
+  ): Promise<{ published: number; notified: number }> {
+    const shifts = await this.listShiftsForPlannerWeek(requesterId, requesterRole, weekStart);
+    const toPublish = shifts.filter((s) => (s.status ?? "scheduled") !== "confirmed");
+    if (toPublish.length === 0) {
+      return { published: 0, notified: 0 };
+    }
+    const ids = toPublish.map((s) => s.id);
+    const notifyUsers = new Set(toPublish.map((s) => s.userId));
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("shifts").update({ status: "confirmed" }).in("id", ids);
+      if (error) {
+        throw new InternalServerErrorException(`Pubblicazione turni fallita: ${error.message}`);
+      }
+    } else {
+      for (const sh of this.shifts) {
+        if (ids.includes(sh.id)) sh.status = "confirmed";
+      }
+    }
+    for (const uid of notifyUsers) {
+      await this.notifyUserInApp({
+        userId: uid,
+        title: "Turni pubblicati",
+        body: `La pianificazione per la settimana del ${weekStart} è stata confermata.`,
+        kind: "shifts_published",
+        actionPath: "/scheduling"
+      });
+    }
+    return { published: ids.length, notified: notifyUsers.size };
   }
 
   async deleteShift(requesterId: string, requesterRole: User["role"], shiftId: string): Promise<void> {
@@ -8299,23 +8479,39 @@ export class HrDataStore {
       .sort((a, b) => a.at.localeCompare(b.at));
   }
 
-  async proposeShiftsPreview(weekStart: string): Promise<Shift[]> {
+  async proposeShiftsPreview(weekStart: string, respectAbsences = false): Promise<Shift[]> {
     const users = (await this.listUsers()).filter((u) => u.role !== "superuser").slice(0, 12);
     const proposals: Shift[] = [];
     let i = 0;
     for (const u of users) {
-      const dayOff = (i % 7) + 1;
-      const d = new Date(`${weekStart}T12:00:00.000Z`);
-      d.setUTCDate(d.getUTCDate() + dayOff);
-      const y = d.toISOString().slice(0, 10);
-      proposals.push({
-        id: `prop-${u.id}-${y}`,
-        userId: u.id,
-        startAt: `${y}T08:00:00.000Z`,
-        endAt: `${y}T17:00:00.000Z`,
-        premiumCode: undefined,
-        status: "scheduled"
-      });
+      let placed = false;
+      for (let off = 0; off < 7 && !placed; off += 1) {
+        const dayOff = ((i + off) % 7) + 1;
+        const d = new Date(`${weekStart}T12:00:00.000Z`);
+        if (Number.isNaN(d.getTime())) {
+          throw new BadRequestException("weekStart non valido");
+        }
+        d.setUTCDate(d.getUTCDate() + dayOff);
+        const y = d.toISOString().slice(0, 10);
+        const startAt = `${y}T08:00:00.000Z`;
+        const endAt = `${y}T17:00:00.000Z`;
+        if (respectAbsences) {
+          try {
+            await this.assertShiftNoAbsenceOverlap(u.id, startAt, endAt);
+          } catch {
+            continue;
+          }
+        }
+        proposals.push({
+          id: `prop-${u.id}-${y}`,
+          userId: u.id,
+          startAt,
+          endAt,
+          premiumCode: undefined,
+          status: "scheduled"
+        });
+        placed = true;
+      }
       i += 1;
     }
     return proposals;
@@ -8348,6 +8544,184 @@ export class HrDataStore {
       out.push({ month: label, costEur: Math.round(base * growth) });
     }
     return out;
+  }
+
+  /**
+   * Forecast costi: massa RAL mensile, stima oneri azienda (moltiplicatore indicativo IT) e totali per mese,
+   * aggregati per centro di costo / team e ranking dipendenti (stima RAL annua da mensilità × mensilità contrattuale).
+   */
+  async payrollForecastCostBreakdown(
+    companyId: string,
+    months = 6
+  ): Promise<{
+    employerFactor: number;
+    series: Array<{
+      month: string;
+      ralMassMonthlyEur: number;
+      estimatedEmployerMonthlyEur: number;
+      totalMonthlyEur: number;
+    }>;
+    byCostCenter: Array<{
+      costCenterId: string | null;
+      label: string;
+      headcount: number;
+      monthlyRalMassEur: number;
+      monthlyTotalEur: number;
+    }>;
+    byTeam: Array<{
+      teamId: string;
+      teamName: string;
+      costCenterId: string;
+      headcount: number;
+      monthlyRalMassEur: number;
+      monthlyTotalEur: number;
+    }>;
+    employees: Array<{
+      userId: string;
+      fullName: string;
+      monthlyBaseEur: number;
+      ralAnnualEstimateEur: number;
+      monthlyTotalEstimateEur: number;
+      costCenterId?: string;
+      teamId?: string | null;
+    }>;
+  }> {
+    const cid = companyId.trim();
+    const cap = Math.min(12, Math.max(1, months));
+    const users = (await this.listUsers()).filter((u) => !cid || (u.companyId || "").trim() === cid);
+    const employerFactor = 0.32;
+    const defaultBase = 5800;
+    const payMonths = (u: (typeof users)[0]): number => {
+      const pm = Number(u.payMonthsPerYear);
+      if (pm === 12 || pm === 13 || pm === 14) {
+        return pm;
+      }
+      return 13;
+    };
+    const monthlyBase = (u: (typeof users)[0]): number => {
+      const b = Number(u.baseSalaryMonthly);
+      return Number.isFinite(b) && b > 0 ? b : defaultBase;
+    };
+    const ralAnnual = (u: (typeof users)[0]): number => monthlyBase(u) * payMonths(u);
+    const totalMonthlyMass = users.reduce((s, u) => s + monthlyBase(u), 0);
+    const d = new Date();
+    const series: Array<{
+      month: string;
+      ralMassMonthlyEur: number;
+      estimatedEmployerMonthlyEur: number;
+      totalMonthlyEur: number;
+    }> = [];
+    for (let m = 0; m < cap; m += 1) {
+      const x = new Date(d.getFullYear(), d.getMonth() + m, 1);
+      const label = x.toISOString().slice(0, 7);
+      const growth = 1 + m * 0.02;
+      const ral = Math.round(totalMonthlyMass * growth);
+      const oneri = Math.round(ral * employerFactor);
+      series.push({ month: label, ralMassMonthlyEur: ral, estimatedEmployerMonthlyEur: oneri, totalMonthlyEur: ral + oneri });
+    }
+    const ccMap = new Map<
+      string | null,
+      { label: string; headcount: number; monthlyRalMassEur: number; monthlyTotalEur: number }
+    >();
+    const teamMap = new Map<string, { teamName: string; costCenterId: string; headcount: number; monthlyRalMassEur: number; monthlyTotalEur: number }>();
+    const teamNameCache = new Map<string, string>();
+    const resolveTeamName = async (ccId: string, tid: string): Promise<string> => {
+      const k = `${ccId}|${tid}`;
+      if (teamNameCache.has(k)) {
+        return teamNameCache.get(k)!;
+      }
+      try {
+        const teams = await this.listWorkTeamsByCostCenter(ccId);
+        const t = teams.find((x) => x.id === tid);
+        const n = t?.name ?? tid;
+        teamNameCache.set(k, n);
+        return n;
+      } catch {
+        teamNameCache.set(k, tid);
+        return tid;
+      }
+    };
+    const centers = await this.listCostCenters();
+    const ccLabel = (id: string | null | undefined): string => {
+      if (!id) {
+        return "Senza centro di costo";
+      }
+      const c = centers.find((x) => x.id === id);
+      return c ? `${c.code} — ${c.name}` : id;
+    };
+    for (const u of users) {
+      const base = monthlyBase(u);
+      const tot = Math.round(base * (1 + employerFactor));
+      const ccId = u.costCenterId?.trim() || null;
+      const curCc = ccMap.get(ccId) ?? { label: ccLabel(ccId), headcount: 0, monthlyRalMassEur: 0, monthlyTotalEur: 0 };
+      curCc.headcount += 1;
+      curCc.monthlyRalMassEur += base;
+      curCc.monthlyTotalEur += tot;
+      ccMap.set(ccId, curCc);
+      const tid = u.teamId?.trim();
+      if (tid && u.costCenterId) {
+        const cc = u.costCenterId;
+        const ex = teamMap.get(tid) ?? {
+          teamName: tid,
+          costCenterId: cc,
+          headcount: 0,
+          monthlyRalMassEur: 0,
+          monthlyTotalEur: 0
+        };
+        ex.headcount += 1;
+        ex.monthlyRalMassEur += base;
+        ex.monthlyTotalEur += tot;
+        teamMap.set(tid, ex);
+      }
+    }
+    await Promise.all(
+      [...teamMap.entries()].map(async ([tid, row]) => {
+        row.teamName = await resolveTeamName(row.costCenterId, tid);
+        return tid;
+      })
+    );
+    const byCostCenter = [...ccMap.entries()]
+      .map(([costCenterId, v]) => ({
+        costCenterId,
+        label: v.label,
+        headcount: v.headcount,
+        monthlyRalMassEur: Math.round(v.monthlyRalMassEur),
+        monthlyTotalEur: Math.round(v.monthlyTotalEur)
+      }))
+      .sort((a, b) => b.monthlyTotalEur - a.monthlyTotalEur);
+    const byTeam = [...teamMap.entries()]
+      .map(([teamId, v]) => ({
+        teamId,
+        teamName: v.teamName,
+        costCenterId: v.costCenterId,
+        headcount: v.headcount,
+        monthlyRalMassEur: Math.round(v.monthlyRalMassEur),
+        monthlyTotalEur: Math.round(v.monthlyTotalEur)
+      }))
+      .sort((a, b) => b.monthlyTotalEur - a.monthlyTotalEur);
+    const employees = users
+      .map((u) => {
+        const mb = monthlyBase(u);
+        const ra = Math.round(ralAnnual(u));
+        const mt = Math.round(mb * (1 + employerFactor));
+        return {
+          userId: u.id,
+          fullName: u.fullName || u.email || u.id,
+          monthlyBaseEur: Math.round(mb),
+          ralAnnualEstimateEur: ra,
+          monthlyTotalEstimateEur: mt,
+          costCenterId: u.costCenterId,
+          teamId: u.teamId ?? null
+        };
+      })
+      .sort((a, b) => b.monthlyTotalEstimateEur - a.monthlyTotalEstimateEur);
+    return {
+      employerFactor,
+      series,
+      byCostCenter,
+      byTeam,
+      employees
+    };
   }
 
   private async fetchImportEventsFromDb(cap: number): Promise<NexaImportEventRow[]> {

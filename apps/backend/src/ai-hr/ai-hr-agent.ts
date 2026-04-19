@@ -32,12 +32,11 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },
-  { path: "/hr-center", labelIt: "Centro HR", topicsIt: "analisi costi, recap dipendenti, report budget, llm" },
-  { path: "/hr-center/analisi", labelIt: "Centro HR — analisi costi", topicsIt: "cdc, costi personale, aggregati, forecast" },
-  { path: "/hr-center/recap", labelIt: "Centro HR — recap dipendenti", topicsIt: "skills, contratto, formazione, filtri team/cdc" },
+  { path: "/hr-center/analisi", labelIt: "Analisi costi HR", topicsIt: "cdc, costi personale, aggregati, forecast" },
+  { path: "/hr-center/recap", labelIt: "Recap AI dipendenti", topicsIt: "skills, contratto, formazione, filtri team/cdc" },
   {
     path: "/hr-center/budget-report",
-    labelIt: "Centro HR — report budget personale (LLM)",
+    labelIt: "Report budget personale (LLM)",
     topicsIt: "actual, budget, forecast, confronto periodi, export excel pdf ppt"
   },
   { path: "/scheduling", labelIt: "Turni", topicsIt: "turni, pianificazione turni, shift" },
@@ -120,6 +119,7 @@ export function getNexaHrConversationalAgentSystemPrompt(): string {
     "STILE",
     "Linguaggio semplice, no gergo IT interno; spiega acronimi se necessario.",
     "Quando indichi un percorso, usa la forma: nome sezione — path esatto tra parentesi o apice, es. Workflow (/workflow), copiando il path dalla lista.",
+    "Per massima utilità in chat, aggiungi anche link Markdown cliccabili (stile: [Testo descrittivo](/percorso)) usando SOLO path presenti in platformCapabilities o routeHints; un link per sezione principale è sufficiente.",
     "",
     "CHIUSURA UTILE",
     "Chiudi spesso con un passo concreto prossimo (una o due azioni), adattato al ruolo implicito (es. se ci sono approvazioni team, ricorda Approvazioni team)."

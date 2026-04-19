@@ -14,6 +14,7 @@ import {
   postHrRecapReminder,
   type HrRecapTaskDto
 } from "@/lib/api";
+import { EmployeeLink } from "@/components/nexa-entity-links";
 import { getSessionUser, getToken, sessionCanAccessHrRecapDashboard, type SessionUser } from "@/lib/auth-session";
 
 type PeopleCategory = "active" | "hr_onboarding" | "offboarding" | "contracts_pending";
@@ -352,7 +353,9 @@ export default function HrRecapPage(): React.JSX.Element {
                     key={u.id}
                     className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text dark:text-white"
                   >
-                    <div className="font-medium">{u.fullName}</div>
+                    <div className="font-medium">
+                      <EmployeeLink userId={u.id} label={u.fullName} viewer={user} className="font-medium text-[#002D72] hover:underline dark:text-sky-200" />
+                    </div>
                     <div className="text-xs text-synapse-muted dark:text-[#b4c9dc]">{u.email}</div>
                   </li>
                 ))}

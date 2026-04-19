@@ -28,6 +28,7 @@ import {
 } from "@/lib/auth-session";
 import { payslipDisplayCurrency } from "@/lib/nexa-swiss-payroll-flag";
 import { Button } from "@/components/ui/button";
+import { EmployeeLink } from "@/components/nexa-entity-links";
 import { DraftPayslipPreviewDialog } from "./draft-payslip-preview-dialog";
 import {
   HebbAiExperienceShell,
@@ -96,6 +97,11 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
   const [unlockBatch, setUnlockBatch] = useState<{ firstCalculableDate: string; calculableToday: boolean } | null>(
     null
   );
+  const [batchPreAck, setBatchPreAck] = useState(false);
+
+  useEffect(() => {
+    setBatchPreAck(false);
+  }, [batchPeriod]);
 
   useEffect(() => {
     const t = getToken();
@@ -619,6 +625,45 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
           provengono da <strong>{previousPayrollMonthIso(batchPeriod)}</strong>; altrimenti dal periodo di competenza{" "}
           <strong>{batchPeriod}</strong>.
         </p>
+        <div className="rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--prom-text)]">Checklist guidata pre-batch</h3>
+          <ul className="mt-3 space-y-2 text-xs text-[var(--prom-muted)]">
+            <li className="flex gap-2">
+              <span className="font-mono text-[var(--prom-text)]">{unlockBatch?.calculableToday ? "✓" : "○"}</span>
+              <span>
+                Competenza <strong className="text-[var(--prom-text)]">{batchPeriod}</strong>{" "}
+                {unlockBatch?.calculableToday
+                  ? "calcolabile oggi secondo le regole di competenza."
+                  : unlockBatch
+                    ? `non ancora calcolabile fino al ${unlockBatch.firstCalculableDate}.`
+                    : "— verifica sblocco in corso…"}
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className="font-mono text-[var(--prom-text)]">{batchPeriod.trim().length >= 7 ? "✓" : "○"}</span>
+              <span>Periodo competenza impostato (formato YYYY-MM).</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="font-mono text-[var(--prom-text)]">!</span>
+              <span>
+                Verifica in anagrafica eventuali profili incompleti o assenze da consolidare prima del batch (uso
+                responsabile).
+              </span>
+            </li>
+          </ul>
+          <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs text-[var(--prom-muted)]">
+            <input
+              type="checkbox"
+              className="mt-0.5 rounded border-[var(--prom-line-strong)]"
+              checked={batchPreAck}
+              onChange={(e) => setBatchPreAck(e.target.checked)}
+            />
+            <span>
+              Confermo di aver eseguito i controlli sopra e di voler avviare l&apos;elaborazione batch sul periodo
+              indicato.
+            </span>
+          </label>
+        </div>
         {unlockBatch && !unlockBatch.calculableToday ? (
           <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
             Calcolo batch non ancora consentito per competenza <strong>{batchPeriod}</strong>: dal{" "}
@@ -642,7 +687,11 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
             />
             Variabili da mese precedente
           </label>
-          <Button type="button" disabled={loadingBatch} onClick={() => void onBatch()}>
+          <Button
+            type="button"
+            disabled={loadingBatch || !batchPreAck || (unlockBatch != null && !unlockBatch.calculableToday)}
+            onClick={() => void onBatch()}
+          >
             {loadingBatch ? "Elaborazione…" : "Elabora con Hebb (batch)"}
           </Button>
         </div>
@@ -675,7 +724,14 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
                       key={r.userId}
                       className="flex flex-col gap-0.5 rounded-lg border border-red-200 px-3 py-2 text-sm dark:border-red-900/60 sm:flex-row sm:justify-between"
                     >
-                      <span>{userNames[r.userId] ?? r.userId}</span>
+                      <span>
+                        <EmployeeLink
+                          userId={r.userId}
+                          label={userNames[r.userId] ?? r.userId}
+                          viewer={sessionUser}
+                          className="font-medium text-[var(--prom-text)] hover:text-[var(--prom-gold)] hover:underline"
+                        />
+                      </span>
                       <span className="text-red-600">{r.error ?? "Errore"}</span>
                     </li>
                   ))}

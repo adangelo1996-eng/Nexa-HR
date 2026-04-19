@@ -1,6 +1,7 @@
 "use client";
 
 import type { Dispatch, JSX, SetStateAction } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,6 +87,11 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
     setError,
     setSubmitting
   } = props;
+
+  const [orgCcTeamEditing, setOrgCcTeamEditing] = useState(false);
+  useEffect(() => {
+    setOrgCcTeamEditing(false);
+  }, [selectedUser.id]);
 
   return (
     <>
@@ -281,6 +287,20 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                 </label>
                 </div>
                 <div className={editUserTab !== "organizzazione" ? "hidden" : "contents"}>
+                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-900/40">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Centro di costo e team: solo in modifica esplicita, per ridurre errori.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setOrgCcTeamEditing((v) => !v)}
+                  >
+                    {orgCcTeamEditing ? "Fine modifica centro / team" : "Modifica centro e team"}
+                  </Button>
+                </div>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ruolo accesso *</span>
                   <select
@@ -332,6 +352,7 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                         ...(stillOk ? {} : { teamId: null })
                       });
                     }}
+                    disabled={!orgCcTeamEditing}
                     className={selectOptionalClass}
                   >
                     <option value="">Nessun centro di costo</option>
@@ -350,7 +371,7 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                       const v = event.target.value || null;
                       if (selectedUser) updateSelectedUser({ teamId: v });
                     }}
-                    disabled={!selectedUser?.costCenterId || teamsForSelectedCc.length === 0}
+                    disabled={!orgCcTeamEditing || !selectedUser?.costCenterId || teamsForSelectedCc.length === 0}
                     className={selectOptionalClass}
                   >
                     <option value="">Nessun team</option>

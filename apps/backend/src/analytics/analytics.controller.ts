@@ -366,4 +366,19 @@ export class AnalyticsController {
     const m = months ? Math.min(12, Math.max(1, Number(months) || 3)) : 3;
     return { series: await this.store.payrollForecastNextMonths(m) };
   }
+
+  @Get("forecast-payroll-breakdown")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  async forecastBreakdown(
+    @CurrentAuth() auth: AuthContext,
+    @Query("months") months?: string
+  ): Promise<Awaited<ReturnType<HrDataStore["payrollForecastCostBreakdown"]>>> {
+    const viewer = await this.store.getUser(auth.userId);
+    const companyId = (viewer.companyId || auth.tenantId || "").trim();
+    if (!companyId) {
+      throw new ForbiddenException("Azienda non disponibile per l'utente");
+    }
+    const m = months ? Math.min(12, Math.max(1, Number(months) || 6)) : 6;
+    return this.store.payrollForecastCostBreakdown(companyId, m);
+  }
 }

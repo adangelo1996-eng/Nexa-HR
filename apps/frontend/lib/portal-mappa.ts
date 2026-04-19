@@ -104,26 +104,20 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Persone e organizzazione"
   },
   {
-    href: "/hr-center" as Route,
-    title: "Centro HR",
-    blurb: "Hub analisi, recap e report budget con perimetro privacy e LLM.",
-    category: "HEBB AI for HR"
-  },
-  {
     href: "/hr-center/analisi" as Route,
-    title: "Centro HR — Analisi costi",
+    title: "Analisi costi HR",
     blurb: "Costo personale per centro di costo con sintesi LLM o offline.",
     category: "HEBB AI for HR"
   },
   {
     href: "/hr-center/recap" as Route,
-    title: "Centro HR — Recap AI dipendenti",
+    title: "Recap AI dipendenti",
     blurb: "Sintesi operative su perimetro selezionato (centri di costo, team, persone).",
     category: "HEBB AI for HR"
   },
   {
     href: "/hr-center/budget-report" as Route,
-    title: "Centro HR — Report budget personale (LLM)",
+    title: "Report budget personale (LLM)",
     blurb: "Analisi strutturale Actual / Budget / Forecast o confronto tra periodi, con esportazione.",
     category: "HEBB AI for HR"
   },

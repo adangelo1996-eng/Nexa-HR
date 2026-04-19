@@ -201,6 +201,46 @@ export function sessionCanOpenEmployeeRecapPage(
   );
 }
 
+/**
+ * Scheda dipendente `/employee/:id`: self, superuser, Synapse admin / HR esteso / recap HR, o manager diretto del soggetto.
+ * Solo navigazione UI; il server continua a validare PATCH e dati sensibili.
+ */
+export function sessionCanViewEmployeeProfile(
+  viewer: Pick<
+    SessionUser,
+    "id" | "role" | "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"
+  > | null | undefined,
+  subject: { userId: string; managerId?: string | null }
+): boolean {
+  if (!viewer) {
+    return false;
+  }
+  if (viewer.id === subject.userId) {
+    return true;
+  }
+  if (normalizeStoredRole(viewer.role) === "superuser") {
+    return true;
+  }
+  if (sessionCanOpenEmployeeRecapPage(viewer)) {
+    return true;
+  }
+  const mid = subject.managerId?.trim();
+  if (mid && mid === viewer.id) {
+    return true;
+  }
+  return false;
+}
+
+/** Link a centri di costo / team in area admin organizzazione. */
+export function sessionCanUseAdminOrgDeepLinks(
+  u: Pick<SessionUser, "canNexaAdmin" | "canAccessHrExtendedConsole"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  return sessionCanNexaAdmin(u) || u.canAccessHrExtendedConsole === true;
+}
+
 /** Modifica anagrafica completa (PATCH /users/:id): allineato al backend (console Synapse + permessi scrittura). */
 export function sessionCanEditEmployeeAdminFields(
   u: Pick<SessionUser, "canNexaAdmin"> | null | undefined

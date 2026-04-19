@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { fetchCurrentUser, fetchWorkforceCockpit, postAnalyticsNarrative, type WorkforceCockpitScenario } from "@/lib/api";
+import {
+  fetchCurrentUser,
+  fetchWorkforceCockpit,
+  postAnalyticsNarrative,
+  type WorkforceCockpitScenario
+} from "@/lib/api";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +19,34 @@ import {
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+
+const WORKFORCE_SNAP_KEY = "nexa-hr-workforce-snapshots-v1";
+
+type CockpitPayload = Awaited<ReturnType<typeof fetchWorkforceCockpit>>;
+
+type WorkforceSnapshot = {
+  id: string;
+  label: string;
+  savedAt: string;
+  payload: CockpitPayload;
+};
+
+function readSnapshots(): WorkforceSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(WORKFORCE_SNAP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as WorkforceSnapshot[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSnapshots(rows: WorkforceSnapshot[]): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(WORKFORCE_SNAP_KEY, JSON.stringify(rows.slice(0, 12)));
+}
 
 export default function WorkforcePlanningPage(): React.JSX.Element {
   const [scenario, setScenario] = useState<WorkforceCockpitScenario>("base");
@@ -36,10 +69,60 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   const [appliedCustomSig, setAppliedCustomSig] = useState<string | null>(null);
   const prevScenarioRef = useRef<WorkforceCockpitScenario>(scenario);
 
+  const [compareLive, setCompareLive] = useState<CockpitPayload | null>(null);
+  const [snapshots, setSnapshots] = useState<WorkforceSnapshot[]>([]);
+  const [compareBusy, setCompareBusy] = useState(false);
+
   const customParamSig = useMemo(
     () => `${customFte}|${customFlat}|${customScale}`,
     [customFte, customFlat, customScale]
   );
+
+  useEffect(() => {
+    setSnapshots(readSnapshots());
+  }, []);
+
+  const saveSnapshot = (): void => {
+    if (!data) return;
+    const label =
+      scenario === "custom"
+        ? `Custom FTE ${customFte} · €${customFlat} · ${customScale}%`
+        : scenario === "base"
+          ? "Scenario base"
+          : scenario === "growth"
+            ? "+2 FTE"
+            : "Costi flat";
+    const row: WorkforceSnapshot = {
+      id: `ws-${Date.now()}`,
+      label,
+      savedAt: new Date().toISOString(),
+      payload: data
+    };
+    const next = [row, ...readSnapshots()].slice(0, 12);
+    writeSnapshots(next);
+    setSnapshots(next);
+  };
+
+  const loadCompareBase = async (): Promise<void> => {
+    const t = getToken();
+    if (!t) return;
+    setCompareBusy(true);
+    setError(null);
+    try {
+      await fetchCurrentUser(t).catch(() => undefined);
+      const r = await fetchWorkforceCockpit(t, "base", 6);
+      setCompareLive(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Confronto non disponibile");
+    } finally {
+      setCompareBusy(false);
+    }
+  };
+
+  const applySnapshotCompare = (id: string): void => {
+    const row = snapshots.find((s) => s.id === id);
+    setCompareLive(row ? row.payload : null);
+  };
 
   const loadPreset = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -93,6 +176,17 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   }, [scenario, loadPreset]);
 
   const max = Math.max(1, ...(data?.series.map((s) => s.costEur) ?? [1]));
+
+  const compareRows = useMemo(() => {
+    if (!data || !compareLive) return [];
+    const byMonth = new Map(compareLive.series.map((s) => [s.month, s.costEur]));
+    return data.series.map((s) => {
+      const other = byMonth.get(s.month) ?? 0;
+      const delta = s.costEur - other;
+      const pct = other > 0 ? (delta / other) * 100 : null;
+      return { month: s.month, active: s.costEur, other, delta, pct };
+    });
+  }, [data, compareLive]);
 
   const runNarrative = async (): Promise<void> => {
     const t = getToken();
@@ -171,6 +265,139 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
           </button>
         ))}
       </div>
+
+      <HebbAiGlassPanel className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Confronto scenari</h2>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Carica lo scenario <strong className="text-[var(--prom-text)]">base</strong> in parallelo, oppure salva lo
+              scenario attuale in <strong className="text-[var(--prom-text)]">sessionStorage</strong> (solo questo browser)
+              per confronti successivi.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={compareBusy} onClick={() => void loadCompareBase()}>
+              {compareBusy ? "Carico…" : "Confronta con base (live)"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={!data} onClick={() => saveSnapshot()}>
+              Salva snapshot
+            </Button>
+            {compareLive ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setCompareLive(null)}>
+                Azzera confronto
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        {snapshots.length > 0 ? (
+          <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+            Snapshot salvati
+            <select
+              className="max-w-md rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v) applySnapshotCompare(v);
+              }}
+            >
+              <option value="">— applica come colonna confronto —</option>
+              {snapshots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {new Date(s.savedAt).toLocaleString("it-IT")} · {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="text-xs text-[var(--prom-muted)]">Nessuno snapshot salvato in questa sessione.</p>
+        )}
+      </HebbAiGlassPanel>
+
+      {compareLive && data ? (
+        <HebbAiGlassPanel className="space-y-4">
+          <h2 className="text-sm font-semibold text-[var(--prom-text)]">
+            Vista affiancata · attivo: {data.scenario} · confronto: {compareLive.scenario}
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Attivo · HC</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.headcount}</p>
+              </HebbAiGlassTile>
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Attivo · massa / mese</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">
+                  {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                    data.summary.monthlyPayrollMassEur
+                  )}
+                </p>
+              </HebbAiGlassTile>
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Attivo · spese pending</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.pendingExpenseCount}</p>
+              </HebbAiGlassTile>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Confronto · HC</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">{compareLive.summary.headcount}</p>
+              </HebbAiGlassTile>
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Confronto · massa / mese</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">
+                  {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                    compareLive.summary.monthlyPayrollMassEur
+                  )}
+                </p>
+              </HebbAiGlassTile>
+              <HebbAiGlassTile>
+                <p className="text-[10px] font-medium uppercase text-[var(--prom-muted)]">Confronto · spese pending</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--prom-text)]">
+                  {compareLive.summary.pendingExpenseCount}
+                </p>
+              </HebbAiGlassTile>
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-[var(--prom-line)]">
+            <table className="w-full min-w-[32rem] text-left text-xs">
+              <thead className="border-b border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] text-[var(--prom-muted)]">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Mese</th>
+                  <th className="px-3 py-2 font-semibold">Costo attivo</th>
+                  <th className="px-3 py-2 font-semibold">Costo confronto</th>
+                  <th className="px-3 py-2 font-semibold">Delta</th>
+                  <th className="px-3 py-2 font-semibold">Δ %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compareRows.map((r) => (
+                  <tr key={r.month} className="border-b border-[var(--prom-line)] last:border-0">
+                    <td className="px-3 py-2 font-medium text-[var(--prom-text)]">{r.month}</td>
+                    <td className="px-3 py-2 tabular-nums text-[var(--prom-text)]">
+                      {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(r.active)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-[var(--prom-muted)]">
+                      {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(r.other)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 tabular-nums ${
+                        r.delta > 0 ? "text-amber-800 dark:text-amber-200" : r.delta < 0 ? "text-emerald-800 dark:text-emerald-200" : ""
+                      }`}
+                    >
+                      {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(r.delta)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-[var(--prom-muted)]">
+                      {r.pct == null ? "—" : `${r.pct >= 0 ? "+" : ""}${r.pct.toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </HebbAiGlassPanel>
+      ) : null}
 
       {scenario === "custom" ? (
         <HebbAiGlassPanel className="space-y-4">

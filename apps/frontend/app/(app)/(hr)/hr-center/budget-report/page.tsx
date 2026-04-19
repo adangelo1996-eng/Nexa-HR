@@ -110,10 +110,17 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
     if (!narrative) return;
     const doc = new jsPDF();
     const text = plainTextFromNarrative(narrative);
-    const lines = doc.splitTextToSize(text, 180);
-    doc.text("Nexa HR — Report budget personale (LLM)", 14, 16);
+    doc.setFillColor(0, 45, 114);
+    doc.rect(0, 0, 220, 26, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text("Nexa HR", 14, 17);
+    doc.setFontSize(9);
+    doc.text("Report budget personale (LLM)", 14, 23);
+    doc.setTextColor(28, 37, 44);
     doc.setFontSize(10);
-    doc.text(lines, 14, 28);
+    const lines = doc.splitTextToSize(text, 180);
+    doc.text(lines, 14, 34);
     doc.save("nexa-budget-llm-report.pdf");
   };
 
@@ -123,12 +130,33 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
       const pptxgen = (await import("pptxgenjs")).default;
       const pres = new pptxgen();
       pres.layout = "LAYOUT_16x9";
+      pres.author = "Nexa HR";
+      pres.title = "Report budget personale";
+      const brand = "002D72";
       const text = plainTextFromNarrative(narrative);
       const chunks = text.split(/\n\n+/).filter(Boolean);
       const slides = chunks.length ? chunks : [text];
       for (const chunk of slides.slice(0, 12)) {
         const slide = pres.addSlide();
-        slide.addText(chunk, { x: 0.5, y: 0.6, w: "90%", h: "80%", fontSize: 12, valign: "top" });
+        slide.background = { color: brand };
+        slide.addText("Nexa HR", {
+          x: 0.4,
+          y: 0.35,
+          w: "40%",
+          h: 0.4,
+          fontSize: 14,
+          color: "FFFFFF",
+          bold: true
+        });
+        slide.addText(chunk, {
+          x: 0.45,
+          y: 0.95,
+          w: "88%",
+          h: "72%",
+          fontSize: 12,
+          color: "F0F4FA",
+          valign: "top"
+        });
       }
       await pres.writeFile({ fileName: "nexa-budget-llm-report.pptx" });
     } catch {

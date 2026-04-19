@@ -772,8 +772,29 @@ export class HrCenterService {
           refineFailure = refined.failure;
         }
       }
-      const narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
+      let narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
+      const env = (narrative as { envelope?: { bullets?: unknown[] } })?.envelope;
+      const bullets = Array.isArray(env?.bullets)
+        ? env!.bullets!.filter((x): x is string => typeof x === "string")
+        : [];
+      const thinNarrative = bullets.length === 0 || bullets.every((line) => !/\d/.test(line));
+      if (!refineApplied || refineFailure || thinNarrative) {
+        narrative = {
+          envelope: this.buildPersonnelBudgetNarrativeEnvelopeFromFacts(facts, mode)
+        };
+      }
       await this.appendAudit(companyId, userId, "analytics", pseudo.pseudonymized, narrative);
+      const periodLabel =
+        mode === "abc"
+          ? String(facts.period ?? "")
+          : `${String(facts.periodA ?? "")} vs ${String(facts.periodB ?? "")}`;
+      await this.store.notifyUserInApp({
+        userId,
+        title: "Report budget personale pronto",
+        body: periodLabel ? `Periodo: ${periodLabel}` : undefined,
+        kind: "hr_center_budget_report",
+        actionPath: "/hr-center/budget-report"
+      });
       return {
         facts,
         narrative,
@@ -784,5 +805,75 @@ export class HrCenterService {
     } finally {
       await this.gateway.endSession(sessionId);
     }
+  }
+
+  private buildPersonnelBudgetNarrativeEnvelopeFromFacts(
+    facts: Record<string, unknown>,
+    mode: "two_periods" | "abc"
+  ): { title: string; bullets: string[]; summary: string } {
+    const fmt = (n: unknown): string => {
+      const x = typeof n === "number" ? n : Number(n);
+      if (!Number.isFinite(x)) {
+        return "—";
+      }
+      return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(x);
+    };
+    const catLabel: Record<string, string> = {
+      ral: "RAL e fissi",
+      overtime: "Straordinari",
+      travel: "Trasferte",
+      inps: "INPS azienda",
+      inail: "INAIL",
+      tfr: "TFR",
+      totalCompanyCost: "Costo azienda totale"
+    };
+    const keys = ["ral", "overtime", "travel", "inps", "inail", "tfr", "totalCompanyCost"] as const;
+    if (mode === "abc") {
+      const period = String(facts.period ?? "");
+      const totals = facts.totals as
+        | { actual?: Record<string, number>; budget?: Record<string, number>; forecast?: Record<string, number> }
+        | undefined;
+      const a = totals?.actual ?? {};
+      const b = totals?.budget ?? {};
+      const f = totals?.forecast ?? {};
+      const bullets: string[] = keys.map((k) => {
+        const lab = catLabel[k] ?? k;
+        return `${lab}: Actual ${fmt(a[k])}, Budget ${fmt(b[k])}, Forecast ${fmt(f[k])}.`;
+      });
+      const variances = (facts.variancesTop as Array<{ category: string; varianceBf?: number; variancePct?: number | null }>) ?? [];
+      for (const v of variances.slice(0, 4)) {
+        const lab = catLabel[v.category] ?? v.category;
+        const pct =
+          v.variancePct == null || !Number.isFinite(Number(v.variancePct))
+            ? "n.d."
+            : `${Number(v.variancePct).toFixed(1)}%`;
+        bullets.push(`Varianza ${lab}: scostamento forecast vs budget ${fmt(v.varianceBf)} (${pct} sul budget).`);
+      }
+      const summary =
+        `Periodo ${period} — sintesi su dati aggregati (nessun nominativo). Costo azienda totale: Actual ${fmt(
+          a.totalCompanyCost
+        )}, Budget ${fmt(b.totalCompanyCost)}, Forecast ${fmt(f.totalCompanyCost)}. ` +
+        `Le voci sopra sono tratte dal motore budget personale Nexa; verificare sempre payroll e contabilità prima di decisioni ufficiali.`;
+      return {
+        title: `Analisi mensile costo personale — ${period}`,
+        bullets,
+        summary
+      };
+    }
+    const periodA = String(facts.periodA ?? "");
+    const periodB = String(facts.periodB ?? "");
+    const ta = (facts.totalsA as { actual?: Record<string, number> } | undefined)?.actual ?? {};
+    const tb = (facts.totalsB as { actual?: Record<string, number> } | undefined)?.actual ?? {};
+    const bullets: string[] = keys.map((k) => {
+      const lab = catLabel[k] ?? k;
+      return `${lab}: Actual ${periodA} ${fmt(ta[k])} vs Actual ${periodB} ${fmt(tb[k])}.`;
+    });
+    const summary =
+      `Confronto ${periodA} vs ${periodB} su costi aggregati del personale. Evidenziare driver di variazione su straordinari, oneri e TFR; validare su fonti HR/payroll.`;
+    return {
+      title: `Confronto budget personale — ${periodA} vs ${periodB}`,
+      bullets,
+      summary
+    };
   }
 }

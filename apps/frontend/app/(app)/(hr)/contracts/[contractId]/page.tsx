@@ -77,7 +77,8 @@ export default function ContractEditorPage(): React.JSX.Element {
     for (const b of d.blocks) {
       if (!b.title.trim()) errs.push("Titolo blocco mancante");
       if (!b.content.trim()) errs.push(`Contenuto vuoto in: ${b.title}`);
-      if (/\{\{[^}]+\}\}/.test(b.content) || /\[[^\]]+\]/.test(b.content)) {
+      /** Solo `{{…}}` merge-field: i testi tra [ ] sono valori di default leciti dopo fill. */
+      if (/\{\{[^}]+\}\}/.test(b.content)) {
         errs.push(`Placeholder non risolti in: ${b.title}`);
       }
     }
@@ -167,7 +168,9 @@ export default function ContractEditorPage(): React.JSX.Element {
     setError(null);
     setMsg(null);
     try {
-      const errs = validateDoc(localDoc);
+      const mergedBlocks = applyPartyPlaceholdersToContractBlocks(localDoc.blocks, localDoc.party);
+      const docForValidate: HrContractDoc = { ...localDoc, blocks: mergedBlocks };
+      const errs = validateDoc(docForValidate);
       if (errs.length) {
         setError(errs.join(" • "));
         return;
@@ -175,7 +178,7 @@ export default function ContractEditorPage(): React.JSX.Element {
       const updated = await patchHrStandardContract(token, localDoc.id, {
         title: localDoc.title,
         party: { ...localDoc.party },
-        blocks: localDoc.blocks as unknown[],
+        blocks: mergedBlocks as unknown[],
         status: "approved"
       });
       setLocalDoc(hrContractFromApi(updated));
@@ -195,11 +198,18 @@ export default function ContractEditorPage(): React.JSX.Element {
     setError(null);
     setMsg(null);
     try {
-      const errs = validateDoc(localDoc);
+      const mergedBlocks = applyPartyPlaceholdersToContractBlocks(localDoc.blocks, localDoc.party);
+      const docForValidate: HrContractDoc = { ...localDoc, blocks: mergedBlocks };
+      const errs = validateDoc(docForValidate);
       if (errs.length) {
         setError(errs.join(" • "));
         return;
       }
+      await patchHrStandardContract(token, localDoc.id, {
+        title: localDoc.title,
+        party: { ...localDoc.party },
+        blocks: mergedBlocks as unknown[]
+      });
       const updated = await signHrStandardContract(token, localDoc.id, {
         companySignerName: signCompany.trim(),
         employeeSignerName: signEmployee.trim()
@@ -491,7 +501,7 @@ export default function ContractEditorPage(): React.JSX.Element {
           </div>
           <div className="space-y-4">
             {localDoc.blocks.map((b, idx) => (
-              <div key={b.key} className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
+              <div key={`${idx}-${b.key}`} className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium text-synapse-text dark:text-white">{b.title}</p>
                   <div className="flex gap-2">

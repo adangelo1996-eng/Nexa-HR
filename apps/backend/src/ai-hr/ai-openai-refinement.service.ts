@@ -102,7 +102,7 @@ function systemPromptForSchema(schemaVersion: string): string {
           base +
           " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.text (bozza in italiano) e envelope.facts (message, page, snapshot, routeHints, platformCapabilities, agent, leaveBalance, policySnippets, ecc.): usa i facts solo come contesto, non ripeterli nel JSON di output. " +
           "Se envelope.text contiene token __nexa_ref:...__, copiali IDENTICI nella tua envelope.text. " +
-          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. remote working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
+          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. remote working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints; quando suggerisci dove andare nell’app, includi link Markdown [etichetta](/path) con path esatti dalla lista. Non inventare numeri assenti da snapshot o leaveBalance."
       );
     case "ai_nl_query_v1":
       return (
@@ -125,8 +125,8 @@ function systemPromptForSchema(schemaVersion: string): string {
         base +
         " Schema: {\"envelope\":{\"title\":\"stringa\",\"bullets\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
         "L'ingresso ha envelope.facts (solo numeri aggregati, nessun nominativo) e envelope.narrativeSeed (bozza in italiano). " +
-        "Migliora stile e chiarezza di title, bullets (max 5) e summary in italiano, senza aggiungere cifre o fatti assenti da envelope.facts; " +
-        "non introdurre nomi di persone."
+        "Migliora title, bullets (max 6) e summary in italiano professionale: ogni bullet deve citare almeno un dato numerico presente in envelope.facts (totali, varianze, confronti tra periodi) con unità EUR o percentuali coerenti; " +
+        "non inventare cifre assenti da envelope.facts; non introdurre nomi di persone."
       );
     case "ai_hitl_draft_v1":
       return (
@@ -170,6 +170,15 @@ function systemPromptForSchema(schemaVersion: string): string {
         "L'ingresso ha envelope.facts con metriche di ciclo processo (campione, mediane, note) e eventi aggregati (id tecnico + descrizione già in italiano). " +
         "Individua colli di bottiglia plausibili e vie d'azione prioritarie in italiano semplice; max 6 bullets; non inventare cifre assenti da facts."
       );
+    case "ai_compensation_benchmark_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"ralLowEur\":number,\"ralMedianEur\":number,\"ralHighEur\":number,\"notesIt\":\"stringa\"}}. " +
+        "L'ingresso ha envelope.facts con roleTitle (testo), location (area geografica), seniorityYears (0-45), disclaimer. " +
+        " envelope.seed descrive la richiesta. Stima RAL annua lorda di mercato in Italia per ruolo e seniority: " +
+        "ralLowEur < ralMedianEur < ralHighEur, valori interi EUR realistici; notesIt in italiano (2-5 frasi) con limiti del benchmark e assenza di fonti primarie; " +
+        "non citare aziende reali né persone."
+      );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
   }
@@ -201,7 +210,9 @@ export class AiOpenAiRefinementService {
         ? 4096
         : schemaVersion === "ai_hr_center_analytics_v1"
           ? 4096
-          : schemaVersion === "ai_hitl_draft_v1" || schemaVersion === "ai_turnover_insights_deep_v1"
+          : schemaVersion === "ai_hitl_draft_v1" ||
+              schemaVersion === "ai_turnover_insights_deep_v1" ||
+              schemaVersion === "ai_compensation_benchmark_v1"
             ? 2048
             : 2048;
 
