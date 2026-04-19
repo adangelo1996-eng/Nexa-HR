@@ -173,7 +173,7 @@ function SidebarCollapsibleSection(props: {
       >
         <span className={pc ? "min-w-0 flex-1 pr-1" : ""}>{section.title}</span>
         <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.33,1,0.68,1)] md:h-4 md:w-4 ${
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-[650ms] ease-in-out motion-reduce:transition-none md:h-4 md:w-4 ${
             pc ? "text-white/70 dark:text-white/60" : "text-[var(--prom-muted)] opacity-70"
           } ${open ? "rotate-90" : ""}`}
           aria-hidden
@@ -183,33 +183,35 @@ function SidebarCollapsibleSection(props: {
         id={panelId}
         role="region"
         aria-labelledby={btnId}
-        className={`overflow-hidden transition-[max-height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-          open ? "max-h-[min(120rem,3200px)]" : "max-h-0"
+        className={`grid overflow-hidden transition-[grid-template-rows] duration-[650ms] ease-in-out motion-reduce:transition-none motion-reduce:duration-0 ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         }`}
       >
-        <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
-          {section.subgroups.map((sg) => (
-            <div key={`${section.id}-${sg.id}`}>
-              {pc ? (
-                <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
-              ) : (
-                <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                  {sg.title}
+        <div className="min-h-0 overflow-hidden">
+          <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
+            {section.subgroups.map((sg) => (
+              <div key={`${section.id}-${sg.id}`}>
+                {pc ? (
+                  <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
+                ) : (
+                  <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                    {sg.title}
+                  </div>
+                )}
+                <div className="mt-0.5 space-y-0.5">
+                  {sg.items.map((item) => (
+                    <SidebarNavLink
+                      key={`${section.id}-${sg.id}-${item.href}`}
+                      item={item}
+                      pathname={pathname}
+                      onNavigate={onNavigate}
+                      beforeNavigate={beforeNavigate}
+                    />
+                  ))}
                 </div>
-              )}
-              <div className="mt-0.5 space-y-0.5">
-                {sg.items.map((item) => (
-                  <SidebarNavLink
-                    key={`${section.id}-${sg.id}-${item.href}`}
-                    item={item}
-                    pathname={pathname}
-                    onNavigate={onNavigate}
-                    beforeNavigate={beforeNavigate}
-                  />
-                ))}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>

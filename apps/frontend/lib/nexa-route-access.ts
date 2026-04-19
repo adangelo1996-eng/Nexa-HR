@@ -14,6 +14,11 @@ import {
 /**
  * Allinea la mappa portale (e ricerche simili) alle stesse regole del menu / permessi sessione:
  * niente tile verso pagine che l’utente non può usare.
+ *
+ * Sicurezza: queste funzioni governano solo **UI e navigazione client**. Non si può impedire con il browser
+ * che qualcuno apra un URL o chiami le API: ogni endpoint Nest deve verificare JWT/permessi (come già fa
+ * `NexaPermissionGuard`, `RoleGuard`, controlli in service). La “vista dipendente” da admin è anteprima UX
+ * (`sessionStorage`): manipolare Inspect cambia solo i link mostrati, non i permessi sul server.
  */
 export function canAccessNexaPortalRoute(
   href: string,

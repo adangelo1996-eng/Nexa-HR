@@ -22,6 +22,9 @@ export function AppMainContentFrame(props: AppMainContentFrameProps): React.JSX.
   const dense = pathname.startsWith("/admin");
   const portalMap = (pathname.replace(/\/$/, "") || "/") === "/mappa-portale";
   const mainScrollRef = useRef<HTMLDivElement>(null);
+  /** Mappa portale: stesso gradiente pagina del resto dell’app (chiaro/scuro via token), senza overlay Hebb che appesantisce il chiaro. */
+  const frameBackgroundStyle =
+    dense || portalMap ? { background: "var(--page-gradient)" } : hebbAiImmersiveBackgroundStyle;
 
   useLayoutEffect(() => {
     const el = mainScrollRef.current;
@@ -35,17 +38,22 @@ export function AppMainContentFrame(props: AppMainContentFrameProps): React.JSX.
       ref={mainScrollRef}
       className="relative min-h-0 flex-1 overflow-y-auto"
     >
+      {/*
+        Sfondo nel flusso con min-h-full: copre tutta l’altezza del contenuto scrollabile.
+        (absolute inset-0 si ancorava solo all’altezza visibile e la sfumatura “finiva” a metà pagina.)
+      */}
       <div
-        className={`pointer-events-none absolute inset-0 ${dense ? "opacity-80" : "opacity-95"}`}
-        style={dense ? { background: "var(--page-gradient)" } : hebbAiImmersiveBackgroundStyle}
-      />
-      {!dense && !portalMap ? (
-        <div
-          className="pointer-events-none absolute left-1/2 top-10 h-72 w-72 -translate-x-1/2 rounded-full blur-3xl motion-safe:animate-pulse md:top-16 md:h-80 md:w-80"
-          style={orbSoftStyle}
-        />
-      ) : null}
-      <div className="relative z-[1] min-h-full">{props.children}</div>
+        className={`relative isolate min-h-full w-full ${dense || portalMap ? "opacity-100" : "opacity-95"}`}
+        style={frameBackgroundStyle}
+      >
+        {!dense && !portalMap ? (
+          <div
+            className="pointer-events-none absolute left-1/2 top-10 z-0 h-72 w-72 -translate-x-1/2 rounded-full blur-3xl motion-safe:animate-pulse md:top-16 md:h-80 md:w-80"
+            style={orbSoftStyle}
+          />
+        ) : null}
+        <div className="relative z-[1] min-h-full">{props.children}</div>
+      </div>
     </div>
   );
 }
