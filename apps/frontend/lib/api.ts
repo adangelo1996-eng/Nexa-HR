@@ -812,7 +812,7 @@ export async function createUser(token: string, payload: CreateUserPayload): Pro
 }
 
 export async function updateUser(token: string, userId: string, payload: UpdateUserPayload): Promise<User> {
-  const response = await fetch(buildApiUrl(`/users/${userId}`), {
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}`), {
     method: "PATCH",
     headers: getAuthHeaders(token),
     body: JSON.stringify(payload)
@@ -1703,7 +1703,7 @@ export async function fetchLeaveBalance(token: string, year: number): Promise<Le
 }
 
 export async function setLeaveAllowance(token: string, userId: string, allocatedDays: number): Promise<LeaveBalance> {
-  const response = await fetch(buildApiUrl(`/leave/balance/${userId}`), {
+  const response = await fetch(buildApiUrl(`/leave/balance/${encodeURIComponent(userId)}`), {
     method: "PATCH",
     headers: getAuthHeaders(token),
     body: JSON.stringify({ allocatedDays })
@@ -2582,6 +2582,85 @@ export async function undoRecruitLastMove(
   return response.json() as Promise<RecruitCandidateStageStateDto>;
 }
 
+export type RecruitOnboardingRowDto = {
+  state_id: string;
+  position_id: string;
+  position_title: string;
+  candidate: RecruitCandidateDto;
+  status: string;
+  updated_at: string;
+};
+
+export async function fetchRecruitOnboardingBoard(token: string): Promise<{ items: RecruitOnboardingRowDto[] }> {
+  const primary = await fetch(buildApiUrl("/hr-recap/recruiting-onboarding"), { headers: getAuthHeaders(token) });
+  if (primary.ok) {
+    return primary.json() as Promise<{ items: RecruitOnboardingRowDto[] }>;
+  }
+  if (primary.status === 403) {
+    const fallback = await fetch(buildApiUrl("/recruiting/onboarding"), { headers: getAuthHeaders(token) });
+    if (!fallback.ok) await parseError(fallback);
+    return fallback.json() as Promise<{ items: RecruitOnboardingRowDto[] }>;
+  }
+  return await parseError(primary);
+}
+
+export type HrRecapSummaryDto = {
+  totalEmployed: number;
+  active: number;
+  hrOnboarding: number;
+  offboarding: number;
+  contractsToSign: number;
+  recruitingOnboardingCandidates: number;
+};
+
+export type HrRecapTaskDto = {
+  id: string;
+  kind: "approval" | "expense_hr" | "contract_sign";
+  title: string;
+  subtitle?: string;
+  dueAt: string | null;
+  href: string;
+  notifyUserId: string | null;
+};
+
+export async function fetchHrRecapSummary(token: string): Promise<HrRecapSummaryDto> {
+  const response = await fetch(buildApiUrl("/hr-recap/summary"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrRecapSummaryDto>;
+}
+
+export async function fetchHrRecapTasks(token: string): Promise<{ tasks: HrRecapTaskDto[] }> {
+  const response = await fetch(buildApiUrl("/hr-recap/tasks"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ tasks: HrRecapTaskDto[] }>;
+}
+
+export async function postHrRecapReminder(token: string, taskId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl("/hr-recap/reminders"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ taskId })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true }>;
+}
+
+export async function fetchHrRecapPeople(
+  token: string,
+  category: "active" | "hr_onboarding" | "offboarding" | "contracts_pending"
+): Promise<{
+  users?: Array<{ id: string; fullName: string; email: string; employmentState?: string }>;
+  contracts?: Array<{ id: string; title: string; recruit_candidate_id: string | null; updated_at: string }>;
+}> {
+  const q = new URLSearchParams({ category });
+  const response = await fetch(buildApiUrl(`/hr-recap/people?${q.toString()}`), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    users?: Array<{ id: string; fullName: string; email: string; employmentState?: string }>;
+    contracts?: Array<{ id: string; title: string; recruit_candidate_id: string | null; updated_at: string }>;
+  }>;
+}
+
 export type HrStandardContractStatus = "draft" | "approved" | "exported";
 
 export interface HrStandardContractDto {
@@ -3294,6 +3373,85 @@ export async function fetchManagerCopilot(token: string): Promise<{
       insights: string;
       workforcePlanning: string;
     };
+  };
+}
+
+export async function fetchHrCenterMeta(token: string): Promise<{
+  canAccess: boolean;
+  llmActive: boolean;
+  scopeMode?: "company" | "team";
+}> {
+  const response = await fetch(buildApiUrl("/hr-center/meta"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    canAccess: boolean;
+    llmActive: boolean;
+    scopeMode?: "company" | "team";
+  };
+}
+
+export async function postHrCenterAnalytics(token: string): Promise<{
+  facts: Record<string, unknown>;
+  narrative: unknown;
+  llm: { active: boolean; refineApplied: boolean };
+  privacy: { schemaVersion: string; tokenCount: number };
+}> {
+  const response = await fetch(buildApiUrl("/hr-center/analytics/run"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({})
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    llm: { active: boolean; refineApplied: boolean };
+    privacy: { schemaVersion: string; tokenCount: number };
+  };
+}
+
+export async function postHrCenterContractDraft(token: string): Promise<{
+  facts: Record<string, unknown>;
+  narrative: unknown;
+  llm: { active: boolean; refineApplied: boolean };
+  privacy: { schemaVersion: string; tokenCount: number };
+}> {
+  const response = await fetch(buildApiUrl("/hr-center/contracts/draft"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({})
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    llm: { active: boolean; refineApplied: boolean };
+    privacy: { schemaVersion: string; tokenCount: number };
+  };
+}
+
+export async function postHrCenterRecap(
+  token: string,
+  targetUserId?: string
+): Promise<{
+  facts: Record<string, unknown>;
+  narrative: unknown;
+  llm: { active: boolean; refineApplied: boolean };
+  privacy: { schemaVersion: string; tokenCount: number };
+}> {
+  const response = await fetch(buildApiUrl("/hr-center/recap/run"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ targetUserId: targetUserId ?? undefined })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    llm: { active: boolean; refineApplied: boolean };
+    privacy: { schemaVersion: string; tokenCount: number };
   };
 }
 

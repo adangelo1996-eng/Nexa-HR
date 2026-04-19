@@ -29,14 +29,10 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, smart working team" },
-  { path: "/tools/skills-gap", labelIt: "Skills gap", topicsIt: "competenze, ruoli, fabbisogno, gap" },
-  { path: "/hr-alerts", labelIt: "Alert HR", topicsIt: "alert, notifiche hr, soglie" },
-  { path: "/process-bottlenecks", labelIt: "Ottimizzazione processi", topicsIt: "ciclo, colli di bottiglia, tempi" },
-  {
-    path: "/tools/hitl-proposals",
-    labelIt: "Proposte con revisione umana (HITL)",
-    topicsIt: "approvazione umana, coda proposte, promemoria ferie, solleciti, policy"
-  },
+  { path: "/hr-center", labelIt: "Centro HR", topicsIt: "analisi costi, contratti, recap dipendenti, llm" },
+  { path: "/hr-center/analisi", labelIt: "Centro HR — analisi costi", topicsIt: "cdc, costi personale, aggregati, forecast" },
+  { path: "/hr-center/contratti", labelIt: "Centro HR — contratti (LLM)", topicsIt: "bozza contratto, template, verifica hr" },
+  { path: "/hr-center/recap", labelIt: "Centro HR — recap dipendente", topicsIt: "skills, contratto, formazione, suggerimenti" },
   { path: "/scheduling", labelIt: "Turni", topicsIt: "turni, pianificazione turni, shift" },
   { path: "/recruiting", labelIt: "Colloqui e selezione", topicsIt: "colloqui, recruiting, selezione, candidati" },
   { path: "/contracts", labelIt: "Contratti standard", topicsIt: "contratti, clausole, template" },
@@ -46,12 +42,12 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/compensation/bench", labelIt: "Benchmark retribuzione", topicsIt: "benchmark, mercato, retribuzione" },
   { path: "/tools/cost-calculator", labelIt: "Calcolatore costo azienda / netto", topicsIt: "costo azienda, netto, simulazione stipendio" },
   { path: "/tools/third-party-licenses", labelIt: "Utenze e licenze terze", topicsIt: "licenze, software, terze parti" },
-  { path: "/payroll-hebb", labelIt: "Hebb — Payroll", topicsIt: "payroll, hebb, elaborazione paghe" },
+  { path: "/payroll-hebb", labelIt: "Payroll", topicsIt: "payroll, hebb, elaborazione paghe" },
   { path: "/admin", labelIt: "Area amministrazione", topicsIt: "admin, amministratore, configurazione" },
   { path: "/admin/data-export", labelIt: "Export Excel dipendenti", topicsIt: "export, excel, dipendenti" },
   { path: "/admin/data-import", labelIt: "Import Excel dipendenti", topicsIt: "import, excel, anagrafica" },
   { path: "/admin/payslip-import", labelIt: "Import cedolini PDF", topicsIt: "import cedolini, pdf" },
-  { path: "/ai-hub", labelIt: "Centro AI HR (qui)", topicsIt: "ai, assistente, intelligenza artificiale, aiuto" }
+  { path: "/ai-hub", labelIt: "Assistente AI (chat)", topicsIt: "ai, assistente, chat, intelligenza artificiale, aiuto" }
 ] as const;
 
 /** Alias compatibile con il payload precedente `routeHints`. */

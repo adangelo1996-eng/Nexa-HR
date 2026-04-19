@@ -17,7 +17,6 @@ import {
   fetchThirdPartyLicenses,
   fetchUserProfilePhotoUrl,
   fetchUsers,
-  setLeaveAllowance,
   syncThirdPartyAssignmentsForUser,
   updateUser,
   uploadUserProfilePhoto,
@@ -456,7 +455,6 @@ export default function AdminPage(): React.JSX.Element {
         payrollAtecoCode: selectedUser.payrollAtecoCode ?? null,
         payrollInailRiskDescription: selectedUser.payrollInailRiskDescription ?? null
       });
-      await setLeaveAllowance(token, selectedUser.id, selectedUser.vacationAllowanceDays ?? 22);
       await refreshUsers();
       setAdminModal("closed");
     } catch (submitError) {

@@ -5,9 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   BarChart2,
-  Bell,
   Calculator,
   ClipboardList,
   Calendar,
@@ -17,13 +15,13 @@ import {
   FileText,
   KeyRound,
   Library,
-  ListChecks,
   LayoutDashboard,
   LogOut,
   Menu,
   Moon,
   PenLine,
   UserRoundSearch,
+  UserPlus,
   Receipt,
   Search,
   Settings,
@@ -34,6 +32,7 @@ import {
   User,
   UserCog,
   Wallet2,
+  Wand2,
   Workflow,
   Network,
   type LucideIcon,
@@ -47,8 +46,9 @@ import {
   getSessionUser,
   getToken,
   sessionCanAccessPayrollArea,
+  sessionCanAccessHrRecapDashboard,
+  sessionCanAccessManagerPanel,
   sessionCanNexaAdmin,
-  sessionCanSeeApprovalsAndHrExtras,
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanViewOrgExpenseClaims,
   type SessionUser
@@ -89,11 +89,6 @@ const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
       { href: "/payslips", label: "Cedolini", icon: FileText }
     ]
   },
-  {
-    id: "assistenza",
-    title: "Assistenza",
-    items: [{ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library }]
-  }
 ];
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
@@ -276,8 +271,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const showOrgExpensesNav = Boolean(
     user && !hideSensitiveHrBecausePreview && sessionCanViewOrgExpenseClaims(user)
   );
+  const showManagerPanelNav = Boolean(
+    user && !hideSensitiveHrBecausePreview && sessionCanAccessManagerPanel(user)
+  );
+
+  const showHrRecapNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanAccessHrRecapDashboard(user));
   const showHrSidebarSection =
-    showPayrollNav || showBudgetNav || showHrToolsNav || showAdminNav || showOrgExpensesNav;
+    showPayrollNav ||
+    showBudgetNav ||
+    showHrToolsNav ||
+    showAdminNav ||
+    showOrgExpensesNav ||
+    showHrRecapNav;
 
   const filteredSearch = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -300,10 +305,15 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       );
     }
     if (!sessionCanUseNexaAiOpenAiLlm(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== ("/ai-hub" as Route));
+      routes = routes.filter((r) => r.href !== ("/ai-hub" as Route) && r.href !== ("/hr-center" as Route));
     }
     if (!sessionCanViewOrgExpenseClaims(user ?? undefined)) {
       routes = routes.filter((r) => r.href !== ("/expenses/org" as Route));
+    }
+    if (!sessionCanAccessHrRecapDashboard(user ?? undefined)) {
+      routes = routes.filter(
+        (r) => r.href !== ("/hr-recap" as Route) && r.href !== ("/recruiting/onboarding" as Route)
+      );
     }
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
   }, [searchQ, user]);
@@ -325,15 +335,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const sidebarHrSections = useMemo(() => {
     const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
     const hrOps: NavItem[] = [];
-    if (user && !hideSensitiveHrBecausePreview && sessionCanSeeApprovalsAndHrExtras(user)) {
-      hrOps.push({
-        href: "/manager-copilot" as Route,
-        label: "Pannello manager",
-        icon: ClipboardList
-      });
-    }
     if (showHrToolsNav) {
       hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
+      hrOps.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni", icon: UserPlus });
       hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
       hrOps.push({
         href: "/tools/third-party-licenses" as Route,
@@ -346,36 +350,29 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         label: "Calcolatore costo/netto",
         icon: Calculator
       });
-      hrOps.push({
-        href: "/tools/skills-gap" as Route,
-        label: "Skills gap (ruoli)",
-        icon: BarChart2
-      });
-      hrOps.push({ href: "/hr-alerts" as Route, label: "Alert HR", icon: Bell });
-      hrOps.push({
-        href: "/process-bottlenecks" as Route,
-        label: "Ottimizzazione processi",
-        icon: Activity
-      });
-      hrOps.push({
-        href: "/tools/hitl-proposals" as Route,
-        label: "Proposte con revisione umana",
-        icon: ListChecks
-      });
-    }
-    if (showBudgetNav) {
-      hrOps.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
-    }
-    if (showOrgExpensesNav) {
-      hrOps.push({ href: "/expenses/org" as Route, label: "Note spese (dipendenti)", icon: Receipt });
-    }
-    if (showPayrollNav) {
-      hrOps.push({ href: "/payroll-hebb" as Route, label: "Hebb — Payroll", icon: Sparkles });
     }
     if (hrOps.length > 0) {
       hrBlocks.push({ id: "hr-ops", title: "Strumenti HR", items: hrOps });
     }
     const hrAdmin: NavItem[] = [];
+    if (showHrRecapNav) {
+      hrAdmin.push({ href: "/hr-recap" as Route, label: "Recap HR", icon: ClipboardList });
+      if (!showHrToolsNav) {
+        hrAdmin.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni", icon: UserPlus });
+      }
+    }
+    if (showOrgExpensesNav) {
+      hrAdmin.push({ href: "/expenses/org" as Route, label: "Note spese (dipendenti)", icon: Receipt });
+    }
+    if (showBudgetNav) {
+      hrAdmin.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
+    }
+    if (showPayrollNav) {
+      hrAdmin.push({ href: "/payroll-hebb" as Route, label: "Payroll", icon: Sparkles });
+    }
+    if ((showHrToolsNav || showAdminNav) && !hideSensitiveHrBecausePreview) {
+      hrAdmin.push({ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library });
+    }
     if (showAdminNav) {
       hrAdmin.push({ href: "/admin" as Route, label: "Admin", icon: UserCog, exact: true });
       hrAdmin.push({ href: "/admin/data-export" as Route, label: "Export Excel", icon: FileText });
@@ -389,6 +386,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     user,
     hideSensitiveHrBecausePreview,
     showHrToolsNav,
+    showHrRecapNav,
     showBudgetNav,
     showOrgExpensesNav,
     showAdminNav,
@@ -400,7 +398,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       return null;
     }
     const items: NavItem[] = [
-      { href: "/ai-hub" as Route, label: "Centro AI HR", icon: Sparkles },
+      { href: "/hr-center" as Route, label: "Centro HR", icon: Sparkles },
+      { href: "/ai-hub" as Route, label: "Assistente AI (chat)", icon: Wand2 },
       { href: "/workforce-planning" as Route, label: "Workforce planning (sintesi AI)", icon: BarChart2 }
     ];
     if (showHrToolsNav) {
@@ -461,6 +460,19 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </span>
       </Link>
       <SidebarNavLink item={NAV_DASHBOARD} pathname={pathname} onNavigate={closeMobile} />
+      {showManagerPanelNav ? (
+        <SidebarNavLink
+          item={
+            {
+              href: "/manager-copilot" as Route,
+              label: "Pannello manager",
+              icon: ClipboardList
+            } satisfies NavItem
+          }
+          pathname={pathname}
+          onNavigate={closeMobile}
+        />
+      ) : null}
       {mainNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}

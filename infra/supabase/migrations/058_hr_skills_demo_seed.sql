@@ -2,7 +2,7 @@
 -- Non sovrascrive livelli esistenti (ON CONFLICT DO NOTHING).
 
 insert into public.hr_skills (company_id, code, name, description)
-select c.cid, v.code, v.name, v.desc
+select c.cid, v.code, v.name, v.description
 from (select distinct trim("companyId") as cid from public.users where coalesce(trim("companyId"), '') <> '') c
 cross join (
   values
@@ -14,7 +14,7 @@ cross join (
     ('skill.communication', 'Comunicazione interna', 'Allineamento stakeholder, scrittura chiara'),
     ('skill.data_privacy', 'Privacy dati HR', 'Minimizzazione, accessi, audit'),
     ('skill.recruiting', 'Recruiting operativo', 'Sourcing, colloqui strutturati, employer branding')
-) as v(code, name, desc)
+) as v(code, name, description)
 on conflict (company_id, code) do nothing;
 
 insert into public.hr_user_skills (company_id, user_id, skill_id, level)

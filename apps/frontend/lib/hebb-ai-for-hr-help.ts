@@ -11,10 +11,9 @@ export const HEBB_AI_PAGE_KEYS = [
   "manager-copilot",
   "insights",
   "cost-calculator",
-  "skills-gap",
-  "hr-alerts",
-  "process-bottlenecks",
-  "hitl-proposals"
+  "hr-center-analisi",
+  "hr-center-contratti",
+  "hr-center-recap"
 ] as const;
 
 export type HebbAiPageKey = (typeof HEBB_AI_PAGE_KEYS)[number];
@@ -28,9 +27,9 @@ export type HebbAiPageHelpContent = {
 
 const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "ai-hub": {
-    title: "Centro AI HR",
+    title: "Assistente AI (chat)",
     summary:
-      "Hub conversazionale e strumenti intelligenti su Nexa HR: orientamento sulla piattaforma, numeri aggregati in sicurezza, controlli e triage delle richieste, con dati sensibili gestiti secondo le policy aziendali.",
+      "Chat conversazionale su Nexa HR: orientamento sulla piattaforma, numeri aggregati in sicurezza, controlli e triage delle richieste, con dati sensibili gestiti secondo le policy aziendali.",
     howToUse: [
       "Inizia da «Chiedi» per domande in linguaggio naturale su ferie, cedolini, policy e percorsi nell’app.",
       "Se hai permessi estesi, scegli l’ambito dati indicato (es. organizzazione) senza inserire nominativi nel testo: il sistema applica i filtri e l’anonimizzazione.",
@@ -42,7 +41,7 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "payroll-hebb": {
-    title: "Hebb — Payroll",
+    title: "Payroll",
     summary:
       "Area operativa per simulazione motore Hebb, generazione cedolini in bozza ed elaborazioni batch prima della pubblicazione ai dipendenti.",
     howToUse: [
@@ -109,59 +108,41 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Esporta o annota gli input se devi confrontare più scenari."
     ]
   },
-  "skills-gap": {
-    title: "Skills gap (ruoli)",
+  "hr-center-analisi": {
+    title: "Centro HR — Analisi costi",
     summary:
-      "Report v1 che confronta fabbisogno competenze per ruolo con livelli medi dichiarati sui dipendenti, collegato a recruiting e catalogo skills.",
+      "Aggregati per centro di costo e sintesi assistita su costi del personale. I dati sensibili passano dal gateway di pseudonimizzazione; l’output va validato in sede di budget.",
     howToUse: [
-      "Popola prima taxonomia `hr_skills`, mapping utenti e requisiti ruolo (via amministrazione/SQL).",
-      "Opzionalmente filtra per `roleId` per focalizzare un ruolo.",
-      "Usa i gap prioritari per piani formazione o hiring."
+      "Premi «Esegui analisi» per ricalcolare aggregati e (se LLM attivo) generare la sintesi.",
+      "Se sei responsabile di team senza permessi HR completi, il perimetro è limitato al tuo team e ai report diretti."
     ],
     bestPractices: [
-      "Mantieni livelli e requisiti aggiornati dopo cambi organizzativi.",
-      "Richiede permesso report HR."
+      "Non usare cifre del modello come fonte contabile senza controllo.",
+      "Per dettaglio nominale usa sempre moduli HR ufficiali."
     ]
   },
-  "hr-alerts": {
-    title: "Alert HR",
+  "hr-center-contratti": {
+    title: "Centro HR — Contratti (LLM)",
     summary:
-      "Elenco alert generati da regole su metriche HR (es. turnover); deduplicazione su chiavi e notifiche in-app opzionali.",
+      "Bozza strutturata partendo dai template «Contratti standard» presenti in anagrafica. Anteprima HTML stampabile; testo da verificare con HR e legal.",
     howToUse: [
-      "Esegui «Esegui regole» per valutare le condizioni e creare/aggiornare alert aperti.",
-      "Gestisci acknowledge sugli elementi che hai preso in carico.",
-      "Monitora gravità (info, warning, critical) per priorità di intervento."
+      "Genera la bozza e leggi la checklist nella sintesi.",
+      "Usa «Apri anteprima stampa» per salvare PDF dal browser se necessario."
     ],
     bestPractices: [
-      "Definisci con HR quali soglie sono accettabili prima di allargare le notifiche.",
-      "Richiede permesso report HR."
+      "Watermark e disclaimer sono obbligatori: nessun documento vincolante senza revisione umana."
     ]
   },
-  "process-bottlenecks": {
-    title: "Ottimizzazione processi",
+  "hr-center-recap": {
+    title: "Centro HR — Recap dipendente",
     summary:
-      "Metriche di ciclo su ferie, spese e onboarding più catalogo eventi verso suite esterne (definizioni e aggregati, senza push automatico).",
+      "Suggerimenti su contratto, skills dichiarate e percorsi collegati. Azioni rapide aprono moduli esistenti; nessuna scrittura automatica su dati sensibili.",
     howToUse: [
-      "Leggi le note versione v0 sulle metriche disponibili.",
-      "Incrocia tempi medi con volumi di richieste per individuare colli di bottiglia.",
-      "Usa il catalogo eventi per allineare integrazioni future."
+      "Lascia vuoto l’ID utente per te stesso, oppure incolla l’ID di un membro del team se sei responsabile.",
+      "Usa i link «Azioni suggerite» per approfondire in app."
     ],
     bestPractices: [
-      "Confronta periodi omogenei (stesso calendario lavoro).",
-      "Richiede permesso report HR per i dati aggregati."
-    ]
-  },
-  "hitl-proposals": {
-    title: "Proposte operative con revisione umana",
-    summary:
-      "Percorso guidato per mettere in coda messaggi strutturati (promemoria ferie, solleciti approvazioni, puntatori a policy). Un revisore umano approva o rifiuta: nessuna esecuzione automatica su cedolini o contratti.",
-    howToUse: [
-      "Segui i tre passi: capire i tipi disponibili, scrivere l’intento, generare (opzionale) una bozza con AI e inviare.",
-      "In coda controlla stato e motivazione prima di approvare o rifiutare."
-    ],
-    bestPractices: [
-      "Non inserire dati sensibili non necessari nel testo libero.",
-      "Usa solo i tipi previsti dal catalogo per ridurre rischio operativo."
+      "Tratta i suggerimenti come promemoria operativi, non come valutazioni legali."
     ]
   }
 };

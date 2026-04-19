@@ -198,6 +198,13 @@ export class RecruitingController {
     return this.svc.listPipelineBoard(positionId);
   }
 
+  @Get("onboarding")
+  @RequireNexaPermissions("nexa.recruiting:read")
+  async onboarding(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    const items = await this.svc.listOnboardingCandidatesForCompany(auth.tenantId ?? "comp-1");
+    return { items };
+  }
+
   @Patch("state/:stateId/move")
   @RequireNexaPermissions("nexa.recruiting:write")
   async move(

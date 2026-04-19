@@ -329,6 +329,7 @@ interface UserCreateInput {
   garnishmentMonthlyEstimate?: number | null;
   fringeBenefitYtdEuros?: number | null;
   contractFixedTerm?: boolean;
+  employmentState?: "active" | "hr_onboarding" | "offboarding";
 }
 
 interface UserUpdateInput {
@@ -383,6 +384,7 @@ interface UserUpdateInput {
   garnishmentMonthlyEstimate?: number | null;
   fringeBenefitYtdEuros?: number | null;
   contractFixedTerm?: boolean;
+  employmentState?: "active" | "hr_onboarding" | "offboarding";
 }
 
 type EmployeeDocumentRow = EmployeeDocument & { bodyBase64?: string | null };
@@ -506,7 +508,8 @@ export class HrDataStore {
       costCenterId: "cc-1",
       weeklyContractHours: 40,
       dailyTargetSeconds: 28800,
-      vacationAllowanceDays: 26
+      vacationAllowanceDays: 26,
+      employmentState: "active"
     },
     {
       id: "u-manager",
@@ -521,7 +524,8 @@ export class HrDataStore {
       teamId: "wt-demo-hr",
       weeklyContractHours: 40,
       dailyTargetSeconds: 28800,
-      vacationAllowanceDays: 24
+      vacationAllowanceDays: 24,
+      employmentState: "active"
     },
     {
       id: "u-employee",
@@ -536,7 +540,8 @@ export class HrDataStore {
       costCenterId: "cc-2",
       weeklyContractHours: 40,
       dailyTargetSeconds: 28800,
-      vacationAllowanceDays: 22
+      vacationAllowanceDays: 22,
+      employmentState: "active"
     }
   ];
 
@@ -722,9 +727,21 @@ export class HrDataStore {
     return key;
   }
 
+  private coerceEmploymentState(v: unknown): "active" | "hr_onboarding" | "offboarding" {
+    if (v === "hr_onboarding" || v === "offboarding") {
+      return v;
+    }
+    return "active";
+  }
+
   private mapUserRowFromDatabase(row: User): User {
     const decrypted = decryptUserFromStorage({ ...row } as User, this.resolveUserPiiKey());
-    return { ...decrypted, role: coercePlatformRole(decrypted.role) };
+    const rawEs = (decrypted as { employmentState?: unknown }).employmentState;
+    return {
+      ...decrypted,
+      role: coercePlatformRole(decrypted.role),
+      employmentState: this.coerceEmploymentState(rawEs)
+    };
   }
 
   private mapUserRowToDatabase(user: User): User {
@@ -941,7 +958,7 @@ export class HrDataStore {
     if (this.useDb) {
       const { data, error } = await this.supabase!.from("users").select("*").eq("id", userId).maybeSingle();
       if (error) {
-        throw new NotFoundException("Utente non trovato");
+        throw new BadRequestException(`Lettura utente fallita: ${error.message}`);
       }
       if (!data) {
         throw new NotFoundException("Utente non trovato");
@@ -1439,7 +1456,8 @@ export class HrDataStore {
       fixedSupplementMonthly: input.fixedSupplementMonthly ?? undefined,
       garnishmentMonthlyEstimate: input.garnishmentMonthlyEstimate ?? undefined,
       fringeBenefitYtdEuros: input.fringeBenefitYtdEuros ?? undefined,
-      contractFixedTerm: input.contractFixedTerm ?? false
+      contractFixedTerm: input.contractFixedTerm ?? false,
+      employmentState: input.employmentState ?? "active"
     };
     if (
       user.annualGrossSalary != null &&
@@ -1520,6 +1538,11 @@ export class HrDataStore {
     await this.validateReferenceIds(input.roleId, input.costCenterId);
     if (input.jurisdiction != null && input.jurisdiction !== "IT") {
       throw new BadRequestException("È supportata solo la giurisdizione payroll Italia (IT).");
+    }
+    if (input.employmentState !== undefined) {
+      if (!["active", "hr_onboarding", "offboarding"].includes(input.employmentState)) {
+        throw new BadRequestException("Stato occupazionale non valido");
+      }
     }
     if (input.teamId !== undefined) {
       const tid = input.teamId === null || input.teamId === "" ? null : String(input.teamId).trim();
@@ -1658,14 +1681,17 @@ export class HrDataStore {
   async updateUser(userId: string, input: UserUpdateInput, options?: UserWriteOptions): Promise<User> {
     const payload = await this.mergeUserRecordForUpdate(userId, input, options);
     if (this.useDb) {
-      const { data } = await this.supabase!
+      const { data, error } = await this.supabase!
         .from("users")
         .update(this.mapUserRowToDatabase(payload))
         .eq("id", userId)
         .select("*")
-        .single();
+        .maybeSingle();
+      if (error) {
+        throw new BadRequestException(`Aggiornamento utente fallito: ${error.message}`);
+      }
       if (!data) {
-        throw new NotFoundException("Utente non trovato");
+        throw new NotFoundException("Utente non trovato o nessuna riga aggiornata (verifica ID dipendente).");
       }
       const u = data as User;
       return this.mapUserRowFromDatabase(u);
@@ -4067,6 +4093,268 @@ export class HrDataStore {
       });
     }
     return out;
+  }
+
+  /**
+   * Approvazioni `pending` per dipendenti dell'azienda (vista HR: non dipende dalla visibilità team del singolo utente).
+   */
+  async listCompanyPendingApprovalViewsForHrDashboard(companyId: string): Promise<ApprovalView[]> {
+    const companyUserIds = new Set(
+      (await this.listUsers()).filter((u) => u.companyId === companyId).map((u) => u.id)
+    );
+    if (!companyUserIds.size) {
+      return [];
+    }
+    const allApprovals = this.useDb
+      ? (((await this.supabase!.from("approvals").select("*")).data ?? []) as ApprovalRecord[])
+      : this.approvals;
+    let approvals = allApprovals
+      .filter((item) => companyUserIds.has(item.requestedBy) && item.status === "pending")
+      .sort((a, b) => b.at.localeCompare(a.at));
+
+    const leavesById = new Map<string, LeavePlan>();
+    const sicknessById = new Map<string, SicknessEvent>();
+    const swById = new Map<string, SmartworkingRequestRow>();
+    const travelById = new Map<string, TravelRequestRow>();
+
+    if (this.useDb) {
+      const leaveIds = approvals.filter((item) => item.type === "leave").map((item) => item.entityId);
+      const sicknessIds = approvals.filter((item) => item.type === "sickness").map((item) => item.entityId);
+      const swIds = approvals.filter((item) => item.type === "smartworking").map((item) => item.entityId);
+      const travelIds = approvals.filter((item) => item.type === "travel").map((item) => item.entityId);
+      if (leaveIds.length > 0) {
+        const { data } = await this.supabase!.from("leave_plans").select("*").in("id", leaveIds);
+        for (const row of (data ?? []) as LeavePlan[]) {
+          leavesById.set(row.id, row);
+        }
+      }
+      if (sicknessIds.length > 0) {
+        const { data } = await this.supabase!.from("sickness_events").select("*").in("id", sicknessIds);
+        for (const row of (data ?? []) as SicknessEvent[]) {
+          sicknessById.set(row.id, row);
+        }
+      }
+      if (swIds.length > 0) {
+        const { data } = await this.supabase!.from("smartworking_requests").select("*").in("id", swIds);
+        for (const row of (data ?? []) as SmartworkingRequestRow[]) {
+          swById.set(row.id, row);
+        }
+      }
+      if (travelIds.length > 0) {
+        const { data } = await this.supabase!.from("travel_requests").select("*").in("id", travelIds);
+        for (const row of (data ?? []) as TravelRequestRow[]) {
+          travelById.set(row.id, row);
+        }
+      }
+    } else {
+      for (const leave of this.leavePlans) {
+        leavesById.set(leave.id, leave);
+      }
+      for (const sickness of this.sicknessEvents) {
+        sicknessById.set(sickness.id, sickness);
+      }
+      const needSw = new Set(approvals.filter((a) => a.type === "smartworking").map((a) => a.entityId));
+      for (const r of this.smartworkingRequests) {
+        if (needSw.has(r.id)) {
+          swById.set(r.id, r);
+        }
+      }
+      const needTr = new Set(approvals.filter((a) => a.type === "travel").map((a) => a.entityId));
+      for (const r of this.travelRequests) {
+        if (needTr.has(r.id)) {
+          travelById.set(r.id, r);
+        }
+      }
+    }
+
+    approvals = approvals.filter((item) => {
+      if (item.status !== "pending") {
+        return true;
+      }
+      if (item.type === "leave") {
+        const leave = leavesById.get(item.entityId);
+        return leave?.status === "pending";
+      }
+      if (item.type === "sickness") {
+        const sickness = sicknessById.get(item.entityId);
+        return sickness?.status === "pending";
+      }
+      if (item.type === "travel") {
+        const tr = travelById.get(item.entityId);
+        return tr?.status === "pending";
+      }
+      const sw = swById.get(item.entityId);
+      return sw?.status === "pending";
+    });
+
+    const users = await this.listUsers();
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const out: ApprovalView[] = [];
+    for (const item of approvals) {
+      const user = usersById.get(item.requestedBy);
+      const leave = item.type === "leave" ? leavesById.get(item.entityId) : undefined;
+      const sickness = item.type === "sickness" ? sicknessById.get(item.entityId) : undefined;
+      const sw = item.type === "smartworking" ? swById.get(item.entityId) : undefined;
+      const tr = item.type === "travel" ? travelById.get(item.entityId) : undefined;
+
+      let leaveKind: "annual" | "rol" | undefined;
+      let requestedCalendarDays: number | undefined;
+      let note: string | null | undefined;
+
+      if (leave) {
+        leaveKind = (leave.kind ?? "annual") === "rol" ? "rol" : "annual";
+        try {
+          requestedCalendarDays = this.countCalendarDays(leave.startDate, leave.endDate);
+        } catch {
+          requestedCalendarDays = undefined;
+        }
+      } else if (sickness) {
+        try {
+          requestedCalendarDays = this.countCalendarDays(sickness.fromDate, sickness.toDate);
+        } catch {
+          requestedCalendarDays = undefined;
+        }
+      } else if (sw) {
+        requestedCalendarDays = 1;
+        note = sw.note ?? null;
+      } else if (tr) {
+        requestedCalendarDays = 1;
+        note = tr.note ?? null;
+      }
+
+      const approverUser = item.approverId ? usersById.get(item.approverId) : undefined;
+      out.push({
+        id: item.id,
+        entityId: item.entityId,
+        type: item.type,
+        requestedBy: item.requestedBy,
+        approverId: item.approverId,
+        approverName: approverUser?.fullName,
+        status: item.status,
+        at: item.at,
+        requesterName: user?.fullName,
+        requesterPhotoUrl: null,
+        startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day ?? tr?.day,
+        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day ?? tr?.day,
+        leaveKind,
+        requestedCalendarDays,
+        note
+      });
+    }
+    return out.sort((a, b) => (a.startDate ?? a.at).localeCompare(b.startDate ?? b.at));
+  }
+
+  async listCompanyExpenseClaimsPendingHr(companyId: string): Promise<ExpenseClaim[]> {
+    const users = await this.listUsers();
+    const companyByUser = new Map(users.map((u) => [u.id, u.companyId]));
+    if (!this.useDb) {
+      return this.expenseClaims.filter((c) => c.status === "pending_hr" && companyByUser.get(c.userId) === companyId);
+    }
+    const { data, error } = await this.supabase!.from("expense_claims").select("*").eq("status", "pending_hr").limit(400);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return ((data ?? []) as Record<string, unknown>[])
+      .map((row) => this.mapExpenseRow(row))
+      .filter((c) => companyByUser.get(c.userId) === companyId);
+  }
+
+  async countHrStandardContractsUnsigned(companyId: string): Promise<number> {
+    if (!this.useDb) {
+      return 0;
+    }
+    const { count, error } = await this.supabase!
+      .from("hr_standard_contracts")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", companyId)
+      .is("signed_at", null);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return count ?? 0;
+  }
+
+  async listHrStandardContractsUnsigned(
+    companyId: string
+  ): Promise<Array<{ id: string; title: string; recruit_candidate_id: string | null; updated_at: string }>> {
+    if (!this.useDb) {
+      return [];
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_standard_contracts")
+      .select("id, title, recruit_candidate_id, updated_at")
+      .eq("company_id", companyId)
+      .is("signed_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return ((data ?? []) as Array<{ id: string; title: string; recruit_candidate_id: string | null; updated_at: string }>).map(
+      (r) => ({
+        id: String(r.id),
+        title: String(r.title ?? ""),
+        recruit_candidate_id: r.recruit_candidate_id ? String(r.recruit_candidate_id) : null,
+        updated_at: String(r.updated_at ?? "")
+      })
+    );
+  }
+
+  async getHrRecapHeadcount(companyId: string): Promise<{
+    totalEmployed: number;
+    active: number;
+    hrOnboarding: number;
+    offboarding: number;
+  }> {
+    const users = (await this.listUsers()).filter(
+      (u) => u.companyId === companyId && !String(u.email ?? "").toLowerCase().startsWith("offboarded+")
+    );
+    const hires = users.filter((u) => u.role !== "superuser");
+    let active = 0;
+    let hrOnboarding = 0;
+    let offboarding = 0;
+    for (const u of hires) {
+      const es = u.employmentState ?? "active";
+      if (es === "hr_onboarding") {
+        hrOnboarding += 1;
+      } else if (es === "offboarding") {
+        offboarding += 1;
+      } else {
+        active += 1;
+      }
+    }
+    return { totalEmployed: hires.length, active, hrOnboarding, offboarding };
+  }
+
+  async listUsersForHrRecapCategory(
+    companyId: string,
+    category: "active" | "hr_onboarding" | "offboarding"
+  ): Promise<User[]> {
+    const users = (await this.listUsers()).filter(
+      (u) =>
+        u.companyId === companyId &&
+        u.role !== "superuser" &&
+        !String(u.email ?? "").toLowerCase().startsWith("offboarded+")
+    );
+    return users.filter((u) => (u.employmentState ?? "active") === category);
+  }
+
+  async sendHrDashboardReminder(input: {
+    targetUserId: string;
+    title: string;
+    body: string;
+    actionPath?: string;
+  }): Promise<void> {
+    await this.insertUserNotification({
+      id: randomUUID(),
+      userId: input.targetUserId,
+      title: input.title,
+      body: input.body,
+      read: false,
+      createdAt: new Date().toISOString(),
+      kind: "hr_recap_reminder",
+      actionPath: input.actionPath
+    });
   }
 
   async approveByApprovalId(approvalId: string, approverId: string): Promise<ApprovalView> {
@@ -7690,7 +7978,7 @@ export class HrDataStore {
             read: false,
             createdAt: createdAt,
             kind: "hr_alert",
-            actionPath: "/hr-alerts"
+            actionPath: "/insights"
           });
           notified += 1;
         }
@@ -7737,7 +8025,7 @@ export class HrDataStore {
           read: false,
           createdAt: at,
           kind: "hr_alert",
-          actionPath: "/hr-alerts"
+          actionPath: "/insights"
         });
         notified += 1;
       }

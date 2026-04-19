@@ -172,9 +172,19 @@ export class LeaveController {
 
   @Patch("balance/:userId")
   @UseGuards(RoleGuard)
-  @RequireRole("superuser")
-  @RequireNexaPermissions("nexa.leaves:write")
-  async setBalance(@Param("userId") userId: string, @Body() dto: LeaveAllowanceDto): Promise<unknown> {
+  @RequireRole("user")
+  async setBalance(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string,
+    @Body() dto: LeaveAllowanceDto
+  ): Promise<unknown> {
+    const allowed =
+      auth.role === "superuser" ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.leaves:write"])) ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.admin_users:write"]));
+    if (!allowed) {
+      throw new ForbiddenException("Non autorizzato a modificare il piano ferie di altri utenti.");
+    }
     return this.store.setLeaveAllowance(userId, dto.allocatedDays);
   }
 }

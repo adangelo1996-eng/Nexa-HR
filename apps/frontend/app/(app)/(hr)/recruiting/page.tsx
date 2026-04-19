@@ -75,6 +75,12 @@ export default function RecruitingHomePage(): React.JSX.Element {
           >
             Vai a candidati
           </Link>
+          <Link
+            href="/recruiting/onboarding"
+            className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] dark:text-white"
+          >
+            Onboarding assunzioni
+          </Link>
         </div>
       </header>
 

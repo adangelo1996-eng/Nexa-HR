@@ -211,7 +211,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                                   Avanza
                                 </Button>
                                 <Button type="button" size="sm" variant="secondary" onClick={() => void onDecision(it.state.id, "failed")}>
-                                  Scarta
+                                  Respingi
                                 </Button>
                               </div>
                               <Button
@@ -226,7 +226,10 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                               <p className="text-[11px] text-synapse-muted">Esito: {it.state.status}</p>
                               {(() => {
                                 const st = stageById.get(it.state.current_stage_id);
-                                const isHired = st?.stage_kind === "hired" || st?.name.toLowerCase().includes("assunt");
+                                const isHired =
+                                  st?.stage_kind === "hired" ||
+                                  st?.stage_kind === "onboarding" ||
+                                  st?.name.toLowerCase().includes("assunt");
                                 if (!isHired) return null;
                                 return (
                                   <Button

@@ -8,9 +8,9 @@ import {
   Query,
   UseGuards
 } from "@nestjs/common";
+import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { Type } from "class-transformer";
 import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
-import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
@@ -220,10 +220,19 @@ export class AnalyticsController {
   }
 
   @Get("manager-copilot")
-  @RequireNexaPermissions("nexa.approvals:read")
   async managerCopilot(@CurrentAuth() auth: AuthContext): Promise<
     Awaited<ReturnType<HrDataStore["getManagerCopilotDashboard"]>>
   > {
+    if (auth.role !== "superuser") {
+      const hasApprovals = await this.permissions.userHasAll(auth.userId, ["nexa.approvals:read"]);
+      const leadIds = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
+      const directs = await this.store.listUsersByManager(auth.userId);
+      if (!hasApprovals && leadIds.length === 0 && directs.length === 0) {
+        throw new ForbiddenException(
+          "Pannello manager: serve permesso approvazioni, oppure essere lead di un team o avere report diretti."
+        );
+      }
+    }
     const includeTurnover = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
     return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover });
   }

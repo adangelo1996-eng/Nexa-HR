@@ -39,6 +39,8 @@ export interface SessionUser {
   canManageTeamAttendance?: boolean;
   /** Responsabile nominato su almeno un `work_team` (GET /users/me). */
   isTeamResponsible?: boolean;
+  /** Almeno un dipendente con `managerId` = utente corrente. */
+  hasDirectReports?: boolean;
   workTeamIdsWhereLead?: string[];
   /** Area payroll Hebb (/payroll-hebb): solo superuser o console admin (`canAccessPayrollArea` da backend). */
   canAccessPayrollArea?: boolean;
@@ -69,6 +71,8 @@ export interface SessionUser {
   companyCcnl?: string | null;
   /** Permesso catalogo budget (backend); la sezione `/personnel-budget` in UI è mostrata solo con `canNexaAdmin`. */
   canAccessPersonnelBudgetArea?: boolean;
+  /** Recap operativo HR (`/hr-recap`): report HR o console HR estesa. */
+  canAccessHrRecapDashboard?: boolean;
   /**
    * LLM OpenAI disponibile su questo backend (`NEXA_AI_OPENAI_ENABLED` + `OPENAI_API_KEY`).
    * Da `GET /users/me` / login.
@@ -133,6 +137,36 @@ export function sessionCanSeeApprovalsAndHrExtras(
   return u.isTeamResponsible === true;
 }
 
+/** Pannello manager: HR esteso / Synapse admin, workflow HR, lead team o manager con report diretti. */
+export function sessionCanAccessManagerPanel(
+  u: Pick<
+    SessionUser,
+    | "role"
+    | "canAccessHrWorkflowExtras"
+    | "isTeamResponsible"
+    | "hasDirectReports"
+    | "canAccessHrExtendedConsole"
+    | "canNexaAdmin"
+  > | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return true;
+  }
+  if (u.canNexaAdmin === true || u.canAccessHrExtendedConsole === true) {
+    return true;
+  }
+  if (u.canAccessHrWorkflowExtras === true) {
+    return true;
+  }
+  if (u.isTeamResponsible === true) {
+    return true;
+  }
+  return u.hasDirectReports === true;
+}
+
 /** Calcolo/simulazione cedolino (`/payroll-hebb`): solo se il backend ha `canAccessPayrollArea` (superuser o console admin). */
 export function sessionCanAccessPayrollArea(
   u: Pick<SessionUser, "canAccessPayrollArea"> | null | undefined
@@ -145,6 +179,12 @@ export function sessionCanAccessPersonnelBudgetArea(
   u: Pick<SessionUser, "canAccessPersonnelBudgetArea"> | null | undefined
 ): boolean {
   return u?.canAccessPersonnelBudgetArea === true;
+}
+
+export function sessionCanAccessHrRecapDashboard(
+  u: Pick<SessionUser, "canAccessHrRecapDashboard" | "canNexaAdmin"> | null | undefined
+): boolean {
+  return u?.canAccessHrRecapDashboard === true || u?.canNexaAdmin === true;
 }
 
 /** Centro AI HR e raffinamento LLM opzionale (narrative): solo se il backend espone il flag a true. */

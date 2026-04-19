@@ -100,6 +100,8 @@ export interface User {
   ccnlLevel?: string | null;
   /** operaio | impiegato | quadro | dirigente */
   legalCategory?: string | null;
+  /** Stato occupazionale per dashboard HR (default active). */
+  employmentState?: "active" | "hr_onboarding" | "offboarding";
   contractEndDate?: string | null;
   fixedSupplementMonthly?: number | null;
   garnishmentMonthlyEstimate?: number | null;

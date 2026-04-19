@@ -497,6 +497,10 @@ class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   contractFixedTerm?: boolean;
+
+  @IsOptional()
+  @IsIn(["active", "hr_onboarding", "offboarding"])
+  employmentState?: "active" | "hr_onboarding" | "offboarding";
 }
 
 /** Anagrafica / profilo fisco-contratto IT: aggiornabile solo da admin/HR (non dal dipendente). */
@@ -662,7 +666,12 @@ export class UserController {
       auth.role === "superuser" ||
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
+    const canAccessHrRecapDashboard =
+      auth.role === "superuser" ||
+      canAccessHrExtendedConsole ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]));
     const canEditSelfPayrollProfileIt = auth.role === "superuser" || canAccessHrExtendedConsole;
+    const directReports = await this.store.listUsersByManager(auth.userId);
     const companyRow = await this.store.getCompanySettings(user.companyId);
     return {
       ...user,
@@ -675,9 +684,11 @@ export class UserController {
       canExportAttendanceReports,
       canManageTeamAttendance,
       isTeamResponsible: workTeamIdsWhereLead.length > 0,
+      hasDirectReports: directReports.length > 0,
       workTeamIdsWhereLead,
       canAccessPayrollArea,
       canAccessPersonnelBudgetArea,
+      canAccessHrRecapDashboard,
       companyCcnl: companyRow.companyCcnl?.trim() || null
     };
   }

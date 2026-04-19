@@ -278,8 +278,9 @@ export class RecruitingService {
         { pipeline_id: pipelineId, stage_order: 30, name: "Colloquio 1", stage_kind: "interview" },
         { pipeline_id: pipelineId, stage_order: 40, name: "Colloquio 2", stage_kind: "interview" },
         { pipeline_id: pipelineId, stage_order: 50, name: "Offerta", stage_kind: "offer" },
+        { pipeline_id: pipelineId, stage_order: 58, name: "Onboarding assunzione", stage_kind: "onboarding" },
         { pipeline_id: pipelineId, stage_order: 60, name: "Assunto", stage_kind: "hired" },
-        { pipeline_id: pipelineId, stage_order: 70, name: "Scartato", stage_kind: "rejected" }
+        { pipeline_id: pipelineId, stage_order: 70, name: "Respinti", stage_kind: "rejected" }
       ]);
       if (seedErr) {
         throw new InternalServerErrorException(`Seed fasi: ${seedErr.message}`);
@@ -610,6 +611,12 @@ export class RecruitingService {
           }
         }
       }
+    } else if (input.status === "failed") {
+      const { stages } = await this.ensureDefaultPipelineForPosition(String(before.position_id));
+      const rejected = [...stages].find((s) => s.stage_kind === "rejected");
+      if (rejected) {
+        nextStageId = rejected.id;
+      }
     }
 
     const patch: Record<string, unknown> = {
@@ -854,5 +861,96 @@ export class RecruitingService {
         byte_size: d.byte_size
       }))
     };
+  }
+
+  /** Candidati nella fase pipeline «Onboarding assunzione» (tutte le posizioni azienda). */
+  async listOnboardingCandidatesForCompany(companyId: string): Promise<
+    Array<{
+      state_id: string;
+      position_id: string;
+      position_title: string;
+      candidate: RecruitCandidateRow;
+      status: string;
+      updated_at: string;
+    }>
+  > {
+    const sb = this.sb();
+    const { data: positions, error: pe } = await sb
+      .from("recruit_positions")
+      .select("id, title")
+      .eq("company_id", companyId);
+    if (pe) {
+      throw new InternalServerErrorException(pe.message);
+    }
+    const posList = (positions ?? []) as { id: string; title: string }[];
+    if (!posList.length) {
+      return [];
+    }
+    const positionIds = posList.map((p) => p.id);
+    const titleByPos = new Map(posList.map((p) => [p.id, p.title ?? ""]));
+    const { data: pipes, error: pipeErr } = await sb
+      .from("recruit_pipelines")
+      .select("id, position_id")
+      .in("position_id", positionIds);
+    if (pipeErr) {
+      throw new InternalServerErrorException(pipeErr.message);
+    }
+    const pipelineIds = ((pipes ?? []) as { id: string; position_id: string }[]).map((p) => p.id);
+    if (!pipelineIds.length) {
+      return [];
+    }
+    const { data: stages, error: stErr } = await sb
+      .from("recruit_pipeline_stages")
+      .select("id, pipeline_id, stage_kind, name")
+      .in("pipeline_id", pipelineIds);
+    if (stErr) {
+      throw new InternalServerErrorException(stErr.message);
+    }
+    const onboardStageIds = ((stages ?? []) as { id: string; stage_kind: string; name: string }[])
+      .filter(
+        (s) =>
+          s.stage_kind === "onboarding" ||
+          (s.stage_kind === "custom" && String(s.name ?? "").toLowerCase().includes("onboarding"))
+      )
+      .map((s) => s.id);
+    if (!onboardStageIds.length) {
+      return [];
+    }
+    const { data: states, error: sErr } = await sb
+      .from("recruit_candidate_stage_state")
+      .select("id, candidate_id, position_id, current_stage_id, status, updated_at")
+      .in("current_stage_id", onboardStageIds);
+    if (sErr) {
+      throw new InternalServerErrorException(sErr.message);
+    }
+    const out: Array<{
+      state_id: string;
+      position_id: string;
+      position_title: string;
+      candidate: RecruitCandidateRow;
+      status: string;
+      updated_at: string;
+    }> = [];
+    for (const st of (states ?? []) as RecruitCandidateStageStateRow[]) {
+      const { data: candRow, error: cErr } = await sb
+        .from("recruit_candidates")
+        .select(RECRUIT_CANDIDATE_DB_COLS)
+        .eq("id", String(st.candidate_id))
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (cErr || !candRow) {
+        continue;
+      }
+      const posId = String(st.position_id);
+      out.push({
+        state_id: String(st.id),
+        position_id: posId,
+        position_title: titleByPos.get(posId) ?? "",
+        candidate: this.mapCandidateRow(candRow as Record<string, unknown>),
+        status: String(st.status),
+        updated_at: this.toIso(st.updated_at)
+      });
+    }
+    return out;
   }
 }

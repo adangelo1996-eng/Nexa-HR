@@ -10,6 +10,7 @@
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm -r test",
+    "audit": "pnpm audit --audit-level=low",
     "gen:addizionali-como": "node scripts/gen-como-rates.mjs",
     "seed:demo-users": "corepack pnpm exec tsx scripts/nexa-seed-demo-users.ts",
     "seed:backfill-italy-anagrafica": "corepack pnpm exec tsx scripts/backfill-users-italy-anagrafica.ts",

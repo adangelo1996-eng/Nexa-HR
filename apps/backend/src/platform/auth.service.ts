@@ -22,6 +22,8 @@ interface LoginUser {
   canExportAttendanceReports: boolean;
   canAccessPayrollArea: boolean;
   canAccessPersonnelBudgetArea: boolean;
+  /** Recap operativo HR (report HR o console HR estesa). */
+  canAccessHrRecapDashboard: boolean;
   /** LLM OpenAI attivo su questo ambiente (stesso criterio di `GET /users/me`). */
   nexaAiOpenAiEnabled: boolean;
 }
@@ -155,6 +157,7 @@ export class AuthService {
       | "canExportAttendanceReports"
       | "canAccessPayrollArea"
       | "canAccessPersonnelBudgetArea"
+      | "canAccessHrRecapDashboard"
       | "nexaAiOpenAiEnabled"
     >
   > {
@@ -183,6 +186,10 @@ export class AuthService {
       user.role === "superuser" ||
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasExplicitReadCatalogKey(user.id, "nexa.personnel_budget:read"));
+    const canAccessHrRecapDashboard =
+      user.role === "superuser" ||
+      canAccessHrExtendedConsole ||
+      (await this.permissions.userHasAll(user.id, ["nexa.reports_hr:read"]));
     return {
       canNexaAdmin,
       canAccessHrExtendedConsole,
@@ -190,6 +197,7 @@ export class AuthService {
       canExportAttendanceReports,
       canAccessPayrollArea,
       canAccessPersonnelBudgetArea,
+      canAccessHrRecapDashboard,
       nexaAiOpenAiEnabled: isNexaAiOpenAiLlmEnabled()
     };
   }
