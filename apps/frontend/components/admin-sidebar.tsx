@@ -14,9 +14,10 @@ const NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin", label: adminStrings.sidebar.users },
   { href: "/admin/roles", label: adminStrings.sidebar.roles },
   { href: "/admin/cost-centers", label: adminStrings.sidebar.costCenters },
+  { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
+  { href: "/admin/data-import" as Route, label: "Import Excel dipendenti" },
   { href: "/admin/payslip-import" as Route, label: adminStrings.sidebar.payslipImport },
-  { href: "/expenses/org" as Route, label: adminStrings.sidebar.expenseClaimsOrg },
-  { href: "/settings", label: "Impostazioni" }
+  { href: "/expenses/org" as Route, label: adminStrings.sidebar.expenseClaimsOrg }
 ];
 
 /** Offset sotto l'header sticky AppShell (~56px) così la colonna admin resta visibile su mobile */
@@ -51,6 +52,12 @@ function AdminNavMobileStrip(): React.JSX.Element {
           </Link>
         );
       })}
+      <Link
+        href="/settings"
+        className="shrink-0 whitespace-nowrap rounded-full border border-synapse-gold/25 px-3 py-1.5 text-xs font-semibold text-synapse-text transition-colors hover:bg-synapse-gold/15 dark:text-white"
+      >
+        Impostazioni
+      </Link>
     </nav>
   );
 }
@@ -107,6 +114,19 @@ export function AdminSidebar(): React.JSX.Element {
             );
           })}
         </nav>
+        <div className="mt-4 border-t border-[color:var(--glass-border)] pt-3">
+          <Link
+            href="/settings"
+            className={[
+              "flex items-center rounded-lg px-2 py-2 text-[13px] font-semibold transition-colors sm:px-3 sm:text-sm",
+              pathname === "/settings"
+                ? "bg-synapse-gold/15 text-synapse-text ring-1 ring-synapse-gold/30 dark:bg-white/[0.08] dark:text-white"
+                : "text-synapse-muted hover:bg-black/[0.04] hover:text-synapse-text dark:text-[#b4c9dc]/90 dark:hover:bg-white/[0.06] dark:hover:text-white"
+            ].join(" ")}
+          >
+            Impostazioni
+          </Link>
+        </div>
       </aside>
     </>
   );

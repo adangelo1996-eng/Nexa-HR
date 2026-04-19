@@ -61,8 +61,8 @@ export class NarrativeAnalyticsService {
         },
         refineSchema
       );
-      if (refined && typeof refined === "object") {
-        const env = (refined as { envelope?: { title?: string; bullets?: unknown; summary?: string } }).envelope;
+      if (refined.ok && refined.data && typeof refined.data === "object") {
+        const env = (refined.data as { envelope?: { title?: string; bullets?: unknown; summary?: string } }).envelope;
         if (env?.title && env?.summary) {
           title = env.title;
           summary = env.summary;
@@ -143,9 +143,10 @@ export class NarrativeAnalyticsService {
         },
         "ai_hitl_draft_v1"
       );
-      if (refined && typeof refined === "object") {
-        const env = (refined as { envelope?: { kind?: string; title?: string; rationale?: string; checklist?: unknown } })
-          .envelope;
+      if (refined.ok && refined.data && typeof refined.data === "object") {
+        const env = (
+          refined.data as { envelope?: { kind?: string; title?: string; rationale?: string; checklist?: unknown } }
+        ).envelope;
         const k = typeof env?.kind === "string" ? env.kind.trim() : "";
         if (k && allowedKinds.includes(k)) {
           kind = k;

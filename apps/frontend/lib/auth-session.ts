@@ -187,6 +187,27 @@ export function sessionCanAccessHrRecapDashboard(
   return u?.canAccessHrRecapDashboard === true || u?.canNexaAdmin === true;
 }
 
+/** Ricerca dipendenti e pagina recap: admin Synapse, HR esteso o recap operativo. */
+export function sessionCanOpenEmployeeRecapPage(
+  u: Pick<SessionUser, "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  return (
+    sessionCanNexaAdmin(u) ||
+    u.canAccessHrExtendedConsole === true ||
+    sessionCanAccessHrRecapDashboard(u)
+  );
+}
+
+/** Modifica anagrafica completa (PATCH /users/:id): allineato al backend (console Synapse + permessi scrittura). */
+export function sessionCanEditEmployeeAdminFields(
+  u: Pick<SessionUser, "canNexaAdmin"> | null | undefined
+): boolean {
+  return sessionCanNexaAdmin(u);
+}
+
 /** Centro AI HR e raffinamento LLM opzionale (narrative): solo se il backend espone il flag a true. */
 export function sessionCanUseNexaAiOpenAiLlm(
   u: Pick<SessionUser, "nexaAiOpenAiEnabled"> | null | undefined

@@ -25,6 +25,7 @@ import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 /** Route principali (chunk JS) per navigazione rapida. */
 const PREFETCH_ROUTES: Route[] = [
   "/",
+  "/mappa-portale",
   "/work-calendar",
   "/attendance",
   "/workflow",

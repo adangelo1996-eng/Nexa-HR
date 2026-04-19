@@ -3,7 +3,7 @@ import { encryptUserPiiString, loadUserPiiKeyFromEnv } from "@payday/user-pii-cr
 import type { User } from "@payday/domain";
 import type { AuthContext } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
-import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
+import { AiOpenAiRefinementService, type OpenAiRefineFailure } from "../ai-hr/ai-openai-refinement.service";
 import { HrContractsService } from "../hr-contracts/hr-contracts.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
@@ -247,7 +247,7 @@ export class HrCenterService {
     dataset: HrCenterAnalyticsFacts;
     /** Report strutturato (LLM o fallback locale), pronto per rendering testuale. */
     report: unknown;
-    llm: { active: boolean; refineApplied: boolean };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
     const scope = await this.resolveScope(auth);
@@ -309,6 +309,7 @@ export class HrCenterService {
     };
     const sessionId = (await this.gateway.beginSession(scope.companyId, auth.userId)).sessionId;
     let refineApplied = false;
+    let refineFailure: OpenAiRefineFailure | undefined;
     try {
       let analystMission =
         "Produci un'analisi HR completa e da consulente esperto: costi del personale, concentrazione per centro di costo, rischi di organico, " +
@@ -333,9 +334,11 @@ export class HrCenterService {
       let modelJson: unknown = buildOfflineHrCenterAnalyticsReport(facts);
       if (this.openAi.isActive()) {
         const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_hr_center_analytics_v1");
-        if (refined != null) {
-          modelJson = refined;
+        if (refined.ok) {
+          modelJson = refined.data;
           refineApplied = true;
+        } else if (refined.failure !== "inactive") {
+          refineFailure = refined.failure;
         }
       }
       const report = await this.gateway.fromModelResponse(sessionId, modelJson);
@@ -343,7 +346,7 @@ export class HrCenterService {
       return {
         dataset: facts,
         report,
-        llm: { active: this.openAi.isActive(), refineApplied },
+        llm: { active: this.openAi.isActive(), refineApplied, refineFailure },
         privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
       };
     } finally {
@@ -354,7 +357,7 @@ export class HrCenterService {
   async runContractDraft(auth: AuthContext): Promise<{
     facts: Record<string, unknown>;
     narrative: unknown;
-    llm: { active: boolean; refineApplied: boolean };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
     const scope = await this.resolveScope(auth);
@@ -370,6 +373,7 @@ export class HrCenterService {
     };
     const sessionId = (await this.gateway.beginSession(scope.companyId, auth.userId)).sessionId;
     let refineApplied = false;
+    let refineFailure: OpenAiRefineFailure | undefined;
     try {
       const payload = {
         envelope: {
@@ -382,9 +386,11 @@ export class HrCenterService {
       let modelJson: unknown = pseudo.pseudonymized;
       if (this.openAi.isActive()) {
         const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_narrative_aggregate_v1");
-        if (refined != null) {
-          modelJson = refined;
+        if (refined.ok) {
+          modelJson = refined.data;
           refineApplied = true;
+        } else if (refined.failure !== "inactive") {
+          refineFailure = refined.failure;
         }
       }
       const narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
@@ -392,7 +398,7 @@ export class HrCenterService {
       return {
         facts,
         narrative,
-        llm: { active: this.openAi.isActive(), refineApplied },
+        llm: { active: this.openAi.isActive(), refineApplied, refineFailure },
         privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
       };
     } finally {
@@ -403,7 +409,7 @@ export class HrCenterService {
   async runRecap(auth: AuthContext, targetUserId?: string): Promise<{
     facts: Record<string, unknown>;
     narrative: unknown;
-    llm: { active: boolean; refineApplied: boolean };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
     const scope = await this.resolveScope(auth);
@@ -434,6 +440,7 @@ export class HrCenterService {
     };
     const sessionId = (await this.gateway.beginSession(scope.companyId, auth.userId)).sessionId;
     let refineApplied = false;
+    let refineFailure: OpenAiRefineFailure | undefined;
     try {
       const payload = {
         envelope: {
@@ -446,9 +453,11 @@ export class HrCenterService {
       let modelJson: unknown = pseudo.pseudonymized;
       if (this.openAi.isActive()) {
         const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_narrative_aggregate_v1");
-        if (refined != null) {
-          modelJson = refined;
+        if (refined.ok) {
+          modelJson = refined.data;
           refineApplied = true;
+        } else if (refined.failure !== "inactive") {
+          refineFailure = refined.failure;
         }
       }
       const narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
@@ -456,7 +465,7 @@ export class HrCenterService {
       return {
         facts,
         narrative,
-        llm: { active: this.openAi.isActive(), refineApplied },
+        llm: { active: this.openAi.isActive(), refineApplied, refineFailure },
         privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
       };
     } finally {

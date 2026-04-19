@@ -81,8 +81,8 @@ export class AiHrService {
     openAiSchema: string
   ): Promise<{ result: unknown; refineApplied: boolean }> {
     const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, openAiSchema);
-    const refineApplied = refined != null;
-    const modelJson = refineApplied ? refined : pseudo.pseudonymized;
+    const refineApplied = refined.ok;
+    const modelJson = refined.ok ? refined.data : pseudo.pseudonymized;
     const result = await this.gateway.fromModelResponse(sessionId, modelJson);
     return { result, refineApplied };
   }

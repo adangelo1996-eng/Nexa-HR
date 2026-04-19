@@ -3434,13 +3434,15 @@ export type HrCenterAnalyticsReportEnvelope = {
   methodologyNote: string;
 };
 
+export type HrCenterLlmRefineFailure = "openai_error" | "empty_response" | "invalid_json" | "privacy_tokens";
+
 export async function postHrCenterAnalytics(
   token: string,
   body: HrCenterAnalyticsRunBody = {}
 ): Promise<{
   dataset: HrCenterAnalyticsDataset;
   report: { envelope: HrCenterAnalyticsReportEnvelope } | Record<string, unknown>;
-  llm: { active: boolean; refineApplied: boolean };
+  llm: { active: boolean; refineApplied: boolean; refineFailure?: HrCenterLlmRefineFailure };
   privacy: { schemaVersion: string; tokenCount: number };
 }> {
   const response = await fetch(buildApiUrl("/hr-center/analytics/run"), {
@@ -3452,7 +3454,7 @@ export async function postHrCenterAnalytics(
   return (await response.json()) as {
     dataset: HrCenterAnalyticsDataset;
     report: { envelope: HrCenterAnalyticsReportEnvelope } | Record<string, unknown>;
-    llm: { active: boolean; refineApplied: boolean };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: HrCenterLlmRefineFailure };
     privacy: { schemaVersion: string; tokenCount: number };
   };
 }

@@ -108,6 +108,11 @@ function formatItLongDateFromIso(iso?: string): string {
   return d.toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
 }
 
+/** Applica i placeholder `{{…}}` dei blocchi al profilo attuale (senza salvare sul server). */
+export function applyPartyPlaceholdersToContractBlocks(blocks: ContractBlock[], party: ContractPartyInfo): ContractBlock[] {
+  return blocks.map((b) => ({ ...b, content: fillTemplate(b.content, party) }));
+}
+
 function fillTemplate(template: string, party: ContractPartyInfo): string {
   const map: Record<string, string> = {
     "{{companyLegalName}}": party.companyLegalName || "Società",

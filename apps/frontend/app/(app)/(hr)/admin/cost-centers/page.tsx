@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GlassCard } from "@/components/glass-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,8 @@ import {
 } from "@/lib/auth-session";
 import { inputOptionalClass, inputRequiredClass, selectOptionalClass } from "@/lib/form-field-styles";
 
+type CostCenterRightPanel = "none" | "view" | "edit" | "create";
+
 function generateTenDigitCostCode(): string {
   const suffix = Math.floor(Math.random() * 10_000_000)
     .toString()
@@ -45,11 +47,15 @@ function canPickUserAsWorkTeamMember(u: User, team: WorkTeamDto): boolean {
   return false;
 }
 
-export default function AdminCostCentersPage(): React.JSX.Element {
+function CostCentersClient(): React.JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [token, setToken] = useState<string | null>(null);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
+  const [rightPanel, setRightPanel] = useState<CostCenterRightPanel>("none");
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const lastSyncedQueryKey = useRef<string>("");
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -95,7 +101,6 @@ export default function AdminCostCentersPage(): React.JSX.Element {
         setCostCenters(list);
         setAllUsers(users);
         setRolesCatalog(roleList);
-        setSelectedId(list[0]?.id ?? "");
       } catch (loadError) {
         if (shouldClearSessionOnUnauthorizedApiError(loadError)) {
           clearSession();
@@ -139,6 +144,25 @@ export default function AdminCostCentersPage(): React.JSX.Element {
   }, [token, selectedId]);
 
   useEffect(() => {
+    const qKey = searchParams.toString();
+    if (!qKey || qKey === lastSyncedQueryKey.current) {
+      return;
+    }
+    const cc = searchParams.get("cc");
+    const team = searchParams.get("team");
+    if (!cc || costCenters.length === 0) {
+      return;
+    }
+    if (!costCenters.some((c) => c.id === cc)) {
+      return;
+    }
+    lastSyncedQueryKey.current = qKey;
+    setSelectedId(cc);
+    setRightPanel("view");
+    setEditingTeamId(team?.trim() ? team.trim() : null);
+  }, [searchParams, costCenters]);
+
+  useEffect(() => {
     const names: Record<string, string> = {};
     for (const t of teams) {
       names[t.id] = t.name;
@@ -171,9 +195,6 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     const [list, users] = await Promise.all([fetchAdminCostCenters(token), fetchUsers(token)]);
     setCostCenters(list);
     setAllUsers(users);
-    if (!selectedId && list[0]) {
-      setSelectedId(list[0].id);
-    }
   }
 
   async function refreshTeamsAndUsers(): Promise<void> {
@@ -296,6 +317,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
       setNewDescription("");
       await refresh();
       setSelectedId(created.id);
+      setRightPanel("view");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore creazione centro di costo");
     } finally {
@@ -326,6 +348,7 @@ export default function AdminCostCentersPage(): React.JSX.Element {
         payrollDefaultInailPermille: selected.payrollDefaultInailPermille ?? null
       });
       await refresh();
+      setRightPanel("view");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore aggiornamento centro di costo");
     } finally {
@@ -340,6 +363,8 @@ export default function AdminCostCentersPage(): React.JSX.Element {
     try {
       await deleteAdminCostCenter(token, selected.id);
       setSelectedId("");
+      setRightPanel("none");
+      setEditingTeamId(null);
       await refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore eliminazione centro di costo");
@@ -376,10 +401,14 @@ export default function AdminCostCentersPage(): React.JSX.Element {
               <button
                 key={center.id}
                 type="button"
-                onClick={() => setSelectedId(center.id)}
+                onClick={() => {
+                  setSelectedId(center.id);
+                  setRightPanel("view");
+                  setEditingTeamId(null);
+                }}
                 className={[
                   "w-full rounded-lg px-3 py-2 text-left",
-                  selectedId === center.id
+                  selectedId === center.id && rightPanel !== "create"
                     ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-slate-50"
                     : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:bg-slate-800/40"
                 ].join(" ")}
@@ -393,17 +422,73 @@ export default function AdminCostCentersPage(): React.JSX.Element {
               </button>
             ))}
           </div>
+          <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full text-xs"
+              onClick={() => {
+                setSelectedId("");
+                setRightPanel("create");
+                setEditingTeamId(null);
+              }}
+            >
+              + Nuovo centro di costo
+            </Button>
+          </div>
         </GlassCard>
 
         <GlassCard
-          title={selected ? "Dettaglio centro di costo" : "Nuovo centro di costo"}
+          title={
+            rightPanel === "create"
+              ? "Nuovo centro di costo"
+              : rightPanel === "edit" && selected
+                ? "Modifica centro di costo"
+                : rightPanel === "view" && selected
+                  ? "Dettaglio centro di costo"
+                  : "Centro di costo"
+          }
           description={
-            selected
-              ? "Codice numerico a 10 cifre: genera una proposta o modifica manualmente prima di salvare."
-              : "Codice a 10 cifre: usa Genera o inserisci manualmente; se lasci vuoto, il sistema assegna un codice."
+            rightPanel === "create"
+              ? "Codice a 10 cifre: usa Genera o inserisci manualmente; se lasci vuoto, il sistema assegna un codice."
+              : rightPanel === "edit" && selected
+                ? "Codice numerico a 10 cifre: genera una proposta o modifica manualmente prima di salvare."
+                : rightPanel === "view" && selected
+                  ? "Anteprima dati. Premi Modifica per aggiornare codice, nome o default payroll."
+                  : "Seleziona un centro dall’elenco a sinistra oppure creane uno nuovo."
           }
         >
-          {selected ? (
+          {rightPanel === "none" ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Scegli un centro di costo dall&apos;elenco oppure usa &quot;Nuovo centro di costo&quot; sotto la lista.
+            </p>
+          ) : null}
+          {rightPanel === "view" && selected ? (
+            <div className="space-y-4 text-sm text-slate-800 dark:text-slate-100">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Codice</p>
+                <p className="mt-1 font-mono text-base font-semibold">{selected.code}</p>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Nome</p>
+                <p className="mt-1 text-base font-medium">{selected.name}</p>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Descrizione</p>
+                <p className="mt-1">{selected.description || "—"}</p>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Default IVS / INAIL
+                </p>
+                <p className="mt-1 text-xs">
+                  {(selected.payrollItSector ?? "—") +
+                    " · INAIL premio " +
+                    (selected.payrollDefaultInailPermille != null ? String(selected.payrollDefaultInailPermille) : "—")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={() => setRightPanel("edit")}>
+                  Modifica
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {rightPanel === "edit" && selected ? (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs md:col-span-2">
                 <span className="text-slate-700 dark:text-slate-300">Codice (10 cifre) *</span>
@@ -494,7 +579,8 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : null}
+          {rightPanel === "create" ? (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs md:col-span-2">
                 <span className="text-slate-700 dark:text-slate-300">Codice (10 cifre)</span>
@@ -534,31 +620,16 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                 </Button>
               </div>
             </div>
-          )}
+          ) : null}
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>
       </div>
 
-      {selected ? (
+      {selected && rightPanel !== "create" ? (
         <GlassCard
           title="Team di lavoro"
           description="Team sotto il centro di costo selezionato. Solo utenti con lo stesso CDC possono essere membri; un dipendente può stare in un solo team come membro (compare disabilitato negli altri). Un responsabile può essere nominato su più team (flag su work_teams, non un ruolo piattaforma); dirige gli altri membri nelle approvazioni."
         >
-          <div className="flex flex-wrap items-end gap-2 text-xs">
-            <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-              <span className="text-slate-700 dark:text-slate-300">Nuovo team</span>
-              <input
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
-                placeholder="Nome team"
-                className={inputOptionalClass}
-              />
-            </label>
-            <Button type="button" variant="secondary" disabled={submitting || teamsLoading} onClick={() => void onCreateTeam()}>
-              Crea team
-            </Button>
-          </div>
-
           {teamsLoading ? (
             <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Caricamento team…</p>
           ) : teams.length === 0 ? (
@@ -572,12 +643,30 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                   : "—";
                 const membersSelected = new Set(memberPick[team.id] ?? []);
                 const leadState = leadPick[team.id] ?? { userId: "", roleId: rolesCatalog[0]?.id ?? "" };
+                const memberCount = usersInSelectedCc.filter((u) => u.teamId === team.id).length;
+                const expanded = editingTeamId === team.id;
 
                 return (
                   <div
                     key={team.id}
                     className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40"
                   >
+                    {!expanded ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{team.name}</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                            Responsabile:{" "}
+                            <span className="font-medium text-slate-800 dark:text-slate-200">{leadName}</span>
+                          </p>
+                          <p className="text-[11px] text-slate-500">Membri: {memberCount}</p>
+                        </div>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => setEditingTeamId(team.id)}>
+                          Modifica team
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
                     <div className="flex flex-wrap items-end gap-2">
                       <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs">
                         <span className="text-slate-700 dark:text-slate-300">Nome team</span>
@@ -715,13 +804,44 @@ export default function AdminCostCentersPage(): React.JSX.Element {
                         Nomina lead
                       </Button>
                     </div>
+                    <div className="flex justify-end border-t border-slate-200 pt-2 dark:border-slate-700">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setEditingTeamId(null)}>
+                        Chiudi modifica team
+                      </Button>
+                    </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
+          <div className="mt-6 flex flex-wrap items-end gap-2 border-t border-slate-200 pt-4 text-xs dark:border-slate-700">
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Nuovo team</span>
+              <input
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="Nome team"
+                className={inputOptionalClass}
+              />
+            </label>
+            <Button type="button" variant="secondary" disabled={submitting || teamsLoading} onClick={() => void onCreateTeam()}>
+              Crea team
+            </Button>
+          </div>
         </GlassCard>
       ) : null}
     </div>
+  );
+}
+
+export default function AdminCostCentersPage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={<p className="text-sm text-slate-700 dark:text-slate-300">Caricamento centri di costo...</p>}
+    >
+      <CostCentersClient />
+    </Suspense>
   );
 }

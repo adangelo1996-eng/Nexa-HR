@@ -341,7 +341,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
     return (
       <HebbAiExperienceShell
         contentMax="standard"
-        title="Hebb — Payroll"
+        title="Payroll"
         subtitle="Caricamento sessione e permessi…"
       >
         <HebbAiGlassPanel className="py-14 text-center text-sm text-[var(--prom-muted)]">Attendere prego.</HebbAiGlassPanel>
@@ -358,7 +358,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
   return (
     <HebbAiExperienceShell
       contentMax="standard"
-      title="Hebb — Payroll"
+      title="Payroll"
       subtitle="Simulazione Hebb, calcolo singolo in bozza ed elaborazione batch. La pubblicazione ai dipendenti è un passaggio separato. Validare sempre con il consulente del lavoro."
       headerTrailing={<HebbAiPageHelpButton pageKey="payroll-hebb" />}
     >

@@ -15,6 +15,7 @@ import {
   FileText,
   KeyRound,
   Library,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -28,7 +29,6 @@ import {
   Sparkles,
   Sun,
   TrendingUp,
-  Upload,
   User,
   UserCog,
   Wallet2,
@@ -53,6 +53,7 @@ import {
   sessionCanAccessHrRecapDashboard,
   sessionCanAccessManagerPanel,
   sessionCanNexaAdmin,
+  sessionCanOpenEmployeeRecapPage,
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanViewOrgExpenseClaims,
   type SessionUser
@@ -60,7 +61,7 @@ import {
 import { AppMainContentFrame } from "@/components/app-experience-frame";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
-import { fetchCurrentUser } from "@/lib/api";
+import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import { NEXA_HR_PREFS_CHANGED_EVENT, readNexaHrPrefs, NEXA_HR_PREFS_STORAGE_KEY } from "@/lib/synapse-prefs";
 
@@ -72,7 +73,10 @@ const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
 type NavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
 
+type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
+
 const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
+const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
 
 /** Sezioni principali senza «Hebb AI for HR» e senza «Profilo» (composti in `mainNavSections`). */
 const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
@@ -235,6 +239,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const [employeeView, setEmployeeViewState] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [directorySearchHits, setDirectorySearchHits] = useState<GlobalSearchHit[]>([]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const [mobileShortcutHrefs, setMobileShortcutHrefs] = useState<string[]>(() => readNexaHrPrefs().menuShortcutHrefs ?? []);
 
@@ -312,7 +317,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     showOrgExpensesNav ||
     showHrRecapNav;
 
-  const filteredSearch = useMemo(() => {
+  const routeSearchMatches = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
     if (!q) {
       return [];
@@ -345,6 +350,83 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
   }, [searchQ, user]);
+
+  useEffect(() => {
+    const q = searchQ.trim().toLowerCase();
+    if (!q || q.length < 2 || !user || !sessionCanOpenEmployeeRecapPage(user)) {
+      setDirectorySearchHits([]);
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      setDirectorySearchHits([]);
+      return;
+    }
+    let cancelled = false;
+    const tmr = setTimeout(() => {
+      void (async () => {
+        const hits: GlobalSearchHit[] = [];
+        try {
+          const allUsers = await fetchUsers(token);
+          if (cancelled) {
+            return;
+          }
+          for (const u of allUsers) {
+            if (hits.length >= 6) {
+              break;
+            }
+            const hay = `${u.fullName} ${u.email ?? ""}`.toLowerCase();
+            if (hay.includes(q)) {
+              hits.push({
+                href: `/employee/${encodeURIComponent(u.id)}` as Route,
+                label: `Dipendente · ${u.fullName}`,
+                subtitle: u.email
+              });
+            }
+          }
+          if (sessionCanNexaAdmin(user)) {
+            const ccs = await fetchAdminCostCenters(token);
+            if (cancelled) {
+              return;
+            }
+            for (const c of ccs) {
+              if (hits.length >= 10) {
+                break;
+              }
+              const hay = `${c.name} ${c.code}`.toLowerCase();
+              if (hay.includes(q)) {
+                hits.push({
+                  href: `/admin/cost-centers?cc=${encodeURIComponent(c.id)}` as Route,
+                  label: `Centro di costo · ${c.code} — ${c.name}`
+                });
+              }
+            }
+          }
+        } catch {
+          if (!cancelled) {
+            setDirectorySearchHits([]);
+          }
+          return;
+        }
+        if (!cancelled) {
+          setDirectorySearchHits(hits);
+        }
+      })();
+    }, 240);
+    return () => {
+      cancelled = true;
+      clearTimeout(tmr);
+    };
+  }, [searchQ, user]);
+
+  const mergedSearchResults = useMemo((): GlobalSearchHit[] => {
+    const q = searchQ.trim().toLowerCase();
+    if (!q) {
+      return [];
+    }
+    const fromRoutes: GlobalSearchHit[] = routeSearchMatches.map((r) => ({ href: r.href, label: r.label }));
+    return [...directorySearchHits, ...fromRoutes].slice(0, 12);
+  }, [directorySearchHits, routeSearchMatches, searchQ]);
 
   const onLogout = useCallback((): void => {
     // clearSession already does best-effort server logout
@@ -421,8 +503,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
     if (showAdminNav) {
       hrAmministrazione.push({ href: "/admin" as Route, label: "Console utenti", icon: UserCog, exact: true });
-      hrAmministrazione.push({ href: "/admin/data-export" as Route, label: "Export Excel dipendenti", icon: FileText });
-      hrAmministrazione.push({ href: "/admin/data-import" as Route, label: "Import Excel dipendenti", icon: Upload });
     }
     if (hrAmministrazione.length > 0) {
       hrBlocks.push({ id: "hr-admin", title: "Amministrazione e dati", items: hrAmministrazione });
@@ -463,7 +543,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       parts.push(hebbAiNavSection);
     }
     parts.push(...NAV_CORE_MAIN);
-    parts.push(NAV_PROFILE_SECTION);
     return parts;
   }, [hebbAiNavSection]);
 
@@ -550,6 +629,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
+      <SidebarNavLink
+        item={NAV_PORTAL_MAP}
+        pathname={pathname}
+        onNavigate={closeMobile}
+        beforeNavigate={persistSidebarScrollPositions}
+      />
       {showManagerPanelNav ? (
         <SidebarNavLink
           item={
@@ -571,6 +656,15 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           pathname={pathname}
           open={Boolean(openSections[section.id])}
           onOpenChange={onSectionOpenChange}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ))}
+      {NAV_PROFILE_SECTION.items.map((item) => (
+        <SidebarNavLink
+          key={`settings-${item.href}`}
+          item={item}
+          pathname={pathname}
           onNavigate={closeMobile}
           beforeNavigate={persistSidebarScrollPositions}
         />
@@ -699,7 +793,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   id="global-search"
                   type="search"
                   autoComplete="off"
-                  placeholder="Cerca pagine…"
+                  placeholder="Cerca pagine, dipendenti, centri di costo…"
                   value={searchQ}
                   onChange={(e) => {
                     setSearchQ(e.target.value);
@@ -707,8 +801,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   }}
                   onFocus={() => setSearchOpen(true)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && filteredSearch[0]) {
-                      router.push(filteredSearch[0].href as Route, { scroll: false });
+                    if (e.key === "Enter" && mergedSearchResults[0]) {
+                      router.push(mergedSearchResults[0].href as Route, { scroll: false });
                       setSearchQ("");
                       setSearchOpen(false);
                     }
@@ -716,13 +810,13 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   className="w-full rounded-lg border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface)_88%,transparent)] py-2 pl-9 pr-3 text-sm text-[var(--prom-text)] outline-none ring-0 transition-[border-color,opacity] placeholder:text-[var(--prom-muted)] focus:border-[color-mix(in_srgb,var(--prom-gold)_45%,var(--prom-line-strong))]"
                 />
               </div>
-              {searchOpen && filteredSearch.length > 0 ? (
+              {searchOpen && mergedSearchResults.length > 0 ? (
                 <ul
-                  className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-auto rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] py-1 shadow-[var(--card-shadow)] transition-opacity"
+                  className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-auto rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] py-1 shadow-[var(--card-shadow)] transition-opacity"
                   role="listbox"
                 >
-                  {filteredSearch.map((r) => (
-                    <li key={r.href} role="option">
+                  {mergedSearchResults.map((r) => (
+                    <li key={`${r.href}-${r.label}`} role="option">
                       <Link
                         href={r.href}
                         scroll={false}
@@ -732,7 +826,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                           setSearchOpen(false);
                         }}
                       >
-                        {r.label}
+                        <span className="block font-medium leading-snug">{r.label}</span>
+                        {r.subtitle ? (
+                          <span className="mt-0.5 block text-[11px] text-[var(--prom-muted)]">{r.subtitle}</span>
+                        ) : null}
                       </Link>
                     </li>
                   ))}

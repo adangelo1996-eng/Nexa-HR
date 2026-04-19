@@ -13,6 +13,7 @@ import {
   type HrCenterAnalyticsDataset,
   type HrCenterAnalyticsReportEnvelope,
   type HrCenterAnalyticsRunBody,
+  type HrCenterLlmRefineFailure,
   type User
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
@@ -29,12 +30,48 @@ function parseReportEnvelope(report: unknown): HrCenterAnalyticsReportEnvelope |
 
 type AnalyticsFocus = NonNullable<HrCenterAnalyticsRunBody["focus"]>;
 
+function splitExecutiveSummary(text: string): string[] {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  const sentences = cleaned.split(/(?<=[.!?])\s+/).filter((s) => s.length > 0);
+  const paras: string[] = [];
+  let acc = "";
+  for (const s of sentences) {
+    const candidate = acc ? `${acc} ${s}` : s;
+    if (candidate.length > 300 && acc) {
+      paras.push(acc.trim());
+      acc = s;
+    } else {
+      acc = candidate;
+    }
+  }
+  if (acc.trim()) paras.push(acc.trim());
+  return paras.length ? paras : [cleaned];
+}
+
+function refineFailureUserMessage(code: HrCenterLlmRefineFailure | undefined): string | null {
+  if (!code) return null;
+  const map: Record<HrCenterLlmRefineFailure, string> = {
+    openai_error:
+      "Il backend ha tentato la chiamata al modello ma l’API non è riuscita a completarla (rete, quota, chiave o modello sul server). Controllare le variabili NEXA_AI_OPENAI_ENABLED, OPENAI_API_KEY e i log del servizio.",
+    empty_response: "Il modello ha restituito contenuto vuoto: è stata usata la sintesi locale.",
+    invalid_json: "Il modello non ha restituito JSON valido per lo schema richiesto: sintesi locale.",
+    privacy_tokens:
+      "L’output del modello non ha superato i controlli di anonimizzazione Nexa: per sicurezza è stata usata la sintesi locale."
+  };
+  return map[code] ?? null;
+}
+
 export default function HrCenterAnalyticsPage(): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataset, setDataset] = useState<HrCenterAnalyticsDataset | null>(null);
   const [report, setReport] = useState<unknown>(null);
-  const [llm, setLlm] = useState<{ active: boolean; refineApplied: boolean } | null>(null);
+  const [llm, setLlm] = useState<{
+    active: boolean;
+    refineApplied: boolean;
+    refineFailure?: HrCenterLlmRefineFailure;
+  } | null>(null);
   const [meta, setMeta] = useState<Awaited<ReturnType<typeof fetchHrCenterMeta>> | null>(null);
   const [usersForSelect, setUsersForSelect] = useState<User[]>([]);
 
@@ -44,6 +81,11 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
   const [userId, setUserId] = useState("");
 
   const envelope = useMemo(() => parseReportEnvelope(report), [report]);
+
+  const executiveParagraphs = useMemo(
+    () => (envelope?.executiveSummary ? splitExecutiveSummary(envelope.executiveSummary) : []),
+    [envelope?.executiveSummary]
+  );
 
   useEffect(() => {
     const t = getToken();
@@ -165,19 +207,37 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
       >
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2">
           <span
-            className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--prom-muted)]"
+            className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-offset-2 ring-offset-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]"
             style={{
-              backgroundColor: llm?.active ? (llm.refineApplied ? "#22c55e" : "#eab308") : "var(--prom-muted)"
+              backgroundColor: !llm
+                ? "var(--prom-muted)"
+                : llm.refineApplied
+                  ? "#22c55e"
+                  : llm.active
+                    ? "#f59e0b"
+                    : "var(--prom-muted)",
+              boxShadow: llm?.refineApplied ? "0 0 12px rgba(34,197,94,0.45)" : undefined
             }}
-            title={llm == null ? "Stato modello" : llm.active ? "LLM attivo" : "LLM disattivato"}
+            title={
+              !llm
+                ? "Esegui un’analisi"
+                : llm.refineApplied
+                  ? "Sintesi raffinata dal modello linguistico"
+                  : llm.active
+                    ? "LLM abilitato ma ultima esecuzione in fallback locale"
+                    : "LLM non abilitato sul server"
+            }
           />
           <div className="min-w-0 flex-1 text-xs text-[var(--prom-muted)]">
             <span className="font-medium text-[var(--prom-text)]">Stato AI</span>
             {llm ? (
               <>
                 {": "}
-                {llm.active ? "modello linguistico disponibile" : "modello non configurato"}
-                {llm.refineApplied ? " · ultima sintesi elaborata dal LLM" : " · ultima sintesi da motore locale"}
+                {!llm.active
+                  ? "percorso LLM non attivo sul server (variabili NEXA_AI_OPENAI_ENABLED / OPENAI_API_KEY)."
+                  : llm.refineApplied
+                    ? "ultima sintesi testuale elaborata dal modello linguistico tramite API."
+                    : "LLM configurato sul server, ma l’ultima esecuzione ha usato la sintesi locale (fallback sicuro)."}
               </>
             ) : (
               " — genera un’analisi per aggiornare lo stato."
@@ -271,7 +331,17 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
           </p>
         ) : llm?.active === false ? (
           <p className="mt-2 text-[10px] text-[var(--prom-muted)]">
-            LLM non attivo: viene usata la sintesi strutturata locale (stesso schema del percorso con modello).
+            LLM non attivo sul server: viene usata la sintesi strutturata locale (stesso schema del percorso con
+            modello).
+          </p>
+        ) : llm?.active && !llm.refineApplied && llm.refineFailure ? (
+          <p className="mt-2 text-[10px] leading-relaxed text-amber-800 dark:text-amber-200/90">
+            {refineFailureUserMessage(llm.refineFailure)}
+          </p>
+        ) : llm?.active && !llm.refineApplied ? (
+          <p className="mt-2 text-[10px] leading-relaxed text-[var(--prom-muted)]">
+            LLM abilitato ma nessun dettaglio errore dal server: in genere risposta non valida o controlli privacy. Ripeti
+            l’analisi o verifica i log backend.
           </p>
         ) : null}
 
@@ -412,10 +482,29 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
             {envelope ? (
               <div className="space-y-6">
                 <section className="rounded-2xl border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_82%,transparent)] p-4 shadow-[var(--glass-shadow)] backdrop-blur-md">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-gold)]">
-                    Sintesi esecutiva (LLM / HR)
-                  </h4>
-                  <p className="mt-3 text-sm leading-relaxed text-[var(--prom-text)]">{envelope.executiveSummary}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-gold)]">
+                      Sintesi esecutiva (LLM / HR)
+                    </h4>
+                    {llm ? (
+                      <span className="rounded-full border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                        {llm.refineApplied ? "Fonte: LLM" : llm.active ? "Fonte: fallback locale" : "Fonte: offline"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {executiveParagraphs.map((para, i) => (
+                      <div
+                        key={i}
+                        className="rounded-xl border border-[color-mix(in_srgb,#002D72_22%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] p-4"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300/90">
+                          Punto {i + 1}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-[var(--prom-text)]">{para}</p>
+                      </div>
+                    ))}
+                  </div>
                 </section>
 
                 {envelope.strategicInsights?.length ? (

@@ -15,7 +15,12 @@ import {
   uploadDocumentToVault
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-import { CONTRACT_BLOCK_LIBRARY, hrContractFromApi, type HrContractDoc } from "@/lib/contracts";
+import {
+  applyPartyPlaceholdersToContractBlocks,
+  CONTRACT_BLOCK_LIBRARY,
+  hrContractFromApi,
+  type HrContractDoc
+} from "@/lib/contracts";
 
 function b64FromBlob(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -46,6 +51,16 @@ export default function ContractEditorPage(): React.JSX.Element {
   const [signCompany, setSignCompany] = useState("");
   const [signEmployee, setSignEmployee] = useState("");
   const [addingBlockKey, setAddingBlockKey] = useState<string>("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  function syncBlocksFromPartyFields(): void {
+    setLocalDoc((d) => {
+      if (!d) return d;
+      return { ...d, blocks: applyPartyPlaceholdersToContractBlocks(d.blocks, d.party) };
+    });
+    setError(null);
+    setMsg("Blocchi aggiornati dai campi in alto. Usa «Salva» per persistere sul server.");
+  }
 
   function validateDoc(d: HrContractDoc): string[] {
     const errs: string[] = [];
@@ -351,6 +366,12 @@ export default function ContractEditorPage(): React.JSX.Element {
             <Button type="button" onClick={() => void onSave()} disabled={saving}>
               {saving ? "Salvataggio…" : "Salva"}
             </Button>
+            <Button type="button" variant="outline" disabled={!canEdit} onClick={() => syncBlocksFromPartyFields()}>
+              Aggiorna testo dai campi
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setPreviewOpen(true)}>
+              Anteprima contratto
+            </Button>
             <Button type="button" variant="secondary" onClick={() => router.push("/contracts")}>
               Torna a elenco
             </Button>
@@ -539,6 +560,41 @@ export default function ContractEditorPage(): React.JSX.Element {
           </div>
         </CardContent>
       </Card>
+
+      {previewOpen && localDoc ? (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Anteprima contratto">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/65 backdrop-blur-[2px] transition-opacity"
+            aria-label="Chiudi anteprima"
+            onClick={() => setPreviewOpen(false)}
+          />
+          <div className="relative flex max-h-[min(92vh,880px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#002D72]/35 bg-[#061a33] text-white shadow-[0_24px_80px_-20px_rgba(0,45,114,0.55)]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200/90">Anteprima</p>
+                <p className="text-lg font-semibold text-white">{localDoc.title}</p>
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setPreviewOpen(false)}>
+                Chiudi
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-8 rounded-xl bg-white/[0.04] p-5 ring-1 ring-white/10">
+                {localDoc.blocks.map((b) => (
+                  <article key={`${b.key}-${b.title}`} className="border-b border-white/10 pb-8 last:border-0 last:pb-0">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-sky-100/90">{b.title}</h3>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/90">{b.content}</div>
+                  </article>
+                ))}
+              </div>
+              <p className="mt-4 text-center text-[11px] text-white/50">
+                Anteprima di lavoro: verificare sempre con HR e legal prima della firma.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

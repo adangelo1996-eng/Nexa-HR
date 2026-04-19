@@ -7,6 +7,18 @@ import { getNexaHrConversationalAgentSystemPrompt } from "./ai-hr-agent";
 const DEFAULT_MODEL = "gpt-4o-mini";
 const REQUEST_MS = 55_000;
 
+/** Esito refine: `inactive` = feature disattivata in env; altri = tentativo fallito pur con LLM abilitato. */
+export type OpenAiRefineFailure =
+  | "inactive"
+  | "openai_error"
+  | "empty_response"
+  | "invalid_json"
+  | "privacy_tokens";
+
+export type OpenAiRefineResult =
+  | { ok: true; data: unknown }
+  | { ok: false; failure: OpenAiRefineFailure };
+
 function collectTokensFromJson(value: unknown): Set<string> {
   const found = new Set<string>();
   const json = JSON.stringify(value);
@@ -173,13 +185,11 @@ export class AiOpenAiRefinementService {
 
   /**
    * Invia il JSON pseudonimizzato al modello e ne richiede una variante strutturata.
-   * Ritorna null se disattivo, errore, JSON non valido o token persi.
    */
-  async refinePseudonymizedJson(
-    pseudonymized: unknown,
-    schemaVersion: string
-  ): Promise<unknown | null> {
-    if (!this.isActive()) return null;
+  async refinePseudonymizedJson(pseudonymized: unknown, schemaVersion: string): Promise<OpenAiRefineResult> {
+    if (!this.isActive()) {
+      return { ok: false, failure: "inactive" };
+    }
     const apiKey = process.env.OPENAI_API_KEY!.trim();
     const model = process.env.NEXA_OPENAI_MODEL?.trim() || DEFAULT_MODEL;
     const client = new OpenAI({ apiKey, timeout: REQUEST_MS, maxRetries: 0 });
@@ -213,23 +223,25 @@ export class AiOpenAiRefinementService {
         ]
       });
       const raw = completion.choices[0]?.message?.content?.trim();
-      if (!raw) return null;
+      if (!raw) {
+        return { ok: false, failure: "empty_response" };
+      }
       const forParse = stripMarkdownJsonFence(raw);
       let parsed: unknown;
       try {
         parsed = JSON.parse(forParse) as unknown;
       } catch {
         this.logger.warn("OpenAI response not JSON");
-        return null;
+        return { ok: false, failure: "invalid_json" };
       }
       if (!tokensPreservedInOutput(schemaVersion, pseudonymized, parsed)) {
         this.logger.warn("OpenAI output dropped privacy tokens; falling back");
-        return null;
+        return { ok: false, failure: "privacy_tokens" };
       }
-      return parsed;
+      return { ok: true, data: parsed };
     } catch (e) {
       this.logger.warn(`OpenAI refine failed: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
+      return { ok: false, failure: "openai_error" };
     }
   }
 }
