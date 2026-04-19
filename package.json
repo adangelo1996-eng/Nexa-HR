@@ -36,6 +36,7 @@
     "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
     "backend:env:pull-render": "node scripts/render-pull-backend-env.mjs",
     "render:frontend:start-command": "node scripts/render-update-frontend-start.mjs",
+    "render:backend:start-command": "node scripts/render-update-backend-start.mjs",
     "vercel:link": "corepack pnpm dlx vercel link --cwd apps/frontend",
     "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",
     "vercel:preview": "corepack pnpm dlx vercel --cwd apps/frontend",
