@@ -16,7 +16,8 @@ function routeDefinesOwnShell(pathname: string): boolean {
     "/workforce-planning",
     "/manager-copilot",
     "/payroll-hebb",
-    "/tools/cost-calculator"
+    "/tools/cost-calculator",
+    "/mappa-portale"
   ]);
   return own.has(p);
 }

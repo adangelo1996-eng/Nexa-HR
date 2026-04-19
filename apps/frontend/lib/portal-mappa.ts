@@ -246,3 +246,11 @@ export function groupPortalTiles(
   }
   return map;
 }
+
+/** Rami per mappa ad albero: la Dashboard resta solo al centro (href `/` escluso dalle foglie). */
+export function buildPortalMindMapBranches(grouped: Map<string, PortalTile[]>): { category: string; tiles: PortalTile[] }[] {
+  return PORTAL_CATEGORY_ORDER.map((cat) => ({
+    category: cat,
+    tiles: (grouped.get(cat) ?? []).filter((t) => t.href !== "/")
+  })).filter((b) => b.tiles.length > 0);
+}

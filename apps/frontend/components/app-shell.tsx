@@ -236,6 +236,7 @@ function SidebarCollapsibleSection(props: {
 
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();
+  const isPortalMap = (pathname.replace(/\/$/, "") || "/") === "/mappa-portale";
   const router = useRouter();
   const { theme, toggleTheme, mounted } = useTheme();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -696,16 +697,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   return (
     <div className="flex h-[100dvh] overflow-hidden">
       <SessionIdleGuard />
-      <aside
-        ref={desktopAsideRef}
-        onScroll={schedulePersistSidebarScroll}
-        className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
-        aria-label="Navigazione principale"
-      >
-        {SidebarContent}
-      </aside>
+      {!isPortalMap ? (
+        <aside
+          ref={desktopAsideRef}
+          onScroll={schedulePersistSidebarScroll}
+          className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
+          aria-label="Navigazione principale"
+        >
+          {SidebarContent}
+        </aside>
+      ) : null}
 
-      {mobileOpen ? (
+      {!isPortalMap && mobileOpen ? (
         <div
           className="fixed inset-0 z-50 flex md:hidden"
           role="dialog"
@@ -771,16 +774,20 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           }}
         >
           <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 shrink-0 rounded-full p-0 md:hidden"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Apri menu"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
+            {!isPortalMap ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 shrink-0 rounded-full p-0 md:hidden"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Apri menu"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            ) : (
+              <span className="h-9 w-9 shrink-0 md:hidden" aria-hidden />
+            )}
             <Link href="/" scroll={false} className="hidden shrink-0 sm:block" aria-label="Home">
               <span
                 className="nexa-wordmark-face text-xs font-semibold uppercase tracking-[0.1em] text-[var(--prom-text)]"
@@ -904,10 +911,16 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </header>
 
         <AppMainContentFrame>
-          <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
-          <footer className="border-t border-[color-mix(in_srgb,var(--prom-line)_85%,transparent)] py-4 text-center text-xs text-[var(--prom-muted)] backdrop-blur-sm">
-            © Nexa HR 2026
-          </footer>
+          {isPortalMap ? (
+            <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">{children}</main>
+          ) : (
+            <>
+              <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
+              <footer className="border-t border-[color-mix(in_srgb,var(--prom-line)_85%,transparent)] py-4 text-center text-xs text-[var(--prom-muted)] backdrop-blur-sm">
+                © Nexa HR 2026
+              </footer>
+            </>
+          )}
         </AppMainContentFrame>
       </div>
       <SelfServiceChat />

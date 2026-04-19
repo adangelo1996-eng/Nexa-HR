@@ -20,6 +20,7 @@ export type AppMainContentFrameProps = {
 export function AppMainContentFrame(props: AppMainContentFrameProps): React.JSX.Element {
   const pathname = usePathname();
   const dense = pathname.startsWith("/admin");
+  const portalMap = (pathname.replace(/\/$/, "") || "/") === "/mappa-portale";
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -30,18 +31,21 @@ export function AppMainContentFrame(props: AppMainContentFrameProps): React.JSX.
   }, [pathname]);
 
   return (
-    <div ref={mainScrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
+    <div
+      ref={mainScrollRef}
+      className={`relative min-h-0 flex-1 ${portalMap ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}
+    >
       <div
         className={`pointer-events-none absolute inset-0 ${dense ? "opacity-80" : "opacity-95"}`}
         style={dense ? { background: "var(--page-gradient)" } : hebbAiImmersiveBackgroundStyle}
       />
-      {!dense ? (
+      {!dense && !portalMap ? (
         <div
           className="pointer-events-none absolute left-1/2 top-10 h-72 w-72 -translate-x-1/2 rounded-full blur-3xl motion-safe:animate-pulse md:top-16 md:h-80 md:w-80"
           style={orbSoftStyle}
         />
       ) : null}
-      <div className="relative z-[1] min-h-full">{props.children}</div>
+      <div className={`relative z-[1] ${portalMap ? "flex min-h-0 flex-1 flex-col" : "min-h-full"}`}>{props.children}</div>
     </div>
   );
 }
