@@ -122,4 +122,21 @@ describe("HrDataStore", () => {
     assert.equal(aggregates.month.overtimeSeconds, 10800);
     assert.equal(aggregates.year.overtimeSeconds, 10800);
   });
+
+  it("updateUser persiste payrollAtecoCode e campi payroll IT in anagrafica (in-memory)", async () => {
+    const store = new HrDataStore();
+    if (store.usesDatabase()) {
+      return;
+    }
+    const u = await store.updateUser("u-employee", {
+      payrollAtecoCode: "62.01",
+      payrollInailRiskDescription: "Ufficio (basso)",
+      payrollInailPermille: 2.5
+    });
+    assert.equal(u.payrollAtecoCode, "62.01");
+    assert.equal(u.payrollInailRiskDescription, "Ufficio (basso)");
+    assert.equal(u.payrollInailPermille, 2.5);
+    const again = await store.getUser("u-employee");
+    assert.equal(again?.payrollAtecoCode, "62.01");
+  });
 });

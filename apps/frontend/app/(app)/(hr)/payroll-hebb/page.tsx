@@ -378,7 +378,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
           Il calcolo cedolino per una competenza <strong className="text-[var(--prom-text)]">YYYY-MM</strong> è consentito dal{" "}
           <strong className="text-[var(--prom-text)]">5° giorno di calendario</strong> dopo l’ultimo giorno di quel mese. In
           generazione bozza/PDF il backend usa le{" "}
-          <strong className="text-[var(--prom-text)]">variabili (straordinari, ferie, malattia, smart working)</strong> dal{" "}
+          <strong className="text-[var(--prom-text)]">variabili (straordinari, ferie, malattia, remote working)</strong> dal{" "}
           <strong className="text-[var(--prom-text)]">mese precedente</strong> rispetto al periodo di competenza, salvo
           impostazioni diverse nel batch; le <strong className="text-[var(--prom-text)]">note spese approvate</strong> della
           competenza sono incluse nel netto come rimborsi.

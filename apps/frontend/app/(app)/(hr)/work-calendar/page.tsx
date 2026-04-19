@@ -244,7 +244,7 @@ function appendOptimisticSmartworking(
   const ev: CalendarEventDto = {
     id: `opt-cal-swr-${args.clientId}`,
     kind: "smartworking",
-    title: "Smart working (in attesa)",
+    title: "Remote working (in attesa)",
     start: d,
     end: d,
     userId: args.userId,
@@ -1330,7 +1330,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
     if (!t || !modal || !me) return;
     setError(null);
     if (!isOwnRow && next && me.role !== "superuser") {
-      setError("Solo il dipendente può richiedere un nuovo smart working da qui.");
+      setError("Solo il dipendente può richiedere un nuovo remote working da qui.");
       return;
     }
     if (next) {
@@ -1356,7 +1356,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         .catch((e) => {
           setEvents((prev) => removeOptimisticClientEvents(prev, clientId));
           setSwOptimistic(null);
-          setError(e instanceof Error ? e.message : "Errore smart working");
+          setError(e instanceof Error ? e.message : "Errore remote working");
         });
       return;
     }
@@ -1370,7 +1370,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         .then(() => void load({ silent: true }))
         .catch((e) => {
           setSwOptimistic(null);
-          setError(e instanceof Error ? e.message : "Errore annullo smart working");
+          setError(e instanceof Error ? e.message : "Errore annullamento remote working");
         });
     }
   };
@@ -1557,7 +1557,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load({ silent: true });
     } catch (e) {
       await load({ silent: true });
-      setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
+      setError(e instanceof Error ? e.message : "Errore aggiornamento remote working");
     } finally {
       setSubmitting(null);
     }
@@ -1588,7 +1588,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load();
     } catch (e) {
       await load({ silent: true });
-      setError(e instanceof Error ? e.message : "Errore aggiornamento smart working");
+      setError(e instanceof Error ? e.message : "Errore aggiornamento remote working");
     } finally {
       setSubmitting(null);
     }
@@ -1732,8 +1732,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
     if (swAtSelectedDay.on) {
       setError(
         swAtSelectedDay.status === "pending"
-          ? "Per questa data c'è già una richiesta smart working in attesa."
-          : "Per questa data risulta già uno smart working attivo."
+          ? "Per questa data c'è già una richiesta di remote working in attesa."
+          : "Per questa data risulta già un remote working attivo."
       );
       return;
     }
@@ -1761,7 +1761,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       await load();
     } catch (e) {
       setEvents((prev) => removeOptimisticClientEvents(prev, clientIdSw));
-      setError(e instanceof Error ? e.message : "Errore creazione smart working");
+      setError(e instanceof Error ? e.message : "Errore creazione remote working");
     } finally {
       setSubmitting(null);
     }
@@ -1878,7 +1878,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         <span className="rounded border border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-gold)_14%,transparent)] px-2 py-0.5 text-[var(--prom-text)]">
           Turno
         </span>
-        <span className="rounded border border-violet-500/40 bg-violet-500/10 px-2 py-0.5">Smart working</span>
+        <span className="rounded border border-violet-500/40 bg-violet-500/10 px-2 py-0.5">Remote working</span>
         <span className="rounded border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-2 py-0.5 text-[var(--prom-text)]">
           Trasferta
         </span>
@@ -2309,7 +2309,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggMese.giorniFerieAnnuali} />
                       <AnalyticsStatRow label="ROL (giorni)" value={statsAggMese.giorniRol} />
                       <AnalyticsStatRow label="Malattia (giorni)" value={statsAggMese.giorniMalattia} />
-                      <AnalyticsStatRow label="Smart working (giorni)" value={statsAggMese.giorniSmartWorking} />
+                      <AnalyticsStatRow label="Remote working (giorni)" value={statsAggMese.giorniSmartWorking} />
                       <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggMese.giorniTrasferta} />
                       <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggMese.giorniFestivitaAziendali} />
                       <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggMese.giorniConTurno} />
@@ -2324,7 +2324,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                       <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggYtd.giorniFerieAnnuali} />
                       <AnalyticsStatRow label="ROL (giorni)" value={statsAggYtd.giorniRol} />
                       <AnalyticsStatRow label="Malattia (giorni)" value={statsAggYtd.giorniMalattia} />
-                      <AnalyticsStatRow label="Smart working (giorni)" value={statsAggYtd.giorniSmartWorking} />
+                      <AnalyticsStatRow label="Remote working (giorni)" value={statsAggYtd.giorniSmartWorking} />
                       <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggYtd.giorniTrasferta} />
                       <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggYtd.giorniFestivitaAziendali} />
                       <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggYtd.giorniConTurno} />
@@ -2358,7 +2358,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsMese.giorniFerieAnnuali} />
                 <AnalyticsStatRow label="ROL (giorni)" value={statsMese.giorniRol} />
                 <AnalyticsStatRow label="Malattia (giorni)" value={statsMese.giorniMalattia} />
-                <AnalyticsStatRow label="Smart working (giorni)" value={statsMese.giorniSmartWorking} />
+                <AnalyticsStatRow label="Remote working (giorni)" value={statsMese.giorniSmartWorking} />
                 <AnalyticsStatRow label="Trasferte (giorni)" value={statsMese.giorniTrasferta} />
                 <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsMese.giorniFestivitaAziendali} />
                 <AnalyticsStatRow label="Turni (giorni con turno)" value={statsMese.giorniConTurno} />
@@ -2373,7 +2373,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                 <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsYtd.giorniFerieAnnuali} />
                 <AnalyticsStatRow label="ROL (giorni)" value={statsYtd.giorniRol} />
                 <AnalyticsStatRow label="Malattia (giorni)" value={statsYtd.giorniMalattia} />
-                <AnalyticsStatRow label="Smart working (giorni)" value={statsYtd.giorniSmartWorking} />
+                <AnalyticsStatRow label="Remote working (giorni)" value={statsYtd.giorniSmartWorking} />
                 <AnalyticsStatRow label="Trasferte (giorni)" value={statsYtd.giorniTrasferta} />
                 <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsYtd.giorniFestivitaAziendali} />
                 <AnalyticsStatRow label="Turni (giorni con turno)" value={statsYtd.giorniConTurno} />
@@ -2487,7 +2487,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         }}
                         className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
                       >
-                        Smart working
+                        Remote working
                       </button>
                     ) : null}
                     {!menuDayHasTravel ? (
@@ -2624,7 +2624,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         }}
                         className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
                       >
-                        Modifica smart working in attesa
+                        Modifica remote working in attesa
                       </button>
                     ) : null}
                     {pendingTravelInModal ? (
@@ -2698,7 +2698,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                             }}
                             className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-3 text-left text-sm font-medium text-violet-950 transition hover:bg-violet-500/15 dark:text-violet-100"
                           >
-                            Nuovo smart working
+                            Nuovo remote working
                           </button>
                         ) : null}
                         {!menuDayHasTravel ? (
@@ -2777,7 +2777,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
 
                 {modalStep === "smartworking" ? (
                   <div className="space-y-3">
-                    <p className="text-xs font-medium text-[var(--prom-text)]">Smart working</p>
+                    <p className="text-xs font-medium text-[var(--prom-text)]">Remote working</p>
                     <label className="block text-[11px] text-[var(--prom-muted)]">
                       Giorno
                       <input
@@ -2790,15 +2790,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     {superuserTravelForOther ? (
                       <>
                         <p className="text-[11px] text-[var(--prom-muted)]">
-                          Registra uno smart working per{" "}
+                          Registra remote working per{" "}
                           <span className="font-medium text-[var(--prom-text)]">{modal.row.fullName}</span>. Le quote
                           settimanali/mensili non si applicano alle richieste registrate dal superuser.
                         </p>
                         {swAtSelectedDay.on ? (
                           <p className="text-[10px] text-[var(--prom-muted)]">
                             {swAtSelectedDay.status === "pending"
-                              ? "Per questa data c’è già una richiesta in attesa: torna al menu e usa «Modifica smart working in attesa»."
-                              : "Per questa data risulta già uno smart working attivo (approvato o da presenze)."}
+                              ? "Per questa data c’è già una richiesta in attesa: torna al menu e usa «Modifica remote working in attesa»."
+                              : "Per questa data risulta già un remote working attivo (approvato o da presenze)."}
                           </p>
                         ) : null}
                         <label className="block text-[11px] text-[var(--prom-muted)]">
@@ -2817,7 +2817,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           disabled={submitting !== null || swAtSelectedDay.on}
                           onClick={() => void submitSmartworkingAdminForOther()}
                         >
-                          {submitting === "sw-admin" ? "Invio…" : "Registra smart working"}
+                          {submitting === "sw-admin" ? "Invio…" : "Registra remote working"}
                         </Button>
                       </>
                     ) : (
@@ -2825,7 +2825,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         {isOwnRow ? (
                           <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] px-3 py-2.5">
                             <span className="text-[11px] text-[var(--prom-text)]">
-                              Richiedi smart working per questo giorno
+                              Richiedi remote working per questo giorno
                             </span>
                             <input
                               type="checkbox"
@@ -2849,14 +2849,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
                             size="sm"
                             onClick={() => onSmartworkingSwitch(false)}
                           >
-                            Annulla richiesta smart working in attesa
+                            Annulla richiesta di remote working in attesa
                           </Button>
                         ) : null}
                         {swDisplayOn &&
                         serverSwForm.status !== "pending" &&
                         !(chipEditIsApproved && serverSwForm.status === "approved") ? (
                           <p className="text-[10px] text-[var(--prom-muted)]">
-                            Per questa data risulta già uno smart working (approvato o da presenze). Non è possibile
+                            Per questa data risulta già un remote working (approvato o da presenze). Non è possibile
                             inserirne un altro.
                           </p>
                         ) : null}

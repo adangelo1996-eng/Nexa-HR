@@ -891,7 +891,7 @@ export async function clock(token: string, type: "clock_in" | "clock_out", extra
   return (await response.json()) as TimeEntry;
 }
 
-/** Imposta modalità giornata (sede / smart working) sui riepiloghi presenza — senza flusso di approvazione. */
+/** Imposta modalità giornata (sede / remote working, enum `smartworking`) sui riepiloghi presenza — senza flusso di approvazione. */
 export async function setAttendanceWorkMode(
   token: string,
   date: string,
@@ -3392,9 +3392,30 @@ export async function fetchHrCenterMeta(token: string): Promise<{
   };
 }
 
+export type HrCenterAnalyticsDataset = {
+  scope: string;
+  byCostCenter: Array<{ costCenterId: string; headcount: number; monthlyGrossSum: number }>;
+  totals: { headcount: number; monthlyGrossSum: number; avgWeeklyContractHours: number };
+  disclaimer: string;
+};
+
+export type HrCenterAnalyticsReportEnvelope = {
+  executiveSummary: string;
+  strategicInsights: string[];
+  costCenterNarratives: Array<{
+    costCenterId: string;
+    headline: string;
+    analysis: string;
+    suggestion: string;
+  }>;
+  priorities: Array<{ title: string; rationale: string; nextStep: string }>;
+  expertClosingNote: string;
+  methodologyNote: string;
+};
+
 export async function postHrCenterAnalytics(token: string): Promise<{
-  facts: Record<string, unknown>;
-  narrative: unknown;
+  dataset: HrCenterAnalyticsDataset;
+  report: { envelope: HrCenterAnalyticsReportEnvelope } | Record<string, unknown>;
   llm: { active: boolean; refineApplied: boolean };
   privacy: { schemaVersion: string; tokenCount: number };
 }> {
@@ -3405,8 +3426,8 @@ export async function postHrCenterAnalytics(token: string): Promise<{
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as {
-    facts: Record<string, unknown>;
-    narrative: unknown;
+    dataset: HrCenterAnalyticsDataset;
+    report: { envelope: HrCenterAnalyticsReportEnvelope } | Record<string, unknown>;
     llm: { active: boolean; refineApplied: boolean };
     privacy: { schemaVersion: string; tokenCount: number };
   };
@@ -3594,13 +3615,18 @@ export async function fetchAttendanceReport(
   };
 }
 
-export async function fetchShiftProposals(token: string, weekStart: string): Promise<{ items: unknown[] }> {
+export type ShiftProposalDto = { id: string; userId: string; startAt: string; endAt: string };
+
+export async function fetchShiftProposals(
+  token: string,
+  weekStart: string
+): Promise<{ items: ShiftProposalDto[] }> {
   const response = await fetch(
     buildApiUrl(`/scheduling/proposals?weekStart=${encodeURIComponent(weekStart)}`),
     { headers: getAuthHeaders(token) }
   );
   if (!response.ok) await parseError(response);
-  return (await response.json()) as { items: unknown[] };
+  return (await response.json()) as { items: ShiftProposalDto[] };
 }
 
 export async function submitLifecycleOffboard(

@@ -1696,10 +1696,13 @@ export class HrDataStore {
       const u = data as User;
       return this.mapUserRowFromDatabase(u);
     }
-    const user = await this.getUser(userId);
-    Object.assign(user, payload);
-    user.role = coercePlatformRole(payload.role);
-    return user;
+    const live = this.users.find((item) => item.id === userId);
+    if (!live) {
+      throw new NotFoundException("Utente non trovato");
+    }
+    Object.assign(live, payload);
+    live.role = coercePlatformRole(payload.role);
+    return { ...live, role: live.role };
   }
 
   async updateUserManager(userId: string, managerId?: string): Promise<User> {

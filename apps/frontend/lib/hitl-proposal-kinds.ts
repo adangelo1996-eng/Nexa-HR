@@ -8,7 +8,7 @@ export const HITL_PROPOSAL_KIND_CATALOG = [
   {
     id: "reminder.pending_approvals",
     labelIt: "Sollecito approvazioni in sospeso",
-    hintIt: "Per responsabili: ferie, spese o smart working ancora da gestire nel proprio perimetro."
+    hintIt: "Per responsabili: ferie, spese o remote working ancora da gestire nel proprio perimetro."
   },
   {
     id: "info.policy_pointer",

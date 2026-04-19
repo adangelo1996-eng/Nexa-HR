@@ -85,7 +85,7 @@ export function sortMine(items: ApprovalItem[]): ApprovalItem[] {
 
 const HISTORY_TYPE_ORDER = ["leave:annual", "leave:rol", "sickness", "smartworking", "travel"] as const;
 
-/** Ordine intestazioni «Approvazioni in sospeso» (assenze): Ferie → ROL → Malattia → Trasferta → Smart working. */
+/** Ordine intestazioni «Approvazioni in sospeso» (assenze): Ferie → ROL → Malattia → Trasferta → Remote working. */
 const PENDING_APPROVAL_CATEGORY_ORDER = [
   "leave:annual",
   "leave:rol",

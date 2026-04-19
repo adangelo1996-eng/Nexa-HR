@@ -46,6 +46,10 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     const intent = (pseudonymizedInput as { envelope?: { facts?: { intent?: unknown } } })?.envelope?.facts?.intent;
     return typeof intent === "string" ? collectTokensFromString(intent) : new Set();
   }
+  if (schemaVersion === "ai_hr_center_analytics_v1") {
+    // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
+    return new Set();
+  }
   return collectTokensFromJson(pseudonymizedInput);
 }
 
@@ -129,6 +133,23 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Produci analisi in italiano: title accattivante, bullets (max 6) con priorità e rischi operativi, summary con azioni consigliate; " +
         "non aggiungere nomi di persone né ID; non affermare cause legali/mediche."
       );
+    case "ai_hr_center_analytics_v1":
+      return (
+        base +
+        " Ruolo: sei un consulente HR senior e un economista del lavoro (Italia), con tono professionale, empatico e operativo. " +
+        " Schema obbligatorio: {\"envelope\":{" +
+        "\"executiveSummary\":\"stringa (4-7 frasi, quadro d'insieme per il CdA/HR)\"," +
+        "\"strategicInsights\":[\"stringa\"], " +
+        "\"costCenterNarratives\":[{\"costCenterId\":\"stringa (stesso id o token dell'ingresso)\",\"headline\":\"stringa\",\"analysis\":\"stringa\",\"suggestion\":\"stringa\"}], " +
+        "\"priorities\":[{\"title\":\"stringa\",\"rationale\":\"stringa\",\"nextStep\":\"stringa\"}], " +
+        "\"expertClosingNote\":\"stringa (2-4 frasi)\"," +
+        "\"methodologyNote\":\"stringa (limiti dell'analisi, fonte dati, niente consulenza legale vincolante)\"}}. " +
+        " Regole: usa SOLO numeri e relazioni presenti in envelope.facts; non inventare cifre, fatturati, margini o clausole contrattuali; " +
+        "non citare nomi di persone; per ogni centro di costo in envelope.facts.byCostCenter produci una voce in costCenterNarratives (stesso ordine o ordinato per impatto); " +
+        "strategicInsights: 5-8 voci, ciascuna concreta (costo, organico, rischi operativi, retention, compliance soft); " +
+        "priorities: 4-6 voci prioritarie con nextStep misurabile; " +
+        "se compaiono token __nexa_ref:...__, copiali identici in costCenterId dove servono."
+      );
     case "ai_process_bottlenecks_v1":
       return (
         base +
@@ -167,14 +188,17 @@ export class AiOpenAiRefinementService {
     const maxTokens =
       schemaVersion === "ai_assistant_v1"
         ? 4096
-        : schemaVersion === "ai_hitl_draft_v1" || schemaVersion === "ai_turnover_insights_deep_v1"
-          ? 2048
-          : 2048;
+        : schemaVersion === "ai_hr_center_analytics_v1"
+          ? 4096
+          : schemaVersion === "ai_hitl_draft_v1" || schemaVersion === "ai_turnover_insights_deep_v1"
+            ? 2048
+            : 2048;
 
     try {
+      const temperature = schemaVersion === "ai_hr_center_analytics_v1" ? 0.28 : 0.35;
       const completion = await client.chat.completions.create({
         model,
-        temperature: 0.35,
+        temperature,
         max_tokens: maxTokens,
         response_format: { type: "json_object" },
         messages: [

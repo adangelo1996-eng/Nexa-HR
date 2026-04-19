@@ -1,6 +1,5 @@
 "use client";
 
-import { Activity, Sparkles } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -13,8 +12,8 @@ export const hebbAiImmersiveBackgroundStyle: CSSProperties = {
 export type HebbAiExperienceShellProps = {
   title: string;
   subtitle?: ReactNode;
-  /** Sostituisce il pill predefinito «Hebb AI for HR» (es. wordmark NEXA sul hub). */
-  eyebrow?: ReactNode;
+  /** Badge opzionale sopra al titolo (es. wordmark NEXA sul Centro AI). Se omesso, non viene mostrato nulla. */
+  eyebrow?: ReactNode | null;
   /** Es. pulsante guida, in alto a destra */
   headerTrailing?: ReactNode;
   /** Larghezza massima contenuto */
@@ -30,14 +29,6 @@ export function HebbAiExperienceShell(props: HebbAiExperienceShellProps): React.
   const { title, subtitle, eyebrow, headerTrailing, contentMax = "wide", children } = props;
   const reduceMotion = useReducedMotion();
   const maxClass = contentMax === "wide" ? "max-w-5xl" : "max-w-4xl";
-
-  const defaultEyebrow = (
-    <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
-      <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--prom-gold)]" aria-hidden />
-      <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--prom-gold)]" aria-hidden />
-      <span>HEBB AI FOR HR</span>
-    </p>
-  );
 
   const headerMotion = reduceMotion
     ? {}
@@ -65,7 +56,7 @@ export function HebbAiExperienceShell(props: HebbAiExperienceShellProps): React.
         ) : null}
 
         <motion.header className="text-center" {...headerMotion}>
-          {eyebrow ?? defaultEyebrow}
+          {eyebrow ?? null}
           <h1 className="font-synapse text-balance text-3xl font-semibold tracking-tight text-[var(--prom-text)] md:text-5xl">
             {title}
           </h1>

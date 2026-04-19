@@ -10,7 +10,7 @@ export function calendarEventAbbrev(ev: CalendarEventDto): string {
   }
   switch (ev.kind) {
     case "smartworking":
-      return "SW";
+      return "RW";
     case "office":
       return "SD";
     case "travel":

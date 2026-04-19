@@ -84,7 +84,7 @@ const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
       { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
       { href: "/scheduling", label: "Turni", icon: CalendarDays },
       { href: "/workflow", label: "Workflow", icon: Workflow },
-      { href: "/smartworking", label: "Smart working", icon: Laptop }
+      { href: "/smartworking", label: "Remote working", icon: Laptop }
     ]
   },
   {

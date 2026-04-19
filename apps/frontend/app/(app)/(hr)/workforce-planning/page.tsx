@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchCurrentUser, fetchWorkforceCockpit, postAnalyticsNarrative, type WorkforceCockpitScenario } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
@@ -31,6 +31,15 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   const [customFte, setCustomFte] = useState(0);
   const [customFlat, setCustomFlat] = useState(0);
   const [customScale, setCustomScale] = useState(100);
+  const [customBusy, setCustomBusy] = useState(false);
+  /** Firma parametri usata nell’ultima simulazione custom riuscita. */
+  const [appliedCustomSig, setAppliedCustomSig] = useState<string | null>(null);
+  const prevScenarioRef = useRef<WorkforceCockpitScenario>(scenario);
+
+  const customParamSig = useMemo(
+    () => `${customFte}|${customFlat}|${customScale}`,
+    [customFte, customFlat, customScale]
+  );
 
   const loadPreset = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -50,6 +59,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     if (!t) return;
     await fetchCurrentUser(t).catch(() => undefined);
     setError(null);
+    setCustomBusy(true);
     try {
       const r = await fetchWorkforceCockpit(t, "custom", 6, {
         fteDelta: customFte,
@@ -57,10 +67,23 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
         seriesScalePercent: customScale
       });
       setData(r);
+      setAppliedCustomSig(`${customFte}|${customFlat}|${customScale}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento");
+    } finally {
+      setCustomBusy(false);
     }
   }, [customFte, customFlat, customScale]);
+
+  useEffect(() => {
+    const prev = prevScenarioRef.current;
+    if (scenario === "custom" && prev !== "custom") {
+      setData(null);
+      setNarrative(null);
+      setAppliedCustomSig(null);
+    }
+    prevScenarioRef.current = scenario;
+  }, [scenario]);
 
   useEffect(() => {
     if (scenario === "custom") {
@@ -68,16 +91,6 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     }
     void loadPreset();
   }, [scenario, loadPreset]);
-
-  useEffect(() => {
-    if (scenario !== "custom") {
-      return;
-    }
-    const h = setTimeout(() => {
-      void loadCustom();
-    }, 450);
-    return () => clearTimeout(h);
-  }, [scenario, customFte, customFlat, customScale, loadCustom]);
 
   const max = Math.max(1, ...(data?.series.map((s) => s.costEur) ?? [1]));
 
@@ -164,9 +177,9 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
           <div>
             <h2 className="text-sm font-semibold text-[var(--prom-text)]">Parametri what-if</h2>
             <p className="mt-1 text-xs leading-relaxed text-[var(--prom-muted)]">
-              I valori si applicano con un breve ritardo mentre digiti. La massa stipendi attuale viene usata per stimare
-              l’effetto di teste in più o in meno; l’importo fisso si somma ogni mese; la percentuale moltiplica l’intera
-              curva del forecast (0–300%).
+              Imposta le leve e avvia la simulazione: la massa stipendi attuale serve a stimare teste in più o in meno;
+              l’importo fisso si somma ogni mese; la percentuale moltiplica l’intera curva del forecast (0–300%). I
+              risultati compaiono nella dashboard dedicata sotto solo dopo l’esecuzione.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -203,58 +216,137 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
               />
             </label>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => void loadCustom()}>
-            Ricalcola subito
+          <Button type="button" disabled={customBusy} onClick={() => void loadCustom()}>
+            {customBusy ? "Calcolo in corso…" : "Esegui simulazione"}
           </Button>
         </HebbAiGlassPanel>
       ) : null}
 
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
+      {scenario === "custom" && !data && !customBusy ? (
+        <HebbAiGlassPanel className="border-dashed py-10 text-center">
+          <p className="text-sm font-medium text-[var(--prom-text)]">In attesa di simulazione</p>
+          <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-[var(--prom-muted)]">
+            La dashboard what-if (KPI, grafico a sei mesi e sintesi) si popola dopo «Esegui simulazione». Puoi cambiare i
+            parametri e rilanciare quando vuoi.
+          </p>
+        </HebbAiGlassPanel>
+      ) : null}
+
+      {scenario === "custom" && customBusy && !data ? (
+        <HebbAiGlassPanel className="py-12 text-center">
+          <p className="text-sm text-[var(--prom-muted)]">Calcolo dello scenario in corso…</p>
+        </HebbAiGlassPanel>
+      ) : null}
+
       {data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <HebbAiGlassTile>
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Persone in organico (senza superuser)
-              </p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.headcount}</p>
-            </HebbAiGlassTile>
-            <HebbAiGlassTile>
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Stima massa retributiva mensile
-              </p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
-                {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
-                  data.summary.monthlyPayrollMassEur
-                )}
-              </p>
-            </HebbAiGlassTile>
-            <HebbAiGlassTile>
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                Note spese in attesa HR
-              </p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
-                {data.summary.pendingExpenseCount}
-              </p>
-            </HebbAiGlassTile>
-          </div>
-
-          <HebbAiGlassPanel>
-            <h2 className="text-sm font-semibold tracking-wide text-[var(--prom-text)]">Costo mensile previsto (6 mesi)</h2>
-            <div className="mt-6 flex h-52 items-end gap-2 border-t border-[var(--prom-line)] pt-4">
-              {data.series.map((s) => (
-                <div key={s.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                  <div
-                    className="w-full max-w-[3rem] rounded-t-lg bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_55%,#002d72)] shadow-md transition hover:opacity-95"
-                    style={{ height: `${(s.costEur / max) * 168}px` }}
-                    title={`${s.costEur} EUR`}
-                  />
-                  <span className="truncate text-[10px] font-medium text-[var(--prom-muted)]">{s.month}</span>
+          {scenario === "custom" ? (
+            <HebbAiGlassPanel className="space-y-6 ring-2 ring-[color-mix(in_srgb,var(--prom-gold)_42%,transparent)]">
+              <div className="flex flex-col gap-2 border-b border-[var(--prom-line)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--prom-gold)]">Dashboard what-if</p>
+                  <h2 className="mt-1 text-lg font-semibold text-[var(--prom-text)]">Risultato simulazione (parametri liberi)</h2>
+                  <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                    FTE Δ {customFte} · flat €{customFlat}/mese · scala forecast {customScale}%
+                  </p>
                 </div>
-              ))}
-            </div>
-          </HebbAiGlassPanel>
+              </div>
+              {appliedCustomSig !== null && customParamSig !== appliedCustomSig ? (
+                <p className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                  I parametri non coincidono più con questa simulazione. Esegui di nuovo per aggiornare la dashboard.
+                </p>
+              ) : null}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Persone in organico (senza superuser)
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.headcount}</p>
+                </HebbAiGlassTile>
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Stima massa retributiva mensile
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+                    {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                      data.summary.monthlyPayrollMassEur
+                    )}
+                  </p>
+                </HebbAiGlassTile>
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Note spese in attesa HR
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+                    {data.summary.pendingExpenseCount}
+                  </p>
+                </HebbAiGlassTile>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold tracking-wide text-[var(--prom-text)]">Costo mensile previsto (6 mesi)</h3>
+                <div className="mt-6 flex h-52 items-end gap-2 border-t border-[var(--prom-line)] pt-4">
+                  {data.series.map((s) => (
+                    <div key={s.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                      <div
+                        className="w-full max-w-[3rem] rounded-t-lg bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_55%,#002d72)] shadow-md transition hover:opacity-95"
+                        style={{ height: `${(s.costEur / max) * 168}px` }}
+                        title={`${s.costEur} EUR`}
+                      />
+                      <span className="truncate text-[10px] font-medium text-[var(--prom-muted)]">{s.month}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </HebbAiGlassPanel>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Persone in organico (senza superuser)
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">{data.summary.headcount}</p>
+                </HebbAiGlassTile>
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Stima massa retributiva mensile
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+                    {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
+                      data.summary.monthlyPayrollMassEur
+                    )}
+                  </p>
+                </HebbAiGlassTile>
+                <HebbAiGlassTile>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
+                    Note spese in attesa HR
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+                    {data.summary.pendingExpenseCount}
+                  </p>
+                </HebbAiGlassTile>
+              </div>
+
+              <HebbAiGlassPanel>
+                <h2 className="text-sm font-semibold tracking-wide text-[var(--prom-text)]">Costo mensile previsto (6 mesi)</h2>
+                <div className="mt-6 flex h-52 items-end gap-2 border-t border-[var(--prom-line)] pt-4">
+                  {data.series.map((s) => (
+                    <div key={s.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                      <div
+                        className="w-full max-w-[3rem] rounded-t-lg bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_55%,#002d72)] shadow-md transition hover:opacity-95"
+                        style={{ height: `${(s.costEur / max) * 168}px` }}
+                        title={`${s.costEur} EUR`}
+                      />
+                      <span className="truncate text-[10px] font-medium text-[var(--prom-muted)]">{s.month}</span>
+                    </div>
+                  ))}
+                </div>
+              </HebbAiGlassPanel>
+            </>
+          )}
 
           <HebbAiGlassPanel>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -296,11 +388,11 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
             )}
           </HebbAiGlassPanel>
         </>
-      ) : (
+      ) : scenario !== "custom" ? (
         <HebbAiGlassPanel className="py-12 text-center">
           <p className="text-sm text-[var(--prom-muted)]">Caricamento cockpit…</p>
         </HebbAiGlassPanel>
-      )}
+      ) : null}
     </HebbAiExperienceShell>
   );
 }

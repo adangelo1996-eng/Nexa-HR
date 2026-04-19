@@ -36,7 +36,7 @@ function modeLabel(row: WorkdaySummary, travelDates: Set<string>): string {
     return "Trasferta";
   }
   if (row.mode === "smartworking") {
-    return "Smart working";
+    return "Remote working";
   }
   return "Sede";
 }

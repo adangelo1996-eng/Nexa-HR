@@ -15,7 +15,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/org-chart", label: "Organigramma (persone)" },
   { href: "/organigramma", label: "Organigramma strutturale" },
   { href: "/payslips", label: "Cedolini" },
-  { href: "/smartworking", label: "Smartworking" },
+  { href: "/smartworking", label: "Remote working" },
   { href: "/workflow/approvals", label: "Approvazioni team" },
   { href: "/reports", label: "Report HR" },
   { href: "/tools/cost-calculator" as Route, label: "Calcolatore costo azienda / netto" },

@@ -41,7 +41,7 @@ function requestTypeLabel(item: ApprovalItem): string {
   if (item.type === "travel") {
     return "Trasferta";
   }
-  return "Smart working";
+  return "Remote working";
 }
 
 function historyTypeHeading(typeKey: string): string {
@@ -57,7 +57,7 @@ function historyTypeHeading(typeKey: string): string {
   if (typeKey === "travel") {
     return "Trasferta";
   }
-  return "Smart working";
+  return "Remote working";
 }
 
 export default function WorkflowPage(): React.JSX.Element {
@@ -298,7 +298,7 @@ export default function WorkflowPage(): React.JSX.Element {
         <section className="card">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">In sospeso</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Assenze, trasferte, smart working e note spese. Priorità alta se la data è entro 2 giorni o passata.
+            Assenze, trasferte, remote working e note spese. Priorità alta se la data è entro 2 giorni o passata.
           </p>
           <div className="mt-4 space-y-3">
             {pendingTotal === 0 ? (
@@ -348,10 +348,21 @@ export default function WorkflowPage(): React.JSX.Element {
           </div>
         </section>
 
-        <section className="card">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Approvate, rifiutate e note spese chiuse.</p>
-          <div className="mt-4 space-y-8">
+        <details className="card group rounded-xl border border-slate-200 dark:border-slate-700">
+          <summary className="cursor-pointer list-none px-4 py-3 marker:content-none [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico</h2>
+                <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                  Approvate, rifiutate e note spese chiuse · espandi per consultare
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 transition group-open:rotate-180 dark:border-slate-600 dark:text-slate-300">
+                ▼
+              </span>
+            </div>
+          </summary>
+          <div className="space-y-8 border-t border-slate-200 px-4 pb-4 pt-4 dark:border-slate-700">
             {historyGrouped.length === 0 && expenseHistory.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuno storico disponibile.</p>
             ) : null}
@@ -397,7 +408,7 @@ export default function WorkflowPage(): React.JSX.Element {
               </div>
             ) : null}
           </div>
-        </section>
+        </details>
       </div>
       {error ? <p className="mt-6 text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
     </main>

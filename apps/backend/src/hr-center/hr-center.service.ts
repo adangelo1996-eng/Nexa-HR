@@ -7,6 +7,10 @@ import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service
 import { HrContractsService } from "../hr-contracts/hr-contracts.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
+import {
+  buildOfflineHrCenterAnalyticsReport,
+  type HrCenterAnalyticsFacts
+} from "./hr-center-analytics-report";
 
 type HrCenterAuditKind = "analytics" | "contract" | "recap";
 
@@ -133,8 +137,10 @@ export class HrCenterService {
   }
 
   async runAnalytics(auth: AuthContext): Promise<{
-    facts: Record<string, unknown>;
-    narrative: unknown;
+    /** Dati aggregati per grafici/tabelle (non mostrare come JSON grezzo in UI). */
+    dataset: HrCenterAnalyticsFacts;
+    /** Report strutturato (LLM o fallback locale), pronto per rendering testuale. */
+    report: unknown;
     llm: { active: boolean; refineApplied: boolean };
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
@@ -151,7 +157,7 @@ export class HrCenterService {
     const weeklyHours = users.map((u) => Number(u.weeklyContractHours ?? 40));
     const avgWeekly =
       weeklyHours.length > 0 ? Math.round((weeklyHours.reduce((a, b) => a + b, 0) / weeklyHours.length) * 10) / 10 : 0;
-    const facts = {
+    const facts: HrCenterAnalyticsFacts = {
       scope: scope.mode,
       byCostCenter: [...byCc.entries()].map(([costCenterId, v]) => ({
         costCenterId,
@@ -172,24 +178,25 @@ export class HrCenterService {
       const payload = {
         envelope: {
           facts,
-          narrativeSeed:
-            "Analisi sintetica: costi del personale per centro di costo, confronto consuntivo vs ipotesi prevista, rischi e priorità. Italiano chiaro."
+          analystMission:
+            "Produci un'analisi HR completa e da consulente esperto: costi del personale, concentrazione per centro di costo, rischi di organico, " +
+            "azioni prioritarie per HR e linee, limiti metodologici. Italiano professionale."
         }
       };
-      const pseudo = await this.gateway.toModelPayload(sessionId, payload, "ai_narrative_aggregate_v1");
-      let modelJson: unknown = pseudo.pseudonymized;
+      const pseudo = await this.gateway.toModelPayload(sessionId, payload, "ai_hr_center_analytics_v1");
+      let modelJson: unknown = buildOfflineHrCenterAnalyticsReport(facts);
       if (this.openAi.isActive()) {
-        const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_narrative_aggregate_v1");
+        const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_hr_center_analytics_v1");
         if (refined != null) {
           modelJson = refined;
           refineApplied = true;
         }
       }
-      const narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
-      await this.appendAudit(scope.companyId, auth.userId, "analytics", pseudo.pseudonymized, narrative);
+      const report = await this.gateway.fromModelResponse(sessionId, modelJson);
+      await this.appendAudit(scope.companyId, auth.userId, "analytics", pseudo.pseudonymized, report);
       return {
-        facts,
-        narrative,
+        dataset: facts,
+        report,
         llm: { active: this.openAi.isActive(), refineApplied },
         privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
       };

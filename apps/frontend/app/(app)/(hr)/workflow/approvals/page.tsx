@@ -37,7 +37,7 @@ function requestTypeLabel(item: ApprovalItem): string {
   if (item.type === "travel") {
     return "Trasferta";
   }
-  return "Smart working";
+  return "Remote working";
 }
 
 function historyTypeHeading(typeKey: string): string {
@@ -53,7 +53,7 @@ function historyTypeHeading(typeKey: string): string {
   if (typeKey === "travel") {
     return "Trasferta";
   }
-  return "Smart working";
+  return "Remote working";
 }
 
 function periodLabel(item: ApprovalItem): string {

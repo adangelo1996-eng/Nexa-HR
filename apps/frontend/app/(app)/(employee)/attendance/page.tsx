@@ -602,7 +602,7 @@ export default function AttendancePage(): React.JSX.Element {
                 </h3>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                   Elenco dipendenti per centro di costo e team: prima entrata, ultima uscita, stati da calendario
-                  (smart working, trasferta, ferie, malattia) e avvisi.
+                  (remote working, trasferta, ferie, malattia) e avvisi.
                 </p>
                 <div className="mt-3 flex flex-wrap items-end gap-3">
                   <label className="block text-sm text-slate-700 dark:text-slate-300">
@@ -774,7 +774,7 @@ export default function AttendancePage(): React.JSX.Element {
                                         </td>
                                         <td className="px-2 py-2 text-slate-700 dark:text-slate-300">
                                           {r.workdayMode === "smartworking"
-                                            ? "Smart working"
+                                            ? "Remote working"
                                             : r.workdayMode === "office"
                                               ? "Sede"
                                               : "—"}
@@ -1056,7 +1056,7 @@ export default function AttendancePage(): React.JSX.Element {
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Riepilogo giorni lavorati</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Giorno in stile calendario, barra ore (tema) e straordinario (stesso colore più scuro), modalità Sede / Smart
+          Giorno in stile calendario, barra ore (tema) e straordinario (stesso colore più scuro), modalità Sede / Remote working
           working / Trasferta (da calendario).
         </p>
         <div className="mt-3">

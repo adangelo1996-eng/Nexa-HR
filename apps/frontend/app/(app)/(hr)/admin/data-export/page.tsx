@@ -175,7 +175,7 @@ export default function AdminDataExportPage(): React.JSX.Element | null {
           />
         </label>
         <p className="mt-2 text-xs text-[var(--prom-muted)]">
-          Obbligatorio per ferie, malattia, smart working, straordinari e note spese approvate. Lascia vuoto per export
+          Obbligatorio per ferie, malattia, remote working, straordinari e note spese approvate. Lascia vuoto per export
           solo anagrafica.
         </p>
 

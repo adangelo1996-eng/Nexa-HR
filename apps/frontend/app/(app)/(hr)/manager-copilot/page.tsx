@@ -41,7 +41,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
       return "Malattia";
     }
     if (t === "smartworking") {
-      return "Smart working";
+      return "Remote working";
     }
     if (t === "travel") {
       return "Missioni";
@@ -57,7 +57,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
       title="Pannello manager"
       subtitle={
         <>
-          Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, smart working del team. Il punteggio
+          Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, remote working del team. Il punteggio
           turnover medio richiede permesso report HR e snapshot in{" "}
           <Link href="/insights" scroll={false} className={linkCn}>
             Turnover e retention
@@ -93,13 +93,13 @@ export default function ManagerCopilotPage(): React.JSX.Element {
             </HebbAiGlassTile>
             <HebbAiGlassTile>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                Smart working in attesa (team)
+                Remote working in attesa (team)
               </p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--prom-text)]">
                 {data.teamSmartworkingPending}
               </p>
               <Link href={data.routes.smartworking as Route} scroll={false} className={`mt-3 inline-block text-sm ${linkCn}`}>
-                Smart working
+                Remote working
               </Link>
             </HebbAiGlassTile>
             <HebbAiGlassTile>

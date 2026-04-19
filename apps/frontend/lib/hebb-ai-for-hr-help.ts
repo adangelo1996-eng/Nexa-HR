@@ -71,9 +71,9 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "manager-copilot": {
     title: "Pannello manager",
     summary:
-      "Vista operativa per responsabili: approvazioni in sospeso nel proprio ambito, team diretto, smart working in attesa e (se permesso) indicatori turnover aggregati.",
+      "Vista operativa per responsabili: approvazioni in sospeso nel proprio ambito, team diretto, remote working in attesa e (se permesso) indicatori turnover aggregati.",
     howToUse: [
-      "Controlla i riquadri numerici e usa i link per approvare in Workflow o Smart working.",
+      "Controlla i riquadri numerici e usa i link per approvare in Workflow o Remote working.",
       "Per approfondire il turnover del team apri Turnover e retention e aggiorna gli snapshot se necessario."
     ],
     bestPractices: [
