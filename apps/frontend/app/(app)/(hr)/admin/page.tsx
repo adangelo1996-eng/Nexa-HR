@@ -745,6 +745,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.firstName}
                       onChange={(event) => setNewUser((c) => ({ ...c, firstName: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -753,6 +754,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.lastName}
                       onChange={(event) => setNewUser((c) => ({ ...c, lastName: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -763,6 +765,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.email}
                       onChange={(event) => setNewUser((c) => ({ ...c, email: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
@@ -785,6 +788,7 @@ export default function AdminPage(): React.JSX.Element {
                         }))
                       }
                       className={selectRequiredClass}
+                      required
                     >
                       <option value="user">user</option>
                       <option value="superuser">superuser</option>
@@ -805,6 +809,7 @@ export default function AdminPage(): React.JSX.Element {
                         }));
                       }}
                       className={selectRequiredClass}
+                      required
                     >
                       <option value="">Seleziona…</option>
                       {roles.map((role) => (
@@ -835,6 +840,7 @@ export default function AdminPage(): React.JSX.Element {
                         });
                       }}
                       className={selectRequiredClass}
+                      required
                     >
                       <option value="">Seleziona…</option>
                       {costCenters.map((center) => (
@@ -900,6 +906,7 @@ export default function AdminPage(): React.JSX.Element {
                         }))
                       }
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -911,6 +918,7 @@ export default function AdminPage(): React.JSX.Element {
                       }
                       placeholder="es. Indeterminato"
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -920,6 +928,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.hireDate}
                       onChange={(event) => setNewUser((c) => ({ ...c, hireDate: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -936,6 +945,7 @@ export default function AdminPage(): React.JSX.Element {
                         }))
                       }
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                 </div>
@@ -952,6 +962,7 @@ export default function AdminPage(): React.JSX.Element {
                       autoCapitalize="characters"
                       placeholder="16 caratteri"
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -961,6 +972,7 @@ export default function AdminPage(): React.JSX.Element {
                       onChange={(event) => setNewUser((c) => ({ ...c, iban: event.target.value }))}
                       placeholder="IT… (27 caratteri)"
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -969,6 +981,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.bankName}
                       onChange={(event) => setNewUser((c) => ({ ...c, bankName: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -977,6 +990,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.bicSwift}
                       onChange={(event) => setNewUser((c) => ({ ...c, bicSwift: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -985,6 +999,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.accountHolder}
                       onChange={(event) => setNewUser((c) => ({ ...c, accountHolder: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -993,6 +1008,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.phone}
                       onChange={(event) => setNewUser((c) => ({ ...c, phone: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
@@ -1002,6 +1018,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.birthDate}
                       onChange={(event) => setNewUser((c) => ({ ...c, birthDate: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                   <label className="md:col-span-2 flex flex-col gap-1 text-xs">
@@ -1010,6 +1027,7 @@ export default function AdminPage(): React.JSX.Element {
                       value={newUser.address}
                       onChange={(event) => setNewUser((c) => ({ ...c, address: event.target.value }))}
                       className={inputRequiredClass}
+                      required
                     />
                   </label>
                 </div>

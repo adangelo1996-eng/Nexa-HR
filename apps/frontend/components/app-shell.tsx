@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart2,
   Calculator,
@@ -34,7 +34,11 @@ import {
   Wallet2,
   Wand2,
   Workflow,
-  Network,
+  Users,
+  Building2,
+  Laptop,
+  PieChart,
+  CalendarDays,
   type LucideIcon,
   X
 } from "lucide-react";
@@ -62,7 +66,9 @@ import { NEXA_HR_PREFS_CHANGED_EVENT, readNexaHrPrefs, NEXA_HR_PREFS_STORAGE_KEY
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
-const SIDEBAR_STORAGE_KEY = "nexa_hr_sidebar_sections_v2";
+const SIDEBAR_STORAGE_KEY = "nexa_hr_sidebar_sections_v3";
+const SIDEBAR_SCROLL_DESKTOP_KEY = "nexa_hr_sidebar_scroll_desktop_v1";
+const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
 type NavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
 
@@ -71,24 +77,34 @@ const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDash
 /** Sezioni principali senza «Hebb AI for HR» e senza «Profilo» (composti in `mainNavSections`). */
 const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
   {
-    id: "work",
-    title: "Tempo e attività",
+    id: "presence",
+    title: "Presenza e pianificazione",
     items: [
       { href: "/attendance", label: "Presenze", icon: Clock3 },
       { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
-      { href: "/workflow", label: "Workflow", icon: Workflow }
+      { href: "/scheduling", label: "Turni", icon: CalendarDays },
+      { href: "/workflow", label: "Workflow", icon: Workflow },
+      { href: "/smartworking", label: "Smart working", icon: Laptop }
     ]
   },
   {
-    id: "data",
-    title: "Compensi e dati",
+    id: "people",
+    title: "Persone e organizzazione",
     items: [
-      { href: "/organigramma", label: "Organigramma", icon: Network },
-      { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 },
-      { href: "/expenses", label: "Spese", icon: Receipt },
-      { href: "/payslips", label: "Cedolini", icon: FileText }
+      { href: "/org-chart", label: "Organigramma (persone)", icon: Users },
+      { href: "/organigramma", label: "Organigramma strutturale", icon: Building2 },
+      { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 }
     ]
   },
+  {
+    id: "pay",
+    title: "Retribuzione, spese e report",
+    items: [
+      { href: "/payslips", label: "Cedolini", icon: FileText },
+      { href: "/expenses", label: "Note spese", icon: Receipt },
+      { href: "/reports", label: "Report HR", icon: PieChart }
+    ]
+  }
 ];
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
@@ -141,14 +157,19 @@ function SidebarNavLink(props: {
   item: NavItem;
   pathname: string;
   onNavigate: () => void;
+  beforeNavigate?: () => void;
 }): React.JSX.Element {
-  const { item, pathname, onNavigate } = props;
+  const { item, pathname, onNavigate, beforeNavigate } = props;
   const { href, label, icon: Icon, exact } = item;
   const active = pathActive(pathname, href, exact);
   return (
     <Link
       href={href}
-      onClick={onNavigate}
+      scroll={false}
+      onClick={() => {
+        beforeNavigate?.();
+        onNavigate();
+      }}
       className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
         active
           ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
@@ -167,8 +188,9 @@ function SidebarCollapsibleSection(props: {
   open: boolean;
   onOpenChange: (id: string, nextOpen: boolean) => void;
   onNavigate: () => void;
+  beforeNavigate?: () => void;
 }): React.JSX.Element {
-  const { section, pathname, open, onOpenChange, onNavigate } = props;
+  const { section, pathname, open, onOpenChange, onNavigate, beforeNavigate } = props;
   return (
     <details
       className="group mx-0 border-b border-transparent py-0.5 last:border-b-0"
@@ -190,7 +212,13 @@ function SidebarCollapsibleSection(props: {
       </summary>
       <div className="mt-0.5 space-y-0.5 pb-1">
         {section.items.map((item) => (
-          <SidebarNavLink key={`${section.id}-${item.href}`} item={item} pathname={pathname} onNavigate={onNavigate} />
+          <SidebarNavLink
+            key={`${section.id}-${item.href}`}
+            item={item}
+            pathname={pathname}
+            onNavigate={onNavigate}
+            beforeNavigate={beforeNavigate}
+          />
         ))}
       </div>
     </details>
@@ -334,52 +362,70 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   const sidebarHrSections = useMemo(() => {
     const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
-    const hrOps: NavItem[] = [];
+
+    const hrSintesi: NavItem[] = [];
+    if (showHrRecapNav) {
+      hrSintesi.push({ href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList });
+      hrSintesi.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus });
+    }
+    if (hrSintesi.length > 0) {
+      hrBlocks.push({ id: "hr-sintesi", title: "Sintesi e assunzioni", items: hrSintesi });
+    }
+
+    const hrSelezione: NavItem[] = [];
     if (showHrToolsNav) {
-      hrOps.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
-      hrOps.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni", icon: UserPlus });
-      hrOps.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
-      hrOps.push({
+      hrSelezione.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
+    }
+    if (hrSelezione.length > 0) {
+      hrBlocks.push({ id: "hr-selezione", title: "Selezione personale", items: hrSelezione });
+    }
+
+    const hrDocumenti: NavItem[] = [];
+    if (showHrToolsNav) {
+      hrDocumenti.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
+      hrDocumenti.push({
         href: "/tools/third-party-licenses" as Route,
         label: "Utenze e licenze terze",
         icon: KeyRound
       });
-      hrOps.push({ href: "/insights" as Route, label: "Turnover e retention", icon: TrendingUp });
-      hrOps.push({
+    }
+    if ((showHrToolsNav || showAdminNav) && !hideSensitiveHrBecausePreview) {
+      hrDocumenti.push({ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library });
+    }
+    if (hrDocumenti.length > 0) {
+      hrBlocks.push({ id: "hr-documenti", title: "Contratti e policy", items: hrDocumenti });
+    }
+
+    const hrAnalisi: NavItem[] = [];
+    if (showHrToolsNav) {
+      hrAnalisi.push({ href: "/insights" as Route, label: "Turnover e retention", icon: TrendingUp });
+      hrAnalisi.push({
         href: "/tools/cost-calculator" as Route,
-        label: "Calcolatore costo/netto",
+        label: "Calcolatore costo / netto",
         icon: Calculator
       });
     }
-    if (hrOps.length > 0) {
-      hrBlocks.push({ id: "hr-ops", title: "Strumenti HR", items: hrOps });
+    if (hrAnalisi.length > 0) {
+      hrBlocks.push({ id: "hr-analisi", title: "Analisi HR", items: hrAnalisi });
     }
-    const hrAdmin: NavItem[] = [];
-    if (showHrRecapNav) {
-      hrAdmin.push({ href: "/hr-recap" as Route, label: "Recap HR", icon: ClipboardList });
-      if (!showHrToolsNav) {
-        hrAdmin.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni", icon: UserPlus });
-      }
-    }
+
+    const hrAmministrazione: NavItem[] = [];
     if (showOrgExpensesNav) {
-      hrAdmin.push({ href: "/expenses/org" as Route, label: "Note spese (dipendenti)", icon: Receipt });
+      hrAmministrazione.push({ href: "/expenses/org" as Route, label: "Approvazione note spese (org.)", icon: Receipt });
     }
     if (showBudgetNav) {
-      hrAdmin.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
+      hrAmministrazione.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
     }
     if (showPayrollNav) {
-      hrAdmin.push({ href: "/payroll-hebb" as Route, label: "Payroll", icon: Sparkles });
-    }
-    if ((showHrToolsNav || showAdminNav) && !hideSensitiveHrBecausePreview) {
-      hrAdmin.push({ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library });
+      hrAmministrazione.push({ href: "/payroll-hebb" as Route, label: "Payroll", icon: Sparkles });
     }
     if (showAdminNav) {
-      hrAdmin.push({ href: "/admin" as Route, label: "Admin", icon: UserCog, exact: true });
-      hrAdmin.push({ href: "/admin/data-export" as Route, label: "Export Excel", icon: FileText });
-      hrAdmin.push({ href: "/admin/data-import" as Route, label: "Import Excel", icon: Upload });
+      hrAmministrazione.push({ href: "/admin" as Route, label: "Console utenti", icon: UserCog, exact: true });
+      hrAmministrazione.push({ href: "/admin/data-export" as Route, label: "Export Excel dipendenti", icon: FileText });
+      hrAmministrazione.push({ href: "/admin/data-import" as Route, label: "Import Excel dipendenti", icon: Upload });
     }
-    if (hrAdmin.length > 0) {
-      hrBlocks.push({ id: "hr-admin", title: "Amministrazione", items: hrAdmin });
+    if (hrAmministrazione.length > 0) {
+      hrBlocks.push({ id: "hr-admin", title: "Amministrazione e dati", items: hrAmministrazione });
     }
     return hrBlocks;
   }, [
@@ -399,8 +445,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
     const items: NavItem[] = [
       { href: "/hr-center" as Route, label: "Centro HR", icon: Sparkles },
-      { href: "/ai-hub" as Route, label: "Assistente AI (chat)", icon: Wand2 },
-      { href: "/workforce-planning" as Route, label: "Workforce planning (sintesi AI)", icon: BarChart2 }
+      { href: "/ai-hub" as Route, label: "Assistente AI (chat)", icon: Wand2 }
     ];
     if (showHrToolsNav) {
       items.push({ href: "/insights" as Route, label: "Turnover e retention (sintesi AI)", icon: TrendingUp });
@@ -445,12 +490,52 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     setMobileOpen(false);
   }, []);
 
+  const desktopAsideRef = useRef<HTMLElement | null>(null);
+  const mobileNavScrollRef = useRef<HTMLDivElement | null>(null);
+  const sidebarScrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistSidebarScrollPositions = useCallback((): void => {
+    const d = desktopAsideRef.current;
+    if (d) {
+      sessionStorage.setItem(SIDEBAR_SCROLL_DESKTOP_KEY, String(d.scrollTop));
+    }
+    const m = mobileNavScrollRef.current;
+    if (m) {
+      sessionStorage.setItem(SIDEBAR_SCROLL_MOBILE_KEY, String(m.scrollTop));
+    }
+  }, []);
+
+  const schedulePersistSidebarScroll = useCallback((): void => {
+    if (sidebarScrollDebounceRef.current) {
+      clearTimeout(sidebarScrollDebounceRef.current);
+    }
+    sidebarScrollDebounceRef.current = setTimeout(() => {
+      persistSidebarScrollPositions();
+      sidebarScrollDebounceRef.current = null;
+    }, 120);
+  }, [persistSidebarScrollPositions]);
+
+  useLayoutEffect(() => {
+    const rawD = sessionStorage.getItem(SIDEBAR_SCROLL_DESKTOP_KEY);
+    if (rawD != null && desktopAsideRef.current) {
+      desktopAsideRef.current.scrollTop = parseInt(rawD, 10) || 0;
+    }
+    const rawM = sessionStorage.getItem(SIDEBAR_SCROLL_MOBILE_KEY);
+    if (rawM != null && mobileNavScrollRef.current) {
+      mobileNavScrollRef.current.scrollTop = parseInt(rawM, 10) || 0;
+    }
+  }, [pathname]);
+
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
         href="/"
+        scroll={false}
         className="mb-3 flex items-center gap-2 px-3 transition-opacity hover:opacity-90"
-        onClick={closeMobile}
+        onClick={() => {
+          persistSidebarScrollPositions();
+          closeMobile();
+        }}
       >
         <span
           className="nexa-wordmark-face text-sm font-semibold uppercase tracking-[0.12em] text-[var(--prom-text)]"
@@ -459,7 +544,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           Nexa HR
         </span>
       </Link>
-      <SidebarNavLink item={NAV_DASHBOARD} pathname={pathname} onNavigate={closeMobile} />
+      <SidebarNavLink
+        item={NAV_DASHBOARD}
+        pathname={pathname}
+        onNavigate={closeMobile}
+        beforeNavigate={persistSidebarScrollPositions}
+      />
       {showManagerPanelNav ? (
         <SidebarNavLink
           item={
@@ -471,6 +561,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           }
           pathname={pathname}
           onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
       {mainNavSections.map((section) => (
@@ -481,6 +572,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           open={Boolean(openSections[section.id])}
           onOpenChange={onSectionOpenChange}
           onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
       {showHrSidebarSection && sidebarHrSections.length > 0 ? (
@@ -494,6 +586,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
               open={Boolean(openSections[section.id])}
               onOpenChange={onSectionOpenChange}
               onNavigate={closeMobile}
+              beforeNavigate={persistSidebarScrollPositions}
             />
           ))}
         </>
@@ -504,6 +597,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   return (
     <div className="flex h-[100dvh] overflow-hidden">
       <aside
+        ref={desktopAsideRef}
+        onScroll={schedulePersistSidebarScroll}
         className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
         aria-label="Navigazione principale"
       >
@@ -523,7 +618,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             aria-label="Chiudi menu"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative flex h-full w-[min(100vw,280px)] flex-col overflow-y-auto border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200">
+          <div
+            ref={mobileNavScrollRef}
+            onScroll={schedulePersistSidebarScroll}
+            className="relative flex h-full w-[min(100vw,280px)] flex-col overflow-y-auto border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200"
+          >
             <div className="flex justify-end p-2">
               <Button
                 type="button"
@@ -545,7 +644,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   <Link
                     key={href}
                     href={href as Route}
-                    onClick={closeMobile}
+                    scroll={false}
+                    onClick={() => {
+                      persistSidebarScrollPositions();
+                      closeMobile();
+                    }}
                     className="rounded-full border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-2.5 py-1 text-xs text-[var(--prom-text)] transition-colors hover:border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line-strong))]"
                   >
                     {navCatalogLabelForHref(href)}
@@ -578,7 +681,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <Link href="/" className="hidden shrink-0 sm:block" aria-label="Home">
+            <Link href="/" scroll={false} className="hidden shrink-0 sm:block" aria-label="Home">
               <span
                 className="nexa-wordmark-face text-xs font-semibold uppercase tracking-[0.1em] text-[var(--prom-text)]"
                 style={synapseSuiteDisplayStyle}
@@ -605,7 +708,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   onFocus={() => setSearchOpen(true)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && filteredSearch[0]) {
-                      router.push(filteredSearch[0].href as Route);
+                      router.push(filteredSearch[0].href as Route, { scroll: false });
                       setSearchQ("");
                       setSearchOpen(false);
                     }
@@ -622,6 +725,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                     <li key={r.href} role="option">
                       <Link
                         href={r.href}
+                        scroll={false}
                         className="block px-3 py-2 text-sm text-[var(--prom-text)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)]"
                         onClick={() => {
                           setSearchQ("");

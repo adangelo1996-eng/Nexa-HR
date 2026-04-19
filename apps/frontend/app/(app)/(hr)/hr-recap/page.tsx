@@ -20,13 +20,26 @@ type PeopleCategory = "active" | "hr_onboarding" | "offboarding" | "contracts_pe
 
 function formatDue(iso: string | null): string {
   if (!iso) {
-    return "Da eseguire";
+    return "Senza data";
   }
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) {
     return iso;
   }
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function taskAreaLabel(kind: HrRecapTaskDto["kind"]): string {
+  switch (kind) {
+    case "approval":
+      return "Approvazioni";
+    case "expense_hr":
+      return "Spese";
+    case "contract_sign":
+      return "Contratti";
+    default:
+      return "Altro";
+  }
 }
 
 export default function HrRecapPage(): React.JSX.Element {
@@ -122,18 +135,22 @@ export default function HrRecapPage(): React.JSX.Element {
   if (!allowed && user) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 p-6">
-        <h1 className="text-xl font-semibold text-synapse-text dark:text-white">Recap HR</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Non hai i permessi per questa pagina.</p>
+        <h1 className="text-xl font-semibold text-synapse-text dark:text-white">Recap operativo HR</h1>
+        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
+          Serve il permesso report HR o la console HR estesa. Contatta un amministratore se ti serve l&apos;accesso.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Recap HR</h1>
-        <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
-          Sintesi operativa per HR e amministratori: task in sospeso, solleciti e conteggio dipendenti per stato.
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Recap operativo HR</h1>
+        <p className="max-w-3xl text-sm leading-relaxed text-synapse-muted dark:text-[#b4c9dc]">
+          Una sola schermata per vedere cosa è in attesa (approvazioni, spese, firme contrattuali), inviare un sollecito
+          mirato e aprire gli elenchi per stato anagrafico. I candidati in fase post-colloquio restano nella bacheca
+          dedicata, separata dai dipendenti già in anagrafica.
         </p>
       </header>
 
@@ -142,8 +159,11 @@ export default function HrRecapPage(): React.JSX.Element {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="border-[var(--card-border)] md:col-span-2 lg:col-span-3">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Organico</CardTitle>
-            <CardDescription>Clicca su un indicatore per aprire l&apos;elenco.</CardDescription>
+            <CardTitle className="text-lg">Organico e contratti</CardTitle>
+            <CardDescription>
+              Indicatori per dipendenti in anagrafica. Per i candidati in onboarding dopo i colloqui usa la card
+              dedicata (non include ancora l&apos;utenza dipendente).
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading || !summary ? (
@@ -156,7 +176,7 @@ export default function HrRecapPage(): React.JSX.Element {
                   </p>
                   <p className="text-3xl font-semibold text-[#002D72] dark:text-white">{summary.totalEmployed}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
                   <button
                     type="button"
                     className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left text-sm transition hover:bg-amber-500/20 dark:border-amber-400/30 dark:text-white"
@@ -193,11 +213,9 @@ export default function HrRecapPage(): React.JSX.Element {
                     href="/recruiting/onboarding"
                     className="inline-flex flex-col rounded-xl border border-[var(--card-border)] bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] px-3 py-2 text-left text-sm text-synapse-text transition hover:opacity-90 dark:text-white"
                   >
-                    <span className="block text-xs text-synapse-muted dark:text-[#b4c9dc]">
-                      Candidati in onboarding (colloqui)
-                    </span>
+                    <span className="block text-xs text-synapse-muted dark:text-[#b4c9dc]">Candidati — post colloquio</span>
                     <span className="text-lg font-semibold">{summary.recruitingOnboardingCandidates}</span>
-                    <span className="mt-1 text-[11px] text-synapse-muted dark:text-[#b4c9dc]">Apri bacheca dedicata →</span>
+                    <span className="mt-1 text-[11px] text-synapse-muted dark:text-[#b4c9dc]">Vai alla bacheca onboarding →</span>
                   </Link>
                 </div>
               </div>
@@ -207,27 +225,34 @@ export default function HrRecapPage(): React.JSX.Element {
 
         <Card className="border-[var(--card-border)] md:col-span-2 lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-lg">Task in sospeso</CardTitle>
-            <CardDescription>Approvazioni, note spese in coda HR e contratti non firmati.</CardDescription>
+            <CardTitle className="text-lg">Coda operativa</CardTitle>
+            <CardDescription>
+              Ordinata per data: richieste in approvazione, note spese in revisione HR, contratti standard ancora da
+              completare in firma.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Caricamento…</p>
             ) : tasks.length === 0 ? (
-              <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessun task in coda.</p>
+              <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessuna attività in coda: tutto aggiornato.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] border-collapse text-sm">
+                <table className="w-full min-w-[720px] border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-[var(--card-border)] text-left text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                      <th className="py-2 pr-2 font-medium">Area</th>
                       <th className="py-2 pr-3 font-medium">Task</th>
-                      <th className="py-2 pr-3 font-medium">Scadenza / data</th>
+                      <th className="py-2 pr-3 font-medium">Data di riferimento</th>
                       <th className="py-2 font-medium">Azioni</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tasks.map((row) => (
                       <tr key={row.id} className="border-b border-[var(--card-border)]/80">
+                        <td className="py-2 pr-2 align-top text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                          {taskAreaLabel(row.kind)}
+                        </td>
                         <td className="py-2 pr-3 align-top">
                           <div className="font-medium text-synapse-text dark:text-white">{row.title}</div>
                           {row.subtitle ? (
@@ -248,9 +273,13 @@ export default function HrRecapPage(): React.JSX.Element {
                               size="sm"
                               disabled={!row.notifyUserId || remindBusyId === row.id}
                               onClick={() => void onRemind(row.id)}
-                              title={!row.notifyUserId ? "Nessun destinatario automatico per il sollecito" : undefined}
+                              title={
+                                !row.notifyUserId
+                                  ? "Per questo task non è configurato un destinatario automatico"
+                                  : "Invia una notifica al destinatario indicato"
+                              }
                             >
-                              {remindBusyId === row.id ? "Invio…" : "Sollecito"}
+                              {remindBusyId === row.id ? "Invio…" : "Sollecita"}
                             </Button>
                           </div>
                         </td>
@@ -278,9 +307,14 @@ export default function HrRecapPage(): React.JSX.Element {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-start justify-between gap-2 border-b border-[var(--card-border)] pb-3">
-              <h2 className="text-base font-semibold text-synapse-text dark:text-white">
-                {categoryTitle(peopleCategory)}
-              </h2>
+              <div>
+                <h2 className="text-base font-semibold text-synapse-text dark:text-white">
+                  {categoryTitle(peopleCategory)}
+                </h2>
+                <p className="mt-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                  Elenco aggiornato al caricamento. Chiudi e riapri l&apos;indicatore per aggiornare.
+                </p>
+              </div>
               <Button type="button" variant="ghost" size="sm" onClick={() => setPeopleCategory(null)}>
                 Chiudi
               </Button>

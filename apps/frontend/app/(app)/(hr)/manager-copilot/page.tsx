@@ -59,7 +59,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
         <>
           Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, smart working del team. Il punteggio
           turnover medio richiede permesso report HR e snapshot in{" "}
-          <Link href="/insights" className={linkCn}>
+          <Link href="/insights" scroll={false} className={linkCn}>
             Turnover e retention
           </Link>
           .
@@ -83,7 +83,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
                 Approvazioni in sospeso
               </p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--prom-text)]">{data.pendingTotal}</p>
-              <Link href={data.routes.approvals as Route} className={`mt-3 inline-block text-sm ${linkCn}`}>
+              <Link href={data.routes.approvals as Route} scroll={false} className={`mt-3 inline-block text-sm ${linkCn}`}>
                 Vai alle approvazioni
               </Link>
             </HebbAiGlassTile>
@@ -98,7 +98,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
               <p className="mt-2 text-3xl font-semibold tabular-nums text-[var(--prom-text)]">
                 {data.teamSmartworkingPending}
               </p>
-              <Link href={data.routes.smartworking as Route} className={`mt-3 inline-block text-sm ${linkCn}`}>
+              <Link href={data.routes.smartworking as Route} scroll={false} className={`mt-3 inline-block text-sm ${linkCn}`}>
                 Smart working
               </Link>
             </HebbAiGlassTile>
@@ -150,10 +150,10 @@ export default function ManagerCopilotPage(): React.JSX.Element {
           ) : null}
 
           <div className="flex flex-wrap justify-center gap-6 text-sm font-medium">
-            <Link href={data.routes.workforcePlanning as Route} className={linkCn}>
+            <Link href={data.routes.workforcePlanning as Route} scroll={false} className={linkCn}>
               Workforce planning
             </Link>
-            <Link href={data.routes.insights as Route} className={linkCn}>
+            <Link href={data.routes.insights as Route} scroll={false} className={linkCn}>
               Turnover e retention
             </Link>
           </div>

@@ -22,7 +22,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/tools/third-party-licenses" as Route, label: "Utenze e licenze terze" },
   { href: "/recruiting" as Route, label: "Colloqui e selezione" },
   { href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni (candidati)" },
-  { href: "/hr-recap" as Route, label: "Recap HR" },
+  { href: "/hr-recap" as Route, label: "Recap operativo HR" },
   { href: "/contracts" as Route, label: "Contratti standard" },
   { href: "/payroll-hebb", label: "Payroll" },
   { href: "/ai-hub" as Route, label: "Assistente AI (chat)" },
@@ -39,10 +39,48 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/forecast", label: "Forecast costi" },
   { href: "/workforce-planning" as Route, label: "Workforce planning" },
   { href: "/personnel-budget", label: "Budget personale" },
-  { href: "/expenses/org" as Route, label: "Note spese (dipendenti)" }
+  { href: "/personnel-budget/analysis" as Route, label: "Budget personale — Analisi" },
+  { href: "/personnel-budget/forecast" as Route, label: "Budget personale — Forecast" },
+  { href: "/personnel-budget/annual" as Route, label: "Budget personale — Annuale" },
+  { href: "/expenses/org" as Route, label: "Note spese (dipendenti)" },
+  { href: "/welcome" as Route, label: "Benvenuto" },
+  { href: "/expenses/scan" as Route, label: "Scansione note spese" },
+  { href: "/expenses/scan/review" as Route, label: "Revisione scansione spese" },
+  { href: "/recruiting/candidates" as Route, label: "Candidati" },
+  { href: "/recruiting/pipelines" as Route, label: "Pipeline posizione" },
+  { href: "/admin/roles" as Route, label: "Admin — Ruoli" },
+  { href: "/admin/cost-centers" as Route, label: "Admin — Centri di costo" }
 ];
 
 export function navCatalogLabelForHref(href: string): string {
   const row = NEXA_NAV_ROUTE_CATALOG.find((r) => r.href === href);
   return row?.label ?? href;
+}
+
+function humanizePathTail(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean);
+  const last = parts[parts.length - 1];
+  if (!last) return "Pagina";
+  try {
+    const decoded = decodeURIComponent(last);
+    if (/^[0-9a-f-]{36}$/i.test(decoded)) return "Dettaglio";
+    return decoded
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  } catch {
+    return "Pagina";
+  }
+}
+
+/** Titolo pagina dal catalogo nav (match più specifico per prefisso), altrimenti etichetta derivata dall’URL. */
+export function navCatalogBestLabelForPathname(pathname: string): string {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  const candidates = NEXA_NAV_ROUTE_CATALOG.filter(
+    (r) => normalized === r.href || (r.href !== "/" && normalized.startsWith(`${r.href}/`))
+  );
+  if (candidates.length === 0) {
+    return humanizePathTail(normalized);
+  }
+  candidates.sort((a, b) => b.href.length - a.href.length);
+  return candidates[0]!.label;
 }

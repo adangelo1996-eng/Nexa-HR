@@ -64,19 +64,20 @@ export default function RecruitingHomePage(): React.JSX.Element {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Colloqui e selezione</h1>
         <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Hub recruiting: posizioni aperte, candidati e pipeline a fasi.
         </p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Link
             href="/recruiting/candidates"
+            scroll={false}
             className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] dark:text-white"
           >
             Vai a candidati
           </Link>
           <Link
             href="/recruiting/onboarding"
+            scroll={false}
             className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] dark:text-white"
           >
             Onboarding assunzioni
@@ -90,25 +91,41 @@ export default function RecruitingHomePage(): React.JSX.Element {
           <CardDescription>Definisci titolo, job description, scadenza e crea un Job ID progressivo.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3">
+          <form
+            className="grid gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCreatePosition();
+            }}
+          >
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#b4c9dc]">Titolo</span>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Titolo *</span>
+              <Input
+                name="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                minLength={1}
+                autoComplete="off"
+              />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Scadenza (entro quando serve il candidato)</span>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-synapse-muted dark:text-[#b4c9dc]">Job description</span>
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Job description *</span>
               <textarea
+                name="jobDescription"
                 className="min-h-[140px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
                 value={jd}
                 onChange={(e) => setJd(e.target.value)}
+                required
+                minLength={1}
               />
             </label>
             <div className="flex gap-2">
-              <Button type="button" disabled={!canCreate} onClick={() => void onCreatePosition()}>
+              <Button type="submit" disabled={!canCreate}>
                 Crea posizione
               </Button>
               <Button
@@ -127,7 +144,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
               </Button>
             </div>
             {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-          </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -157,6 +174,7 @@ export default function RecruitingHomePage(): React.JSX.Element {
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={`/recruiting/pipelines/${encodeURIComponent(p.id)}`}
+                      scroll={false}
                       className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] dark:text-white"
                     >
                       Apri pipeline

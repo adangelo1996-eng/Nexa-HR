@@ -1,7 +1,7 @@
 /**
  * Agente conversazionale del Centro AI HR: identità, regole e mappa della piattaforma.
- * Allineare i percorsi a `apps/frontend/lib/nav-routes-catalog.ts` e al raggruppamento menu «Hebb AI for HR» in
- * `apps/frontend/components/app-shell.tsx` quando cambia la navigazione.
+ * Allineare i percorsi a `apps/frontend/lib/nav-routes-catalog.ts` e al raggruppamento menu (sezioni collassabili)
+ * in `apps/frontend/components/app-shell.tsx` quando cambia la navigazione.
  */
 
 export const NEXA_HR_AGENT_ID = "nexa_hr_platform_agent";
@@ -13,6 +13,7 @@ export const NEXA_HR_AGENT_VERSION = 1;
  */
 export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; topicsIt: string }[] = [
   { path: "/", labelIt: "Dashboard — riepilogo personale", topicsIt: "home, riepilogo, oggi, panoramica" },
+  { path: "/welcome", labelIt: "Benvenuto", topicsIt: "onboarding, primo accesso, tour" },
   { path: "/attendance", labelIt: "Presenze e timbrature", topicsIt: "presenze, timbratura, entrata, uscita, ore" },
   { path: "/work-calendar", labelIt: "Calendario lavoro", topicsIt: "calendario, festività, pianificazione, giorni" },
   { path: "/workflow", labelIt: "Workflow — richieste ferie, permessi, malattia", topicsIt: "ferie, permessi, malattia, assenze, richieste" },
@@ -20,6 +21,8 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/smartworking", labelIt: "Smart working", topicsIt: "smart working, agile, remoto, da casa" },
   { path: "/payslips", labelIt: "Cedolini", topicsIt: "stipendio, cedolino, netto, lordo, busta paga, trattenute" },
   { path: "/expenses", labelIt: "Le mie note spese", topicsIt: "spese, rimborsi, scontrini, chilometri, rimborso" },
+  { path: "/expenses/scan", labelIt: "Scansione note spese", topicsIt: "ocr, scansione scontrino, spese" },
+  { path: "/expenses/scan/review", labelIt: "Revisione scansione spese", topicsIt: "revisione ocr, spese" },
   { path: "/expenses/org", labelIt: "Note spese organizzazione", topicsIt: "spese dipendenti, controllo spese, hr spese" },
   { path: "/settings", labelIt: "Impostazioni profilo", topicsIt: "profilo, password, preferenze, account, dati" },
   { path: "/org-chart", labelIt: "Organigramma persone", topicsIt: "colleghi, chi è chi, contatti organizzazione" },
@@ -35,15 +38,44 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/hr-center/recap", labelIt: "Centro HR — recap dipendente", topicsIt: "skills, contratto, formazione, suggerimenti" },
   { path: "/scheduling", labelIt: "Turni", topicsIt: "turni, pianificazione turni, shift" },
   { path: "/recruiting", labelIt: "Colloqui e selezione", topicsIt: "colloqui, recruiting, selezione, candidati" },
+  { path: "/recruiting/candidates", labelIt: "Candidati", topicsIt: "candidati, cv, recruiting" },
+  { path: "/recruiting/pipelines", labelIt: "Pipeline posizione", topicsIt: "pipeline, fasi colloquio, selezione" },
+  {
+    path: "/recruiting/onboarding",
+    labelIt: "Onboarding candidati (post-colloquio)",
+    topicsIt: "onboarding, assunzione, candidato, contratto, documenti"
+  },
+  {
+    path: "/hr-recap",
+    labelIt: "Recap operativo HR",
+    topicsIt: "task, solleciti, organico, contratti da firmare, onboarding dipendenti, offboarding"
+  },
   { path: "/contracts", labelIt: "Contratti standard", topicsIt: "contratti, clausole, template" },
   { path: "/lifecycle/offboard", labelIt: "Offboarding", topicsIt: "uscita, dimissioni, offboarding" },
   { path: "/personnel-budget", labelIt: "Budget personale", topicsIt: "budget, personale, costi fte" },
+  {
+    path: "/personnel-budget/analysis",
+    labelIt: "Budget personale — analisi",
+    topicsIt: "analisi budget, costi, fte, confronti"
+  },
+  {
+    path: "/personnel-budget/forecast",
+    labelIt: "Budget personale — forecast",
+    topicsIt: "forecast budget, previsioni personale"
+  },
+  {
+    path: "/personnel-budget/annual",
+    labelIt: "Budget personale — annuale",
+    topicsIt: "budget annuale, piano personale"
+  },
   { path: "/forecast", labelIt: "Forecast costi", topicsIt: "previsioni, forecast, costi futuri" },
   { path: "/compensation/bench", labelIt: "Benchmark retribuzione", topicsIt: "benchmark, mercato, retribuzione" },
   { path: "/tools/cost-calculator", labelIt: "Calcolatore costo azienda / netto", topicsIt: "costo azienda, netto, simulazione stipendio" },
   { path: "/tools/third-party-licenses", labelIt: "Utenze e licenze terze", topicsIt: "licenze, software, terze parti" },
   { path: "/payroll-hebb", labelIt: "Payroll", topicsIt: "payroll, hebb, elaborazione paghe" },
   { path: "/admin", labelIt: "Area amministrazione", topicsIt: "admin, amministratore, configurazione" },
+  { path: "/admin/roles", labelIt: "Admin — ruoli", topicsIt: "ruoli, permessi, rbac" },
+  { path: "/admin/cost-centers", labelIt: "Admin — centri di costo", topicsIt: "centri di costo, team, organizzazione" },
   { path: "/admin/data-export", labelIt: "Export Excel dipendenti", topicsIt: "export, excel, dipendenti" },
   { path: "/admin/data-import", labelIt: "Import Excel dipendenti", topicsIt: "import, excel, anagrafica" },
   { path: "/admin/payslip-import", labelIt: "Import cedolini PDF", topicsIt: "import cedolini, pdf" },

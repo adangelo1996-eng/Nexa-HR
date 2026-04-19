@@ -10,10 +10,6 @@ export const hebbAiImmersiveBackgroundStyle: CSSProperties = {
     "radial-gradient(1000px 560px at 12% -10%, rgba(0,45,114,0.28), transparent 58%), radial-gradient(780px 460px at 95% 8%, rgba(58,84,102,0.22), transparent 52%), radial-gradient(640px 400px at 48% 110%, rgba(0,45,114,0.14), transparent 48%), var(--page-gradient)"
 };
 
-const orbStyle: CSSProperties = {
-  background: "radial-gradient(circle, rgba(0,45,114,0.38) 0%, transparent 72%)"
-};
-
 export type HebbAiExperienceShellProps = {
   title: string;
   subtitle?: ReactNode;
@@ -39,7 +35,7 @@ export function HebbAiExperienceShell(props: HebbAiExperienceShellProps): React.
     <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
       <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--prom-gold)]" aria-hidden />
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--prom-gold)]" aria-hidden />
-      <span>Hebb AI for HR</span>
+      <span>HEBB AI FOR HR</span>
     </p>
   );
 
@@ -61,11 +57,7 @@ export function HebbAiExperienceShell(props: HebbAiExperienceShellProps): React.
 
   return (
     <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden pb-16 md:pb-24">
-      <div className="pointer-events-none absolute inset-0 opacity-95" style={hebbAiImmersiveBackgroundStyle} />
-      <div
-        className="pointer-events-none absolute left-1/2 top-16 h-72 w-72 -translate-x-1/2 rounded-full blur-3xl motion-safe:animate-pulse md:top-20 md:h-80 md:w-80"
-        style={orbStyle}
-      />
+      {/* Sfondo immersivo fornito da `AppMainContentFrame` per evitare doppio gradiente */}
 
       <div className={`relative z-10 mx-auto ${maxClass} px-4 pt-8 md:px-8 md:pt-12`}>
         {headerTrailing ? (

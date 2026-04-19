@@ -68,18 +68,18 @@ export default function RecruitingOnboardingPage(): React.JSX.Element {
             ← Colloqui e selezione
           </Link>
         </div>
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Onboarding assunzioni</h1>
-        <p className="max-w-3xl text-sm text-synapse-muted dark:text-[#b4c9dc]">
-          Dopo le fasi di colloquio, i candidati presi in carico entrano nella colonna dedicata della pipeline. Qui
-          trovi tutti i profili attualmente in fase di onboarding documentale e contrattuale, prima dell&apos;ingresso
-          operativo in azienda.
+        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Onboarding candidati</h1>
+        <p className="max-w-3xl text-sm leading-relaxed text-synapse-muted dark:text-[#b4c9dc]">
+          Fase dedicata dopo i colloqui: i profili selezionati stanno nella colonna «Onboarding assunzione» della
+          pipeline. Da qui passi rapidamente a scheda candidato, pipeline e — quando serve — al recap HR per
+          allineare anagrafica e contratti prima del day one.
         </p>
       </header>
 
       <Card className="border-[var(--card-border)]">
         <CardHeader>
-          <CardTitle className="text-lg">Percorso consigliato</CardTitle>
-          <CardDescription>Allinea il team HR su attività e responsabilità tipiche.</CardDescription>
+          <CardTitle className="text-lg">Percorso consigliato (checklist)</CardTitle>
+          <CardDescription>Sequenza pratica condivisibile con HR e hiring manager.</CardDescription>
         </CardHeader>
         <CardContent>
           <ol className="grid gap-4 md:grid-cols-2">
@@ -119,8 +119,8 @@ export default function RecruitingOnboardingPage(): React.JSX.Element {
       <Card className="border-[var(--card-border)]">
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-2">
           <div>
-            <CardTitle className="text-lg">Candidati in colonna onboarding</CardTitle>
-            <CardDescription>Stato riferito alla fase corrente nella pipeline della posizione.</CardDescription>
+            <CardTitle className="text-lg">In colonna onboarding</CardTitle>
+            <CardDescription>Stato della fase pipeline per ciascuna posizione (non è ancora l&apos;anagrafica dipendente).</CardDescription>
           </div>
           <Button
             type="button"

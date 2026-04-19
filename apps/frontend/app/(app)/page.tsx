@@ -448,12 +448,13 @@ export default function HomePage(): React.JSX.Element {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--prom-text)]">{user.fullName}</h1>
-          <p className="mt-1 text-sm text-[var(--prom-muted)]">Dashboard</p>
+          <p className="text-2xl font-semibold text-[var(--prom-text)]">{user.fullName}</p>
+          <p className="mt-1 text-sm text-[var(--prom-muted)]">Il tuo profilo nel portale</p>
         </div>
         {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
           <Link
             href="/workflow/approvals"
+            scroll={false}
             className="text-sm font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
           >
             {approvals.length} in approvazione

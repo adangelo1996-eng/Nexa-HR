@@ -1,5 +1,6 @@
 import { AppPrecache } from "@/components/app-precache";
 import { AppShell } from "@/components/app-shell";
+import { NexaHrRouteChrome } from "@/components/nexa-hr-route-chrome";
 
 export default function AuthenticatedAppLayout({
   children
@@ -9,7 +10,7 @@ export default function AuthenticatedAppLayout({
   return (
     <AppShell>
       <AppPrecache />
-      {children}
+      <NexaHrRouteChrome>{children}</NexaHrRouteChrome>
     </AppShell>
   );
 }

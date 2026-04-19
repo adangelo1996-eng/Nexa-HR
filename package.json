@@ -10,6 +10,8 @@
     "build": "corepack pnpm -r build",
     "lint": "corepack pnpm -r lint",
     "test": "corepack pnpm -r test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "audit": "pnpm audit --audit-level=low",
     "gen:addizionali-como": "node scripts/gen-como-rates.mjs",
     "seed:demo-users": "corepack pnpm exec tsx scripts/nexa-seed-demo-users.ts",
@@ -44,6 +46,7 @@
     "@payday/user-pii-crypto": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@supabase/supabase-js": "^2.49.4",
     "cross-env": "^10.1.0",
     "tsx": "^4.19.2"

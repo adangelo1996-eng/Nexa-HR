@@ -5,6 +5,8 @@ const isProd = process.env.NODE_ENV === "production";
 const nextConfig: NextConfig = {
   typedRoutes: true,
   poweredByHeader: false,
+  /** Playwright e strumenti che aprono il dev server su 127.0.0.1 invece di localhost. */
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     const base = [
       { key: "X-Content-Type-Options", value: "nosniff" },
