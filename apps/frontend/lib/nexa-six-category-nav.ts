@@ -28,16 +28,18 @@ import {
   CalendarDays
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
-import { filterPortalHref } from "@/lib/nexa-route-access";
-import { PORTAL_CATEGORY_ORDER, PORTAL_TILES } from "@/lib/portal-mappa";
+import { buildPortalColumns } from "@/lib/nexa-portal-column-layout";
+import type { PortalTile } from "@/lib/portal-mappa";
 
 export type SixCatNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
+
+export type SixCatNavSubgroup = { id: string; title: string; items: SixCatNavItem[] };
 
 export type SixCatNavSection = {
   id: string;
   portalCategory: string;
   title: string;
-  items: SixCatNavItem[];
+  subgroups: SixCatNavSubgroup[];
 };
 
 const HREF_ICON: Record<string, LucideIcon> = {
@@ -86,29 +88,29 @@ function slugCategory(cat: string): string {
     .replace(/[^a-z0-9-]/g, "");
 }
 
-function portalTileToNavItem(tile: (typeof PORTAL_TILES)[number]): SixCatNavItem {
+function portalTileToNavItem(tile: PortalTile): SixCatNavItem {
   const key = String(tile.href);
   const icon = HREF_ICON[key] ?? FileText;
   const exact = key === "/admin";
   return { href: tile.href, label: tile.title, icon, ...(exact ? { exact: true } : {}) };
 }
 
-/**
- * Sei blocchi navigazione allineati alle categorie portale (stesso ordine e filtri permessi della mappa).
- */
+/** Sei categorie portale con sottogruppi come nel menu legacy (solo voci permesse). */
 export function buildSixCatNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): SixCatNavSection[] {
-  return PORTAL_CATEGORY_ORDER.map((category) => {
-    const items = PORTAL_TILES.filter((t) => t.category === category)
-      .filter((t) => filterPortalHref(t.href, user, hideSensitiveHr))
-      .map(portalTileToNavItem);
-    return {
-      id: `six-${slugCategory(category)}`,
-      portalCategory: category,
-      title: category,
-      items
-    };
-  }).filter((s) => s.items.length > 0);
+  const columns = buildPortalColumns(user, hideSensitiveHr);
+  return columns
+    .filter((c) => c.subgroups.length > 0)
+    .map((c) => ({
+      id: `six-${slugCategory(c.portalCategory)}`,
+      portalCategory: c.portalCategory,
+      title: c.portalCategory,
+      subgroups: c.subgroups.map((sg) => ({
+        id: sg.id,
+        title: sg.title,
+        items: sg.tiles.map(portalTileToNavItem)
+      }))
+    }));
 }

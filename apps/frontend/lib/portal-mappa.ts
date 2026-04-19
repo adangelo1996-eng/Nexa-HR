@@ -56,12 +56,6 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Quotidiano"
   },
   {
-    href: "/settings",
-    title: "Impostazioni",
-    blurb: "Profilo, preferenze e collegamenti utili al portale.",
-    category: "Quotidiano"
-  },
-  {
     href: "/org-chart",
     title: "Organigramma (persone)",
     blurb: "Chi è chi: collegamenti tra persone e ruoli.",
@@ -252,5 +246,3 @@ export function groupPortalTiles(
   }
   return map;
 }
-
-/** Rami per mappa ad albero: la Dashboard resta solo al centro (href `/` escluso dalle foglie). */

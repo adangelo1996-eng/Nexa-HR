@@ -17,22 +17,59 @@ export function portalCategoryAccentClass(category: string): string {
 const GLASS_RING =
   "shadow-[0_12px_40px_-18px_rgba(0,0,0,0.55)] ring-1 ring-white/15 backdrop-blur-xl backdrop-saturate-150";
 
-/** Titolo colonna (mappa 6 colonne + menu): rettangolo glass a tutta larghezza. */
+/** Titolo colonna (mappa + menu): vetro colorato categoria, ben visibile in chiaro/scuro. */
 export function portalCategoryGlassColumnHeaderClass(category: string, density: "compact" | "default" = "default"): string {
   const sizing =
     density === "compact"
       ? "w-full px-2 py-2 text-left text-[9px] font-semibold uppercase leading-tight tracking-[0.12em]"
       : "w-full px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em]";
   const tints: Record<string, string> = {
-    Quotidiano: `border-cyan-400/45 bg-gradient-to-br from-cyan-400/32 via-cyan-500/12 to-cyan-950/35 text-cyan-50`,
-    "Persone e organizzazione": `border-emerald-400/45 bg-gradient-to-br from-emerald-400/28 via-emerald-500/12 to-emerald-950/35 text-emerald-50`,
-    "HEBB AI for HR": `border-violet-400/45 bg-gradient-to-br from-violet-400/32 via-violet-600/14 to-violet-950/38 text-violet-50`,
-    "Selezione e documenti": `border-amber-400/45 bg-gradient-to-br from-amber-400/28 via-amber-500/12 to-amber-950/35 text-amber-50`,
-    "Analisi e pianificazione": `border-sky-400/45 bg-gradient-to-br from-sky-400/28 via-sky-500/12 to-sky-950/35 text-sky-50`,
-    "Amministrazione e dati": `border-orange-400/45 bg-gradient-to-br from-orange-400/26 via-orange-500/12 to-orange-950/35 text-orange-50`
+    Quotidiano: `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
+    "Persone e organizzazione": `border-emerald-500/70 bg-gradient-to-br from-emerald-400/50 via-emerald-600/30 to-emerald-950/50 text-emerald-950 dark:border-emerald-400/55 dark:from-emerald-400/38 dark:via-emerald-600/22 dark:to-emerald-950/45 dark:text-emerald-50`,
+    "HEBB AI for HR": `border-violet-500/70 bg-gradient-to-br from-violet-400/50 via-violet-600/35 to-violet-950/55 text-violet-950 dark:border-violet-400/55 dark:from-violet-400/40 dark:via-violet-600/28 dark:to-violet-950/50 dark:text-violet-50`,
+    "Selezione e documenti": `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
+    "Analisi e pianificazione": `border-sky-500/70 bg-gradient-to-br from-sky-400/50 via-sky-600/30 to-sky-950/50 text-sky-950 dark:border-sky-400/55 dark:from-sky-400/38 dark:via-sky-600/22 dark:to-sky-950/45 dark:text-sky-50`,
+    "Amministrazione e dati": `border-orange-500/70 bg-gradient-to-br from-orange-400/48 via-orange-600/28 to-orange-950/50 text-orange-950 dark:border-orange-400/55 dark:from-orange-400/36 dark:via-orange-600/22 dark:to-orange-950/45 dark:text-orange-50`
   };
-  const tint = tints[category] ?? `border-white/25 bg-gradient-to-br from-white/14 to-slate-900/45 text-sky-50`;
-  return `rounded-xl border ${sizing} ${tint} ${GLASS_RING}`;
+  const tint = tints[category] ?? `border-slate-400/60 bg-gradient-to-br from-slate-200/50 to-slate-800/40 text-slate-900 dark:border-white/25 dark:from-white/14 dark:to-slate-900/45 dark:text-sky-50`;
+  return `rounded-xl border-2 ${sizing} ${tint} ${GLASS_RING}`;
+}
+
+/** Sottogruppo (stessa famiglia cromatica della categoria, tono più soft). */
+export function portalSubgroupGlassClass(portalCategory: string, density: "compact" | "default" = "default"): string {
+  const sizing =
+    density === "compact"
+      ? "mb-1.5 mt-2 px-2 py-1.5 text-left text-[9px] font-semibold uppercase leading-tight tracking-[0.1em] first:mt-0"
+      : "mb-2 mt-3 px-2.5 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.11em] first:mt-0";
+  const tints: Record<string, string> = {
+    Quotidiano: `border-l-4 border-cyan-500 bg-cyan-500/12 text-cyan-900 dark:border-cyan-400 dark:bg-cyan-400/15 dark:text-cyan-100`,
+    "Persone e organizzazione": `border-l-4 border-emerald-500 bg-emerald-500/12 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-400/15 dark:text-emerald-100`,
+    "HEBB AI for HR": `border-l-4 border-violet-500 bg-violet-500/12 text-violet-900 dark:border-violet-400 dark:bg-violet-400/15 dark:text-violet-100`,
+    "Selezione e documenti": `border-l-4 border-amber-500 bg-amber-500/12 text-amber-950 dark:border-amber-400 dark:bg-amber-400/15 dark:text-amber-100`,
+    "Analisi e pianificazione": `border-l-4 border-sky-500 bg-sky-500/12 text-sky-900 dark:border-sky-400 dark:bg-sky-400/15 dark:text-sky-100`,
+    "Amministrazione e dati": `border-l-4 border-orange-500 bg-orange-500/12 text-orange-950 dark:border-orange-400 dark:bg-orange-400/15 dark:text-orange-100`
+  };
+  const tint = tints[portalCategory] ?? `border-l-4 border-slate-400 bg-slate-500/10 text-slate-800 dark:border-slate-500 dark:bg-white/10 dark:text-slate-100`;
+  return `rounded-lg border border-white/10 ${sizing} ${tint} backdrop-blur-md`;
+}
+
+/** Link pagina sotto una categoria (bordo sinistro nella tinta della categoria). */
+export function portalLeafLinkClass(category: string): string {
+  const map: Record<string, string> = {
+    Quotidiano:
+      "border-l-2 border-cyan-500/70 text-cyan-950 hover:bg-cyan-500/15 dark:border-cyan-400/60 dark:text-cyan-50/95 dark:hover:bg-cyan-400/10",
+    "Persone e organizzazione":
+      "border-l-2 border-emerald-500/70 text-emerald-950 hover:bg-emerald-500/15 dark:border-emerald-400/60 dark:text-emerald-50/95 dark:hover:bg-emerald-400/10",
+    "HEBB AI for HR":
+      "border-l-2 border-violet-500/70 text-violet-950 hover:bg-violet-500/15 dark:border-violet-400/60 dark:text-violet-50/95 dark:hover:bg-violet-400/10",
+    "Selezione e documenti":
+      "border-l-2 border-amber-500/70 text-amber-950 hover:bg-amber-500/15 dark:border-amber-400/60 dark:text-amber-50/95 dark:hover:bg-amber-400/10",
+    "Analisi e pianificazione":
+      "border-l-2 border-sky-500/70 text-sky-950 hover:bg-sky-500/15 dark:border-sky-400/60 dark:text-sky-50/95 dark:hover:bg-sky-400/10",
+    "Amministrazione e dati":
+      "border-l-2 border-orange-500/70 text-orange-950 hover:bg-orange-500/15 dark:border-orange-400/60 dark:text-orange-50/95 dark:hover:bg-orange-400/10"
+  };
+  return map[category] ?? "border-l-2 border-slate-400 text-slate-800 hover:bg-slate-500/10 dark:text-slate-100";
 }
 
 export function portalCategoryGlassPillClass(category: string, variant: "category" | "leaf"): string {

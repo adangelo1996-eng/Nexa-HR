@@ -42,7 +42,7 @@ import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
-import { portalCategoryGlassColumnHeaderClass } from "@/lib/nav-visual-accents";
+import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
@@ -138,7 +138,12 @@ function SidebarNavLink(props: {
 }
 
 function SidebarCollapsibleSection(props: {
-  section: { id: string; title: string; items: NavItem[]; portalCategory?: string };
+  section: {
+    id: string;
+    title: string;
+    portalCategory?: string;
+    subgroups: { id: string; title: string; items: NavItem[] }[];
+  };
   pathname: string;
   open: boolean;
   onOpenChange: (id: string, nextOpen: boolean) => void;
@@ -165,20 +170,33 @@ function SidebarCollapsibleSection(props: {
         <span className={pc ? "min-w-0 flex-1 pr-1" : ""}>{section.title}</span>
         <ChevronRight
           className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 md:h-4 md:w-4 ${
-            pc ? "text-white/60" : "text-[var(--prom-muted)] opacity-70"
+            pc ? "text-white/70 dark:text-white/60" : "text-[var(--prom-muted)] opacity-70"
           } ${open ? "rotate-90" : ""}`}
           aria-hidden
         />
       </summary>
-      <div className="mt-0.5 space-y-0.5 pb-1">
-        {section.items.map((item) => (
-          <SidebarNavLink
-            key={`${section.id}-${item.href}`}
-            item={item}
-            pathname={pathname}
-            onNavigate={onNavigate}
-            beforeNavigate={beforeNavigate}
-          />
+      <div className="mt-0.5 space-y-1 pb-1">
+        {section.subgroups.map((sg) => (
+          <div key={`${section.id}-${sg.id}`}>
+            {pc ? (
+              <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
+            ) : (
+              <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                {sg.title}
+              </div>
+            )}
+            <div className="mt-0.5 space-y-0.5">
+              {sg.items.map((item) => (
+                <SidebarNavLink
+                  key={`${section.id}-${sg.id}-${item.href}`}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                  beforeNavigate={beforeNavigate}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </details>
@@ -491,8 +509,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           section={{
             id: section.id,
             title: section.title,
-            items: section.items,
-            portalCategory: section.portalCategory
+            portalCategory: section.portalCategory,
+            subgroups: section.subgroups
           }}
           pathname={pathname}
           open={Boolean(openSections[section.id])}
@@ -732,7 +750,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
         <AppMainContentFrame>
           {isPortalMap ? (
-            <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">{children}</main>
+            <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-0">{children}</main>
           ) : (
             <>
               <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
