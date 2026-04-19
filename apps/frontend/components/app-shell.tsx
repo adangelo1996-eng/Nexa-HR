@@ -53,6 +53,7 @@ import {
   sessionCanViewOrgExpenseClaims,
   type SessionUser
 } from "@/lib/auth-session";
+import { AppMainContentFrame } from "@/components/app-experience-frame";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchCurrentUser } from "@/lib/api";
@@ -341,11 +342,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       });
       hrOps.push({ href: "/insights" as Route, label: "Turnover e retention", icon: TrendingUp });
       hrOps.push({
-        href: "/tools/payroll-sim-assisted" as Route,
-        label: "Simulatore cedolino assistito",
-        icon: Wallet2
-      });
-      hrOps.push({
         href: "/tools/cost-calculator" as Route,
         label: "Calcolatore costo/netto",
         icon: Calculator
@@ -363,7 +359,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       });
       hrOps.push({
         href: "/tools/hitl-proposals" as Route,
-        label: "Code worker HITL",
+        label: "Proposte con revisione umana",
         icon: ListChecks
       });
     }
@@ -688,12 +684,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <AppMainContentFrame>
           <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
-          <footer className="border-t border-[var(--prom-line)] py-4 text-center text-xs text-[var(--prom-muted)]">
+          <footer className="border-t border-[color-mix(in_srgb,var(--prom-line)_85%,transparent)] py-4 text-center text-xs text-[var(--prom-muted)] backdrop-blur-sm">
             © Nexa HR 2026
           </footer>
-        </div>
+        </AppMainContentFrame>
       </div>
       <SelfServiceChat />
     </div>

@@ -29,6 +29,7 @@ class HebbSimulateItDto {
 export class HebbHrController {
   constructor(private readonly hebb: HebbHrService) {}
 
+  /** Simulazione what-if usata da «Hebb — Payroll»; la route UI dedicata simulatore assistito è stata ritirata. */
   @Post("simulate-it")
   @RequireNexaPermissions("nexa.payroll:read")
   async postSimulateIt(

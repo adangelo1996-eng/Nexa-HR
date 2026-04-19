@@ -42,6 +42,10 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     const env = (pseudonymizedInput as { envelope?: { rationaleSeed?: unknown } })?.envelope;
     return typeof env?.rationaleSeed === "string" ? collectTokensFromString(env.rationaleSeed) : new Set();
   }
+  if (schemaVersion === "ai_hitl_draft_v1") {
+    const intent = (pseudonymizedInput as { envelope?: { facts?: { intent?: unknown } } })?.envelope?.facts?.intent;
+    return typeof intent === "string" ? collectTokensFromString(intent) : new Set();
+  }
   return collectTokensFromJson(pseudonymizedInput);
 }
 
@@ -108,6 +112,30 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Migliora stile e chiarezza di title, bullets (max 5) e summary in italiano, senza aggiungere cifre o fatti assenti da envelope.facts; " +
         "non introdurre nomi di persone."
       );
+    case "ai_hitl_draft_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"kind\":\"stringa\",\"title\":\"stringa\",\"rationale\":\"stringa\",\"checklist\":[\"stringa\"]}}. " +
+        "L'ingresso ha envelope.facts.intent (testo HR in italiano), envelope.facts.allowedKinds (array di codici ammessi) e envelope.facts.catalog (id, labelIt, hintIt). " +
+        "Scegli envelope.kind uguale ESATTAMENTE a uno dei valori in allowedKinds (preferisci il più aderente all'intento). " +
+        "Scrivi envelope.title breve per revisori HR, envelope.rationale in italiano chiaro (cosa succede dopo approvazione, limiti, nessuna promessa legale), envelope.checklist max 4 voci operative. " +
+        "Non inventare codici kind fuori da allowedKinds. Se intent contiene token __nexa_ref:...__, copiali identici in rationale o title solo se necessario al senso."
+      );
+    case "ai_turnover_insights_deep_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"title\":\"stringa\",\"bullets\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
+        "L'ingresso ha envelope.facts con SOLO aggregati (conteggi, medie, trend, distribuzioni per fasce di score, per centro di costo senza nominativi). " +
+        "Produci analisi in italiano: title accattivante, bullets (max 6) con priorità e rischi operativi, summary con azioni consigliate; " +
+        "non aggiungere nomi di persone né ID; non affermare cause legali/mediche."
+      );
+    case "ai_process_bottlenecks_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"title\":\"stringa\",\"bullets\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
+        "L'ingresso ha envelope.facts con metriche di ciclo processo (campione, mediane, note) e eventi aggregati (id tecnico + descrizione già in italiano). " +
+        "Individua colli di bottiglia plausibili e vie d'azione prioritarie in italiano semplice; max 6 bullets; non inventare cifre assenti da facts."
+      );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
   }
@@ -136,7 +164,12 @@ export class AiOpenAiRefinementService {
 
     const system = systemPromptForSchema(schemaVersion);
     const userJson = JSON.stringify(pseudonymized);
-    const maxTokens = schemaVersion === "ai_assistant_v1" ? 4096 : 2048;
+    const maxTokens =
+      schemaVersion === "ai_assistant_v1"
+        ? 4096
+        : schemaVersion === "ai_hitl_draft_v1" || schemaVersion === "ai_turnover_insights_deep_v1"
+          ? 2048
+          : 2048;
 
     try {
       const completion = await client.chat.completions.create({

@@ -39,6 +39,7 @@ import {
 } from "@/lib/api";
 import { calendarEventAbbrev } from "@/lib/calendar-event-labels";
 import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
+import { monthRange } from "@/lib/work-calendar-ranges";
 import { takeWorkCalendarWarmPayload } from "@/lib/work-calendar-prefetch";
 import {
   clearSession,
@@ -61,15 +62,6 @@ type AdminTableRow =
 
 function readMultiSelectValues(e: ChangeEvent<HTMLSelectElement>): string[] {
   return Array.from(e.target.selectedOptions, (opt) => opt.value);
-}
-
-function monthRange(year: number, month: number): { from: string; to: string } {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return {
-    from: `${year}-${pad(month)}-01`,
-    to: `${year}-${pad(month)}-${pad(last)}`
-  };
 }
 
 /** Pulsanti / righe azione trasferta: niente blu/cyan, allineato a --prom-* */

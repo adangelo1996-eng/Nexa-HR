@@ -3322,6 +3322,31 @@ export async function postAnalyticsNarrative(
   };
 }
 
+export async function postAnalyticsHitlProposalDraft(
+  token: string,
+  body: { intent: string; useLlm?: boolean }
+): Promise<{
+  kind: string;
+  title: string;
+  rationale: string;
+  checklist: string[];
+  llmApplied: boolean;
+}> {
+  const response = await fetch(buildApiUrl("/analytics/hitl/proposal-draft"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    kind: string;
+    title: string;
+    rationale: string;
+    checklist: string[];
+    llmApplied: boolean;
+  };
+}
+
 export async function fetchPayrollForecast(
   token: string,
   months?: number

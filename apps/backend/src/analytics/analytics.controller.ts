@@ -74,6 +74,18 @@ class HitlDecisionDto {
   approve!: boolean;
 }
 
+class HitlProposalDraftDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  intent!: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  useLlm?: boolean;
+}
+
 @Controller("analytics")
 @UseGuards(NexaPermissionGuard)
 export class AnalyticsController {
@@ -290,6 +302,18 @@ export class AnalyticsController {
     }
     const items = await this.store.listHitlProposals(companyId);
     return { items };
+  }
+
+  @Post("hitl/proposal-draft")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  postHitlProposalDraft(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: HitlProposalDraftDto
+  ): ReturnType<NarrativeAnalyticsService["generateHitlProposalDraft"]> {
+    return this.narrative.generateHitlProposalDraft(auth, {
+      intent: body.intent,
+      useLlm: body.useLlm
+    });
   }
 
   @Post("hitl/proposals")

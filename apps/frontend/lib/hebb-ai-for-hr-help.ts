@@ -10,7 +10,6 @@ export const HEBB_AI_PAGE_KEYS = [
   "workforce-planning",
   "manager-copilot",
   "insights",
-  "payroll-sim-assisted",
   "cost-calculator",
   "skills-gap",
   "hr-alerts",
@@ -97,19 +96,6 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Richiede permesso report HR."
     ]
   },
-  "payroll-sim-assisted": {
-    title: "Simulatore cedolino assistito",
-    summary:
-      "What-if sul motore payroll italiano Nexa (stesso nucleo di Hebb — Payroll) senza persistere il cedolino; elaborazione solo backend, senza invio a modelli esterni.",
-    howToUse: [
-      "Imposta periodo (YYYY-MM), opzionale lordo mensile override e flag variabili mese precedente.",
-      "Esegui «Calcola simulazione» e confronta righe e netto con ipotesi alternative."
-    ],
-    bestPractices: [
-      "Usa valori di prova realistici rispetto al CCNL e alle mensilità dell’azienda.",
-      "Per decisioni vincolanti resta il perimetro Hebb — Payroll e il consulente."
-    ]
-  },
   "cost-calculator": {
     title: "Calcolatore costo azienda / netto",
     summary:
@@ -166,16 +152,16 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "hitl-proposals": {
-    title: "Code worker HITL",
+    title: "Proposte operative con revisione umana",
     summary:
-      "Coda di proposte strutturate (Human-in-the-Loop): un revisore umano approva o rifiuta prima di azioni operative a basso rischio.",
+      "Percorso guidato per mettere in coda messaggi strutturati (promemoria ferie, solleciti approvazioni, puntatori a policy). Un revisore umano approva o rifiuta: nessuna esecuzione automatica su cedolini o contratti.",
     howToUse: [
-      "Crea bozze con tipo (`kind`) e motivazione chiara per il revisore.",
-      "Esamina lo stato (proposed / approved / rejected) e documenta le decisioni."
+      "Segui i tre passi: capire i tipi disponibili, scrivere l’intento, generare (opzionale) una bozza con AI e inviare.",
+      "In coda controlla stato e motivazione prima di approvare o rifiutare."
     ],
     bestPractices: [
-      "Limita i tipi di proposta a workflow già definiti e a basso impatto.",
-      "Nessuna modifica automatica a cedolini o contratti da questa coda senza processo esterno."
+      "Non inserire dati sensibili non necessari nel testo libero.",
+      "Usa solo i tipi previsti dal catalogo per ridurre rischio operativo."
     ]
   }
 };

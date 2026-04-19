@@ -18,6 +18,8 @@ import {
   fetchUsers
 } from "@/lib/api";
 import { getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+import { currentCalendarMonthRange, mergedPersonalCalendarRange } from "@/lib/work-calendar-ranges";
+import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 
 /** Route principali (chunk JS) per navigazione rapida. */
 const PREFETCH_ROUTES: Route[] = [
@@ -35,35 +37,6 @@ const PREFETCH_ROUTES: Route[] = [
   "/reports"
 ];
 
-/** Mese precedente → ultimo giorno mese successivo (vista calendario ampia). */
-function calendarWideRange(): { from: string; to: string } {
-  const d = new Date();
-  const from = new Date(d.getFullYear(), d.getMonth() - 1, 1);
-  const to = new Date(d.getFullYear(), d.getMonth() + 2, 0);
-  const iso = (x: Date) => x.toISOString().slice(0, 10);
-  return { from: iso(from), to: iso(to) };
-}
-
-function currentMonthBounds(): { from: string; to: string } {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}` };
-}
-
-/** Unisce intervallo “wide”, YTD (da 1 gen) e fine mese corrente per una sola `fetchUserCalendar`. */
-function mergedPersonalCalendarRange(): { from: string; to: string } {
-  const wide = calendarWideRange();
-  const { to: monthTo } = currentMonthBounds();
-  const y = new Date().getFullYear();
-  const yearStart = `${y}-01-01`;
-  const from = wide.from < yearStart ? wide.from : yearStart;
-  const to = wide.to > monthTo ? wide.to : monthTo;
-  return { from, to };
-}
-
 /**
  * Precarica le stesse API usate da Dashboard presenze + Calendario lavoro (vista dipendente o HR).
  * Errori ignorati: serve solo a popolare cache HTTP / Service Worker se presente.
@@ -79,7 +52,7 @@ async function warmAttendanceAndCalendarApis(token: string): Promise<void> {
   const y = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
   const { from: ucFrom, to: ucTo } = mergedPersonalCalendarRange();
-  const { from: monthFrom, to: monthTo } = currentMonthBounds();
+  const { from: monthFrom, to: monthTo } = currentCalendarMonthRange();
   const yearStart = `${y}-01-01`;
 
   const common = [
@@ -94,7 +67,7 @@ async function warmAttendanceAndCalendarApis(token: string): Promise<void> {
   if (!sessionCanSeeApprovalsAndHrExtras(me)) {
     await Promise.all([
       ...common,
-      fetchMeTeamWorkCalendar(token, ucFrom, ucTo).catch(() => {})
+      fetchMeTeamWorkCalendar(token, monthFrom, monthTo).catch(() => {})
     ]);
     return;
   }
@@ -145,6 +118,7 @@ export function AppPrecache(): null {
       for (const href of PREFETCH_ROUTES) {
         void router.prefetch(href);
       }
+      prefetchWorkCalendarInBackground(token);
       void warmAttendanceAndCalendarApis(token).catch(() => {
         /* warm cache only */
       });

@@ -15,6 +15,7 @@ import {
   type User
 } from "@/lib/api";
 import { sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
+import { monthRange } from "@/lib/work-calendar-ranges";
 
 export type WorkCalendarWarmRowUser = { id: string; fullName: string };
 
@@ -37,15 +38,6 @@ export type WorkCalendarWarmPayload = {
 };
 
 let warmPayload: WorkCalendarWarmPayload | null = null;
-
-function monthRange(year: number, month: number): { from: string; to: string } {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return {
-    from: `${year}-${pad(month)}-01`,
-    to: `${year}-${pad(month)}-${pad(last)}`
-  };
-}
 
 function filterManagerRows(me: SessionUser, allUsers: User[]): WorkCalendarWarmRowUser[] {
   if (me.role === "superuser") {

@@ -28,12 +28,15 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/reports", labelIt: "Report HR", topicsIt: "report, export, statistiche hr" },
   { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
-  { path: "/tools/payroll-sim-assisted", labelIt: "Simulatore cedolino assistito", topicsIt: "cedolino, simulazione, netto, what-if" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, smart working team" },
   { path: "/tools/skills-gap", labelIt: "Skills gap", topicsIt: "competenze, ruoli, fabbisogno, gap" },
   { path: "/hr-alerts", labelIt: "Alert HR", topicsIt: "alert, notifiche hr, soglie" },
   { path: "/process-bottlenecks", labelIt: "Ottimizzazione processi", topicsIt: "ciclo, colli di bottiglia, tempi" },
-  { path: "/tools/hitl-proposals", labelIt: "Code worker HITL", topicsIt: "hitl, approvazione umana, coda proposte" },
+  {
+    path: "/tools/hitl-proposals",
+    labelIt: "Proposte con revisione umana (HITL)",
+    topicsIt: "approvazione umana, coda proposte, promemoria ferie, solleciti, policy"
+  },
   { path: "/scheduling", labelIt: "Turni", topicsIt: "turni, pianificazione turni, shift" },
   { path: "/recruiting", labelIt: "Colloqui e selezione", topicsIt: "colloqui, recruiting, selezione, candidati" },
   { path: "/contracts", labelIt: "Contratti standard", topicsIt: "contratti, clausole, template" },
