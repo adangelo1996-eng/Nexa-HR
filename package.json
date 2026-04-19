@@ -29,6 +29,7 @@
     "supabase:db:push:remote": "node scripts/supabase-remote-push.mjs",
     "supabase:apply-049-privacy": "node scripts/apply-recruit-privacy-columns-049.mjs",
     "supabase:verify": "node scripts/verify-render-supabase-alignment.mjs",
+    "supabase:verify:strict": "node scripts/verify-render-supabase-alignment.mjs --strict",
     "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
     "backend:env:pull-render": "node scripts/render-pull-backend-env.mjs",
     "render:frontend:start-command": "node scripts/render-update-frontend-start.mjs",
@@ -47,6 +48,13 @@
     "tsx": "^4.19.2"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "core-js",
+      "esbuild",
+      "sharp",
+      "tesseract.js"
+    ],
     "overrides": {
       "file-type": "21.3.2",
       "lodash": "^4.18.0",
