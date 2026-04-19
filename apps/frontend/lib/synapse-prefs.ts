@@ -4,7 +4,7 @@ const NEXA_HR_PREFS_KEY = NEXA_HR_PREFS_STORAGE_KEY;
 export const NEXA_HR_PREFS_CHANGED_EVENT = "nexa-hr-prefs-changed";
 
 /** Stato apertura sezioni collassabili sidebar (persistito). */
-export const NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY = "nexa_hr_sidebar_sections_v3";
+export const NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY = "nexa_hr_sidebar_sections_v4";
 
 export type SynapseLocale = "it" | "en";
 

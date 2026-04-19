@@ -17,7 +17,24 @@ export function portalCategoryAccentClass(category: string): string {
 const GLASS_RING =
   "shadow-[0_12px_40px_-18px_rgba(0,0,0,0.55)] ring-1 ring-white/15 backdrop-blur-xl backdrop-saturate-150";
 
-/** Etichetta categoria / foglia in stile glass con tinta coerente alla categoria. */
+/** Titolo colonna (mappa 6 colonne + menu): rettangolo glass a tutta larghezza. */
+export function portalCategoryGlassColumnHeaderClass(category: string, density: "compact" | "default" = "default"): string {
+  const sizing =
+    density === "compact"
+      ? "w-full px-2 py-2 text-left text-[9px] font-semibold uppercase leading-tight tracking-[0.12em]"
+      : "w-full px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em]";
+  const tints: Record<string, string> = {
+    Quotidiano: `border-cyan-400/45 bg-gradient-to-br from-cyan-400/32 via-cyan-500/12 to-cyan-950/35 text-cyan-50`,
+    "Persone e organizzazione": `border-emerald-400/45 bg-gradient-to-br from-emerald-400/28 via-emerald-500/12 to-emerald-950/35 text-emerald-50`,
+    "HEBB AI for HR": `border-violet-400/45 bg-gradient-to-br from-violet-400/32 via-violet-600/14 to-violet-950/38 text-violet-50`,
+    "Selezione e documenti": `border-amber-400/45 bg-gradient-to-br from-amber-400/28 via-amber-500/12 to-amber-950/35 text-amber-50`,
+    "Analisi e pianificazione": `border-sky-400/45 bg-gradient-to-br from-sky-400/28 via-sky-500/12 to-sky-950/35 text-sky-50`,
+    "Amministrazione e dati": `border-orange-400/45 bg-gradient-to-br from-orange-400/26 via-orange-500/12 to-orange-950/35 text-orange-50`
+  };
+  const tint = tints[category] ?? `border-white/25 bg-gradient-to-br from-white/14 to-slate-900/45 text-sky-50`;
+  return `rounded-xl border ${sizing} ${tint} ${GLASS_RING}`;
+}
+
 export function portalCategoryGlassPillClass(category: string, variant: "category" | "leaf"): string {
   const size = variant === "category" ? "min-w-[10rem] max-w-[14rem] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.14em]" : "max-w-[11rem] px-3 py-2 text-[11px] font-medium leading-snug";
   const tints: Record<string, string> = {

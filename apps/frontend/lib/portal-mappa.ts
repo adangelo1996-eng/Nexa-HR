@@ -170,6 +170,12 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Selezione e documenti"
   },
   {
+    href: "/tools/third-party-licenses" as Route,
+    title: "Utenze e licenze terze",
+    blurb: "Registro utenze e licenze software di terze parti.",
+    category: "Selezione e documenti"
+  },
+  {
     href: "/tools/cost-calculator" as Route,
     title: "Calcolatore costo / netto",
     blurb: "Simulazioni indicative su costo azienda e netto.",
@@ -248,9 +254,3 @@ export function groupPortalTiles(
 }
 
 /** Rami per mappa ad albero: la Dashboard resta solo al centro (href `/` escluso dalle foglie). */
-export function buildPortalMindMapBranches(grouped: Map<string, PortalTile[]>): { category: string; tiles: PortalTile[] }[] {
-  return PORTAL_CATEGORY_ORDER.map((cat) => ({
-    category: cat,
-    tiles: (grouped.get(cat) ?? []).filter((t) => t.href !== "/")
-  })).filter((b) => b.tiles.length > 0);
-}

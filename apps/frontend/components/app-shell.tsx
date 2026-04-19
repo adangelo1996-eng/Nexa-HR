@@ -5,41 +5,19 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart2,
-  Calculator,
   ClipboardList,
-  Calendar,
   ChevronRight,
-  Clock3,
   ChevronDown,
-  FileText,
-  KeyRound,
-  Library,
   Home,
   LayoutDashboard,
   LogOut,
   Menu,
   Moon,
-  PenLine,
-  UserRoundSearch,
-  UserPlus,
-  Receipt,
   Search,
   Settings,
-  Sparkles,
   Sun,
-  TrendingUp,
   User,
   UserCog,
-  Wallet2,
-  Wand2,
-  Workflow,
-  Users,
-  Building2,
-  Laptop,
-  PieChart,
-  CalendarDays,
-  type LucideIcon,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,7 +42,8 @@ import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
-import { navSectionTitleAccentClass } from "@/lib/nav-visual-accents";
+import { portalCategoryGlassColumnHeaderClass } from "@/lib/nav-visual-accents";
+import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
   NEXA_HR_PREFS_STORAGE_KEY,
@@ -76,45 +55,12 @@ const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 const SIDEBAR_SCROLL_DESKTOP_KEY = "nexa_hr_sidebar_scroll_desktop_v1";
 const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
-type NavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
+type NavItem = SixCatNavItem;
 
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
 const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
-
-/** Sezioni principali senza «Hebb AI for HR» e senza «Profilo» (composti in `mainNavSections`). */
-const NAV_CORE_MAIN: { id: string; title: string; items: NavItem[] }[] = [
-  {
-    id: "presence",
-    title: "Presenza e pianificazione",
-    items: [
-      { href: "/attendance", label: "Presenze", icon: Clock3 },
-      { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
-      { href: "/scheduling", label: "Turni", icon: CalendarDays },
-      { href: "/workflow", label: "Workflow", icon: Workflow },
-      { href: "/smartworking", label: "Remote working", icon: Laptop }
-    ]
-  },
-  {
-    id: "people",
-    title: "Persone e organizzazione",
-    items: [
-      { href: "/org-chart", label: "Organigramma (persone)", icon: Users },
-      { href: "/organigramma", label: "Organigramma strutturale", icon: Building2 },
-      { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 }
-    ]
-  },
-  {
-    id: "pay",
-    title: "Retribuzione, spese e report",
-    items: [
-      { href: "/payslips", label: "Cedolini", icon: FileText },
-      { href: "/expenses", label: "Note spese", icon: Receipt },
-      { href: "/reports", label: "Report HR", icon: PieChart }
-    ]
-  }
-];
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
   id: "profile",
@@ -192,7 +138,7 @@ function SidebarNavLink(props: {
 }
 
 function SidebarCollapsibleSection(props: {
-  section: { id: string; title: string; items: NavItem[] };
+  section: { id: string; title: string; items: NavItem[]; portalCategory?: string };
   pathname: string;
   open: boolean;
   onOpenChange: (id: string, nextOpen: boolean) => void;
@@ -200,6 +146,7 @@ function SidebarCollapsibleSection(props: {
   beforeNavigate?: () => void;
 }): React.JSX.Element {
   const { section, pathname, open, onOpenChange, onNavigate, beforeNavigate } = props;
+  const pc = section.portalCategory;
   return (
     <details
       className="group mx-0 border-b border-transparent py-0.5 last:border-b-0"
@@ -207,15 +154,19 @@ function SidebarCollapsibleSection(props: {
       onToggle={(e) => onOpenChange(section.id, e.currentTarget.open)}
     >
       <summary
-        className={`mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-[background,color] marker:content-none [&::-webkit-details-marker]:hidden ${
-          open
-            ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)]"
-            : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
-        }`}
+        className={
+          pc
+            ? `mx-2 flex cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 marker:content-none [&::-webkit-details-marker]:hidden ${portalCategoryGlassColumnHeaderClass(pc, "compact")}`
+            : `mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--prom-muted)] transition-[background,color] marker:content-none hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)] [&::-webkit-details-marker]:hidden ${
+                open ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)] text-[var(--prom-text)]" : ""
+              }`
+        }
       >
-        <span className={navSectionTitleAccentClass(section.id)}>{section.title}</span>
+        <span className={pc ? "min-w-0 flex-1 pr-1" : ""}>{section.title}</span>
         <ChevronRight
-          className={`h-4 w-4 shrink-0 text-[var(--prom-muted)] opacity-70 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 md:h-4 md:w-4 ${
+            pc ? "text-white/60" : "text-[var(--prom-muted)] opacity-70"
+          } ${open ? "rotate-90" : ""}`}
           aria-hidden
         />
       </summary>
@@ -301,27 +252,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   const isAdminUi = sessionCanNexaAdmin(user ?? undefined);
   const hideSensitiveHrBecausePreview = Boolean(employeeView && isAdminUi);
-  const showPayrollNav = Boolean(
-    user && !hideSensitiveHrBecausePreview && sessionCanAccessPayrollArea(user)
-  );
-  const showBudgetNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
-  const showHrToolsNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanNexaAdmin(user));
-  const showAdminNav = Boolean(isAdminUi && !hideSensitiveHrBecausePreview);
-  const showOrgExpensesNav = Boolean(
-    user && !hideSensitiveHrBecausePreview && sessionCanViewOrgExpenseClaims(user)
-  );
   const showManagerPanelNav = Boolean(
     user && !hideSensitiveHrBecausePreview && sessionCanAccessManagerPanel(user)
   );
-
-  const showHrRecapNav = Boolean(user && !hideSensitiveHrBecausePreview && sessionCanAccessHrRecapDashboard(user));
-  const showHrSidebarSection =
-    showPayrollNav ||
-    showBudgetNav ||
-    showHrToolsNav ||
-    showAdminNav ||
-    showOrgExpensesNav ||
-    showHrRecapNav;
 
   const routeSearchMatches = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -448,113 +381,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     router.refresh();
   }, [router]);
 
-  const sidebarHrSections = useMemo(() => {
-    const hrBlocks: { id: string; title: string; items: NavItem[] }[] = [];
-
-    const hrSintesi: NavItem[] = [];
-    if (showHrRecapNav) {
-      hrSintesi.push({ href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList });
-      hrSintesi.push({ href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus });
-    }
-    if (hrSintesi.length > 0) {
-      hrBlocks.push({ id: "hr-sintesi", title: "Sintesi e assunzioni", items: hrSintesi });
-    }
-
-    const hrSelezione: NavItem[] = [];
-    if (showHrToolsNav) {
-      hrSelezione.push({ href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch });
-    }
-    if (hrSelezione.length > 0) {
-      hrBlocks.push({ id: "hr-selezione", title: "Selezione personale", items: hrSelezione });
-    }
-
-    const hrDocumenti: NavItem[] = [];
-    if (showHrToolsNav) {
-      hrDocumenti.push({ href: "/contracts" as Route, label: "Contratti standard", icon: PenLine });
-      hrDocumenti.push({
-        href: "/tools/third-party-licenses" as Route,
-        label: "Utenze e licenze terze",
-        icon: KeyRound
-      });
-    }
-    if ((showHrToolsNav || showAdminNav) && !hideSensitiveHrBecausePreview) {
-      hrDocumenti.push({ href: "/corporate-policies" as Route, label: "Corporate Policies", icon: Library });
-    }
-    if (hrDocumenti.length > 0) {
-      hrBlocks.push({ id: "hr-documenti", title: "Contratti e policy", items: hrDocumenti });
-    }
-
-    const hrAnalisi: NavItem[] = [];
-    if (showHrToolsNav) {
-      hrAnalisi.push({ href: "/insights" as Route, label: "Turnover e retention", icon: TrendingUp });
-      hrAnalisi.push({
-        href: "/tools/cost-calculator" as Route,
-        label: "Calcolatore costo / netto",
-        icon: Calculator
-      });
-    }
-    if (hrAnalisi.length > 0) {
-      hrBlocks.push({ id: "hr-analisi", title: "Analisi HR", items: hrAnalisi });
-    }
-
-    const hrAmministrazione: NavItem[] = [];
-    if (showOrgExpensesNav) {
-      hrAmministrazione.push({ href: "/expenses/org" as Route, label: "Approvazione note spese (org.)", icon: Receipt });
-    }
-    if (showBudgetNav) {
-      hrAmministrazione.push({ href: "/personnel-budget" as Route, label: "Budget personale", icon: Wallet2 });
-    }
-    if (showPayrollNav) {
-      hrAmministrazione.push({ href: "/payroll-hebb" as Route, label: "Payroll", icon: Sparkles });
-    }
-    if (showAdminNav) {
-      hrAmministrazione.push({ href: "/admin" as Route, label: "Console utenti", icon: UserCog, exact: true });
-    }
-    if (hrAmministrazione.length > 0) {
-      hrBlocks.push({ id: "hr-admin", title: "Amministrazione e dati", items: hrAmministrazione });
-    }
-    return hrBlocks;
-  }, [
-    user,
-    hideSensitiveHrBecausePreview,
-    showHrToolsNav,
-    showHrRecapNav,
-    showBudgetNav,
-    showOrgExpensesNav,
-    showAdminNav,
-    showPayrollNav
-  ]);
-
-  const hebbAiNavSection = useMemo((): { id: string; title: string; items: NavItem[] } | null => {
-    if (!user || hideSensitiveHrBecausePreview || !sessionCanUseNexaAiOpenAiLlm(user)) {
-      return null;
-    }
-    const items: NavItem[] = [
-      { href: "/hr-center" as Route, label: "Centro HR", icon: Sparkles },
-      { href: "/ai-hub" as Route, label: "Assistente personale", icon: Wand2 }
-    ];
-    if (showHrToolsNav) {
-      items.push({ href: "/insights" as Route, label: "Turnover e retention (sintesi AI)", icon: TrendingUp });
-    }
-    return {
-      id: "hebb-ai-hr",
-      title: "HEBB AI for HR",
-      items
-    };
-  }, [user, hideSensitiveHrBecausePreview, showHrToolsNav]);
-
-  const mainNavSections = useMemo(() => {
-    const parts: { id: string; title: string; items: NavItem[] }[] = [];
-    if (hebbAiNavSection) {
-      parts.push(hebbAiNavSection);
-    }
-    parts.push(...NAV_CORE_MAIN);
-    return parts;
-  }, [hebbAiNavSection]);
-
-  const allCollapsibleSections = useMemo(
-    () => [...mainNavSections, ...sidebarHrSections],
-    [mainNavSections, sidebarHrSections]
+  const sixNavSections = useMemo(
+    () => buildSixCatNavSections(user, hideSensitiveHrBecausePreview),
+    [user, hideSensitiveHrBecausePreview]
   );
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -655,10 +484,16 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
-      {mainNavSections.map((section) => (
+      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
+      {sixNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}
-          section={section}
+          section={{
+            id: section.id,
+            title: section.title,
+            items: section.items,
+            portalCategory: section.portalCategory
+          }}
           pathname={pathname}
           open={Boolean(openSections[section.id])}
           onOpenChange={onSectionOpenChange}
@@ -666,6 +501,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
+      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink
           key={`settings-${item.href}`}
@@ -675,22 +511,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
-      {showHrSidebarSection && sidebarHrSections.length > 0 ? (
-        <>
-          <div className="my-2 border-t border-[var(--prom-line)]" />
-          {sidebarHrSections.map((section) => (
-            <SidebarCollapsibleSection
-              key={section.id}
-              section={section}
-              pathname={pathname}
-              open={Boolean(openSections[section.id])}
-              onOpenChange={onSectionOpenChange}
-              onNavigate={closeMobile}
-              beforeNavigate={persistSidebarScrollPositions}
-            />
-          ))}
-        </>
-      ) : null}
     </div>
   );
 

@@ -63,6 +63,7 @@ export function canAccessNexaPortalRoute(
     case "/insights":
     case "/recruiting":
     case "/contracts":
+    case "/tools/third-party-licenses":
     case "/tools/cost-calculator":
     case "/forecast":
     case "/compensation/bench":
