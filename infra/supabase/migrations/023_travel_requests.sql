@@ -1,4 +1,4 @@
--- Trasferte: richieste giornaliere con workflow approvazioni (come smart working, senza quote).
+-- Trasferte: richieste giornaliere con workflow approvazioni (come remote working / smartworking_requests, senza quote).
 
 create table if not exists public.travel_requests (
   id text primary key,

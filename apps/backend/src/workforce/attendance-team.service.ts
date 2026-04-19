@@ -135,7 +135,7 @@ export class AttendanceTeamService {
             clockOut: r.lastClockOut ?? "",
             mode:
               r.workdayMode === "smartworking"
-                ? "Smart working"
+                ? "Remote working"
                 : r.workdayMode === "office"
                   ? "Sede"
                   : "",

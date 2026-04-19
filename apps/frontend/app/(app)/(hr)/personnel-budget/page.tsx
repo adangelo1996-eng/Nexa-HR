@@ -45,6 +45,7 @@ import {
   shouldClearSessionOnUnauthorizedApiError,
   type SessionUser
 } from "@/lib/auth-session";
+import { takePersonnelBudgetWarmPayload } from "@/lib/personnel-budget-prefetch";
 
 type BudgetDraft = Partial<{
   ral: string;
@@ -729,57 +730,79 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const load = useCallback(async (): Promise<void> => {
-    const t = getToken();
-    if (!t) {
-      setLoading(false);
-      return;
+  const hydrateBudgetSnapshot = useCallback((data: PersonnelBudgetSnapshot): void => {
+    setSnap(data);
+    const sorted = [...data.departments].sort((a, b) => {
+      if (a.costCenterId == null) return 1;
+      if (b.costCenterId == null) return -1;
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      return a.costCenterName.localeCompare(b.costCenterName);
+    });
+    setDepartments(sorted);
+    const drafts: Record<string, BudgetDraft> = {};
+    for (const d of sorted) {
+      for (const r of d.rows) {
+        const b = r.budget;
+        const sug = r.suggestedBudget;
+        drafts[r.userId] = {
+          ral: pickBudgetInputStr(b, sug, "ral"),
+          overtime: pickBudgetInputStr(b, sug, "overtime"),
+          travel: pickBudgetInputStr(b, sug, "travel"),
+          inps: pickBudgetInputStr(b, sug, "inps"),
+          inail: pickBudgetInputStr(b, sug, "inail"),
+          tfr: pickBudgetInputStr(b, sug, "tfr")
+        };
+      }
     }
-    setToken(t);
-    setErr(null);
-    try {
-      const me = await fetchCurrentUser(t).catch(() => getSessionUser() as SessionUser);
-      const u = me ?? getSessionUser();
-      setUser(u);
-      if (!sessionCanNexaAdmin(u)) {
-        router.replace("/");
+    setDraftByUser(drafts);
+  }, []);
+
+  const load = useCallback(
+    async (opts?: { silent?: boolean }): Promise<void> => {
+      const silent = Boolean(opts?.silent);
+      const t = getToken();
+      if (!t) {
+        setLoading(false);
         return;
       }
-      const data = await fetchPersonnelBudget(t, year, month);
-      setSnap(data);
-      const sorted = [...data.departments].sort((a, b) => {
-        if (a.costCenterId == null) return 1;
-        if (b.costCenterId == null) return -1;
-        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-        return a.costCenterName.localeCompare(b.costCenterName);
-      });
-      setDepartments(sorted);
-      const drafts: Record<string, BudgetDraft> = {};
-      for (const d of sorted) {
-        for (const r of d.rows) {
-          const b = r.budget;
-          const sug = r.suggestedBudget;
-          drafts[r.userId] = {
-            ral: pickBudgetInputStr(b, sug, "ral"),
-            overtime: pickBudgetInputStr(b, sug, "overtime"),
-            travel: pickBudgetInputStr(b, sug, "travel"),
-            inps: pickBudgetInputStr(b, sug, "inps"),
-            inail: pickBudgetInputStr(b, sug, "inail"),
-            tfr: pickBudgetInputStr(b, sug, "tfr")
-          };
+      setToken(t);
+      setErr(null);
+      if (!silent) {
+        setLoading(true);
+      }
+      try {
+        const me = await fetchCurrentUser(t).catch(() => getSessionUser() as SessionUser);
+        const u = me ?? getSessionUser();
+        setUser(u);
+        if (!sessionCanNexaAdmin(u)) {
+          router.replace("/");
+          return;
+        }
+        if (!silent) {
+          const warm = takePersonnelBudgetWarmPayload(u.id, year, month);
+          if (warm) {
+            hydrateBudgetSnapshot(warm.data);
+            setLoading(false);
+            void load({ silent: true });
+            return;
+          }
+        }
+        const data = await fetchPersonnelBudget(t, year, month);
+        hydrateBudgetSnapshot(data);
+      } catch (e) {
+        if (shouldClearSessionOnUnauthorizedApiError(e)) {
+          router.replace("/login");
+          return;
+        }
+        setErr(e instanceof Error ? e.message : "Errore caricamento");
+      } finally {
+        if (!silent) {
+          setLoading(false);
         }
       }
-      setDraftByUser(drafts);
-    } catch (e) {
-      if (shouldClearSessionOnUnauthorizedApiError(e)) {
-        router.replace("/login");
-        return;
-      }
-      setErr(e instanceof Error ? e.message : "Errore caricamento");
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month, router]);
+    },
+    [year, month, router, hydrateBudgetSnapshot]
+  );
 
   useEffect(() => {
     void load();

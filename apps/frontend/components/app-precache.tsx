@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { getToken, sessionCanSeeApprovalsAndHrExtras, type SessionUser } from "@/lib/auth-session";
 import { currentCalendarMonthRange, mergedPersonalCalendarRange } from "@/lib/work-calendar-ranges";
+import { prefetchPersonnelBudgetInBackground } from "@/lib/personnel-budget-prefetch";
 import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 
 /** Route principali (chunk JS) per navigazione rapida. */
@@ -34,7 +35,8 @@ const PREFETCH_ROUTES: Route[] = [
   "/organigramma",
   "/org-chart",
   "/smartworking",
-  "/reports"
+  "/reports",
+  "/personnel-budget"
 ];
 
 /**
@@ -119,6 +121,7 @@ export function AppPrecache(): null {
         void router.prefetch(href);
       }
       prefetchWorkCalendarInBackground(token);
+      prefetchPersonnelBudgetInBackground(token);
       void warmAttendanceAndCalendarApis(token).catch(() => {
         /* warm cache only */
       });

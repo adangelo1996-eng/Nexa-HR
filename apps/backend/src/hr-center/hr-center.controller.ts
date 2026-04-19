@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { IsOptional, IsString } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
+import { HrCenterAnalyticsRunDto } from "./hr-center-analytics-run.dto";
 import { HrCenterService } from "./hr-center.service";
 
 class HrCenterRecapBodyDto {
@@ -21,8 +22,11 @@ export class HrCenterController {
   }
 
   @Post("analytics/run")
-  postAnalytics(@CurrentAuth() auth: AuthContext): ReturnType<HrCenterService["runAnalytics"]> {
-    return this.hrCenter.runAnalytics(auth);
+  postAnalytics(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: HrCenterAnalyticsRunDto
+  ): ReturnType<HrCenterService["runAnalytics"]> {
+    return this.hrCenter.runAnalytics(auth, body ?? {});
   }
 
   @Post("contracts/draft")

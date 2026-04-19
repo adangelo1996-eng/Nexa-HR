@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { encryptUserPiiString, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 import type { User } from "@payday/domain";
 import type { AuthContext } from "../platform/auth";
@@ -11,6 +11,7 @@ import {
   buildOfflineHrCenterAnalyticsReport,
   type HrCenterAnalyticsFacts
 } from "./hr-center-analytics-report";
+import type { HrCenterAnalyticsRunDto } from "./hr-center-analytics-run.dto";
 
 type HrCenterAuditKind = "analytics" | "contract" | "recap";
 
@@ -70,14 +71,116 @@ export class HrCenterService {
     return { companyId, mode: "team", allowedUserIds: allowed };
   }
 
-  async getMeta(auth: AuthContext): Promise<{ canAccess: boolean; llmActive: boolean; scopeMode?: "company" | "team" }> {
+  async getMeta(auth: AuthContext): Promise<{
+    canAccess: boolean;
+    llmActive: boolean;
+    scopeMode?: "company" | "team";
+    costCenterOptions?: Array<{ id: string; label: string }>;
+    teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
+  }> {
     const llmActive = this.openAi.isActive();
     try {
       const s = await this.resolveScope(auth);
-      return { canAccess: true, llmActive, scopeMode: s.mode };
+      const baseUsers = await this.filterUsers(s.companyId, s.allowedUserIds);
+      const allCc = await this.store.listCostCenters();
+      const centersInTenant = allCc.filter((c) => !c.companyId || c.companyId === s.companyId);
+      const costCenterOptionsAll = centersInTenant
+        .map((c) => ({ id: c.id, label: [c.code, c.name].filter(Boolean).join(" · ") || c.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "it"));
+      const teamOptionsAll: Array<{ id: string; label: string; costCenterId: string }> = [];
+      for (const cc of centersInTenant) {
+        try {
+          const teams = await this.store.listWorkTeamsByCostCenter(cc.id);
+          const pref = [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name;
+          for (const tm of teams) {
+            teamOptionsAll.push({ id: tm.id, label: `${pref} — ${tm.name}`, costCenterId: cc.id });
+          }
+        } catch {
+          /* work_teams assente */
+        }
+      }
+      teamOptionsAll.sort((a, b) => a.label.localeCompare(b.label, "it"));
+      const costCenterOptions =
+        s.mode === "team"
+          ? costCenterOptionsAll.filter((cc) =>
+              baseUsers.some((u) => (u.costCenterId ?? "").trim() === cc.id)
+            )
+          : costCenterOptionsAll;
+      const teamOptions =
+        s.mode === "team"
+          ? teamOptionsAll.filter((t) => baseUsers.some((u) => (u.teamId ?? "").trim() === t.id))
+          : teamOptionsAll;
+      return { canAccess: true, llmActive, scopeMode: s.mode, costCenterOptions, teamOptions };
     } catch {
       return { canAccess: false, llmActive };
     }
+  }
+
+  private async applyAnalyticsUserFocus(
+    scope: HrCenterScope,
+    baseUsers: User[],
+    dto: HrCenterAnalyticsRunDto
+  ): Promise<{
+    users: User[];
+    analysisFocus: "company" | "cost_center" | "team" | "employee";
+    analysisLabel: string;
+  }> {
+    const focus = dto.focus ?? "company";
+    if (focus === "company") {
+      return {
+        users: baseUsers,
+        analysisFocus: "company",
+        analysisLabel: "Perimetro completo (tutti i dipendenti consentiti)"
+      };
+    }
+    if (focus === "cost_center") {
+      const id = (dto.costCenterId ?? "").trim();
+      if (!id) {
+        throw new BadRequestException("costCenterId obbligatorio per focus cost_center");
+      }
+      const cc = await this.store.getCostCenterById(id);
+      if (!cc) {
+        throw new BadRequestException("Centro di costo non trovato");
+      }
+      if (cc.companyId && cc.companyId !== scope.companyId) {
+        throw new ForbiddenException("Centro di costo non valido per la tua azienda");
+      }
+      const users = baseUsers.filter((u) => (u.costCenterId ?? "").trim() === id);
+      const label = [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name;
+      return { users, analysisFocus: "cost_center", analysisLabel: `Centro di costo: ${label}` };
+    }
+    if (focus === "team") {
+      const tid = (dto.teamId ?? "").trim();
+      if (!tid) {
+        throw new BadRequestException("teamId obbligatorio per focus team");
+      }
+      const team = await this.store.getWorkTeam(tid);
+      if (!team) {
+        throw new BadRequestException("Team non trovato");
+      }
+      const members = await this.store.listUsersByTeam(tid);
+      const memberIds = new Set(members.map((m) => m.id));
+      const users = baseUsers.filter((u) => memberIds.has(u.id));
+      const cc = await this.store.getCostCenterById(team.costCenterId);
+      const ccPart = cc ? [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name : team.costCenterId;
+      return { users, analysisFocus: "team", analysisLabel: `Team «${team.name}» (${ccPart})` };
+    }
+    if (focus === "employee") {
+      const uid = (dto.userId ?? "").trim();
+      if (!uid) {
+        throw new BadRequestException("userId obbligatorio per focus employee");
+      }
+      const u = baseUsers.find((x) => x.id === uid);
+      if (!u) {
+        throw new BadRequestException("Dipendente non disponibile nel perimetro autorizzato");
+      }
+      return {
+        users: [u],
+        analysisFocus: "employee",
+        analysisLabel: "Dipendente singolo (dettaglio sul suo centro di costo)"
+      };
+    }
+    throw new BadRequestException("focus non valido");
   }
 
   private async filterUsers(companyId: string, allowed: Set<string> | null): Promise<User[]> {
@@ -136,7 +239,10 @@ export class HrCenterService {
     }
   }
 
-  async runAnalytics(auth: AuthContext): Promise<{
+  async runAnalytics(
+    auth: AuthContext,
+    dto: HrCenterAnalyticsRunDto = {}
+  ): Promise<{
     /** Dati aggregati per grafici/tabelle (non mostrare come JSON grezzo in UI). */
     dataset: HrCenterAnalyticsFacts;
     /** Report strutturato (LLM o fallback locale), pronto per rendering testuale. */
@@ -145,7 +251,29 @@ export class HrCenterService {
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
     const scope = await this.resolveScope(auth);
-    const users = await this.filterUsers(scope.companyId, scope.allowedUserIds);
+    const baseUsers = await this.filterUsers(scope.companyId, scope.allowedUserIds);
+    const { users, analysisFocus, analysisLabel } = await this.applyAnalyticsUserFocus(scope, baseUsers, dto);
+    if (users.length === 0) {
+      throw new BadRequestException("Nessun dipendente nel perimetro per l'analisi richiesta.");
+    }
+    const deepRaw = (dto.deepDive ?? "none").trim();
+    const analysisDeepDive =
+      deepRaw === "master_data" || deepRaw === "budget_turnover"
+        ? (deepRaw as "master_data" | "budget_turnover")
+        : undefined;
+
+    const allCc = await this.store.listCostCenters();
+    const labelForCcId = (id: string): string | undefined => {
+      if (id === "—") {
+        return "Non assegnato / non valorizzato";
+      }
+      const c = allCc.find((x) => x.id === id);
+      if (!c) {
+        return undefined;
+      }
+      return [c.code, c.name].filter(Boolean).join(" · ") || c.name;
+    };
+
     const byCc = new Map<string, { headcount: number; monthlyGrossSum: number }>();
     for (const u of users) {
       const cc = (u.costCenterId || "—").trim() || "—";
@@ -159,11 +287,18 @@ export class HrCenterService {
       weeklyHours.length > 0 ? Math.round((weeklyHours.reduce((a, b) => a + b, 0) / weeklyHours.length) * 10) / 10 : 0;
     const facts: HrCenterAnalyticsFacts = {
       scope: scope.mode,
-      byCostCenter: [...byCc.entries()].map(([costCenterId, v]) => ({
-        costCenterId,
-        headcount: v.headcount,
-        monthlyGrossSum: Math.round(v.monthlyGrossSum * 100) / 100
-      })),
+      analysisFocus,
+      analysisLabel,
+      ...(analysisDeepDive ? { analysisDeepDive } : {}),
+      byCostCenter: [...byCc.entries()].map(([costCenterId, v]) => {
+        const nm = labelForCcId(costCenterId);
+        return {
+          costCenterId,
+          ...(nm ? { costCenterName: nm } : {}),
+          headcount: v.headcount,
+          monthlyGrossSum: Math.round(v.monthlyGrossSum * 100) / 100
+        };
+      }),
       totals: {
         headcount: users.length,
         monthlyGrossSum: Math.round(users.reduce((a, u) => a + Number(u.baseSalaryMonthly ?? 0), 0) * 100) / 100,
@@ -175,12 +310,23 @@ export class HrCenterService {
     const sessionId = (await this.gateway.beginSession(scope.companyId, auth.userId)).sessionId;
     let refineApplied = false;
     try {
+      let analystMission =
+        "Produci un'analisi HR completa e da consulente esperto: costi del personale, concentrazione per centro di costo, rischi di organico, " +
+        "azioni prioritarie per HR e linee, limiti metodologici. Italiano professionale. " +
+        `Perimetro analitico richiesto: ${analysisLabel}. Usa envelope.facts.analysisFocus e analysisLabel per contestualizzare linguaggio e priorità.`;
+      if (analysisDeepDive === "master_data") {
+        analystMission +=
+          " APPROFONDIMENTO «dati anagrafici»: enfatizza controllo qualità CDC/RAL/codici, campione sui dipendenti dei TOP 2 centri per competenze mensili; " +
+          "restituisci nextStep misurabili (checklist HR, campioni, owner). Non citare nomi di persone.";
+      } else if (analysisDeepDive === "budget_turnover") {
+        analystMission +=
+          " APPROFONDIMENTO «budget e turnover»: collega costo personale a leve di organico e pianificazione; " +
+          "invita a usare Workforce planning e Turnover/retention sullo stesso perimetro; non inventare conteggi di assunzioni/uscite se assenti dai facts.";
+      }
       const payload = {
         envelope: {
           facts,
-          analystMission:
-            "Produci un'analisi HR completa e da consulente esperto: costi del personale, concentrazione per centro di costo, rischi di organico, " +
-            "azioni prioritarie per HR e linee, limiti metodologici. Italiano professionale."
+          analystMission
         }
       };
       const pseudo = await this.gateway.toModelPayload(sessionId, payload, "ai_hr_center_analytics_v1");

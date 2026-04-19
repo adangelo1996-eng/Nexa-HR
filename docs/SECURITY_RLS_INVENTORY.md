@@ -9,7 +9,7 @@ Riferimento per audit PostgREST / client **anon** + **authenticated**. Il backen
 | `users` | `033` — SELECT solo propria riga (`auth.uid()::text`) |
 | `approvals` | `033` — ENABLE RLS + policy superuser/manager/owner |
 | `user_notifications` | `033` — ENABLE RLS + policy già in `011` |
-| `smartworking_requests` | `011` — policy visibilità |
+| `smartworking_requests` (remote working) | `011` — policy visibilità |
 | `travel_requests` | `023` — policy visibilità |
 
 ## Tabelle `public` senza RLS in questo inventario
@@ -19,7 +19,7 @@ Accesso effettivo dipende da **GRANT** Supabase e da uso (solo API server vs bro
 - `time_entries`, `workday_summaries`, `leave_plans`, `sickness_events`, `delegations`, `payslips`, `leave_balances`
 - `roles`, `cost_centers`, `nexa_import_events`
 - `expense_claims`, `shifts`, `employee_documents`, `lifecycle_onboarding`, `innovation_jobs`
-- `smartworking_requests` (RLS sì), `nfc_badge_tokens`, `payslip_reads`
+- `smartworking_requests` — remote working, RLS sì; `nfc_badge_tokens`, `payslip_reads`
 - `work_teams`, `company_holidays`, `company_settings`
 - `personnel_budget_*`, `payroll_annual_state`
 - `payroll_*` workflow oltre `payslips` se presenti

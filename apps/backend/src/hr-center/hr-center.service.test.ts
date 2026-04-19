@@ -13,7 +13,6 @@ function authSuperuser(): AuthContext {
   return {
     userId: "u-admin",
     tenantId: "comp-1",
-    email: "admin@test.local",
     role: "superuser"
   };
 }
@@ -28,11 +27,13 @@ describe("HrCenterService.runAnalytics", () => {
     const hrContracts = {} as unknown as HrContractsService;
     const svc = new HrCenterService(store, permissions, gateway, openAi, hrContracts);
 
-    const out = await svc.runAnalytics(authSuperuser());
+    const out = await svc.runAnalytics(authSuperuser(), {});
     assert.ok("dataset" in out && out.dataset != null);
     assert.ok("report" in out && out.report != null);
     assert.equal((out as { facts?: unknown }).facts, undefined);
     assert.ok(out.dataset.totals.headcount >= 1);
+    assert.equal(out.dataset.analysisFocus, "company");
+    assert.ok(typeof out.dataset.analysisLabel === "string" && out.dataset.analysisLabel.length > 3);
     const rep = out.report as { envelope?: { executiveSummary?: string } };
     assert.ok(rep.envelope?.executiveSummary && rep.envelope.executiveSummary.length > 20);
   });

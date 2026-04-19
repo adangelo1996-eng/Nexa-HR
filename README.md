@@ -2,7 +2,7 @@
 
 Piattaforma HR cloud enterprise per:
 - timbratura entrata/uscita e presenze
-- smartworking e accumuli mensili
+- remote working (modulo `/smartworking`) e accumuli mensili
 - ferie e malattia con workflow approvativo
 - organigramma dinamico e dipendenze gerarchiche
 - cedolino svizzero automatico con area riservata
@@ -85,7 +85,7 @@ Override opzionale:
   - aggiunto storico timbrature recenti e riepilogo giornaliero
 - Pagina `attendance`:
   - storico completo timbrature per giorno (oggi e giorni passati)
-  - riepilogo minuti lavorati e modalita (office/smartworking)
+  - riepilogo minuti lavorati e modalità (office / remote working, valore tecnico `smartworking`)
 - Pagina `payroll-calc` (solo manager/admin):
   - selezione dipendente + periodo
   - calcolo cedolino con endpoint backend

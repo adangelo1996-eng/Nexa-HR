@@ -46,7 +46,7 @@ export class SmartworkingController {
     const proxy = dto.userId?.trim();
     if (proxy && proxy !== auth.userId) {
       if (auth.role !== "superuser") {
-        throw new ForbiddenException("Solo un superuser può registrare smart working per altri utenti.");
+        throw new ForbiddenException("Solo un superuser può registrare remote working per altri utenti.");
       }
       targetUserId = proxy;
     }

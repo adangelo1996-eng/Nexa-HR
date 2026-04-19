@@ -35,6 +35,7 @@ export interface ItalianPayrollInput {
   age: number;
   vacationDaysUsed: number;
   sicknessDays: number;
+  /** Giorni remote working nel periodo (nome campo storico: smartworking). */
   smartworkingDays: number;
   overtimeAmount: number;
   taxProfile: ItalianTaxProfile;
@@ -92,6 +93,7 @@ export interface ItalianRuleSet {
   /** Moltiplicatori assenze (come modello CH per coerenza demo). */
   deductionVacationPerDay: number;
   deductionSicknessPerDay: number;
+  /** Euro variabili stimati per giorno di remote working (nome campo storico: Smartworking). */
   bonusSmartworkingPerDay: number;
   /** Aliquota contributo datore tipo IVS (fallback se profilo senza settore). */
   employerInpsRate: number;

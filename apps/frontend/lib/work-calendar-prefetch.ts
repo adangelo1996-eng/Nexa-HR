@@ -19,7 +19,8 @@ import { monthRange } from "@/lib/work-calendar-ranges";
 
 export type WorkCalendarWarmRowUser = { id: string; fullName: string };
 
-const WARM_MAX_AGE_MS = 120_000;
+/** Cache più lunga: il prefetch avviene dopo login; evita spinner al rientro nella pagina nella stessa sessione. */
+const WARM_MAX_AGE_MS = 600_000;
 
 export type WorkCalendarWarmPayload = {
   userId: string;
@@ -39,7 +40,7 @@ export type WorkCalendarWarmPayload = {
 
 let warmPayload: WorkCalendarWarmPayload | null = null;
 
-function filterManagerRows(me: SessionUser, allUsers: User[]): WorkCalendarWarmRowUser[] {
+export function filterManagerRows(me: SessionUser, allUsers: User[]): WorkCalendarWarmRowUser[] {
   if (me.role === "superuser") {
     return allUsers
       .map((u) => ({ id: u.id, fullName: u.fullName }))
@@ -106,12 +107,30 @@ export function prefetchWorkCalendarInBackground(token: string): void {
       const yearFrom = `${y}-01-01`;
 
       if (me.role === "superuser") {
-        await Promise.all([
-          fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
-          fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null),
+        const [ev, usersList, [myEv, leaveBal]] = await Promise.all([
+          fetchHrWorkCalendar(token, { from, to }).catch(() => [] as CalendarEventDto[]),
           fetchUsers(token).catch(() => [] as User[]),
-          fetchHrWorkCalendar(token, { from, to }).catch(() => [] as CalendarEventDto[])
+          Promise.all([
+            fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
+            fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null)
+          ])
         ]);
+        const rows = filterManagerRows(me, usersList);
+        setWarm({
+          userId: me.id,
+          year: y,
+          month: m,
+          userFilter: "",
+          prefetchedAt: Date.now(),
+          rowUsers: rows,
+          groupedRows: null,
+          allUsersForSelect: usersList,
+          events: ev,
+          myAnalyticsEvents: myEv,
+          analyticsLeaveBalance: leaveBal,
+          costCenterLabelById: {},
+          teamLabelById: {}
+        });
         return;
       }
 

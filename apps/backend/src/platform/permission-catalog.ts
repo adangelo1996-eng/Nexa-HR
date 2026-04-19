@@ -131,7 +131,7 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
     "nexa_hr",
     "work_calendar",
     "Calendario lavoro",
-    "Vedere calendario team: turni, smart working, ferie, ROL e festività.",
+    "Vedere calendario team: turni, remote working, ferie, ROL e festività.",
     "Gestire viste o integrazioni calendario se previsto."
   ),
   ...cat(

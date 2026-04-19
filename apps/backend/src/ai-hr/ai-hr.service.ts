@@ -583,7 +583,7 @@ export class AiHrService {
     const lowLeave = snap && snap.leaveResidualIsLow === true;
 
     if (asksSmartWorking) {
-      lines.push("Smart working (da richieste registrate in Nexa HR):");
+      lines.push("Remote working (da richieste registrate in Nexa HR):");
       const ins = snap?.smartWorkingInsight as
         | {
             windowStart: string;
@@ -605,7 +605,7 @@ export class AiHrService {
       if (ins) {
         if (ins.approvedInWindow === 0 && ins.pendingInWindow === 0) {
           lines.push(
-            `Dal ${ins.windowStart} al ${ins.windowEnd} non risultano giorni smart working approvati né richieste ancora in sospeso per il soggetto selezionato. Controlla Smart working (/smartworking) o il calendario.`
+            `Dal ${ins.windowStart} al ${ins.windowEnd} non risultano giorni di remote working approvati né richieste ancora in sospeso per il soggetto selezionato. Controlla Remote working (/smartworking) o il calendario.`
           );
         } else {
           lines.push(
@@ -619,21 +619,21 @@ export class AiHrService {
               `Giorni della settimana più frequenti tra le approvate: ${ins.topWeekdays.map((w) => `${w.label} (${w.count})`).join(", ")}.`
             );
           }
-          lines.push("Per il dettaglio giorno per giorno: Smart working (/smartworking) o Calendario lavoro (/work-calendar).");
+          lines.push("Per il dettaglio giorno per giorno: Remote working (/smartworking) o Calendario lavoro (/work-calendar).");
         }
       } else if (multi) {
         lines.push(
-          `Nel gruppo selezionato, dal ${multi.windowStart} al ${multi.windowEnd}, risultano ${multi.totalApprovedDays} giornate smart working approvate (somma sulle persone visibili).`
+          `Nel gruppo selezionato, dal ${multi.windowStart} al ${multi.windowEnd}, risultano ${multi.totalApprovedDays} giornate di remote working approvate (somma sulle persone visibili).`
         );
         if (multi.months.length) {
           lines.push(`Per mese (somma): ${multi.months.map((x) => `${x.month}: ${x.approvedDays}`).join(", ")}.`);
         }
         lines.push(
-          "Per capire le abitudini di una singola persona, imposta l’ambito «Una persona» oppure apri Smart working (/smartworking)."
+          "Per capire le abitudini di una singola persona, imposta l’ambito «Una persona» oppure apri Remote working (/smartworking)."
         );
       } else {
         lines.push(
-          "Non risultano dati smart working visibili per questo ambito con i permessi attuali (serve almeno consultazione presenze / dati del soggetto). Verifica ambito e permessi, oppure apri Smart working (/smartworking)."
+          "Non risultano dati di remote working visibili per questo ambito con i permessi attuali (serve almeno consultazione presenze / dati del soggetto). Verifica ambito e permessi, oppure apri Remote working (/smartworking)."
         );
       }
       lines.push("");

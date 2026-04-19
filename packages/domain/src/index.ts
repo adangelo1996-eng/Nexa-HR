@@ -227,10 +227,10 @@ export interface ApprovalView {
   residualAnnualLeaveDays?: number;
   /** Giorni calendario richiesti (ferie/ROL/malattia). */
   requestedCalendarDays?: number;
-  /** Smart working: giorni già occupati nella settimana ISO del giorno richiesto. */
+  /** Remote working (tipo `smartworking`): giorni già occupati nella settimana ISO del giorno richiesto. */
   smartworkingWeekUsed?: number;
   smartworkingWeekQuota?: number;
-  /** Smart working: quota mensile (come da policy aziendale). */
+  /** Remote working (tipo `smartworking`): quota mensile (come da policy aziendale). */
   smartworkingMonthUsed?: number;
   smartworkingMonthQuota?: number;
   note?: string | null;

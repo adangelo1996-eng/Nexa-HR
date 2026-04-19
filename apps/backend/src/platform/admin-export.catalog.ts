@@ -123,7 +123,7 @@ export const ADMIN_EXPORT_FIELD_CATALOG: AdminExportFieldDefinition[] = [
   },
   {
     id: "smartworkingDays",
-    label: "Giorni smart working (nel mese variabili)",
+    label: "Giorni remote working (nel mese variabili)",
     requires: ["competencePeriod"]
   },
   {

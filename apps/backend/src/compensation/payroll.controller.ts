@@ -510,7 +510,7 @@ export class PayrollController {
       doc.fontSize(10).text("Periodo e stato", { underline: true });
       doc.fontSize(9).text(`Competenza: ${payslip.period}`);
       if (payslip.variablePeriod && payslip.variablePeriod !== payslip.period) {
-        doc.text(`Variabili (straordinari, assenze, smart working): mese ${payslip.variablePeriod}`);
+        doc.text(`Variabili (straordinari, assenze, remote working): mese ${payslip.variablePeriod}`);
       }
       doc.text(`Stato documento: ${payslip.status ?? "published"}`);
       doc.moveDown();

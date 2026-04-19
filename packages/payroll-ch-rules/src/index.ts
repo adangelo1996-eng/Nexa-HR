@@ -17,6 +17,7 @@ export interface PayrollInput {
   age: number;
   vacationDaysUsed: number;
   sicknessDays: number;
+  /** Giorni remote working nel periodo (nome campo storico: smartworking). */
   smartworkingDays: number;
   overtimeAmount: number;
   period: string;

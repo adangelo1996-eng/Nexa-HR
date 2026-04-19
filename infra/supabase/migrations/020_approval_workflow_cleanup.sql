@@ -1,6 +1,6 @@
 -- Pulizia workflow approvazioni: orfani, incoerenze, duplicati pending.
 -- Deep link notifiche → schermata approvazioni.
--- Allineamento richieste smart working già pending alla tabella approvals.
+-- Allineamento richieste remote working (tabella smartworking_requests) già pending alla tabella approvals.
 
 alter table public.user_notifications
   add column if not exists "actionPath" text null;

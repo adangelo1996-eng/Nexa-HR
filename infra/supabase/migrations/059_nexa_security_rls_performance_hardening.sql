@@ -1,5 +1,5 @@
 -- Sicurezza + performance (advisor Supabase): policy RLS su tabelle control-only,
--- initplan RLS su users/approvals/smartworking. (Stesso nome migrazione remota MCP.)
+-- initplan RLS su users/approvals/smartworking_requests. (Stesso nome migrazione remota MCP.)
 -- Vedi anche 060 / 061 per policy HR consolidate, funzioni, estensione, indici.
 
 -- ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ using (
 );
 
 -- ---------------------------------------------------------------------------
--- 4) users / approvals / smartworking: initplan RLS (select auth.*).
+-- 4) users / approvals / remote working (tabella smartworking_requests): initplan RLS (select auth.*).
 -- ---------------------------------------------------------------------------
 drop policy if exists "nexa_users_select_own" on public.users;
 create policy "nexa_users_select_own"

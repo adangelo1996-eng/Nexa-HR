@@ -81,6 +81,7 @@ interface ApprovalRecord {
   rejectReason?: string | null;
 }
 
+/** Riga richiesta remote working (tabella `smartworking_requests`, tipo approvazione `smartworking`). */
 export interface SmartworkingRequestRow {
   id: string;
   userId: string;
@@ -251,7 +252,7 @@ export type PersonnelBudgetAnalysisResult = {
 };
 
 const SMARTWORKING_MONTHLY_QUOTA = 8;
-/** Massimo giorni smart working richiedibili nella stessa settimana (lun–dom UTC) per dipendente. */
+/** Massimo giorni di remote working richiedibili nella stessa settimana (lun–dom UTC) per dipendente (tipo `smartworking`). */
 const SMARTWORKING_WEEKLY_QUOTA = 2;
 
 function coercePlatformRole(role: string | undefined | null): User["role"] {
@@ -5050,7 +5051,7 @@ export class HrDataStore {
         events.push({
           id: `cal-swr-${r.id}`,
           kind: "smartworking",
-          title: "Smart working (rifiutato)",
+          title: "Remote working (rifiutato)",
           start: r.day,
           end: r.day,
           meta: {
@@ -5067,7 +5068,7 @@ export class HrDataStore {
       events.push({
         id: `cal-swr-${r.id}`,
         kind: "smartworking",
-        title: pending ? "Smart working (in attesa)" : "Smart working",
+        title: pending ? "Remote working (in attesa)" : "Remote working",
         start: r.day,
         end: r.day,
         meta: {
@@ -5084,7 +5085,7 @@ export class HrDataStore {
       events.push({
         id: `cal-sw-${userId}-${ws.date}`,
         kind: "smartworking",
-        title: "Smart working",
+        title: "Remote working",
         start: ws.date,
         end: ws.date,
         meta: { date: ws.date }
@@ -6400,19 +6401,19 @@ export class HrDataStore {
     const user = await this.getUser(userId);
     const dayNorm = day.slice(0, 10);
     if (await this.hasActiveSmartworkingRequestForDay(userId, dayNorm)) {
-      throw new BadRequestException("Smart working già richiesto per questa data");
+      throw new BadRequestException("Remote working già richiesto per questa data");
     }
     const skipSwQuota = actorRole === "superuser";
     if (!skipSwQuota) {
       const monthPrefix = dayNorm.slice(0, 7);
       const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(userId, monthPrefix);
       if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
-        throw new BadRequestException("Quota smartworking mensile esaurita (richieste in attesa incluso)");
+        throw new BadRequestException("Quota mensile remote working esaurita (richieste in attesa incluso)");
       }
       const weekBooked = await this.countSmartworkingBookedDaysInWeek(userId, dayNorm);
       if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
         throw new BadRequestException(
-          `Quota smartworking settimanale esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
+          `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
         );
       }
     }
@@ -6458,7 +6459,7 @@ export class HrDataStore {
     }
     await this.notifyApproversOfRequest(
       user,
-      "Richiesta smart working",
+      "Richiesta remote working",
       `${user.fullName}: ${dayNorm}${note?.trim() ? ` — ${note.trim()}` : ""}`,
       "smartworking_request",
       `/workflow/approvals?approvalId=${encodeURIComponent(swApproval.id)}`
@@ -6492,7 +6493,7 @@ export class HrDataStore {
     const isApprovedSwCorrection = row.status === "approved";
     if (isApprovedSwCorrection) {
       if (requesterId === row.userId && actorRole !== "superuser") {
-        throw new BadRequestException("Lo smart working approvato non può essere modificato dal dipendente");
+        throw new BadRequestException("Il remote working approvato non può essere modificato dal dipendente");
       }
     } else if (row.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
@@ -6509,7 +6510,7 @@ export class HrDataStore {
       nextDay !== row.day.slice(0, 10) &&
       (await this.hasActiveSmartworkingRequestForDay(subjectId, nextDay, requestId))
     ) {
-      throw new BadRequestException("Smart working già richiesto per questa data");
+      throw new BadRequestException("Remote working già richiesto per questa data");
     }
     if (
       nextDay !== row.day.slice(0, 10) &&
@@ -6523,12 +6524,12 @@ export class HrDataStore {
         (r) => r.id !== requestId && r.status !== "rejected" && r.day.startsWith(monthPrefix)
       ).length;
       if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
-        throw new BadRequestException("Quota smartworking mensile esaurita per il mese selezionato");
+        throw new BadRequestException("Quota mensile remote working esaurita per il mese selezionato");
       }
       const weekBooked = await this.countSmartworkingBookedDaysInWeek(subjectId, nextDay, requestId);
       if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
         throw new BadRequestException(
-          `Quota smartworking settimanale esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
+          `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
         );
       }
     }
@@ -6563,7 +6564,7 @@ export class HrDataStore {
       }
       await this.notifyApproversOfRequest(
         user,
-        "Richiesta smart working",
+        "Richiesta remote working",
         `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
         "smartworking_request",
         linkApprovalId
@@ -6585,12 +6586,12 @@ export class HrDataStore {
     if (row.status === "approved") {
       if (day <= today) {
         throw new BadRequestException(
-          "Solo lo smart working con data futura può essere rimosso (richiesta già approvata)"
+          "Solo il remote working con data futura può essere rimosso (richiesta già approvata)"
         );
       }
       if (requesterId !== row.userId && actorRole !== "superuser") {
         throw new ForbiddenException(
-          "Solo il dipendente interessato può annullare uno smart working approvato futuro"
+          "Solo il dipendente interessato può annullare un remote working approvato futuro"
         );
       }
     } else if (row.status !== "pending" && row.status !== "rejected") {
@@ -6725,7 +6726,7 @@ export class HrDataStore {
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId: row.userId,
-      title: approve ? "Smartworking approvato" : "Smartworking rifiutato",
+      title: approve ? "Remote working approvato" : "Remote working rifiutato",
       body: `${row.day}${!approve && reason ? ` — ${reason}` : ""}`,
       read: false,
       createdAt: decisionAt,
@@ -7153,8 +7154,8 @@ export class HrDataStore {
         statusLabels.push(ev.title);
       }
     }
-    if (workdayMode === "smartworking" && !statusLabels.some((x) => x.toLowerCase().includes("smart"))) {
-      statusLabels.push("Modalità presenze: smart working");
+    if (workdayMode === "smartworking" && !statusLabels.some((x) => x.toLowerCase().includes("remote"))) {
+      statusLabels.push("Modalità presenze: remote working");
     }
     if (workdayMode === "office" && sorted.length > 0) {
       statusLabels.push("Modalità presenze: sede");

@@ -1756,6 +1756,7 @@ export async function rejectApproval(
   return (await response.json()) as ApprovalItem;
 }
 
+/** Richiesta remote working (endpoint `/smartworking/*`, stato dominio `smartworking`). */
 export interface SmartworkingRequestDto {
   id: string;
   userId: string;
@@ -3380,6 +3381,8 @@ export async function fetchHrCenterMeta(token: string): Promise<{
   canAccess: boolean;
   llmActive: boolean;
   scopeMode?: "company" | "team";
+  costCenterOptions?: Array<{ id: string; label: string }>;
+  teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
 }> {
   const response = await fetch(buildApiUrl("/hr-center/meta"), {
     headers: getAuthHeaders(token)
@@ -3389,12 +3392,30 @@ export async function fetchHrCenterMeta(token: string): Promise<{
     canAccess: boolean;
     llmActive: boolean;
     scopeMode?: "company" | "team";
+    costCenterOptions?: Array<{ id: string; label: string }>;
+    teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
   };
 }
 
+export type HrCenterAnalyticsRunBody = {
+  focus?: "company" | "cost_center" | "team" | "employee";
+  costCenterId?: string;
+  teamId?: string;
+  userId?: string;
+  deepDive?: "none" | "master_data" | "budget_turnover";
+};
+
 export type HrCenterAnalyticsDataset = {
   scope: string;
-  byCostCenter: Array<{ costCenterId: string; headcount: number; monthlyGrossSum: number }>;
+  analysisFocus: "company" | "cost_center" | "team" | "employee";
+  analysisLabel: string;
+  analysisDeepDive?: "master_data" | "budget_turnover";
+  byCostCenter: Array<{
+    costCenterId: string;
+    costCenterName?: string;
+    headcount: number;
+    monthlyGrossSum: number;
+  }>;
   totals: { headcount: number; monthlyGrossSum: number; avgWeeklyContractHours: number };
   disclaimer: string;
 };
@@ -3413,7 +3434,10 @@ export type HrCenterAnalyticsReportEnvelope = {
   methodologyNote: string;
 };
 
-export async function postHrCenterAnalytics(token: string): Promise<{
+export async function postHrCenterAnalytics(
+  token: string,
+  body: HrCenterAnalyticsRunBody = {}
+): Promise<{
   dataset: HrCenterAnalyticsDataset;
   report: { envelope: HrCenterAnalyticsReportEnvelope } | Record<string, unknown>;
   llm: { active: boolean; refineApplied: boolean };
@@ -3422,7 +3446,7 @@ export async function postHrCenterAnalytics(token: string): Promise<{
   const response = await fetch(buildApiUrl("/hr-center/analytics/run"), {
     method: "POST",
     headers: getAuthHeaders(token),
-    body: JSON.stringify({})
+    body: JSON.stringify(body ?? {})
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as {

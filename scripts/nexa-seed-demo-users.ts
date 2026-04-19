@@ -486,7 +486,7 @@ async function main(): Promise<void> {
   await seedCalendarMockRows(supabase, ids, people);
 }
 
-/** Turni demo aprile 2026, smart working, ferie e ROL — idempotente per id seed-* */
+/** Turni demo aprile 2026, remote working, ferie e ROL — idempotente per id seed-* */
 async function seedCalendarMockRows(
   supabase: ReturnType<typeof createClient>,
   personIds: string[],
@@ -581,7 +581,7 @@ async function seedCalendarMockRows(
   });
   if (swErr) {
     // eslint-disable-next-line no-console
-    console.warn("seed smartworking summaries:", swErr.message);
+    console.warn("seed remote working (workday_summaries smartworking):", swErr.message);
   }
 
   if (personIds.length >= 10) {

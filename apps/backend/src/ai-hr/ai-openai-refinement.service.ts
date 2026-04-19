@@ -90,7 +90,7 @@ function systemPromptForSchema(schemaVersion: string): string {
           base +
           " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.text (bozza in italiano) e envelope.facts (message, page, snapshot, routeHints, platformCapabilities, agent, leaveBalance, policySnippets, ecc.): usa i facts solo come contesto, non ripeterli nel JSON di output. " +
           "Se envelope.text contiene token __nexa_ref:...__, copiali IDENTICI nella tua envelope.text. " +
-          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. smart working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
+          "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. remote working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints. Non inventare numeri assenti da snapshot o leaveBalance."
       );
     case "ai_nl_query_v1":
       return (
@@ -146,6 +146,7 @@ function systemPromptForSchema(schemaVersion: string): string {
         "\"methodologyNote\":\"stringa (limiti dell'analisi, fonte dati, niente consulenza legale vincolante)\"}}. " +
         " Regole: usa SOLO numeri e relazioni presenti in envelope.facts; non inventare cifre, fatturati, margini o clausole contrattuali; " +
         "non citare nomi di persone; per ogni centro di costo in envelope.facts.byCostCenter produci una voce in costCenterNarratives (stesso ordine o ordinato per impatto); " +
+        "Se envelope.facts.analysisFocus, analysisLabel o analysisDeepDive sono presenti, adatta tono e priorità al perimetro (singolo dipendente = micro-analisi sul suo CDC; master_data = qualità dati; budget_turnover = organico vs budget senza numeri inventati). " +
         "strategicInsights: 5-8 voci, ciascuna concreta (costo, organico, rischi operativi, retention, compliance soft); " +
         "priorities: 4-6 voci prioritarie con nextStep misurabile; " +
         "se compaiono token __nexa_ref:...__, copiali identici in costCenterId dove servono."

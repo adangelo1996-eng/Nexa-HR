@@ -6,9 +6,11 @@ describe("buildOfflineHrCenterAnalyticsReport", () => {
   it("produce envelope completo con narrativa e priorità", () => {
     const facts = {
       scope: "company" as const,
+      analysisFocus: "company" as const,
+      analysisLabel: "Perimetro aziendale",
       byCostCenter: [
-        { costCenterId: "cc-a", headcount: 10, monthlyGrossSum: 50_000 },
-        { costCenterId: "cc-b", headcount: 2, monthlyGrossSum: 8000 }
+        { costCenterId: "cc-a", costCenterName: "8800000001 · Produzione", headcount: 10, monthlyGrossSum: 50_000 },
+        { costCenterId: "cc-b", costCenterName: "8800000002 · HQ", headcount: 2, monthlyGrossSum: 8000 }
       ],
       totals: { headcount: 12, monthlyGrossSum: 58_000, avgWeeklyContractHours: 39 },
       disclaimer: "Test disclaimer"

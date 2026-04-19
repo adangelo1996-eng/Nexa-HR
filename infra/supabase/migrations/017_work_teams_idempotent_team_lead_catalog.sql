@@ -35,7 +35,7 @@ insert into roles (id, name, description, permissions) values
   (
     'nexa-r-team-lead',
     'team_lead',
-    'Responsabile di team — approvazioni ferie, malattia, smart working',
+    'Responsabile di team — approvazioni ferie, malattia, remote working',
     '["read:team", "approve:leave", "approve:sickness", "nexa.approvals:read", "nexa.approvals:write", "nexa.work_calendar:read"]'::jsonb
   )
 on conflict (name) do update set

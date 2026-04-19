@@ -91,7 +91,7 @@ export class HrRecapService {
             ? "Malattia in attesa"
             : a.type === "travel"
               ? "Trasferta in attesa"
-              : "Smart working in attesa";
+              : "Remote working in attesa";
       const notifyUserId = a.approverId?.trim() || (await this.resolveManagerId(a.requestedBy));
       tasks.push({
         id: `appr:${a.id}`,
