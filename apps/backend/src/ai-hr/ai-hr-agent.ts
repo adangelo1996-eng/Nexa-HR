@@ -32,10 +32,14 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },
-  { path: "/hr-center", labelIt: "Centro HR", topicsIt: "analisi costi, contratti, recap dipendenti, llm" },
+  { path: "/hr-center", labelIt: "Centro HR", topicsIt: "analisi costi, recap dipendenti, report budget, llm" },
   { path: "/hr-center/analisi", labelIt: "Centro HR — analisi costi", topicsIt: "cdc, costi personale, aggregati, forecast" },
-  { path: "/hr-center/contratti", labelIt: "Centro HR — contratti (LLM)", topicsIt: "bozza contratto, template, verifica hr" },
-  { path: "/hr-center/recap", labelIt: "Centro HR — recap dipendente", topicsIt: "skills, contratto, formazione, suggerimenti" },
+  { path: "/hr-center/recap", labelIt: "Centro HR — recap dipendenti", topicsIt: "skills, contratto, formazione, filtri team/cdc" },
+  {
+    path: "/hr-center/budget-report",
+    labelIt: "Centro HR — report budget personale (LLM)",
+    topicsIt: "actual, budget, forecast, confronto periodi, export excel pdf ppt"
+  },
   { path: "/scheduling", labelIt: "Turni", topicsIt: "turni, pianificazione turni, shift" },
   { path: "/recruiting", labelIt: "Colloqui e selezione", topicsIt: "colloqui, recruiting, selezione, candidati" },
   { path: "/recruiting/candidates", labelIt: "Candidati", topicsIt: "candidati, cv, recruiting" },

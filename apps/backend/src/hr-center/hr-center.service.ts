@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import type { PersonnelBudgetAnalysisVarianceRow } from "../platform/hr-data.store";
 import { encryptUserPiiString, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 import type { User } from "@payday/domain";
 import type { AuthContext } from "../platform/auth";
@@ -12,6 +13,8 @@ import {
   type HrCenterAnalyticsFacts
 } from "./hr-center-analytics-report";
 import type { HrCenterAnalyticsRunDto } from "./hr-center-analytics-run.dto";
+import type { HrCenterPersonnelBudgetAiDto } from "./hr-center-personnel-budget-ai.dto";
+import type { HrCenterRecapBodyDto } from "./hr-center-recap-body.dto";
 
 type HrCenterAuditKind = "analytics" | "contract" | "recap";
 
@@ -77,6 +80,7 @@ export class HrCenterService {
     scopeMode?: "company" | "team";
     costCenterOptions?: Array<{ id: string; label: string }>;
     teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
+    employeeOptions?: Array<{ id: string; label: string }>;
   }> {
     const llmActive = this.openAi.isActive();
     try {
@@ -110,7 +114,10 @@ export class HrCenterService {
         s.mode === "team"
           ? teamOptionsAll.filter((t) => baseUsers.some((u) => (u.teamId ?? "").trim() === t.id))
           : teamOptionsAll;
-      return { canAccess: true, llmActive, scopeMode: s.mode, costCenterOptions, teamOptions };
+      const employeeOptions = baseUsers
+        .map((u) => ({ id: u.id, label: (u.fullName ?? "").trim() || u.id }))
+        .sort((a, b) => a.label.localeCompare(b.label, "it"));
+      return { canAccess: true, llmActive, scopeMode: s.mode, costCenterOptions, teamOptions, employeeOptions };
     } catch {
       return { canAccess: false, llmActive };
     }
@@ -187,6 +194,92 @@ export class HrCenterService {
     const all = await this.store.listUsers();
     const list = all.filter((u) => u.companyId === companyId);
     return allowed ? list.filter((u) => allowed.has(u.id)) : list;
+  }
+
+  private async resolveRecapSubjects(
+    auth: AuthContext,
+    scope: HrCenterScope,
+    baseUsers: User[],
+    body: HrCenterRecapBodyDto
+  ): Promise<User[]> {
+    const uidPick = new Set(
+      [...(body.userIds ?? []), ...(body.targetUserId ? [body.targetUserId] : [])]
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+    );
+    const ccPick = new Set((body.costCenterIds ?? []).map((x) => String(x).trim()).filter(Boolean));
+    const teamPick = new Set((body.teamIds ?? []).map((x) => String(x).trim()).filter(Boolean));
+
+    if (!uidPick.size && !ccPick.size && !teamPick.size) {
+      const self = await this.store.getUser(auth.userId);
+      if (self.companyId !== scope.companyId) {
+        throw new ForbiddenException("Dipendente non appartenente alla tua azienda.");
+      }
+      if (scope.allowedUserIds && !scope.allowedUserIds.has(self.id)) {
+        throw new ForbiddenException("Non puoi richiedere il recap per questo profilo.");
+      }
+      return [self];
+    }
+
+    let cand = baseUsers;
+    if (ccPick.size) {
+      cand = cand.filter((u) => u.costCenterId && ccPick.has(String(u.costCenterId).trim()));
+    }
+    if (teamPick.size) {
+      cand = cand.filter((u) => u.teamId && teamPick.has(String(u.teamId).trim()));
+    }
+    if (uidPick.size) {
+      cand = cand.filter((u) => uidPick.has(u.id));
+    }
+    if (cand.length === 0) {
+      throw new BadRequestException("Nessun dipendente corrisponde ai criteri nel perimetro autorizzato.");
+    }
+    return cand;
+  }
+
+  private stripBudgetVariances(
+    rows: PersonnelBudgetAnalysisVarianceRow[],
+    max: number
+  ): Array<{
+    category: string;
+    actual: number;
+    budget: number;
+    forecast: number;
+    varianceBf: number;
+    variancePct: number | null;
+  }> {
+    return rows.slice(0, max).map((r) => ({
+      category: r.category,
+      actual: r.actual,
+      budget: r.budget,
+      forecast: r.forecast,
+      varianceBf: r.varianceBf,
+      variancePct: r.variancePct
+    }));
+  }
+
+  private async assertPersonnelBudgetReportAccess(auth: AuthContext): Promise<void> {
+    if (auth.role === "superuser") {
+      return;
+    }
+    const me = await this.store.getUser(auth.userId);
+    const ext = await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+    if (!ext) {
+      throw new ForbiddenException("Report budget personale riservato a HR esteso o superuser.");
+    }
+    const ok = await this.permissions.userHasAll(auth.userId, ["nexa.personnel_budget:read"]);
+    if (!ok) {
+      throw new ForbiddenException("Permesso budget personale (lettura) richiesto.");
+    }
+  }
+
+  private async companyIdForAuthUser(auth: AuthContext): Promise<string> {
+    const me = await this.store.getUser(auth.userId);
+    const cid = me.companyId?.trim();
+    if (!cid) {
+      throw new ForbiddenException("Azienda non associata");
+    }
+    return cid;
   }
 
   private async fetchUserSkillCodes(userId: string): Promise<string[]> {
@@ -406,38 +499,83 @@ export class HrCenterService {
     }
   }
 
-  async runRecap(auth: AuthContext, targetUserId?: string): Promise<{
+  async runRecap(auth: AuthContext, body: HrCenterRecapBodyDto): Promise<{
     facts: Record<string, unknown>;
     narrative: unknown;
     llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
     privacy: { schemaVersion: string; tokenCount: number };
   }> {
     const scope = await this.resolveScope(auth);
-    const tid = (targetUserId ?? "").trim();
-    const subject = tid ? await this.store.getUser(tid) : await this.store.getUser(auth.userId);
-    if (subject.companyId !== scope.companyId) {
-      throw new ForbiddenException("Dipendente non appartenente alla tua azienda.");
+    const baseUsers = await this.filterUsers(scope.companyId, scope.allowedUserIds);
+    const subjects = await this.resolveRecapSubjects(auth, scope, baseUsers, body);
+    for (const subject of subjects) {
+      if (subject.companyId !== scope.companyId) {
+        throw new ForbiddenException("Dipendente non appartenente alla tua azienda.");
+      }
+      if (scope.allowedUserIds && !scope.allowedUserIds.has(subject.id)) {
+        throw new ForbiddenException("Non puoi richiedere il recap per questo dipendente.");
+      }
     }
-    if (scope.allowedUserIds && !scope.allowedUserIds.has(subject.id)) {
-      throw new ForbiddenException("Non puoi richiedere il recap per questo dipendente.");
+
+    const skillCodeSet = new Set<string>();
+    for (const su of subjects) {
+      const s = await this.fetchUserSkillCodes(su.id);
+      for (const c of s) {
+        skillCodeSet.add(c);
+      }
     }
-    const skillCodes = await this.fetchUserSkillCodes(subject.id);
-    const facts = {
-      scope: scope.mode,
-      subjectUserId: subject.id,
-      contractType: subject.contractType ?? null,
-      hireDate: subject.hireDate ?? null,
-      contractEndDate: subject.contractEndDate ?? null,
-      weeklyHours: subject.weeklyContractHours ?? null,
-      skillCount: skillCodes.length,
-      skillCodesSample: skillCodes.slice(0, 8),
-      suggestedActions: [
-        { id: "open_contracts", label: "Apri Contratti standard", href: "/contracts" },
-        { id: "open_settings", label: "Profilo e formazione (impostazioni)", href: "/settings" },
-        { id: "open_workflow", label: "Approvazioni team", href: "/workflow/approvals" }
-      ],
-      disclaimer: "Suggerimenti informativi: verificare sempre stato contrattuale e anagrafica in fonti ufficiali."
-    };
+    const skillCodesSample = [...skillCodeSet].slice(0, 12);
+
+    const contractMix: Record<string, number> = {};
+    for (const su of subjects) {
+      const k = su.contractType?.trim() || "—";
+      contractMix[k] = (contractMix[k] ?? 0) + 1;
+    }
+
+    const facts: Record<string, unknown> =
+      subjects.length === 1
+        ? {
+            scope: scope.mode,
+            recapMode: "single",
+            subjectUserId: subjects[0]!.id,
+            contractType: subjects[0]!.contractType ?? null,
+            hireDate: subjects[0]!.hireDate ?? null,
+            contractEndDate: subjects[0]!.contractEndDate ?? null,
+            weeklyHours: subjects[0]!.weeklyContractHours ?? null,
+            skillCount: (await this.fetchUserSkillCodes(subjects[0]!.id)).length,
+            skillCodesSample: (await this.fetchUserSkillCodes(subjects[0]!.id)).slice(0, 8),
+            suggestedActions: [
+              { id: "open_contracts", label: "Apri Contratti standard", href: "/contracts" },
+              { id: "open_settings", label: "Profilo e formazione (impostazioni)", href: "/settings" },
+              { id: "open_workflow", label: "Approvazioni team", href: "/workflow/approvals" }
+            ],
+            disclaimer:
+              "Suggerimenti informativi: verificare sempre stato contrattuale e anagrafica in fonti ufficiali."
+          }
+        : {
+            scope: scope.mode,
+            recapMode: "aggregate",
+            subjectCount: subjects.length,
+            contractTypeMix: contractMix,
+            hireDateSample: subjects.slice(0, 6).map((u) => u.hireDate ?? null),
+            weeklyHoursAvg:
+              subjects.reduce((a, u) => a + (Number(u.weeklyContractHours) || 0), 0) /
+              Math.max(subjects.length, 1),
+            skillCountDistinct: skillCodeSet.size,
+            skillCodesSample,
+            suggestedActions: [
+              { id: "open_settings", label: "Profilo e formazione (impostazioni)", href: "/settings" },
+              { id: "open_workflow", label: "Workflow richieste", href: "/workflow" }
+            ],
+            disclaimer:
+              "Suggerimenti informativi su gruppo selezionato: verificare sempre stato contrattuale e anagrafica in fonti ufficiali."
+          };
+
+    const narrativeSeed =
+      subjects.length === 1
+        ? "Recap HR per il dipendente: priorità su contratto, skills, formazione. Italiano operativo; max 5 bullet azioni; niente promesse legali."
+        : `Recap HR aggregato su ${subjects.length} dipendenti nel perimetro selezionato: evidenzia pattern su tipi contratto, competenze comuni, leve di formazione e rischi operativi. Italiano operativo; max 7 bullet; niente promesse legali; non inventare numeri non presenti nei fatti.`;
+
     const sessionId = (await this.gateway.beginSession(scope.companyId, auth.userId)).sessionId;
     let refineApplied = false;
     let refineFailure: OpenAiRefineFailure | undefined;
@@ -445,8 +583,7 @@ export class HrCenterService {
       const payload = {
         envelope: {
           facts,
-          narrativeSeed:
-            "Recap HR per il dipendente: priorità su contratto, skills, formazione. Italiano operativo; max 5 bullet azioni; niente promesse legali."
+          narrativeSeed
         }
       };
       const pseudo = await this.gateway.toModelPayload(sessionId, payload, "ai_narrative_aggregate_v1");
@@ -465,6 +602,182 @@ export class HrCenterService {
       return {
         facts,
         narrative,
+        llm: { active: this.openAi.isActive(), refineApplied, refineFailure },
+        privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
+      };
+    } finally {
+      await this.gateway.endSession(sessionId);
+    }
+  }
+
+  async runPersonnelBudgetAiReport(
+    auth: AuthContext,
+    dto: HrCenterPersonnelBudgetAiDto
+  ): Promise<{
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    export: {
+      mode: "two_periods" | "abc";
+      sheets: Array<{ name: string; rows: string[][] }>;
+    };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
+    privacy: { schemaVersion: string; tokenCount: number };
+  }> {
+    await this.assertPersonnelBudgetReportAccess(auth);
+    const companyId = await this.companyIdForAuthUser(auth);
+    const scope = await this.resolveScope(auth);
+    if (dto.mode === "two_periods") {
+      if (
+        dto.yearA == null ||
+        dto.monthA == null ||
+        dto.yearB == null ||
+        dto.monthB == null
+      ) {
+        throw new BadRequestException("Per il confronto tra periodi indicare anno/mese per entrambe le finestre.");
+      }
+      const a = await this.store.getPersonnelBudgetAnalysis(companyId, dto.yearA, dto.monthA, 5, 500);
+      const b = await this.store.getPersonnelBudgetAnalysis(companyId, dto.yearB, dto.monthB, 5, 500);
+      const periodA = `${dto.yearA}-${String(dto.monthA).padStart(2, "0")}`;
+      const periodB = `${dto.yearB}-${String(dto.monthB).padStart(2, "0")}`;
+      const facts: Record<string, unknown> = {
+        scope: scope.mode,
+        comparison: "two_periods",
+        periodA,
+        periodB,
+        totalsA: a.totals,
+        totalsB: b.totals,
+        variancesTopA: this.stripBudgetVariances(a.variances, 14),
+        variancesTopB: this.stripBudgetVariances(b.variances, 14),
+        notesCountA: a.notes.length,
+        notesCountB: b.notes.length,
+        disclaimer:
+          "Dati aggregati e varianze senza nominativi nel payload verso il modello. Verificare sempre sui sistemi ufficiali payroll / HR."
+      };
+      const exportSheets = this.buildBudgetExportSheetsTwoPeriods(periodA, periodB, a, b);
+      return await this.finishPersonnelBudgetNarrative(scope.companyId, auth.userId, facts, exportSheets, dto.mode);
+    }
+    if (dto.year == null || dto.month == null) {
+      throw new BadRequestException("Anno e mese obbligatori per analisi Actual / Budget / Forecast.");
+    }
+    const snap = await this.store.getPersonnelBudgetAnalysis(companyId, dto.year, dto.month, 5, 500);
+    const period = `${dto.year}-${String(dto.month).padStart(2, "0")}`;
+    const facts: Record<string, unknown> = {
+      scope: scope.mode,
+      comparison: "actual_budget_forecast",
+      period,
+      totals: snap.totals,
+      variancesTop: this.stripBudgetVariances(snap.variances, 20),
+      notesCount: snap.notes.length,
+      disclaimer:
+        "Analisi strutturale su consuntivo, budget e forecast: correlazioni suggerite sono ipotesi da validare su fonti HR e mediche ufficiali."
+    };
+    const exportSheets = this.buildBudgetExportSheetAbc(period, snap);
+    return await this.finishPersonnelBudgetNarrative(scope.companyId, auth.userId, facts, exportSheets, dto.mode);
+  }
+
+  private buildBudgetExportSheetsTwoPeriods(
+    periodA: string,
+    periodB: string,
+    a: Awaited<ReturnType<HrDataStore["getPersonnelBudgetAnalysis"]>>,
+    b: Awaited<ReturnType<HrDataStore["getPersonnelBudgetAnalysis"]>>
+  ): { mode: "two_periods" | "abc"; sheets: Array<{ name: string; rows: string[][] }> } {
+    const cats = ["ral", "overtime", "travel", "inps", "inail", "tfr", "totalCompanyCost"] as const;
+    const header = ["Voce", `Actual ${periodA}`, `Budget ${periodA}`, `Forecast ${periodA}`, `Actual ${periodB}`, `Budget ${periodB}`, `Forecast ${periodB}`];
+    const rows: string[][] = [header];
+    for (const c of cats) {
+      rows.push([
+        c,
+        String((a.totals.actual as Record<string, number>)[c] ?? ""),
+        String((a.totals.budget as Record<string, number>)[c] ?? ""),
+        String((a.totals.forecast as Record<string, number>)[c] ?? ""),
+        String((b.totals.actual as Record<string, number>)[c] ?? ""),
+        String((b.totals.budget as Record<string, number>)[c] ?? ""),
+        String((b.totals.forecast as Record<string, number>)[c] ?? "")
+      ]);
+    }
+    return { mode: "two_periods", sheets: [{ name: "Confronto periodi", rows }] };
+  }
+
+  private buildBudgetExportSheetAbc(
+    period: string,
+    snap: Awaited<ReturnType<HrDataStore["getPersonnelBudgetAnalysis"]>>
+  ): { mode: "two_periods" | "abc"; sheets: Array<{ name: string; rows: string[][] }> } {
+    const cats = ["ral", "overtime", "travel", "inps", "inail", "tfr", "totalCompanyCost"] as const;
+    const rows: string[][] = [["Voce", "Actual", "Budget", "Forecast"]];
+    for (const c of cats) {
+      rows.push([
+        c,
+        String((snap.totals.actual as Record<string, number>)[c] ?? ""),
+        String((snap.totals.budget as Record<string, number>)[c] ?? ""),
+        String((snap.totals.forecast as Record<string, number>)[c] ?? "")
+      ]);
+    }
+    const varRows: string[][] = [
+      ["Categoria", "Actual", "Budget", "Forecast", "Var BF", "Var %"]
+    ];
+    for (const v of snap.variances.slice(0, 40)) {
+      varRows.push([
+        v.category,
+        String(v.actual),
+        String(v.budget),
+        String(v.forecast),
+        String(v.varianceBf),
+        v.variancePct == null ? "" : String(v.variancePct)
+      ]);
+    }
+    return {
+      mode: "abc",
+      sheets: [
+        { name: `Totali ${period}`, rows },
+        { name: `Varianze ${period}`, rows: varRows }
+      ]
+    };
+  }
+
+  private async finishPersonnelBudgetNarrative(
+    companyId: string,
+    userId: string,
+    facts: Record<string, unknown>,
+    exportSheets: { mode: "two_periods" | "abc"; sheets: Array<{ name: string; rows: string[][] }> },
+    mode: "two_periods" | "abc"
+  ): Promise<{
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    export: typeof exportSheets;
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: OpenAiRefineFailure };
+    privacy: { schemaVersion: string; tokenCount: number };
+  }> {
+    const sessionId = (await this.gateway.beginSession(companyId, userId)).sessionId;
+    let refineApplied = false;
+    let refineFailure: OpenAiRefineFailure | undefined;
+    try {
+      const narrativeSeed =
+        mode === "two_periods"
+          ? "Report mensile sostitutivo (HR): confronta due periodi su costo del personale. Cerca correlazioni strutturali (straordinari, viaggi, oneri, TFR) e ipotesi su assenze/malattia o turnover solo come domande da verificare, senza diagnosi. Italiano professionale; sezioni: sintesi esecutiva, driver delle differenze, rischi, azioni consigliate. Max 900 parole."
+          : "Report mensile sostitutivo (HR): analizza Actual vs Budget vs Forecast sul periodo. Evidenzia scostamenti, anomalie strutturali, possibili correlazioni (bonus, assenze, straordinari) come ipotesi verificabili. Italiano professionale; sezioni: sintesi, driver, rischi, piano azioni. Max 900 parole.";
+      const payload = {
+        envelope: {
+          facts,
+          narrativeSeed
+        }
+      };
+      const pseudo = await this.gateway.toModelPayload(sessionId, payload, "ai_narrative_aggregate_v1");
+      let modelJson: unknown = pseudo.pseudonymized;
+      if (this.openAi.isActive()) {
+        const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_narrative_aggregate_v1");
+        if (refined.ok) {
+          modelJson = refined.data;
+          refineApplied = true;
+        } else if (refined.failure !== "inactive") {
+          refineFailure = refined.failure;
+        }
+      }
+      const narrative = await this.gateway.fromModelResponse(sessionId, modelJson);
+      await this.appendAudit(companyId, userId, "analytics", pseudo.pseudonymized, narrative);
+      return {
+        facts,
+        narrative,
+        export: exportSheets,
         llm: { active: this.openAi.isActive(), refineApplied, refineFailure },
         privacy: { schemaVersion: pseudo.schemaVersion, tokenCount: pseudo.tokenCount }
       };

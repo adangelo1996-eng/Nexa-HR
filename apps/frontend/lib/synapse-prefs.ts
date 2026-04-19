@@ -3,15 +3,20 @@ export const NEXA_HR_PREFS_STORAGE_KEY = "nexa_hr_prefs_v1";
 const NEXA_HR_PREFS_KEY = NEXA_HR_PREFS_STORAGE_KEY;
 export const NEXA_HR_PREFS_CHANGED_EVENT = "nexa-hr-prefs-changed";
 
+/** Stato apertura sezioni collassabili sidebar (persistito). */
+export const NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY = "nexa_hr_sidebar_sections_v3";
+
 export type SynapseLocale = "it" | "en";
 
 export interface SynapsePrefsV1 {
   locale: SynapseLocale;
 }
 
+export type NexaHrDefaultLanding = "mappa-portale" | "dashboard" | "attendance";
+
 export interface NexaHrPrefsV1 {
   /** Vista predefinita dopo login */
-  defaultLanding: "dashboard" | "attendance";
+  defaultLanding: NexaHrDefaultLanding;
   /** Formato ore nelle etichette */
   hoursFormat: "decimal" | "hm";
   /** Scorciatoie in cima al menu mobile (path, max 6). */
@@ -19,7 +24,7 @@ export interface NexaHrPrefsV1 {
 }
 
 const defaultSynapse: SynapsePrefsV1 = { locale: "it" };
-const defaultNexaHr: NexaHrPrefsV1 = { defaultLanding: "dashboard", hoursFormat: "decimal", menuShortcutHrefs: [] };
+const defaultNexaHr: NexaHrPrefsV1 = { defaultLanding: "mappa-portale", hoursFormat: "decimal", menuShortcutHrefs: [] };
 
 export function readSynapsePrefs(): SynapsePrefsV1 {
   if (typeof window === "undefined") {
@@ -56,8 +61,14 @@ export function readNexaHrPrefs(): NexaHrPrefsV1 {
       return defaultNexaHr;
     }
     const parsed = JSON.parse(raw) as Partial<NexaHrPrefsV1>;
-    const defaultLanding =
-      parsed.defaultLanding === "attendance" ? "attendance" : "dashboard";
+    let defaultLanding: NexaHrDefaultLanding = "mappa-portale";
+    if (parsed.defaultLanding === "dashboard") {
+      defaultLanding = "dashboard";
+    } else if (parsed.defaultLanding === "attendance") {
+      defaultLanding = "attendance";
+    } else if (parsed.defaultLanding === "mappa-portale") {
+      defaultLanding = "mappa-portale";
+    }
     const hoursFormat = parsed.hoursFormat === "hm" ? "hm" : "decimal";
     let menuShortcutHrefs: string[] = [];
     if (Array.isArray(parsed.menuShortcutHrefs)) {
@@ -79,5 +90,30 @@ export function writeNexaHrPrefs(prefs: NexaHrPrefsV1): void {
     }
   } catch {
     // ignore
+  }
+}
+
+/** Percasso interno dopo login (password o SSO senza `next`). */
+export function postLoginPathFromNexaHrPrefs(prefs: NexaHrPrefsV1): string {
+  switch (prefs.defaultLanding) {
+    case "dashboard":
+      return "/";
+    case "attendance":
+      return "/attendance";
+    case "mappa-portale":
+    default:
+      return "/mappa-portale";
+  }
+}
+
+/** Dopo login: tutte le categorie menu chiuse (nuova sessione). */
+export function resetNexaHrSidebarSectionsAllClosed(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify({}));
+  } catch {
+    /* ignore */
   }
 }

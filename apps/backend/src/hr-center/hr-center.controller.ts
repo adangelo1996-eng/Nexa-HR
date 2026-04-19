@@ -1,14 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { IsOptional, IsString } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrCenterAnalyticsRunDto } from "./hr-center-analytics-run.dto";
+import { HrCenterPersonnelBudgetAiDto } from "./hr-center-personnel-budget-ai.dto";
+import { HrCenterRecapBodyDto } from "./hr-center-recap-body.dto";
 import { HrCenterService } from "./hr-center.service";
-
-class HrCenterRecapBodyDto {
-  @IsOptional()
-  @IsString()
-  targetUserId?: string;
-}
 
 @Controller("hr-center")
 @UseGuards(RoleGuard)
@@ -34,11 +29,19 @@ export class HrCenterController {
     return this.hrCenter.runContractDraft(auth);
   }
 
+  @Post("personnel-budget-report/run")
+  postPersonnelBudgetReport(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: HrCenterPersonnelBudgetAiDto
+  ): ReturnType<HrCenterService["runPersonnelBudgetAiReport"]> {
+    return this.hrCenter.runPersonnelBudgetAiReport(auth, body);
+  }
+
   @Post("recap/run")
   postRecap(
     @CurrentAuth() auth: AuthContext,
     @Body() body: HrCenterRecapBodyDto
   ): ReturnType<HrCenterService["runRecap"]> {
-    return this.hrCenter.runRecap(auth, body.targetUserId);
+    return this.hrCenter.runRecap(auth, body);
   }
 }

@@ -710,7 +710,12 @@ export class AiHrService {
   async nlQueryRun(
     auth: { userId: string; role: AuthRole },
     body: { queryId: string }
-  ): Promise<{ queryId: string; table: Record<string, unknown>[]; summary: string }> {
+  ): Promise<{
+    queryId: string;
+    table: Record<string, unknown>[];
+    summary: string;
+    llm: { configured: boolean; refineApplied: boolean };
+  }> {
     const catalog = this.nlQueryCatalog().queries;
     const entry = catalog.find((q) => q.id === body.queryId);
     if (!entry) {
@@ -762,7 +767,11 @@ export class AiHrService {
           : `Ecco il riepilogo richiesto («${entry.label}»): ${table.length} ${table.length === 1 ? "riga" : "righe"}.`;
       const wrapped = { envelope: { summary: summaryDraft, rows: table } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_NL);
-      const { result: cleared } = await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_NL);
+      const { result: cleared, refineApplied } = await this.depseudoAfterOptionalRefine(
+        sessionId,
+        pseudo,
+        SCHEMA_NL
+      );
       const clearedNl = cleared as { envelope?: { summary?: string; rows?: Record<string, unknown>[] } };
       const summary = clearedNl.envelope?.summary ?? summaryDraft;
       const rowsOut = Array.isArray(clearedNl.envelope?.rows) ? clearedNl.envelope!.rows! : table;
@@ -778,7 +787,12 @@ export class AiHrService {
         responseSizeBytes: Buffer.byteLength(JSON.stringify({ summary, rows: rowsOut }), "utf8"),
         outcome: "ok"
       });
-      return { queryId: body.queryId, table: rowsOut, summary };
+      return {
+        queryId: body.queryId,
+        table: rowsOut,
+        summary,
+        llm: { configured: this.openAi.isActive(), refineApplied }
+      };
     } finally {
       await this.gateway.endSession(sessionId);
     }
@@ -808,7 +822,11 @@ export class AiHrService {
 
   async anomalies(
     auth: { userId: string; role: AuthRole }
-  ): Promise<{ items: { code: string; severity: string; message: string }[]; explanation: string }> {
+  ): Promise<{
+    items: { code: string; severity: string; message: string }[];
+    explanation: string;
+    llm: { configured: boolean; refineApplied: boolean };
+  }> {
     const me = await this.store.getUser(auth.userId);
     if (!(await this.permissions.userHasAll(auth.userId, ["nexa.leaves:read"]))) {
       throw new ForbiddenException("Anomalie base richiedono visibilità ferie");
@@ -851,7 +869,11 @@ export class AiHrService {
       const explainDraft = this.buildAnomalyExplanation(items);
       const wrapped = { envelope: { items, explanation: explainDraft } };
       const pseudo = await this.gateway.toModelPayload(sessionId, wrapped, SCHEMA_ANOMALIES);
-      const { result: cleared } = await this.depseudoAfterOptionalRefine(sessionId, pseudo, SCHEMA_ANOMALIES);
+      const { result: cleared, refineApplied } = await this.depseudoAfterOptionalRefine(
+        sessionId,
+        pseudo,
+        SCHEMA_ANOMALIES
+      );
       const clearedAn = cleared as { envelope?: { explanation?: string; items?: typeof items } };
       const explanation =
         typeof clearedAn.envelope?.explanation === "string" ? clearedAn.envelope.explanation : explainDraft;
@@ -867,7 +889,11 @@ export class AiHrService {
         responseSizeBytes: Buffer.byteLength(JSON.stringify({ items, explanation }), "utf8"),
         outcome: "ok"
       });
-      return { items: clearedAn.envelope?.items ?? items, explanation };
+      return {
+        items: clearedAn.envelope?.items ?? items,
+        explanation,
+        llm: { configured: this.openAi.isActive(), refineApplied }
+      };
     } finally {
       await this.gateway.endSession(sessionId);
     }
@@ -883,7 +909,13 @@ export class AiHrService {
   async triage(
     auth: { userId: string; role: AuthRole },
     body: { text: string }
-  ): Promise<{ category: string; priority: string; rationale: string; suggestedPath: string | null }> {
+  ): Promise<{
+    category: string;
+    priority: string;
+    rationale: string;
+    suggestedPath: string | null;
+    llm: { configured: boolean; refineApplied: boolean };
+  }> {
     const me = await this.store.getUser(auth.userId);
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
@@ -895,6 +927,7 @@ export class AiHrService {
       const text = typeof clearedText.envelope?.text === "string" ? clearedText.envelope.text : body.text;
       const result = this.ruleBasedTriage(text);
       let rationaleOut = result.rationale;
+      let refineApplied = false;
       if (this.openAi.isActive()) {
         const rationaleWrapped = {
           envelope: {
@@ -905,7 +938,12 @@ export class AiHrService {
           }
         };
         const pseudoR = await this.gateway.toModelPayload(sessionId, rationaleWrapped, SCHEMA_TRIAGE_RATIONALE);
-        const { result: clearedR } = await this.depseudoAfterOptionalRefine(sessionId, pseudoR, SCHEMA_TRIAGE_RATIONALE);
+        const { result: clearedR, refineApplied: ra } = await this.depseudoAfterOptionalRefine(
+          sessionId,
+          pseudoR,
+          SCHEMA_TRIAGE_RATIONALE
+        );
+        refineApplied = ra;
         const clearedT = clearedR as { envelope?: { rationale?: string } };
         if (typeof clearedT.envelope?.rationale === "string" && clearedT.envelope.rationale.trim()) {
           rationaleOut = clearedT.envelope.rationale.trim();
@@ -926,7 +964,11 @@ export class AiHrService {
         ),
         outcome: "ok"
       });
-      return { ...result, rationale: rationaleOut };
+      return {
+        ...result,
+        rationale: rationaleOut,
+        llm: { configured: this.openAi.isActive(), refineApplied }
+      };
     } finally {
       await this.gateway.endSession(sessionId);
     }

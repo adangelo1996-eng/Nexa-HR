@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
 import {
@@ -205,45 +206,18 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
         title="Analisi personale e costi"
         description="Scegli il perimetro, poi genera l’analisi. I dati aggregati alimentano grafici e tabelle; l’interpretazione è prodotta dal modello linguistico quando attivo, altrimenti da sintesi locale sullo stesso schema."
       >
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2">
-          <span
-            className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-offset-2 ring-offset-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]"
-            style={{
-              backgroundColor: !llm
-                ? "var(--prom-muted)"
-                : llm.refineApplied
-                  ? "#22c55e"
-                  : llm.active
-                    ? "#f59e0b"
-                    : "var(--prom-muted)",
-              boxShadow: llm?.refineApplied ? "0 0 12px rgba(34,197,94,0.45)" : undefined
-            }}
-            title={
-              !llm
-                ? "Esegui un’analisi"
-                : llm.refineApplied
-                  ? "Sintesi raffinata dal modello linguistico"
-                  : llm.active
-                    ? "LLM abilitato ma ultima esecuzione in fallback locale"
-                    : "LLM non abilitato sul server"
-            }
-          />
-          <div className="min-w-0 flex-1 text-xs text-[var(--prom-muted)]">
-            <span className="font-medium text-[var(--prom-text)]">Stato AI</span>
-            {llm ? (
-              <>
-                {": "}
-                {!llm.active
-                  ? "percorso LLM non attivo sul server (variabili NEXA_AI_OPENAI_ENABLED / OPENAI_API_KEY)."
-                  : llm.refineApplied
-                    ? "ultima sintesi testuale elaborata dal modello linguistico tramite API."
-                    : "LLM configurato sul server, ma l’ultima esecuzione ha usato la sintesi locale (fallback sicuro)."}
-              </>
-            ) : (
-              " — genera un’analisi per aggiornare lo stato."
-            )}
-          </div>
-        </div>
+        <LlmUsageStatusBanner
+          idle={!llm}
+          llm={
+            llm
+              ? {
+                  active: llm.active,
+                  refineApplied: llm.refineApplied,
+                  refineFailure: llm.refineFailure
+                }
+              : null
+          }
+        />
 
         <div className="space-y-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_88%,transparent)] p-3">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">

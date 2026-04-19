@@ -7,6 +7,11 @@ import { saveSession } from "@/lib/auth-session";
 import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { synapseSuiteDisplayStyle } from "@/lib/synapse-typography";
+import {
+  postLoginPathFromNexaHrPrefs,
+  readNexaHrPrefs,
+  resetNexaHrSidebarSectionsAllClosed
+} from "@/lib/synapse-prefs";
 
 type LoginPhase = "idle" | "submitting" | "redirecting";
 
@@ -84,7 +89,8 @@ export default function LoginForm(): React.JSX.Element {
         await supabase.auth.signInWithPassword({ email: email.trim(), password }).catch(() => undefined);
       }
       setPhase("redirecting");
-      window.location.assign("/");
+      resetNexaHrSidebarSectionsAllClosed();
+      window.location.assign(postLoginPathFromNexaHrPrefs(readNexaHrPrefs()));
     } catch (submissionError) {
       setPhase("idle");
       setError(submissionError instanceof Error ? submissionError.message : "Login non riuscito");

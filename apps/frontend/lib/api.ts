@@ -3383,6 +3383,7 @@ export async function fetchHrCenterMeta(token: string): Promise<{
   scopeMode?: "company" | "team";
   costCenterOptions?: Array<{ id: string; label: string }>;
   teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
+  employeeOptions?: Array<{ id: string; label: string }>;
 }> {
   const response = await fetch(buildApiUrl("/hr-center/meta"), {
     headers: getAuthHeaders(token)
@@ -3394,6 +3395,7 @@ export async function fetchHrCenterMeta(token: string): Promise<{
     scopeMode?: "company" | "team";
     costCenterOptions?: Array<{ id: string; label: string }>;
     teamOptions?: Array<{ id: string; label: string; costCenterId: string }>;
+    employeeOptions?: Array<{ id: string; label: string }>;
   };
 }
 
@@ -3481,23 +3483,63 @@ export async function postHrCenterContractDraft(token: string): Promise<{
 
 export async function postHrCenterRecap(
   token: string,
-  targetUserId?: string
+  body: {
+    targetUserId?: string;
+    costCenterIds?: string[];
+    teamIds?: string[];
+    userIds?: string[];
+  } = {}
 ): Promise<{
   facts: Record<string, unknown>;
   narrative: unknown;
-  llm: { active: boolean; refineApplied: boolean };
+  llm: { active: boolean; refineApplied: boolean; refineFailure?: string };
   privacy: { schemaVersion: string; tokenCount: number };
 }> {
   const response = await fetch(buildApiUrl("/hr-center/recap/run"), {
     method: "POST",
     headers: getAuthHeaders(token),
-    body: JSON.stringify({ targetUserId: targetUserId ?? undefined })
+    body: JSON.stringify(body)
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as {
     facts: Record<string, unknown>;
     narrative: unknown;
-    llm: { active: boolean; refineApplied: boolean };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: string };
+    privacy: { schemaVersion: string; tokenCount: number };
+  };
+}
+
+export type HrCenterPersonnelBudgetAiBody =
+  | {
+      mode: "two_periods";
+      yearA: number;
+      monthA: number;
+      yearB: number;
+      monthB: number;
+    }
+  | { mode: "abc"; year: number; month: number };
+
+export async function postHrCenterPersonnelBudgetReport(
+  token: string,
+  body: HrCenterPersonnelBudgetAiBody
+): Promise<{
+  facts: Record<string, unknown>;
+  narrative: unknown;
+  export: { mode: "two_periods" | "abc"; sheets: Array<{ name: string; rows: string[][] }> };
+  llm: { active: boolean; refineApplied: boolean; refineFailure?: string };
+  privacy: { schemaVersion: string; tokenCount: number };
+}> {
+  const response = await fetch(buildApiUrl("/hr-center/personnel-budget-report/run"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as {
+    facts: Record<string, unknown>;
+    narrative: unknown;
+    export: { mode: "two_periods" | "abc"; sheets: Array<{ name: string; rows: string[][] }> };
+    llm: { active: boolean; refineApplied: boolean; refineFailure?: string };
     privacy: { schemaVersion: string; tokenCount: number };
   };
 }
@@ -4139,14 +4181,24 @@ export async function postAiAssistant(
 export async function postAiNlQueryRun(
   token: string,
   payload: { queryId: string }
-): Promise<{ queryId: string; table: Record<string, unknown>[]; summary: string }> {
+): Promise<{
+  queryId: string;
+  table: Record<string, unknown>[];
+  summary: string;
+  llm: { configured: boolean; refineApplied: boolean };
+}> {
   const response = await fetch(buildApiUrl("/ai/hr/nl-query/run"), {
     method: "POST",
     headers: getAuthHeaders(token),
     body: JSON.stringify(payload)
   });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{ queryId: string; table: Record<string, unknown>[]; summary: string }>;
+  return response.json() as Promise<{
+    queryId: string;
+    table: Record<string, unknown>[];
+    summary: string;
+    llm: { configured: boolean; refineApplied: boolean };
+  }>;
 }
 
 export async function postAiNlQuerySaveView(
@@ -4165,6 +4217,7 @@ export async function postAiNlQuerySaveView(
 export async function postAiAnomalies(token: string): Promise<{
   items: { code: string; severity: string; message: string }[];
   explanation: string;
+  llm: { configured: boolean; refineApplied: boolean };
 }> {
   const response = await fetch(buildApiUrl("/ai/hr/anomalies"), {
     method: "POST",
@@ -4174,13 +4227,20 @@ export async function postAiAnomalies(token: string): Promise<{
   return response.json() as Promise<{
     items: { code: string; severity: string; message: string }[];
     explanation: string;
+    llm: { configured: boolean; refineApplied: boolean };
   }>;
 }
 
 export async function postAiTriage(
   token: string,
   payload: { text: string }
-): Promise<{ category: string; priority: string; rationale: string; suggestedPath: string | null }> {
+): Promise<{
+  category: string;
+  priority: string;
+  rationale: string;
+  suggestedPath: string | null;
+  llm: { configured: boolean; refineApplied: boolean };
+}> {
   const response = await fetch(buildApiUrl("/ai/hr/triage"), {
     method: "POST",
     headers: getAuthHeaders(token),
@@ -4192,5 +4252,6 @@ export async function postAiTriage(
     priority: string;
     rationale: string;
     suggestedPath: string | null;
+    llm: { configured: boolean; refineApplied: boolean };
   }>;
 }

@@ -59,15 +59,20 @@ import {
   type SessionUser
 } from "@/lib/auth-session";
 import { AppMainContentFrame } from "@/components/app-experience-frame";
+import { SessionIdleGuard } from "@/components/session-idle-guard";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { SelfServiceChat } from "@/components/self-service-chat";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
-import { NEXA_HR_PREFS_CHANGED_EVENT, readNexaHrPrefs, NEXA_HR_PREFS_STORAGE_KEY } from "@/lib/synapse-prefs";
+import { navSectionTitleAccentClass } from "@/lib/nav-visual-accents";
+import {
+  NEXA_HR_PREFS_CHANGED_EVENT,
+  NEXA_HR_PREFS_STORAGE_KEY,
+  NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY,
+  readNexaHrPrefs
+} from "@/lib/synapse-prefs";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
-
-const SIDEBAR_STORAGE_KEY = "nexa_hr_sidebar_sections_v3";
 const SIDEBAR_SCROLL_DESKTOP_KEY = "nexa_hr_sidebar_scroll_desktop_v1";
 const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
@@ -136,7 +141,7 @@ function readSidebarSectionPrefs(): Record<string, boolean> {
     return {};
   }
   try {
-    const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    const raw = localStorage.getItem(NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY);
     if (!raw) {
       return {};
     }
@@ -151,7 +156,7 @@ function writeSidebarSectionPrefs(next: Record<string, boolean>): void {
     return;
   }
   try {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
   } catch {
     /* ignore quota */
   }
@@ -202,15 +207,15 @@ function SidebarCollapsibleSection(props: {
       onToggle={(e) => onOpenChange(section.id, e.currentTarget.open)}
     >
       <summary
-        className={`mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--prom-muted)] transition-[background,color] marker:content-none [&::-webkit-details-marker]:hidden ${
+        className={`mx-2 flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-[background,color] marker:content-none [&::-webkit-details-marker]:hidden ${
           open
-            ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)] text-[var(--prom-text)]"
-            : "hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
+            ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)]"
+            : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
         }`}
       >
-        <span>{section.title}</span>
+        <span className={navSectionTitleAccentClass(section.id)}>{section.title}</span>
         <ChevronRight
-          className={`h-4 w-4 shrink-0 opacity-70 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          className={`h-4 w-4 shrink-0 text-[var(--prom-muted)] opacity-70 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
           aria-hidden
         />
       </summary>
@@ -525,7 +530,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
     const items: NavItem[] = [
       { href: "/hr-center" as Route, label: "Centro HR", icon: Sparkles },
-      { href: "/ai-hub" as Route, label: "Assistente AI (chat)", icon: Wand2 }
+      { href: "/ai-hub" as Route, label: "Assistente personale", icon: Wand2 }
     ];
     if (showHrToolsNav) {
       items.push({ href: "/insights" as Route, label: "Turnover e retention (sintesi AI)", icon: TrendingUp });
@@ -690,6 +695,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   return (
     <div className="flex h-[100dvh] overflow-hidden">
+      <SessionIdleGuard />
       <aside
         ref={desktopAsideRef}
         onScroll={schedulePersistSidebarScroll}

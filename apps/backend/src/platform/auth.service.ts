@@ -224,7 +224,7 @@ export class AuthService {
     const secret = getAuthJwtSecret();
 
     const tenantId = user.companyId || "synapse-default";
-    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
+    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "30m" });
     const caps = await this.buildLoginCapabilityFlags(user);
     const refreshToken = await this.mintRefreshTokenForUser(user.id);
     return {
@@ -262,7 +262,7 @@ export class AuthService {
     const tenantId = userTenant || payloadTenant || "synapse-default";
 
     const secret = getAuthJwtSecret();
-    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
+    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "30m" });
     const caps = await this.buildLoginCapabilityFlags(user);
     const refreshToken = await this.mintRefreshTokenForUser(user.id);
     return {
@@ -314,7 +314,7 @@ export class AuthService {
     }
     const secret = getAuthJwtSecret();
     const tenantId = user.companyId || "synapse-default";
-    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "12h" });
+    const token = sign({ role: user.role, tenantId }, secret, { subject: user.id, expiresIn: "30m" });
     const caps = await this.buildLoginCapabilityFlags(user);
     return {
       token,

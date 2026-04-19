@@ -37,6 +37,7 @@ import {
 import { getToken } from "@/lib/auth-session";
 import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 
 const ASSISTANT_SUGGESTIONS = [
   { label: "Ferie", text: "Quanto mi resta di ferie quest’anno?" },
@@ -208,6 +209,10 @@ export default function AiHubPage(): React.JSX.Element {
     privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
     sources: string[];
   } | null>(null);
+
+  const [nlLlm, setNlLlm] = useState<{ active: boolean; refineApplied: boolean } | null>(null);
+  const [anomalyLlm, setAnomalyLlm] = useState<{ active: boolean; refineApplied: boolean } | null>(null);
+  const [triageLlm, setTriageLlm] = useState<{ active: boolean; refineApplied: boolean } | null>(null);
 
   const [catalog, setCatalog] = useState<AiNlCatalogEntryDto[]>([]);
   const [selectedQueryId, setSelectedQueryId] = useState<string>("");
@@ -399,6 +404,7 @@ export default function AiHubPage(): React.JSX.Element {
       const r = await postAiNlQueryRun(t, { queryId: selectedQueryId });
       setNlSummary(r.summary);
       setNlRows(r.table);
+      setNlLlm({ active: r.llm.configured, refineApplied: r.llm.refineApplied });
     } catch (e) {
       setError(friendlyError(e));
     } finally {
@@ -434,6 +440,7 @@ export default function AiHubPage(): React.JSX.Element {
     try {
       const r = await postAiAnomalies(t);
       setAnomalyOut(formatAnomaliesForHumans(r.explanation, r.items));
+      setAnomalyLlm({ active: r.llm.configured, refineApplied: r.llm.refineApplied });
     } catch (e) {
       setError(friendlyError(e));
     } finally {
@@ -449,6 +456,7 @@ export default function AiHubPage(): React.JSX.Element {
     try {
       const r = await postAiTriage(t, { text: triageText.trim() });
       setTriageOut(formatTriageForHumans(r.category, r.priority, r.rationale, r.suggestedPath ?? null));
+      setTriageLlm({ active: r.llm.configured, refineApplied: r.llm.refineApplied });
     } catch (e) {
       setError(friendlyError(e));
     } finally {
@@ -466,11 +474,11 @@ export default function AiHubPage(): React.JSX.Element {
   return (
     <HebbAiExperienceShell
       eyebrow={hubEyebrow}
-      title="Centro AI HR"
+      title="Assistente personale"
       subtitle={
         <>
-          Qui trovi una guida gentile su ferie, numeri che ti riguardano e piccoli controlli utili — spiegati come in
-          una conversazione, non come un manuale tecnico.
+          Conversazione con modello linguistico su ferie, numeri consentiti e piccoli controlli — in linguaggio
+          naturale, con dati sensibili gestiti dal perimetro privacy Nexa prima dell’elaborazione.
         </>
       }
       headerTrailing={<HebbAiPageHelpButton pageKey="ai-hub" />}
@@ -600,6 +608,19 @@ export default function AiHubPage(): React.JSX.Element {
               </div>
             </div>
             <Sparkles className="hidden h-8 w-8 shrink-0 text-[var(--prom-gold)] opacity-80 md:block" aria-hidden />
+          </div>
+          <div className="mt-5">
+            <LlmUsageStatusBanner
+              idle={!assistantLastRun}
+              llm={
+                assistantLastRun
+                  ? {
+                      active: assistantLastRun.llm.configured,
+                      refineApplied: assistantLastRun.llm.refineApplied
+                    }
+                  : null
+              }
+            />
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
             {ASSISTANT_SUGGESTIONS.map((s) => (
@@ -889,6 +910,7 @@ export default function AiHubPage(): React.JSX.Element {
             {selectedCatalogEntry ? (
               <p className="text-xs leading-relaxed text-[var(--prom-muted)]">{selectedCatalogEntry.description}</p>
             ) : null}
+            <LlmUsageStatusBanner idle={!nlLlm} llm={nlLlm} />
             <Button
               type="button"
               variant="secondary"
@@ -947,6 +969,7 @@ export default function AiHubPage(): React.JSX.Element {
                 </p>
               </div>
             </div>
+            <LlmUsageStatusBanner idle={!anomalyLlm} llm={anomalyLlm} className="mt-4" />
             <Button
               type="button"
               className="mt-6 h-11 w-full rounded-xl font-semibold"
@@ -985,6 +1008,7 @@ export default function AiHubPage(): React.JSX.Element {
                 </p>
               </div>
             </div>
+            <LlmUsageStatusBanner idle={!triageLlm} llm={triageLlm} className="mt-4" />
             <Textarea
               value={triageText}
               onChange={(e) => setTriageText(e.target.value)}

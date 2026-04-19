@@ -1,0 +1,264 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import ExcelJS from "exceljs";
+import { jsPDF } from "jspdf";
+import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
+import { Button } from "@/components/ui/button";
+import { GlassCard } from "@/components/glass-card";
+import { postHrCenterPersonnelBudgetReport, type HrCenterPersonnelBudgetAiBody } from "@/lib/api";
+import { getToken } from "@/lib/auth-session";
+
+function renderNarrative(n: unknown): React.JSX.Element {
+  const o = n as { envelope?: { title?: string; bullets?: string[]; summary?: string } };
+  const e = o?.envelope;
+  if (!e) {
+    return (
+      <pre className="max-h-96 overflow-auto rounded-lg bg-slate-950/80 p-3 text-[11px] text-slate-100">
+        {JSON.stringify(n, null, 2)}
+      </pre>
+    );
+  }
+  return (
+    <div className="space-y-3 text-sm">
+      {e.title ? <h3 className="font-semibold text-[var(--prom-text)]">{e.title}</h3> : null}
+      {e.bullets?.length ? (
+        <ul className="list-inside list-disc space-y-1 text-[var(--prom-muted)]">
+          {e.bullets.map((b, i) => (
+            <li key={i}>{b}</li>
+          ))}
+        </ul>
+      ) : null}
+      {e.summary ? <p className="leading-relaxed text-[var(--prom-muted)]">{e.summary}</p> : null}
+    </div>
+  );
+}
+
+function plainTextFromNarrative(n: unknown): string {
+  const o = n as { envelope?: { title?: string; bullets?: string[]; summary?: string } };
+  const e = o?.envelope;
+  if (!e) {
+    return JSON.stringify(n, null, 2);
+  }
+  const parts = [e.title, ...(e.bullets ?? []), e.summary].filter(Boolean);
+  return parts.join("\n\n");
+}
+
+export default function HrCenterBudgetReportPage(): React.JSX.Element {
+  const now = useMemo(() => new Date(), []);
+  const [mode, setMode] = useState<"abc" | "two_periods">("abc");
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [yearA, setYearA] = useState(now.getFullYear());
+  const [monthA, setMonthA] = useState(Math.max(1, now.getMonth()));
+  const [yearB, setYearB] = useState(now.getFullYear());
+  const [monthB, setMonthB] = useState(Math.min(12, now.getMonth() + 1));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [narrative, setNarrative] = useState<unknown>(null);
+  const [llm, setLlm] = useState<{ active: boolean; refineApplied: boolean; refineFailure?: string } | null>(null);
+  const [exportPayload, setExportPayload] = useState<{
+    mode: "two_periods" | "abc";
+    sheets: Array<{ name: string; rows: string[][] }>;
+  } | null>(null);
+
+  const run = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const body: HrCenterPersonnelBudgetAiBody =
+        mode === "abc"
+          ? { mode: "abc", year, month }
+          : { mode: "two_periods", yearA, monthA, yearB, monthB };
+      const r = await postHrCenterPersonnelBudgetReport(token, body);
+      setNarrative(r.narrative);
+      setLlm(r.llm);
+      setExportPayload(r.export);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Errore report");
+      setExportPayload(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [mode, month, monthA, monthB, year, yearA, yearB]);
+
+  const downloadExcel = async (): Promise<void> => {
+    if (!exportPayload) return;
+    const wb = new ExcelJS.Workbook();
+    for (const sh of exportPayload.sheets) {
+      const ws = wb.addWorksheet(sh.name.slice(0, 31));
+      for (const row of sh.rows) {
+        ws.addRow(row);
+      }
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nexa-budget-llm-${exportPayload.mode}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPdf = (): void => {
+    if (!narrative) return;
+    const doc = new jsPDF();
+    const text = plainTextFromNarrative(narrative);
+    const lines = doc.splitTextToSize(text, 180);
+    doc.text("Nexa HR — Report budget personale (LLM)", 14, 16);
+    doc.setFontSize(10);
+    doc.text(lines, 14, 28);
+    doc.save("nexa-budget-llm-report.pdf");
+  };
+
+  const downloadPpt = async (): Promise<void> => {
+    if (!narrative) return;
+    try {
+      const pptxgen = (await import("pptxgenjs")).default;
+      const pres = new pptxgen();
+      pres.layout = "LAYOUT_16x9";
+      const text = plainTextFromNarrative(narrative);
+      const chunks = text.split(/\n\n+/).filter(Boolean);
+      const slides = chunks.length ? chunks : [text];
+      for (const chunk of slides.slice(0, 12)) {
+        const slide = pres.addSlide();
+        slide.addText(chunk, { x: 0.5, y: 0.6, w: "90%", h: "80%", fontSize: 12, valign: "top" });
+      }
+      await pres.writeFile({ fileName: "nexa-budget-llm-report.pptx" });
+    } catch {
+      setError("Esportazione PowerPoint non disponibile: verifica dipendenze pptxgenjs.");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <GlassCard
+        title="Report budget personale (LLM)"
+        description="Analisi su dati pseudonimizzati e aggregati (Actual, Budget, Forecast o confronto tra due periodi). Sostituisce in buona parte la narrativa del report mensile: verificare sempre i numeri ufficiali in payroll / budget."
+      >
+        <LlmUsageStatusBanner idle={!llm} llm={llm} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs text-[var(--prom-muted)]">
+            Modalità
+            <select
+              className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as "abc" | "two_periods")}
+            >
+              <option value="abc">Actual / Budget / Forecast (un periodo)</option>
+              <option value="two_periods">Confronto tra due periodi</option>
+            </select>
+          </label>
+        </div>
+        {mode === "abc" ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs text-[var(--prom-muted)]">
+              Anno
+              <input
+                type="number"
+                className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-1.5 text-sm"
+                value={year}
+                min={2020}
+                max={2100}
+                onChange={(e) => setYear(Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-xs text-[var(--prom-muted)]">
+              Mese
+              <select
+                className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-1.5 text-sm"
+                value={month}
+                onChange={(e) => setMonth(Number(e.target.value))}
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-[var(--prom-line)] p-3">
+              <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Periodo A</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  className="rounded border border-[var(--prom-line)] px-2 py-1 text-sm"
+                  value={yearA}
+                  onChange={(e) => setYearA(Number(e.target.value))}
+                />
+                <select
+                  className="rounded border border-[var(--prom-line)] px-2 py-1 text-sm"
+                  value={monthA}
+                  onChange={(e) => setMonthA(Number(e.target.value))}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="rounded-lg border border-[var(--prom-line)] p-3">
+              <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Periodo B</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  className="rounded border border-[var(--prom-line)] px-2 py-1 text-sm"
+                  value={yearB}
+                  onChange={(e) => setYearB(Number(e.target.value))}
+                />
+                <select
+                  className="rounded border border-[var(--prom-line)] px-2 py-1 text-sm"
+                  value={monthB}
+                  onChange={(e) => setMonthB(Number(e.target.value))}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <HebbAiPageHelpButton pageKey="hr-center-budget-report" />
+          <Button type="button" size="sm" disabled={loading} onClick={() => void run()}>
+            {loading ? "Generazione…" : "Genera report LLM"}
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={!exportPayload} onClick={() => void downloadExcel()}>
+            Esporta Excel
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={!narrative} onClick={() => downloadPdf()}>
+            Esporta PDF
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={!narrative} onClick={() => void downloadPpt()}>
+            Esporta PowerPoint
+          </Button>
+        </div>
+        {error ? <p className="text-xs text-rose-600">{error}</p> : null}
+        {narrative ? (
+          <div className="mt-4 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] p-4">
+            <h4 className="text-xs font-semibold uppercase text-[var(--prom-muted)]">Output</h4>
+            <div className="mt-2">{renderNarrative(narrative)}</div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-[var(--prom-muted)]">
+            Richiede permesso lettura budget personale e HR esteso (come la sezione Budget personale).
+          </p>
+        )}
+      </GlassCard>
+    </div>
+  );
+}

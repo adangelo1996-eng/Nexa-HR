@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { saveSession } from "@/lib/auth-session";
 import { loginWithSynapseSso } from "@/lib/api";
 import { prefetchWorkCalendarInBackground } from "@/lib/work-calendar-prefetch";
+import { postLoginPathFromNexaHrPrefs, readNexaHrPrefs, resetNexaHrSidebarSectionsAllClosed } from "@/lib/synapse-prefs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -29,7 +30,10 @@ function AuthSsoContent(): React.JSX.Element {
 
   const nextPath = useMemo(() => {
     const next = params.get("next");
-    return next && next.startsWith("/") ? next : "/";
+    if (next && next.startsWith("/")) {
+      return next;
+    }
+    return postLoginPathFromNexaHrPrefs(readNexaHrPrefs());
   }, [params]);
 
   useEffect(() => {
@@ -44,6 +48,7 @@ function AuthSsoContent(): React.JSX.Element {
       .then((session) => {
         saveSession(session.token, session.user);
         prefetchWorkCalendarInBackground(session.token);
+        resetNexaHrSidebarSectionsAllClosed();
         window.location.replace(nextPath);
       })
       .catch((ssoError) => {

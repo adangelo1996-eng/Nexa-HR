@@ -35,6 +35,7 @@ import {
   readSynapsePrefs,
   writeNexaHrPrefs,
   writeSynapsePrefs,
+  type NexaHrDefaultLanding,
   type NexaHrPrefsV1,
   type SynapsePrefsV1
 } from "@/lib/synapse-prefs";
@@ -431,14 +432,19 @@ export default function SettingsPage(): React.JSX.Element {
             <span className="text-slate-700 dark:text-slate-300">Vista dopo il login</span>
             <select
               value={nexaPrefs.defaultLanding}
-              onChange={(e) =>
-                persistNexa({
-                  ...nexaPrefs,
-                  defaultLanding: e.target.value === "attendance" ? "attendance" : "dashboard"
-                })
-              }
+              onChange={(e) => {
+                const v = e.target.value;
+                const defaultLanding: NexaHrDefaultLanding =
+                  v === "attendance"
+                    ? "attendance"
+                    : v === "dashboard"
+                      ? "dashboard"
+                      : "mappa-portale";
+                persistNexa({ ...nexaPrefs, defaultLanding });
+              }}
               className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
             >
+              <option value="mappa-portale">Mappa portale</option>
               <option value="dashboard">Dashboard</option>
               <option value="attendance">Timbrature</option>
             </select>

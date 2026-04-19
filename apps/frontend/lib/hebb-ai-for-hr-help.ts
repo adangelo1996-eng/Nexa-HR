@@ -12,7 +12,7 @@ export const HEBB_AI_PAGE_KEYS = [
   "insights",
   "cost-calculator",
   "hr-center-analisi",
-  "hr-center-contratti",
+  "hr-center-budget-report",
   "hr-center-recap"
 ] as const;
 
@@ -27,9 +27,9 @@ export type HebbAiPageHelpContent = {
 
 const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "ai-hub": {
-    title: "Assistente AI (chat)",
+    title: "Assistente personale",
     summary:
-      "Chat conversazionale su Nexa HR: orientamento sulla piattaforma, numeri aggregati in sicurezza, controlli e triage delle richieste, con dati sensibili gestiti secondo le policy aziendali.",
+      "Conversazione con modello linguistico su Nexa HR: orientamento sulla piattaforma, numeri aggregati in sicurezza, controlli e triage delle richieste, con dati sensibili gestiti secondo le policy aziendali.",
     howToUse: [
       "Inizia da «Chiedi» per domande in linguaggio naturale su ferie, cedolini, policy e percorsi nell’app.",
       "Se hai permessi estesi, scegli l’ambito dati indicato (es. organizzazione) senza inserire nominativi nel testo: il sistema applica i filtri e l’anonimizzazione.",
@@ -121,24 +121,24 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Per dettaglio nominale usa sempre moduli HR ufficiali."
     ]
   },
-  "hr-center-contratti": {
-    title: "Centro HR — Contratti (LLM)",
+  "hr-center-budget-report": {
+    title: "Centro HR — Report budget personale (LLM)",
     summary:
-      "Bozza strutturata partendo dai template «Contratti standard» presenti in anagrafica. Anteprima HTML stampabile; testo da verificare con HR e legal.",
+      "Analisi strutturale su aggregati budget personale (Actual / Budget / Forecast o confronto tra periodi), con esportazione Excel/PDF/PowerPoint. Richiede permessi budget come la sezione operativa.",
     howToUse: [
-      "Genera la bozza e leggi la checklist nella sintesi.",
-      "Usa «Apri anteprima stampa» per salvare PDF dal browser se necessario."
+      "Scegli la modalità e il periodo, poi «Genera report LLM».",
+      "Usa le esportazioni per allegare tabelle al consiglio o alla direzione; il testo del modello va sempre incrociato con i sistemi ufficiali."
     ],
     bestPractices: [
-      "Watermark e disclaimer sono obbligatori: nessun documento vincolante senza revisione umana."
+      "Le correlazioni proposte sono ipotesi da validare: non sostituiscono consulenza medica, legale o sindacale."
     ]
   },
   "hr-center-recap": {
-    title: "Centro HR — Recap dipendente",
+    title: "Centro HR — Recap AI dipendenti",
     summary:
-      "Suggerimenti su contratto, skills dichiarate e percorsi collegati. Azioni rapide aprono moduli esistenti; nessuna scrittura automatica su dati sensibili.",
+      "Suggerimenti su contratto, skills dichiarate e percorsi collegati per il perimetro selezionato (centri di costo, team, persone). Azioni rapide aprono moduli esistenti.",
     howToUse: [
-      "Lascia vuoto l’ID utente per te stesso, oppure incolla l’ID di un membro del team se sei responsabile.",
+      "Seleziona centri di costo, team e/o dipendenti, oppure lascia tutto vuoto per analizzare te stesso.",
       "Usa i link «Azioni suggerite» per approfondire in app."
     ],
     bestPractices: [

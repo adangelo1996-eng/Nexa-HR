@@ -237,7 +237,7 @@ export function saveSession(token: string, user: SessionUser): void {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
   const secure = isHttps ? "; secure" : "";
-  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=43200; samesite=lax${secure}`;
+  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=1800; samesite=lax${secure}`;
 }
 
 export function getToken(): string | null {

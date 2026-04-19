@@ -17,6 +17,7 @@ import {
   HebbAiGlassTile
 } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 
 function ccLabelForRow(row: TurnoverRetentionItem, costCenters: Array<{ id: string; label: string }>): string {
   if (!row.costCenterId) {
@@ -309,6 +310,19 @@ export default function InsightsPage(): React.JSX.Element {
               </Button>
             </div>
           </div>
+          <div className="mt-4">
+            <LlmUsageStatusBanner
+              idle={!narrative}
+              llm={
+                narrative
+                  ? {
+                      active: Boolean(sessionCanUseNexaAiOpenAiLlm(getSessionUser()) && narrativeLlm),
+                      refineApplied: narrative.llmApplied
+                    }
+                  : null
+              }
+            />
+          </div>
           {narrative ? (
             <div className="mt-6 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4">
               <p className="text-xs text-[var(--prom-muted)]">
@@ -345,6 +359,21 @@ export default function InsightsPage(): React.JSX.Element {
                 {deepBusy ? "Analisi…" : "Avvia analisi attiva"}
               </Button>
             </div>
+          </div>
+          <div className="mt-4">
+            <LlmUsageStatusBanner
+              idle={!deepAnalysis}
+              llm={
+                deepAnalysis
+                  ? {
+                      active: Boolean(
+                        sessionCanUseNexaAiOpenAiLlm(getSessionUser()) && deepLlm
+                      ),
+                      refineApplied: deepAnalysis.llmApplied
+                    }
+                  : null
+              }
+            />
           </div>
           {deepAnalysis ? (
             <div className="mt-6 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4">

@@ -10,8 +10,8 @@ import { getToken } from "@/lib/auth-session";
 
 const TABS: { href: Route; label: string }[] = [
   { href: "/hr-center/analisi" as Route, label: "Analisi costi" },
-  { href: "/hr-center/contratti" as Route, label: "Contratti (LLM)" },
-  { href: "/hr-center/recap" as Route, label: "Recap AI dipendenti" }
+  { href: "/hr-center/recap" as Route, label: "Recap AI dipendenti" },
+  { href: "/hr-center/budget-report" as Route, label: "Report budget (LLM)" }
 ];
 
 export default function HrCenterLayout({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -69,8 +69,8 @@ export default function HrCenterLayout({ children }: { children: React.ReactNode
       <header className="space-y-1">
         <h1 className="text-xl font-semibold tracking-tight text-[var(--prom-text)]">Centro HR</h1>
         <p className="text-xs text-[var(--prom-muted)]">
-          Analisi su dati pseudonimizzati, bozze contratto assistite e recap per dipendente. I documenti vanno sempre
-          verificati da HR prima dell&apos;uso ufficiale.
+          Analisi su dati pseudonimizzati, recap per perimetro selezionato e report budget assistito da LLM. I numeri e i
+          testi vanno sempre verificati da HR e payroll prima dell&apos;uso ufficiale.
         </p>
       </header>
       <nav className="flex flex-wrap gap-2 border-b border-[var(--prom-line)] pb-2">
