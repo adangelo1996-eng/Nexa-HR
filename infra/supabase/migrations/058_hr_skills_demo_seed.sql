@@ -28,6 +28,7 @@ on conflict (user_id, skill_id) do nothing;
 insert into public.hr_role_skill_requirements (company_id, role_id, skill_id, min_level)
 select distinct u."companyId", u."roleId", s.id, 3
 from public.users u
+inner join public.roles r on r.id = u."roleId"
 inner join public.hr_skills s on s.company_id = u."companyId" and s.code in ('skill.people_mgmt', 'skill.payroll_it', 'skill.recruiting')
 where coalesce(trim(u."companyId"), '') <> ''
   and coalesce(trim(u."roleId"), '') <> ''
