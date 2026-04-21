@@ -35,6 +35,7 @@ export function canAccessNexaPortalRoute(
   const r = href.split("?")[0] ?? href;
 
   switch (r) {
+    case "/mappa-portale":
     case "/":
     case "/attendance":
     case "/work-calendar":

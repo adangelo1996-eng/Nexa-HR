@@ -32,7 +32,11 @@ export function AppBrandBar(): React.JSX.Element {
       }}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
-        <Link href="/" className="group flex flex-wrap items-baseline gap-x-0 gap-y-1 outline-none" aria-label="SYNAPSE NEXA HR">
+        <Link
+          href="/mappa-portale"
+          className="group flex flex-wrap items-baseline gap-x-0 gap-y-1 outline-none"
+          aria-label="SYNAPSE NEXA HR"
+        >
           <span
             className="nexa-wordmark-face text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-synapse-text transition-colors group-hover:opacity-90 dark:text-white dark:group-hover:text-white"
             style={synapseSuiteDisplayStyle}
@@ -55,8 +59,8 @@ export function AppBrandBar(): React.JSX.Element {
         </Link>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           <nav className="mr-1 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-slate-600 dark:text-slate-400">
-            <Link href="/" className="hover:text-synapse-text dark:hover:text-white">
-              Home
+            <Link href="/mappa-portale" className="hover:text-synapse-text dark:hover:text-white">
+              Dashboard
             </Link>
             <span className="text-slate-400" aria-hidden>
               |

@@ -21,7 +21,7 @@ export const PORTAL_CATEGORY_ORDER = [
 export const PORTAL_TILES: PortalTile[] = [
   {
     href: "/",
-    title: "Dashboard",
+    title: "Dashboard operativa",
     blurb: "Timbrature, ferie, notifiche e riepilogo giornata: il punto di partenza operativo.",
     category: "Quotidiano"
   },

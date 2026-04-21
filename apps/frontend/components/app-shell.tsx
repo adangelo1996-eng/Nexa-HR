@@ -44,6 +44,7 @@ import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
+import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
   NEXA_HR_PREFS_STORAGE_KEY,
@@ -59,7 +60,12 @@ type NavItem = SixCatNavItem;
 
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
-const NAV_DASHBOARD: NavItem = { href: "/", label: "Dashboard", icon: LayoutDashboard };
+const NAV_DASHBOARD: NavItem = { href: "/mappa-portale" as Route, label: "Dashboard", icon: LayoutDashboard };
+const NAV_DASHBOARD_OPERATIVE: NavItem = {
+  href: "/",
+  label: "Dashboard operativa",
+  icon: Home
+};
 const NAV_HR_RECAP: NavItem = { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
 
@@ -290,39 +296,27 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     user && !hideSensitiveHrBecausePreview && sessionCanAccessManagerPanel(user)
   );
 
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const normalized = (pathname.replace(/\/$/, "") || "/") as string;
+    const allowed = canAccessNexaPortalRoute(normalized, user, hideSensitiveHrBecausePreview);
+    if (!allowed) {
+      router.replace("/mappa-portale");
+    }
+  }, [pathname, router, user, hideSensitiveHrBecausePreview]);
+
   const routeSearchMatches = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
     if (!q) {
       return [];
     }
-    let routes = NEXA_NAV_ROUTE_CATALOG;
-    if (!sessionCanAccessPayrollArea(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== "/payroll-hebb");
-    }
-    if (!sessionCanNexaAdmin(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== "/personnel-budget");
-    }
-    if (!sessionCanNexaAdmin(user ?? undefined)) {
-      routes = routes.filter(
-        (r) =>
-          r.href !== "/admin" &&
-          r.href !== ("/admin/data-export" as Route) &&
-          r.href !== ("/admin/data-import" as Route)
-      );
-    }
-    if (!sessionCanUseNexaAiOpenAiLlm(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== ("/ai-hub" as Route) && r.href !== ("/hr-center" as Route));
-    }
-    if (!sessionCanViewOrgExpenseClaims(user ?? undefined)) {
-      routes = routes.filter((r) => r.href !== ("/expenses/org" as Route));
-    }
-    if (!sessionCanAccessHrRecapDashboard(user ?? undefined)) {
-      routes = routes.filter(
-        (r) => r.href !== ("/hr-recap" as Route) && r.href !== ("/recruiting/onboarding" as Route)
-      );
-    }
+    const routes = NEXA_NAV_ROUTE_CATALOG.filter((r) =>
+      canAccessNexaPortalRoute(String(r.href), user, hideSensitiveHrBecausePreview)
+    );
     return routes.filter((r) => r.label.toLowerCase().includes(q) || r.href.includes(q)).slice(0, 8);
-  }, [searchQ, user]);
+  }, [searchQ, user, hideSensitiveHrBecausePreview]);
 
   useEffect(() => {
     const q = searchQ.trim().toLowerCase();
@@ -481,7 +475,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
-        href="/"
+        href="/mappa-portale"
         scroll={false}
         className="mb-3 flex items-center gap-2 px-3 transition-opacity hover:opacity-90"
         onClick={() => {
@@ -502,6 +496,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
+      <SidebarNavLink
+        item={NAV_DASHBOARD_OPERATIVE}
+        pathname={pathname}
+        onNavigate={closeMobile}
+        beforeNavigate={persistSidebarScrollPositions}
+      />
       {sessionCanAccessHrRecapDashboard(user ?? undefined) ? (
         <SidebarNavLink
           item={NAV_HR_RECAP}
@@ -510,12 +510,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
-      <SidebarNavLink
-        item={NAV_PORTAL_MAP}
-        pathname={pathname}
-        onNavigate={closeMobile}
-        beforeNavigate={persistSidebarScrollPositions}
-      />
       {showManagerPanelNav ? (
         <SidebarNavLink
           item={
@@ -654,7 +648,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             ) : (
               <span className="h-9 w-9 shrink-0 md:hidden" aria-hidden />
             )}
-            <Link href="/" scroll={false} className="hidden shrink-0 sm:block" aria-label="Home">
+            <Link
+              href="/mappa-portale"
+              scroll={false}
+              className="hidden shrink-0 sm:block"
+              aria-label="Dashboard"
+            >
               <span
                 className="nexa-wordmark-face text-xs font-semibold uppercase tracking-[0.1em] text-[var(--prom-text)]"
                 style={synapseSuiteDisplayStyle}

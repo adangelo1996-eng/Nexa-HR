@@ -89,7 +89,7 @@ export default function ExpensesPage(): React.JSX.Element {
             Scarica ZIP archivio
           </button>
           <Link
-            href="/"
+            href="/mappa-portale"
             className="inline-flex rounded-lg border border-synapse-gold/30 bg-white/70 px-3 py-2 text-sm font-medium text-synapse-text hover:bg-slate-50 dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]"
           >
             Dashboard

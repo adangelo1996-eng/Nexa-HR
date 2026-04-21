@@ -390,7 +390,7 @@ export default function PayrollHebbPage(): React.JSX.Element | null {
           competenza sono incluse nel netto come rimborsi.
         </p>
         <p>
-          <Link href="/" className={linkCn}>
+          <Link href="/mappa-portale" className={linkCn}>
             Torna alla dashboard
           </Link>
         </p>

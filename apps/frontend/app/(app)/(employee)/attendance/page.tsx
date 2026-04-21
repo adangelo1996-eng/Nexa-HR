@@ -524,7 +524,7 @@ export default function AttendancePage(): React.JSX.Element {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Timbrature</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Storico giornaliero e giorni passati per {user?.fullName}.</p>
           <p className="mt-2 text-sm font-medium text-[#3a5466] dark:text-[#8aa3b3]">
-            <Link href="/" className="underline-offset-2 hover:underline">
+            <Link href="/mappa-portale" className="underline-offset-2 hover:underline">
               Timbratura entrata e uscita: vai alla Dashboard
             </Link>
             .
@@ -535,7 +535,7 @@ export default function AttendancePage(): React.JSX.Element {
             </Link>
           ) : null}
         </div>
-        <Link href="/" className="synapse-nav-link">
+        <Link href="/mappa-portale" className="synapse-nav-link">
           Torna alla dashboard
         </Link>
       </header>

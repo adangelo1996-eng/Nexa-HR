@@ -289,7 +289,7 @@ export default function WorkflowPage(): React.JSX.Element {
             {user?.fullName} · {user?.role}
           </p>
         </div>
-        <Link href="/" className="synapse-nav-link">
+        <Link href="/mappa-portale" className="synapse-nav-link">
           Dashboard
         </Link>
       </header>

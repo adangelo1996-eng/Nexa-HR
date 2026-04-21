@@ -1038,7 +1038,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
         allineati annualmente con consulenza del lavoro e tabella INAIL reale.
       </p>
 
-      <Link href="/" className="text-sm text-[var(--prom-gold)] hover:underline">
+      <Link href="/mappa-portale" className="text-sm text-[var(--prom-gold)] hover:underline">
         ← Torna alla dashboard
       </Link>
     </div>

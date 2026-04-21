@@ -562,7 +562,7 @@ export default function AdminPage(): React.JSX.Element {
           </h1>
           <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{adminStrings.users.subtitle}</p>
         </div>
-        <Link href="/" className="synapse-nav-link-compact">
+        <Link href="/mappa-portale" className="synapse-nav-link-compact">
           {adminStrings.users.backToDashboard}
         </Link>
       </header>
