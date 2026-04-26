@@ -1,5 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
-import type { PersonnelBudgetAnalysisVarianceRow } from "../platform/hr-data.store";
+import type {
+  PersonnelBudgetAnalysisResult,
+  PersonnelBudgetAnalysisVarianceRow,
+  PersonnelBudgetMoney
+} from "../platform/hr-data.store";
 import { encryptUserPiiString, loadUserPiiKeyFromEnv } from "@payday/user-pii-crypto";
 import type { User } from "@payday/domain";
 import type { AuthContext } from "../platform/auth";
@@ -659,20 +663,97 @@ export class HrCenterService {
     if (dto.year == null || dto.month == null) {
       throw new BadRequestException("Anno e mese obbligatori per analisi Actual / Budget / Forecast.");
     }
-    const snap = await this.store.getPersonnelBudgetAnalysis(companyId, dto.year, dto.month, 5, 500);
-    const period = `${dto.year}-${String(dto.month).padStart(2, "0")}`;
+    const scopeAbc: "month" | "ytd" = dto.abcScope === "ytd" ? "ytd" : "month";
+    let snap: Awaited<ReturnType<HrDataStore["getPersonnelBudgetAnalysis"]>>;
+    let periodLabel: string;
+    if (scopeAbc === "ytd") {
+      const snaps: PersonnelBudgetAnalysisResult[] = [];
+      for (let m = 1; m <= dto.month!; m += 1) {
+        snaps.push(await this.store.getPersonnelBudgetAnalysis(companyId, dto.year!, m, 5, 500));
+      }
+      snap = this.mergePersonnelBudgetYtd(
+        dto.year!,
+        dto.month!,
+        snaps
+      );
+      periodLabel = `YTD ${dto.year} (gen–${String(dto.month).padStart(2, "0")})`;
+    } else {
+      snap = await this.store.getPersonnelBudgetAnalysis(companyId, dto.year, dto.month, 5, 500);
+      periodLabel = `${dto.year}-${String(dto.month).padStart(2, "0")}`;
+    }
     const facts: Record<string, unknown> = {
       scope: scope.mode,
       comparison: "actual_budget_forecast",
-      period,
+      abcScope: scopeAbc,
+      period: periodLabel,
       totals: snap.totals,
       variancesTop: this.stripBudgetVariances(snap.variances, 20),
       notesCount: snap.notes.length,
       disclaimer:
         "Analisi strutturale su consuntivo, budget e forecast: correlazioni suggerite sono ipotesi da validare su fonti HR e mediche ufficiali."
     };
-    const exportSheets = this.buildBudgetExportSheetAbc(period, snap);
+    const exportSheets = this.buildBudgetExportSheetAbc(periodLabel, snap);
     return await this.finishPersonnelBudgetNarrative(scope.companyId, auth.userId, facts, exportSheets, dto.mode);
+  }
+
+  private addMoney(
+    a: PersonnelBudgetMoney,
+    b: PersonnelBudgetMoney
+  ): PersonnelBudgetMoney {
+    return {
+      ral: a.ral + b.ral,
+      overtime: a.overtime + b.overtime,
+      travel: a.travel + b.travel,
+      inps: a.inps + b.inps,
+      inail: a.inail + b.inail,
+      tfr: a.tfr + b.tfr,
+      totalCompanyCost: a.totalCompanyCost + b.totalCompanyCost
+    };
+  }
+
+  private mergePersonnelBudgetYtd(
+    year: number,
+    endMonth: number,
+    snaps: PersonnelBudgetAnalysisResult[]
+  ): PersonnelBudgetAnalysisResult {
+    if (snaps.length === 0) {
+      throw new BadRequestException("Nessun dato YTD.");
+    }
+    const t0: PersonnelBudgetMoney = {
+      ral: 0,
+      overtime: 0,
+      travel: 0,
+      inps: 0,
+      inail: 0,
+      tfr: 0,
+      totalCompanyCost: 0
+    };
+    let acc = {
+      actual: { ...t0 },
+      budget: { ...t0 },
+      forecast: { ...t0 }
+    } as PersonnelBudgetAnalysisResult["totals"];
+    const allVariances: PersonnelBudgetAnalysisVarianceRow[] = [];
+    const allNotes: PersonnelBudgetAnalysisResult["notes"] = [];
+    for (const s of snaps) {
+      acc = {
+        actual: this.addMoney(acc.actual, s.totals.actual),
+        budget: this.addMoney(acc.budget, s.totals.budget),
+        forecast: this.addMoney(acc.forecast, s.totals.forecast)
+      };
+      allVariances.push(...s.variances);
+      allNotes.push(...s.notes);
+    }
+    allVariances.sort((x, y) => Math.abs(y.varianceBf) - Math.abs(x.varianceBf));
+    return {
+      year,
+      month: endMonth,
+      thresholdPct: snaps[0]!.thresholdPct,
+      thresholdAbs: snaps[0]!.thresholdAbs,
+      totals: acc,
+      variances: allVariances,
+      notes: allNotes
+    };
   }
 
   private buildBudgetExportSheetsTwoPeriods(
@@ -830,6 +911,7 @@ export class HrCenterService {
     const keys = ["ral", "overtime", "travel", "inps", "inail", "tfr", "totalCompanyCost"] as const;
     if (mode === "abc") {
       const period = String(facts.period ?? "");
+      const isYtd = facts.abcScope === "ytd";
       const totals = facts.totals as
         | { actual?: Record<string, number>; budget?: Record<string, number>; forecast?: Record<string, number> }
         | undefined;
@@ -855,7 +937,7 @@ export class HrCenterService {
         )}, Budget ${fmt(b.totalCompanyCost)}, Forecast ${fmt(f.totalCompanyCost)}. ` +
         `Le voci sopra sono tratte dal motore budget personale Nexa; verificare sempre payroll e contabilità prima di decisioni ufficiali.`;
       return {
-        title: `Analisi mensile costo personale — ${period}`,
+        title: isYtd ? `Analisi YTD costo personale — ${period}` : `Analisi mensile costo personale — ${period}`,
         bullets,
         summary
       };

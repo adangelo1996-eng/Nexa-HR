@@ -3,37 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
+import { AiNarrativeDisplay } from "@/components/ai-narrative-display";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
 import { fetchHrCenterMeta, postHrCenterRecap } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-
-function renderNarrative(n: unknown): React.JSX.Element {
-  const o = n as { envelope?: { title?: string; bullets?: string[]; summary?: string } };
-  const e = o?.envelope;
-  if (!e) {
-    return (
-      <pre className="max-h-96 overflow-auto rounded-lg bg-slate-950/80 p-3 text-[11px] text-slate-100">
-        {JSON.stringify(n, null, 2)}
-      </pre>
-    );
-  }
-  return (
-    <div className="space-y-3 text-sm">
-      {e.title ? <h3 className="font-semibold text-[var(--prom-text)]">{e.title}</h3> : null}
-      {e.bullets?.length ? (
-        <ul className="list-inside list-disc space-y-1 text-[var(--prom-muted)]">
-          {e.bullets.map((b, i) => (
-            <li key={i}>{b}</li>
-          ))}
-        </ul>
-      ) : null}
-      {e.summary ? <p className="leading-relaxed text-[var(--prom-muted)]">{e.summary}</p> : null}
-    </div>
-  );
-}
 
 function toggleInSet(prev: Set<string>, id: string): Set<string> {
   const next = new Set(prev);
@@ -181,34 +157,28 @@ export default function HrCenterRecapPage(): React.JSX.Element {
         </div>
         {error ? <p className="text-xs text-rose-600">{error}</p> : null}
         {facts ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase text-[var(--prom-muted)]">Contesto</h4>
-              <pre className="max-h-72 overflow-auto rounded-lg border border-[var(--prom-line)] p-3 text-[11px]">
-                {JSON.stringify(facts, null, 2)}
-              </pre>
-              {actions.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Azioni suggerite</p>
-                  <div className="flex flex-wrap gap-2">
-                    {actions.map((a) =>
-                      a.href ? (
-                        <Link
-                          key={a.id ?? a.href}
-                          href={a.href as Route}
-                          className="rounded-full border border-[var(--prom-line-strong)] px-3 py-1 text-xs text-[var(--prom-text)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)]"
-                        >
-                          {a.label ?? a.href}
-                        </Link>
-                      ) : null
-                    )}
-                  </div>
+          <div className="space-y-4">
+            {actions.length > 0 ? (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Azioni suggerite</p>
+                <div className="flex flex-wrap gap-2">
+                  {actions.map((a) =>
+                    a.href ? (
+                      <Link
+                        key={a.id ?? a.href}
+                        href={a.href as Route}
+                        className="rounded-full border border-[var(--prom-line-strong)] px-3 py-1 text-xs text-[var(--prom-text)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)]"
+                      >
+                        {a.label ?? a.href}
+                      </Link>
+                    ) : null
+                  )}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase text-[var(--prom-muted)]">Sintesi</h4>
-              {narrative ? renderNarrative(narrative) : <p className="text-xs text-[var(--prom-muted)]">—</p>}
+              {narrative ? <AiNarrativeDisplay narrative={narrative} /> : <p className="text-xs text-[var(--prom-muted)]">—</p>}
             </div>
           </div>
         ) : (

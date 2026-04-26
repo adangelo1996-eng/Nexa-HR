@@ -28,7 +28,7 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/org-chart", labelIt: "Organigramma persone", topicsIt: "colleghi, chi è chi, contatti organizzazione" },
   { path: "/organigramma", labelIt: "Organigramma strutturale", topicsIt: "struttura, reparti, gerarchia" },
   { path: "/corporate-policies", labelIt: "Corporate Policies", topicsIt: "regolamento, policy, documenti, linee guida" },
-  { path: "/reports", labelIt: "Report HR", topicsIt: "report, export, statistiche hr" },
+  { path: "/reports", labelIt: "Report presenze", topicsIt: "report presenze, timbrature, export" },
   { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },

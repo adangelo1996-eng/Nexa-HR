@@ -39,4 +39,10 @@ export class HrCenterPersonnelBudgetAiDto {
   @Min(1)
   @Max(12)
   month?: number;
+
+  /** `month` = solo il mese; `ytd` = somma da gennaio al mese indicato (YTD). */
+  @IsOptional()
+  @ValidateIf((o: HrCenterPersonnelBudgetAiDto) => o.mode === "abc")
+  @IsIn(["month", "ytd"])
+  abcScope?: "month" | "ytd";
 }

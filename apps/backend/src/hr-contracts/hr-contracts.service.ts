@@ -13,6 +13,8 @@ export interface HrStandardContractDto {
   party: Record<string, unknown>;
   blocks: unknown[];
   lastExportedDocumentId?: string;
+  /** Scansione PDF firmata caricata (ulteriore rispetto al PDF generato in export). */
+  signedScanDocumentId?: string;
   recruitCandidateId?: string;
   recruitPositionId?: string;
   signedAt?: string;
@@ -29,6 +31,7 @@ interface ContractRow {
   party: Record<string, unknown>;
   blocks: unknown[];
   last_exported_document_id: string | null;
+  signed_scan_document_id: string | null;
   recruit_candidate_id: string | null;
   recruit_position_id: string | null;
   signed_at: string | null;
@@ -45,6 +48,7 @@ function rowToDto(r: ContractRow): HrStandardContractDto {
     party: r.party,
     blocks: Array.isArray(r.blocks) ? r.blocks : [],
     lastExportedDocumentId: r.last_exported_document_id ?? undefined,
+    signedScanDocumentId: r.signed_scan_document_id ?? undefined,
     recruitCandidateId: r.recruit_candidate_id ?? undefined,
     recruitPositionId: r.recruit_position_id ?? undefined,
     signedAt: r.signed_at ?? undefined,
@@ -63,6 +67,7 @@ function recordToRow(r: Record<string, unknown>): ContractRow {
     party: (r.party as Record<string, unknown>) ?? {},
     blocks: Array.isArray(r.blocks) ? r.blocks : [],
     last_exported_document_id: (r.last_exported_document_id as string | null) ?? null,
+    signed_scan_document_id: (r.signed_scan_document_id as string | null) ?? null,
     recruit_candidate_id: r.recruit_candidate_id != null ? String(r.recruit_candidate_id) : null,
     recruit_position_id: r.recruit_position_id != null ? String(r.recruit_position_id) : null,
     signed_at: r.signed_at != null ? String(r.signed_at) : null,
@@ -83,7 +88,7 @@ export class HrContractsService {
     const { data, error } = await sb
       .from("hr_standard_contracts")
       .select(
-        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, signed_scan_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
       )
       .eq("company_id", companyId)
       .order("updated_at", { ascending: false })
@@ -99,7 +104,7 @@ export class HrContractsService {
     const { data, error } = await sb
       .from("hr_standard_contracts")
       .select(
-        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, signed_scan_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -137,7 +142,7 @@ export class HrContractsService {
         recruit_position_id: input.recruitPositionId || null
       })
       .select(
-        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, signed_scan_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
       )
       .single();
     if (error || !data) {
@@ -155,6 +160,7 @@ export class HrContractsService {
       blocks?: unknown[];
       status?: HrStandardContractStatus;
       lastExportedDocumentId?: string | null;
+      signedScanDocumentId?: string | null;
     }
   ): Promise<HrStandardContractDto> {
     const cur = await this.getById(companyId, id);
@@ -164,6 +170,8 @@ export class HrContractsService {
     const nextStatus = patch.status ?? cur.status;
     const nextExportId =
       patch.lastExportedDocumentId !== undefined ? patch.lastExportedDocumentId : cur.lastExportedDocumentId ?? null;
+    const nextSignedScanId =
+      patch.signedScanDocumentId !== undefined ? patch.signedScanDocumentId : cur.signedScanDocumentId ?? null;
 
     const sb = this.sb();
 
@@ -181,6 +189,7 @@ export class HrContractsService {
       party: nextParty,
       blocks: nextBlocks,
       lastExportedDocumentId: nextExportId,
+      signedScanDocumentId: nextSignedScanId,
       updatedAt: new Date().toISOString()
     };
     await sb.from("hr_standard_contract_versions").insert({
@@ -198,12 +207,13 @@ export class HrContractsService {
         blocks: nextBlocks,
         status: nextStatus,
         last_exported_document_id: nextExportId,
+        signed_scan_document_id: nextSignedScanId,
         updated_at: new Date().toISOString()
       })
       .eq("id", id)
       .eq("company_id", companyId)
       .select(
-        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, signed_scan_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
       )
       .maybeSingle();
     if (error) {
@@ -272,7 +282,8 @@ export class HrContractsService {
       party: (snap.party as Record<string, unknown> | undefined) ?? undefined,
       blocks: (snap.blocks as unknown[] | undefined) ?? undefined,
       status: (snap.status as HrStandardContractStatus | undefined) ?? undefined,
-      lastExportedDocumentId: (snap.lastExportedDocumentId as string | null | undefined) ?? undefined
+      lastExportedDocumentId: (snap.lastExportedDocumentId as string | null | undefined) ?? undefined,
+      signedScanDocumentId: (snap.signedScanDocumentId as string | null | undefined) ?? undefined
     });
   }
 
@@ -302,7 +313,7 @@ export class HrContractsService {
       .eq("id", id)
       .eq("company_id", companyId)
       .select(
-        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
+        "id, company_id, title, status, created_at, updated_at, party, blocks, last_exported_document_id, signed_scan_document_id, recruit_candidate_id, recruit_position_id, signed_at, signatures"
       )
       .maybeSingle();
     if (error) throw new InternalServerErrorException(error.message);
@@ -366,5 +377,62 @@ export class HrContractsService {
       status: "exported",
       lastExportedDocumentId: uploaded.id
     });
+  }
+
+  async uploadSignedScan(
+    companyId: string,
+    contractId: string,
+    actorUserId: string,
+    input: { bodyBase64: string; mimeType?: string; title?: string }
+  ): Promise<HrStandardContractDto> {
+    const cur = await this.getById(companyId, contractId);
+    if (cur.status === "draft") {
+      throw new BadRequestException("Carica la scansione solo dopo approvazione del testo (stato almeno «Approvato»).");
+    }
+    const b64 = input.bodyBase64.trim();
+    if (!b64) {
+      throw new BadRequestException("File (base64) mancante");
+    }
+    const title = (input.title?.trim() || `${cur.title} (firmato)`).slice(0, 400);
+    const uploaded = await this.store.createEmployeeDocument({
+      userId: actorUserId,
+      uploadedBy: actorUserId,
+      kind: "contract",
+      title,
+      mimeType: input.mimeType?.trim() || "application/pdf",
+      bodyBase64: b64
+    });
+    return this.update(companyId, contractId, { signedScanDocumentId: uploaded.id });
+  }
+
+  /** File collegato al contratto (export o scansione) — lettura lato servizio, senza vincolo sul proprietario del `employee_document`. */
+  async getContractLinkedFile(
+    companyId: string,
+    contractId: string,
+    documentId: string
+  ): Promise<{ mimeType?: string; base64: string; filename: string }> {
+    const cur = await this.getById(companyId, contractId);
+    if (cur.lastExportedDocumentId !== documentId && cur.signedScanDocumentId !== documentId) {
+      throw new NotFoundException("Documento non collegato a questo contratto");
+    }
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("employee_documents")
+      .select("bodyBase64, mimeType, title")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(error.message);
+    const row = (data ?? {}) as { bodyBase64?: string | null; mimeType?: string | null; title?: string | null };
+    const b64 = row.bodyBase64 ? String(row.bodyBase64) : "";
+    if (!b64) {
+      throw new NotFoundException("Contenuto non disponibile (solo metadato)");
+    }
+    const ext = (row.mimeType && String(row.mimeType).includes("pdf")) || !row.mimeType ? "pdf" : "bin";
+    const baseTitle = (row.title && String(row.title).replace(/[^\w\-]+/g, "_").slice(0, 40)) || "documento";
+    return {
+      mimeType: row.mimeType ? String(row.mimeType) : "application/pdf",
+      base64: b64,
+      filename: `${baseTitle}.${ext}`
+    };
   }
 }

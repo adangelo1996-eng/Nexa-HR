@@ -40,7 +40,7 @@ export const PORTAL_TILES: PortalTile[] = [
   {
     href: "/workflow",
     title: "Workflow",
-    blurb: "Richieste ferie, permessi e smart working con stato approvazione.",
+    blurb: "Le tue richieste (ferie, permessi, remoto, spese in workflow): invio, stato, storico personale.",
     category: "Quotidiano"
   },
   {
@@ -94,13 +94,13 @@ export const PORTAL_TILES: PortalTile[] = [
   {
     href: "/workflow/approvals",
     title: "Approvazioni team",
-    blurb: "Coda richieste del team da validare o respingere.",
+    blurb: "Coda per manager/HR: approva o respingi le richieste dei collaboratori (non sostituisce il tuo workflow personale).",
     category: "Persone e organizzazione"
   },
   {
     href: "/reports",
-    title: "Report HR",
-    blurb: "Reportistica HR e scaricamenti aggregati.",
+    title: "Report presenze",
+    blurb: "Estrazione presenze e timbrature: predefinito mese in corso, periodo a scelta.",
     category: "Persone e organizzazione"
   },
   {

@@ -4,11 +4,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { clearSession, getToken } from "@/lib/auth-session";
 
-const IDLE_MS = 30 * 60 * 1000;
+const IDLE_MS = 3 * 60 * 60 * 1000;
 const EVENTS = ["mousedown", "keydown", "scroll", "touchstart", "click", "wheel"] as const;
 
 /**
- * Dopo 30 minuti senza interazione utente: revoca sessione (logout) e torna al login.
+ * Dopo 3 ore senza interazione utente sulla piattaforma: revoca sessione (logout) e torna al login.
  * Il token JWT di accesso è comunque limitato nel tempo lato server.
  */
 export function SessionIdleGuard(): null {

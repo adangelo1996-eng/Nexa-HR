@@ -62,6 +62,9 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
     return new Set();
   }
+  if (schemaVersion === "ai_payslip_explain_v1") {
+    return new Set();
+  }
   return collectTokensFromJson(pseudonymizedInput);
 }
 
@@ -174,10 +177,23 @@ function systemPromptForSchema(schemaVersion: string): string {
       return (
         base +
         " Schema: {\"envelope\":{\"ralLowEur\":number,\"ralMedianEur\":number,\"ralHighEur\":number,\"notesIt\":\"stringa\"}}. " +
-        "L'ingresso ha envelope.facts con roleTitle (testo), location (area geografica), seniorityYears (0-45), disclaimer. " +
+        "L'ingresso ha envelope.facts con roleTitle (testo), location (area geografica), seniorityYears (0-45), disclaimer, opzionale ccnlCode. " +
         " envelope.seed descrive la richiesta. Stima RAL annua lorda di mercato in Italia per ruolo e seniority: " +
         "ralLowEur < ralMedianEur < ralHighEur, valori interi EUR realistici; notesIt in italiano (2-5 frasi) con limiti del benchmark e assenza di fonti primarie; " +
+        "se ccnlCode è presente, cita in notesIt in modo sintetico che la fascia va contestualizzata al contratto collettivo indicato; " +
         "non citare aziende reali né persone."
+      );
+    case "ai_payslip_explain_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"plainSummary\":\"stringa\",\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
+        "\"lineHighlights\":[" +
+        "{\"lineRef\":\"stringa (codice o descrizione sintetica)\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}" +
+        "],\"closingTip\":\"stringa (max 2 frasi)\"}}. " +
+        "L'ingresso ha envelope.facts con period, importi lordo/netto, elenco linee (code, description, amount), itProfile (residenceLine, ccnl), disclaimer. " +
+        "plainSummary: 3-6 frasi semplici per un dipendente. residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
+        "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 3-8 voci su righe interessanti o trattenute; " +
+        "non inventare codici o importi non presenti in facts.lines."
       );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
@@ -212,7 +228,8 @@ export class AiOpenAiRefinementService {
           ? 4096
           : schemaVersion === "ai_hitl_draft_v1" ||
               schemaVersion === "ai_turnover_insights_deep_v1" ||
-              schemaVersion === "ai_compensation_benchmark_v1"
+              schemaVersion === "ai_compensation_benchmark_v1" ||
+              schemaVersion === "ai_payslip_explain_v1"
             ? 2048
             : 2048;
 

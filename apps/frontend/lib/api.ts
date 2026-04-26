@@ -743,6 +743,30 @@ export async function fetchPayslips(token: string, query?: { months?: number }):
   return Array.isArray(body) ? body : body.items;
 }
 
+export interface PayslipExplainResult {
+  period: string;
+  residenceSummary: string;
+  addizionaliFromLines: Array<{ code: string; description: string; amount: number }>;
+  envelope: {
+    plainSummary?: string;
+    residenceDomicileNote?: string;
+    addizionaliNote?: string;
+    lineHighlights?: Array<{ lineRef: string; signal: string; comment: string }>;
+    closingTip?: string;
+  } | null;
+  llm: { active: boolean; refineApplied: boolean };
+}
+
+export async function postPayslipExplain(token: string, payslipId: string): Promise<PayslipExplainResult> {
+  const response = await fetch(buildApiUrl("/payroll/payslips/explain"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ payslipId })
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as PayslipExplainResult;
+}
+
 export async function markPayslipReadApi(token: string, payslipId: string): Promise<void> {
   const response = await fetch(buildApiUrl(`/payroll/payslips/${encodeURIComponent(payslipId)}/read`), {
     method: "PATCH",
@@ -2677,6 +2701,7 @@ export interface HrStandardContractDto {
   party: Record<string, unknown>;
   blocks: unknown[];
   lastExportedDocumentId?: string;
+  signedScanDocumentId?: string;
   recruitCandidateId?: string;
   recruitPositionId?: string;
   signedAt?: string;
@@ -2756,6 +2781,44 @@ export async function exportHrStandardContractPdf(token: string, id: string): Pr
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<HrStandardContractDto>;
+}
+
+export async function uploadHrContractSignedScan(
+  token: string,
+  contractId: string,
+  payload: { bodyBase64: string; mimeType?: string; title?: string }
+): Promise<HrStandardContractDto> {
+  const response = await fetch(
+    buildApiUrl(`/hr-contracts/${encodeURIComponent(contractId)}/signed-scan`),
+    { method: "POST", headers: getAuthHeaders(token), body: JSON.stringify(payload) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrStandardContractDto>;
+}
+
+/** Apre o scarica il file collegato (PDF export o scansione firmata). Usa un anchor temporaneo per il download. */
+export async function openHrContractLinkedFileDownload(
+  token: string,
+  contractId: string,
+  documentId: string,
+  suggestedName?: string
+): Promise<void> {
+  const response = await fetch(
+    buildApiUrl(
+      `/hr-contracts/${encodeURIComponent(contractId)}/linked-file/${encodeURIComponent(documentId)}`
+    ),
+    { headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = suggestedName || "contratto.pdf";
+  a.target = "_blank";
+  a.rel = "noreferrer";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2_000);
 }
 
 export async function signHrStandardContract(
@@ -3521,7 +3584,7 @@ export type HrCenterPersonnelBudgetAiBody =
       yearB: number;
       monthB: number;
     }
-  | { mode: "abc"; year: number; month: number };
+  | { mode: "abc"; year: number; month: number; abcScope?: "month" | "ytd" };
 
 export async function postHrCenterPersonnelBudgetReport(
   token: string,
@@ -3657,12 +3720,25 @@ export async function fetchPayrollForecastBreakdown(
 }
 
 export type CompensationBenchEstimateBody = {
-  roleSource: "recruit" | "org" | "manual";
+  roleSource: "recruit" | "org" | "org_select" | "manual";
   recruitPositionId?: string;
   roleTitleManual?: string;
+  /** Se `roleSource` = `org_select` */
+  orgRoleId?: string;
+  /** Riferimento CCNL (opz.) */
+  ccnlCode?: string;
   location: string;
   seniorityYears: number;
 };
+
+export async function fetchCompensationBenchOrgRoles(token: string): Promise<{ id: string; name: string }[]> {
+  const response = await fetch(buildApiUrl("/compensation/bench/org-roles"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const b = (await response.json()) as { items: { id: string; name: string }[] };
+  return b.items ?? [];
+}
 
 export async function postCompensationBenchEstimate(
   token: string,

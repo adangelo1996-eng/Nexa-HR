@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +10,11 @@ import {
   exportHrStandardContractPdf,
   fetchHrStandardContract,
   fetchHrStandardContractVersions,
+  openHrContractLinkedFileDownload,
   patchHrStandardContract,
   restoreHrStandardContractVersion,
   signHrStandardContract,
-  uploadDocumentToVault
+  uploadHrContractSignedScan
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import {
@@ -52,6 +54,9 @@ export default function ContractEditorPage(): React.JSX.Element {
   const [signEmployee, setSignEmployee] = useState("");
   const [addingBlockKey, setAddingBlockKey] = useState<string>("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [editingUnlocked, setEditingUnlocked] = useState(false);
+  const [signedScanUploading, setSignedScanUploading] = useState(false);
+  const [linkedDownloadBusy, setLinkedDownloadBusy] = useState<"export" | "scan" | null>(null);
 
   function syncBlocksFromPartyFields(): void {
     setLocalDoc((d) => {
@@ -131,7 +136,10 @@ export default function ContractEditorPage(): React.JSX.Element {
     );
   }
 
-  const canEdit = localDoc.status !== "exported";
+  const isExported = localDoc.status === "exported";
+  const needsWorkflowLock = localDoc.status === "approved" || Boolean(localDoc.signedAt);
+  const canEditFields =
+    !isExported && (localDoc.status === "draft" || !needsWorkflowLock || editingUnlocked);
 
   async function onSave(): Promise<void> {
     if (!localDoc) return;
@@ -150,6 +158,7 @@ export default function ContractEditorPage(): React.JSX.Element {
         blocks: localDoc.blocks as unknown[]
       });
       setLocalDoc(hrContractFromApi(updated));
+      setEditingUnlocked(false);
       setMsg("Salvato.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore salvataggio");
@@ -182,6 +191,7 @@ export default function ContractEditorPage(): React.JSX.Element {
         status: "approved"
       });
       setLocalDoc(hrContractFromApi(updated));
+      setEditingUnlocked(false);
       setMsg("Contratto approvato.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore approvazione");
@@ -215,6 +225,7 @@ export default function ContractEditorPage(): React.JSX.Element {
         employeeSignerName: signEmployee.trim()
       });
       setLocalDoc(hrContractFromApi(updated));
+      setEditingUnlocked(false);
       setMsg("Contratto firmato.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore firma");
@@ -242,13 +253,54 @@ export default function ContractEditorPage(): React.JSX.Element {
     }
   }
 
+  async function onSignedScanFileSelect(file: File | null): Promise<void> {
+    if (!file || !localDoc) return;
+    const token = getToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setSignedScanUploading(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const blob = new Blob([file], { type: file.type || "application/pdf" });
+      const b64 = await b64FromBlob(blob);
+      const updated = await uploadHrContractSignedScan(token, localDoc.id, {
+        bodyBase64: b64,
+        mimeType: file.type || "application/pdf",
+        title: `${localDoc.title} (scansione firmata)`
+      });
+      setLocalDoc(hrContractFromApi(updated));
+      setMsg("Scansione firmata caricata. Puoi completare l’anagrafica del nuovo dipendente da Admin.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore caricamento scansione");
+    } finally {
+      setSignedScanUploading(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">{localDoc.title}</h1>
         <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Stato: <strong className="text-synapse-text dark:text-white">{localDoc.status.toUpperCase()}</strong>
+          {localDoc.signedAt ? (
+            <>
+              {" "}
+              · firmato: <strong className="text-synapse-text dark:text-white">{localDoc.signedAt.slice(0, 10)}</strong>
+            </>
+          ) : null}
         </p>
+        {needsWorkflowLock && !isExported ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-synapse-text dark:text-amber-100/95">
+            <span>Contenuto in sola lettura (approvato o già firmato in sistema). Usa «Modifica» per cambiare testi o refirmare.</span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditingUnlocked((v) => !v)}>
+              {editingUnlocked ? "Termina modifica" : "Modifica"}
+            </Button>
+          </div>
+        ) : null}
       </header>
 
       <Card>
@@ -261,7 +313,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Ragione sociale</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.companyLegalName}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, companyLegalName: e.target.value } } : d))
@@ -271,7 +323,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo azienda</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.companyAddress ?? ""}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, companyAddress: e.target.value } } : d))
@@ -281,7 +333,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Nome</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.employeeFirstName}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, employeeFirstName: e.target.value } } : d))
@@ -291,7 +343,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Cognome</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.employeeLastName}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, employeeLastName: e.target.value } } : d))
@@ -301,7 +353,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm md:col-span-2">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Indirizzo lavoratore</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.employeeAddress ?? ""}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, employeeAddress: e.target.value } } : d))
@@ -311,7 +363,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Mansione</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.roleTitle ?? ""}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, roleTitle: e.target.value } } : d))
@@ -321,7 +373,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Sede di lavoro</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.workLocation ?? ""}
                 onChange={(e) =>
                   setLocalDoc((d) => (d ? { ...d, party: { ...d.party, workLocation: e.target.value } } : d))
@@ -331,7 +383,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Data inizio</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 type="date"
                 value={(localDoc.party.startDateIso ?? "").slice(0, 10)}
                 onChange={(e) =>
@@ -342,7 +394,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Mensilità</span>
               <select
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 value={localDoc.party.payMonthsPerYear ?? 13}
                 onChange={(e) =>
                   setLocalDoc((d) =>
@@ -359,7 +411,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">RAL</span>
               <Input
-                disabled={!canEdit}
+                disabled={!canEditFields}
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -376,7 +428,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <Button type="button" onClick={() => void onSave()} disabled={saving}>
               {saving ? "Salvataggio…" : "Salva"}
             </Button>
-            <Button type="button" variant="outline" disabled={!canEdit} onClick={() => syncBlocksFromPartyFields()}>
+            <Button type="button" variant="outline" disabled={!canEditFields} onClick={() => syncBlocksFromPartyFields()}>
               Aggiorna testo dai campi
             </Button>
             <Button type="button" variant="outline" onClick={() => setPreviewOpen(true)}>
@@ -386,18 +438,22 @@ export default function ContractEditorPage(): React.JSX.Element {
               Torna a elenco
             </Button>
             <div className="flex-1" />
-            <Button type="button" variant="secondary" onClick={() => void onApprove()} disabled={!canEdit}>
+            <Button type="button" variant="secondary" onClick={() => void onApprove()} disabled={!canEditFields}>
               Approva
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => void onSign()}
-              disabled={!canEdit || localDoc.status !== "approved"}
+              disabled={!canEditFields || localDoc.status !== "approved"}
             >
               Firma
             </Button>
-            <Button type="button" onClick={() => void onExportPdfServer()} disabled={exporting || localDoc.status !== "approved"}>
+            <Button
+              type="button"
+              onClick={() => void onExportPdfServer()}
+              disabled={exporting || localDoc.status !== "approved" || !localDoc.signedAt}
+            >
               {exporting ? "Export…" : "Esporta PDF (server)"}
             </Button>
           </div>
@@ -406,17 +462,112 @@ export default function ContractEditorPage(): React.JSX.Element {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
                 <span className="text-synapse-muted dark:text-[#b4c9dc]">Firmatario azienda</span>
-                <Input disabled={!canEdit} value={signCompany} onChange={(e) => setSignCompany(e.target.value)} />
+                <Input disabled={!canEditFields} value={signCompany} onChange={(e) => setSignCompany(e.target.value)} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-synapse-muted dark:text-[#b4c9dc]">Firmatario lavoratore</span>
-                <Input disabled={!canEdit} value={signEmployee} onChange={(e) => setSignEmployee(e.target.value)} />
+                <Input disabled={!canEditFields} value={signEmployee} onChange={(e) => setSignEmployee(e.target.value)} />
               </label>
             </div>
           ) : null}
 
           {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
           {msg ? <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-400">{msg}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Documenti (PDF e scansione)</CardTitle>
+          <CardDescription>Scarica il PDF generato dall’export, carica la scansione cartacea firmata, oppure vai in Admin per creare l’utente dipendente.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm text-synapse-text dark:text-white">
+          <div className="flex flex-wrap gap-2">
+            {localDoc.lastExportedDocumentId ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={linkedDownloadBusy === "export"}
+                onClick={() => {
+                  const token = getToken();
+                  if (!token) {
+                    router.replace("/login");
+                    return;
+                  }
+                  if (!localDoc?.lastExportedDocumentId) return;
+                  setError(null);
+                  setLinkedDownloadBusy("export");
+                  void openHrContractLinkedFileDownload(
+                    token,
+                    localDoc.id,
+                    localDoc.lastExportedDocumentId,
+                    "contratto-esportato.pdf"
+                  )
+                    .catch((e) => setError(e instanceof Error ? e.message : "Download non riuscito"))
+                    .finally(() => setLinkedDownloadBusy(null));
+                }}
+              >
+                {linkedDownloadBusy === "export" ? "Apertura…" : "Scarica PDF esportato"}
+              </Button>
+            ) : (
+              <p className="text-synapse-muted dark:text-[#b4c9dc]">PDF esportato non ancora disponibile (dopo «Esporta PDF»).</p>
+            )}
+            {localDoc.signedScanDocumentId ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={linkedDownloadBusy === "scan"}
+                onClick={() => {
+                  const token = getToken();
+                  if (!token) {
+                    router.replace("/login");
+                    return;
+                  }
+                  if (!localDoc?.signedScanDocumentId) return;
+                  setError(null);
+                  setLinkedDownloadBusy("scan");
+                  void openHrContractLinkedFileDownload(
+                    token,
+                    localDoc.id,
+                    localDoc.signedScanDocumentId,
+                    "contratto-firmato-scansione.pdf"
+                  )
+                    .catch((e) => setError(e instanceof Error ? e.message : "Download non riuscito"))
+                    .finally(() => setLinkedDownloadBusy(null));
+                }}
+              >
+                {linkedDownloadBusy === "scan" ? "Apertura…" : "Scarica scansione firmata"}
+              </Button>
+            ) : null}
+          </div>
+          {localDoc.status === "draft" ? (
+            <p className="text-synapse-muted dark:text-[#b4c9dc]">Il caricamento della scansione firmata è disponibile dopo l’approvazione del testo (almeno stato «Approvato»).</p>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-synapse-muted dark:text-[#b4c9dc]">Carica PDF / scansione firmata (MVP inline, max come da policy upload)</label>
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                disabled={isExported || signedScanUploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  e.target.value = "";
+                  void onSignedScanFileSelect(f);
+                }}
+                className="block w-full text-sm"
+              />
+              {signedScanUploading ? <p className="text-synapse-muted">Caricamento in corso…</p> : null}
+            </div>
+          )}
+          <p>
+            <Link
+              className="font-medium text-[#002D72] underline underline-offset-2 hover:opacity-90 dark:text-sky-300"
+              href="/admin"
+            >
+              Apri anagrafica / Admin
+            </Link>{" "}
+            per creare o completare l’utente dipendente dopo export o scansione.
+          </p>
         </CardContent>
       </Card>
 
@@ -488,7 +639,7 @@ export default function ContractEditorPage(): React.JSX.Element {
             <Button
               type="button"
               variant="secondary"
-              disabled={!canEdit || !addingBlockKey}
+              disabled={!canEditFields || !addingBlockKey}
               onClick={() => {
                 const lib = CONTRACT_BLOCK_LIBRARY.find((b) => b.key === addingBlockKey);
                 if (!lib) return;
@@ -508,7 +659,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={!canEdit || idx === 0}
+                      disabled={!canEditFields || idx === 0}
                       onClick={() =>
                         setLocalDoc((d) => {
                           if (!d) return d;
@@ -525,7 +676,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={!canEdit || idx === localDoc.blocks.length - 1}
+                      disabled={!canEditFields || idx === localDoc.blocks.length - 1}
                       onClick={() =>
                         setLocalDoc((d) => {
                           if (!d) return d;
@@ -542,7 +693,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={!canEdit || Boolean(b.locked)}
+                      disabled={!canEditFields || Boolean(b.locked)}
                       onClick={() => {
                         if (!window.confirm("Rimuovere il blocco?")) return;
                         setLocalDoc((d) => (d ? { ...d, blocks: d.blocks.filter((_, i) => i !== idx) } : d));
@@ -554,7 +705,7 @@ export default function ContractEditorPage(): React.JSX.Element {
                 </div>
                 <textarea
                   className="mt-2 min-h-[120px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
-                  disabled={!canEdit || Boolean(b.locked)}
+                  disabled={!canEditFields || Boolean(b.locked)}
                   value={b.content}
                   onChange={(e) =>
                     setLocalDoc((d) => {

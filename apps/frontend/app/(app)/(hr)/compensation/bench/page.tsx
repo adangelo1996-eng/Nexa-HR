@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
 import { Input } from "@/components/ui/input";
 import {
+  fetchCompensationBenchOrgRoles,
   fetchCurrentUser,
   fetchRecruitPositions,
   postCompensationBenchEstimate,
@@ -20,7 +21,10 @@ function fmtEur(n: number): string {
 export default function CompensationBenchPage(): JSX.Element {
   const [viewer, setViewer] = useState<SessionUser | null>(null);
   const [positions, setPositions] = useState<RecruitPositionDto[]>([]);
-  const [roleSource, setRoleSource] = useState<"recruit" | "org" | "manual">("manual");
+  const [roleSource, setRoleSource] = useState<"recruit" | "org" | "org_select" | "manual">("manual");
+  const [orgRoles, setOrgRoles] = useState<{ id: string; name: string }[]>([]);
+  const [orgRoleId, setOrgRoleId] = useState("");
+  const [ccnlCode, setCcnlCode] = useState("");
   const [recruitPositionId, setRecruitPositionId] = useState("");
   const [roleTitleManual, setRoleTitleManual] = useState("");
   const [location, setLocation] = useState("Milano");
@@ -36,6 +40,9 @@ export default function CompensationBenchPage(): JSX.Element {
     void fetchRecruitPositions(t)
       .then((items) => setPositions(items.filter((p) => p.status === "open")))
       .catch(() => setPositions([]));
+    void fetchCompensationBenchOrgRoles(t)
+      .then((items) => setOrgRoles(items))
+      .catch(() => setOrgRoles([]));
   }, []);
 
   const run = useCallback(async (): Promise<void> => {
@@ -49,6 +56,8 @@ export default function CompensationBenchPage(): JSX.Element {
         roleSource,
         recruitPositionId: roleSource === "recruit" ? recruitPositionId || undefined : undefined,
         roleTitleManual: roleSource === "manual" ? roleTitleManual || undefined : undefined,
+        orgRoleId: roleSource === "org_select" ? orgRoleId || undefined : undefined,
+        ccnlCode: ccnlCode.trim() || undefined,
         location: location.trim(),
         seniorityYears: Math.min(45, Math.max(0, Number(seniorityYears) || 0))
       });
@@ -58,14 +67,14 @@ export default function CompensationBenchPage(): JSX.Element {
     } finally {
       setBusy(false);
     }
-  }, [location, recruitPositionId, roleSource, roleTitleManual, seniorityYears]);
+  }, [ccnlCode, location, orgRoleId, recruitPositionId, roleSource, roleTitleManual, seniorityYears]);
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
       <p className="max-w-3xl text-sm text-[var(--prom-muted)]">
-        Stima RAL annua lorda di mercato (Italia) in base a ruolo, località e anzianità. Output strutturato con LLM se
-        abilitato; altrimenti fascia euristica. Non sostituisce consulenza retributiva né policy interne.
+        Stima RAL annua lorda di mercato (Italia) in base a ruolo, CCNL (opz.), località e anzianità. Output strutturato
+        con LLM se abilitato; altrimenti fascia euristica. Non sostituisce consulenza retributiva né policy interne.
       </p>
 
       <GlassCard title="Parametri" description="Scegli l’origine del titolo di ruolo e compila i campi.">
@@ -79,9 +88,30 @@ export default function CompensationBenchPage(): JSX.Element {
             >
               <option value="manual">Titolo inserito manualmente</option>
               <option value="org">Ruolo organizzativo del mio profilo</option>
+              <option value="org_select">Ruolo da organico (scegli da elenco)</option>
               <option value="recruit">Posizione aperta (recruiting)</option>
             </select>
           </label>
+          {roleSource === "org_select" ? (
+            <label className="block text-xs text-[var(--prom-muted)]">
+              Ruolo organico aziendale
+              <select
+                className="mt-1 w-full max-w-md rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
+                value={orgRoleId}
+                onChange={(e) => setOrgRoleId(e.target.value)}
+              >
+                <option value="">Seleziona…</option>
+                {orgRoles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              {orgRoles.length === 0 ? (
+                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-200/90">Elenco ruoli non disponibile (verifica permessi).</p>
+              ) : null}
+            </label>
+          ) : null}
           {roleSource === "recruit" ? (
             <label className="block text-xs text-[var(--prom-muted)]">
               Posizione aperta
@@ -124,6 +154,15 @@ export default function CompensationBenchPage(): JSX.Element {
           <label className="block text-xs text-[var(--prom-muted)]">
             Località (comune, provincia o area)
             <Input className="mt-1 max-w-md" value={location} onChange={(e) => setLocation(e.target.value)} />
+          </label>
+          <label className="block text-xs text-[var(--prom-muted)]">
+            Riferimento CCNL (opz., es. Commercio, Metalmeccanico — allinea il language model al contesto)
+            <Input
+              className="mt-1 max-w-md"
+              value={ccnlCode}
+              onChange={(e) => setCcnlCode(e.target.value)}
+              placeholder="es. Commercio · Confcommercio"
+            />
           </label>
           <label className="block text-xs text-[var(--prom-muted)]">
             Anzianità (anni)

@@ -27,6 +27,7 @@ import { CurrentAuth, type AuthRole } from "../platform/auth";
 import { type CompanySettingsDto, HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
+import { PayslipExplainService } from "./payslip-explain.service";
 
 class SimulateHireDto {
   @IsNumber()
@@ -90,12 +91,18 @@ class PayslipImportCommitDto {
 
 const PAYSLIP_IMPORT_MAX_BYTES = 6_000_000;
 
+class PayslipExplainRequestDto {
+  @IsString()
+  payslipId!: string;
+}
+
 @Controller("payroll")
 @UseGuards(NexaPermissionGuard)
 export class PayrollController {
   constructor(
     private readonly store: HrDataStore,
-    private readonly permissions: PermissionsService
+    private readonly permissions: PermissionsService,
+    private readonly payslipExplain: PayslipExplainService
   ) {}
 
   /** Calcolo/simulazione cedolino: solo superuser o console admin (allineato a `canAccessPayrollArea` su `/users/me`). */
@@ -144,6 +151,37 @@ export class PayrollController {
     }
     const me = await this.store.getUser(auth.userId);
     return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+  }
+
+  /** Stessa logica di `GET /payroll/payslips?userId=` per il titolare del cedolino. */
+  private async assertPayslipTargetReadable(
+    auth: { userId: string; role: AuthRole },
+    payslipUserId: string
+  ): Promise<void> {
+    if (payslipUserId === auth.userId) {
+      return;
+    }
+    if (auth.role === "superuser") {
+      return;
+    }
+    const me = await this.store.getUser(auth.userId);
+    const hr = await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+    if (hr) {
+      await this.assertSameCompanyUnlessSuperuser(auth, payslipUserId);
+      return;
+    }
+    const canReadOthers = await this.hasPayrollManagerialAccess(auth.userId, auth.role);
+    if (payslipUserId && !canReadOthers && payslipUserId !== auth.userId) {
+      throw new ForbiddenException("Accesso non autorizzato al cedolino");
+    }
+    if (payslipUserId && payslipUserId !== auth.userId) {
+      const ok =
+        (await this.store.isManagerOf(auth.userId, payslipUserId)) ||
+        (await this.store.isUserLeadOfTeamContaining(auth.userId, payslipUserId));
+      if (!ok) {
+        throw new ForbiddenException("Manager può leggere solo cedolini dei sottoposti");
+      }
+    }
   }
 
   @Get("competence-unlock")
@@ -273,6 +311,28 @@ export class PayrollController {
     const min = cutoff.toISOString().slice(0, 7);
     items = items.filter((p) => p.period >= min).sort((a, b) => b.period.localeCompare(a.period));
     return { items };
+  }
+
+  @Post("payslips/explain")
+  @RequireNexaPermissions("nexa.payslips:read")
+  async explainPayslip(
+    @CurrentAuth() auth: { userId: string; role: AuthRole },
+    @Body() dto: PayslipExplainRequestDto
+  ): Promise<unknown> {
+    const p = await this.store.getPayslipById(dto.payslipId.trim());
+    if (!p) {
+      throw new NotFoundException("Cedolino non trovato");
+    }
+    await this.assertPayslipTargetReadable(auth, p.userId);
+    const payrollOp = await this.isPayrollCalcOperator({ userId: auth.userId, role: auth.role });
+    if ((p.status ?? "published") !== "published" && !payrollOp) {
+      throw new BadRequestException("Spiegazione disponibile su cedolini già pubblicati (in bozza solo per operatori HR).");
+    }
+    const employee = await this.store.getUser(p.userId);
+    if (!employee) {
+      throw new NotFoundException("Dipendente non trovato");
+    }
+    return this.payslipExplain.explainForPayslip(auth, p, employee);
   }
 
   @Post("payslips/import/pdf-preview")

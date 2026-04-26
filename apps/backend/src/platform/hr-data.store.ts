@@ -3764,6 +3764,20 @@ export class HrDataStore {
     return all.find((item) => item.period === period);
   }
 
+  async getPayslipById(payslipId: string): Promise<Payslip | undefined> {
+    if (this.useDb) {
+      const { data, error } = await this.supabase!.from("payslips").select("*").eq("id", payslipId).maybeSingle();
+      if (error) {
+        throw new InternalServerErrorException(`Lettura cedolino: ${error.message}`);
+      }
+      if (!data) {
+        return undefined;
+      }
+      return this.mapPayslipRow(data as Record<string, unknown>);
+    }
+    return this.payslips.find((p) => p.id === payslipId);
+  }
+
   /** Lettura cedolino lato service (es. budget HR) senza vincolo requester. */
   private async getPayslipForUserPeriodInternal(
     userId: string,

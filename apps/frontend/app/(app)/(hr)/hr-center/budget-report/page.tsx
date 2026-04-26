@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
+import { AiNarrativeDisplay } from "@/components/ai-narrative-display";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
@@ -10,30 +11,6 @@ import { GlassCard } from "@/components/glass-card";
 import { postHrCenterPersonnelBudgetReport, type HrCenterPersonnelBudgetAiBody } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
-function renderNarrative(n: unknown): React.JSX.Element {
-  const o = n as { envelope?: { title?: string; bullets?: string[]; summary?: string } };
-  const e = o?.envelope;
-  if (!e) {
-    return (
-      <pre className="max-h-96 overflow-auto rounded-lg bg-slate-950/80 p-3 text-[11px] text-slate-100">
-        {JSON.stringify(n, null, 2)}
-      </pre>
-    );
-  }
-  return (
-    <div className="space-y-3 text-sm">
-      {e.title ? <h3 className="font-semibold text-[var(--prom-text)]">{e.title}</h3> : null}
-      {e.bullets?.length ? (
-        <ul className="list-inside list-disc space-y-1 text-[var(--prom-muted)]">
-          {e.bullets.map((b, i) => (
-            <li key={i}>{b}</li>
-          ))}
-        </ul>
-      ) : null}
-      {e.summary ? <p className="leading-relaxed text-[var(--prom-muted)]">{e.summary}</p> : null}
-    </div>
-  );
-}
 
 function plainTextFromNarrative(n: unknown): string {
   const o = n as { envelope?: { title?: string; bullets?: string[]; summary?: string } };
@@ -48,6 +25,7 @@ function plainTextFromNarrative(n: unknown): string {
 export default function HrCenterBudgetReportPage(): React.JSX.Element {
   const now = useMemo(() => new Date(), []);
   const [mode, setMode] = useState<"abc" | "two_periods">("abc");
+  const [abcScope, setAbcScope] = useState<"month" | "ytd">("month");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [yearA, setYearA] = useState(now.getFullYear());
@@ -71,7 +49,7 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
     try {
       const body: HrCenterPersonnelBudgetAiBody =
         mode === "abc"
-          ? { mode: "abc", year, month }
+          ? { mode: "abc", year, month, abcScope }
           : { mode: "two_periods", yearA, monthA, yearB, monthB };
       const r = await postHrCenterPersonnelBudgetReport(token, body);
       setNarrative(r.narrative);
@@ -83,7 +61,7 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [mode, month, monthA, monthB, year, yearA, yearB]);
+  }, [abcScope, mode, month, monthA, monthB, year, yearA, yearB]);
 
   const downloadExcel = async (): Promise<void> => {
     if (!exportPayload) return;
@@ -185,7 +163,18 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
           </label>
         </div>
         {mode === "abc" ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs text-[var(--prom-muted)] sm:col-span-2">
+              Ambito analisi
+              <select
+                className="mt-1 w-full max-w-md rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
+                value={abcScope}
+                onChange={(e) => setAbcScope(e.target.value as "month" | "ytd")}
+              >
+                <option value="month">Solo il mese selezionato (mensile)</option>
+                <option value="ytd">YTD: da gennaio al mese selezionato (progressivo)</option>
+              </select>
+            </label>
             <label className="block text-xs text-[var(--prom-muted)]">
               Anno
               <input
@@ -279,7 +268,9 @@ export default function HrCenterBudgetReportPage(): React.JSX.Element {
         {narrative ? (
           <div className="mt-4 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] p-4">
             <h4 className="text-xs font-semibold uppercase text-[var(--prom-muted)]">Output</h4>
-            <div className="mt-2">{renderNarrative(narrative)}</div>
+            <div className="mt-2">
+              <AiNarrativeDisplay narrative={narrative} />
+            </div>
           </div>
         ) : (
           <p className="mt-3 text-xs text-[var(--prom-muted)]">

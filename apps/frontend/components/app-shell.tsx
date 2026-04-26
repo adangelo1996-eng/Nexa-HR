@@ -61,11 +61,6 @@ type NavItem = SixCatNavItem;
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
 const NAV_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
-const NAV_DASHBOARD_OPERATIVE: NavItem = {
-  href: "/",
-  label: "Dashboard operativa",
-  icon: Home
-};
 const NAV_HR_RECAP: NavItem = { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
 
@@ -492,12 +487,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       </Link>
       <SidebarNavLink
         item={NAV_DASHBOARD}
-        pathname={pathname}
-        onNavigate={closeMobile}
-        beforeNavigate={persistSidebarScrollPositions}
-      />
-      <SidebarNavLink
-        item={NAV_DASHBOARD_OPERATIVE}
         pathname={pathname}
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}

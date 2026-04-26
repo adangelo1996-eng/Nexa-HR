@@ -19,6 +19,13 @@ export class CompensationBenchService {
     private readonly recruiting: RecruitingService
   ) {}
 
+  async listOrgRolesForBenchmark(): Promise<Array<{ id: string; name: string }>> {
+    const rows = await this.store.listRoles();
+    return rows
+      .map((r) => ({ id: r.id, name: r.name?.trim() || r.id }))
+      .sort((a, b) => a.name.localeCompare(b.name, "it"));
+  }
+
   private heuristicRalAnnual(dto: CompensationBenchEstimateDto): { low: number; med: number; high: number; notes: string } {
     let med = 38_000 + Math.min(dto.seniorityYears, 20) * 1_800;
     const loc = dto.location.toLowerCase();
@@ -69,20 +76,35 @@ export class CompensationBenchService {
       const roles = await this.store.listRoles();
       const r = roles.find((x) => x.id === me.roleId);
       roleTitle = r?.name?.trim() || "Ruolo organizzativo";
+    } else if (dto.roleSource === "org_select") {
+      const rid = dto.orgRoleId?.trim();
+      if (!rid) {
+        throw new BadRequestException("Selezionare un ruolo dall’elenco organico.");
+      }
+      const roles = await this.store.listRoles();
+      const r = roles.find((x) => x.id === rid);
+      if (!r) {
+        throw new BadRequestException("Ruolo organico non trovato.");
+      }
+      roleTitle = r.name?.trim() || "Ruolo organico";
     }
     if (!roleTitle) {
       throw new BadRequestException("Indicare il ruolo (manuale, da selezione o da organigramma).");
     }
 
+    const ccnl = dto.ccnlCode?.trim() || null;
     const facts = {
       roleTitle,
       location: dto.location.trim(),
       seniorityYears: dto.seniorityYears,
       roleSource: dto.roleSource,
+      ccnlCode: ccnl,
       disclaimer:
         "Benchmark orientativo: non è consulenza retributiva né offerta vincolante. Confrontare con policy interne e contrattualistica."
     };
-    const seed = `RAL annua di mercato stimata in Italia per ${roleTitle}, area ${dto.location}, anzianità professionale indicativa ${dto.seniorityYears} anni. Fornire fascia bassa/mediana/alta in EUR interi e una breve nota metodologica.`;
+    const seed = `RAL annua di mercato stimata in Italia per ${roleTitle}, area ${dto.location}, anzianità professionale indicativa ${
+      dto.seniorityYears
+    } anni${ccnl ? `. Contesto contrattuale (CCNL / riferimento collettivo indicato): ${ccnl}.` : "."} Fornire fascia bassa/mediana/alta in EUR interi e una breve nota metodologica.`;
 
     const sessionId = (await this.gateway.beginSession(companyId, auth.userId)).sessionId;
     let refineApplied = false;
@@ -115,7 +137,12 @@ export class CompensationBenchService {
         feature: "compensation_benchmark",
         schemaVersion: SCHEMA,
         sessionId,
-        inputForFingerprint: { roleSource: dto.roleSource, location: dto.location, seniorityYears: dto.seniorityYears },
+        inputForFingerprint: {
+          roleSource: dto.roleSource,
+          location: dto.location,
+          seniorityYears: dto.seniorityYears,
+          ccnlCode: dto.ccnlCode ?? null
+        },
         dataSources: ["compensation_bench"],
         responseSizeBytes: Buffer.byteLength(JSON.stringify(cleared), "utf8"),
         outcome: "ok"

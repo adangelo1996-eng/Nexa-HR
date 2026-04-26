@@ -54,6 +54,9 @@ export interface HrContractDoc {
   party: ContractPartyInfo;
   blocks: ContractBlock[];
   lastExportedDocumentId?: string;
+  signedScanDocumentId?: string;
+  /** Data/ora firma lato sistema (dopo «Firma» con nominativi). */
+  signedAt?: string;
   recruitCandidateId?: string;
   recruitPositionId?: string;
 }
@@ -68,6 +71,8 @@ export function hrContractFromApi(d: {
   party: Record<string, unknown>;
   blocks: unknown[];
   lastExportedDocumentId?: string;
+  signedScanDocumentId?: string;
+  signedAt?: string;
   recruitCandidateId?: string;
   recruitPositionId?: string;
 }): HrContractDoc {
@@ -80,6 +85,8 @@ export function hrContractFromApi(d: {
     party: d.party as unknown as ContractPartyInfo,
     blocks: d.blocks as unknown as ContractBlock[],
     lastExportedDocumentId: d.lastExportedDocumentId,
+    signedScanDocumentId: d.signedScanDocumentId,
+    signedAt: d.signedAt,
     recruitCandidateId: d.recruitCandidateId,
     recruitPositionId: d.recruitPositionId
   };

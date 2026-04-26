@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, StreamableFile, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
 import { IsArray, IsIn, IsNumber, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { HrContractsService, type HrStandardContractStatus } from "./hr-contracts.service";
+
+const MAX_SIGNED_SCAN_B64 = 1_800_000;
 
 class ContractPartyDto {
   @IsString()
@@ -146,6 +148,21 @@ class SignContractDto {
   employeeSignerName!: string;
 }
 
+class UploadSignedScanDto {
+  @IsString()
+  bodyBase64!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  mimeType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  title?: string;
+}
+
 @Controller("hr-contracts")
 @UseGuards(NexaPermissionGuard)
 export class HrContractsController {
@@ -156,6 +173,26 @@ export class HrContractsController {
   async list(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {
     const items = await this.svc.listForCompany(auth.tenantId ?? "comp-1");
     return { items };
+  }
+
+  @Get(":id/linked-file/:documentId")
+  @RequireNexaPermissions("nexa.standard_contracts:read")
+  async downloadLinkedFile(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Param("documentId") documentId: string
+  ): Promise<StreamableFile> {
+    const f = await this.svc.getContractLinkedFile(auth.tenantId ?? "comp-1", id, documentId);
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(f.base64, "base64");
+    } catch {
+      throw new BadRequestException("Contenuto file non valido");
+    }
+    return new StreamableFile(buf, {
+      type: f.mimeType || "application/pdf",
+      disposition: `inline; filename="${f.filename}"`
+    });
   }
 
   @Get(":id")
@@ -231,5 +268,22 @@ export class HrContractsController {
   @RequireNexaPermissions("nexa.standard_contracts:write")
   async exportPdf(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<unknown> {
     return this.svc.exportPdf(auth.tenantId ?? "comp-1", id, auth.userId);
+  }
+
+  @Post(":id/signed-scan")
+  @RequireNexaPermissions("nexa.standard_contracts:write")
+  async uploadSignedScan(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Body() dto: UploadSignedScanDto
+  ): Promise<unknown> {
+    if (dto.bodyBase64 && dto.bodyBase64.length > MAX_SIGNED_SCAN_B64) {
+      throw new BadRequestException("File troppo grande per upload inline");
+    }
+    return this.svc.uploadSignedScan(auth.tenantId ?? "comp-1", id, auth.userId, {
+      bodyBase64: dto.bodyBase64,
+      mimeType: dto.mimeType,
+      title: dto.title
+    });
   }
 }

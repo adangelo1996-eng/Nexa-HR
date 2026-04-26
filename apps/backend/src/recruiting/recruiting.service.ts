@@ -838,6 +838,14 @@ export class RecruitingService {
   async deleteCandidate(companyId: string, candidateId: string): Promise<void> {
     await this.assertCandidateInCompany(candidateId, companyId);
     const sb = this.sb();
+    const { error: delContracts } = await sb
+      .from("hr_standard_contracts")
+      .delete()
+      .eq("recruit_candidate_id", candidateId)
+      .eq("company_id", companyId);
+    if (delContracts) {
+      throw new InternalServerErrorException(`Eliminazione contratti collegati: ${delContracts.message}`);
+    }
     const { error } = await sb.from("recruit_candidates").delete().eq("id", candidateId).eq("company_id", companyId);
     if (error) {
       throw new InternalServerErrorException(`Eliminazione candidato: ${error.message}`);
