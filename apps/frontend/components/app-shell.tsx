@@ -60,7 +60,7 @@ type NavItem = SixCatNavItem;
 
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
-const NAV_DASHBOARD: NavItem = { href: "/mappa-portale" as Route, label: "Dashboard", icon: LayoutDashboard };
+const NAV_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
 const NAV_DASHBOARD_OPERATIVE: NavItem = {
   href: "/",
   label: "Dashboard operativa",
