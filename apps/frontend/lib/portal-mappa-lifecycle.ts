@@ -38,7 +38,7 @@ const LIFECYCLE_HREFS: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], R
 /** Tile Analytics (riga dedicata sotto le colonne lifecycle). */
 export const PORTAL_ANALYTICS_ROW_HREFS: Route[] = [
   "/personnel-budget" as Route,
-  "/insights",
+  "/analytics/retention" as Route,
   "/analytics/competenze" as Route,
   "/hr-center/recap" as Route
 ];

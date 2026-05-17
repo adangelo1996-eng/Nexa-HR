@@ -59,8 +59,8 @@ export default function ManagerCopilotPage(): React.JSX.Element {
         <>
           Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, remote working del team. Il punteggio
           turnover medio richiede permesso report HR e snapshot in{" "}
-          <Link href="/insights" scroll={false} className={linkCn}>
-            Turnover e retention
+          <Link href="/analytics/retention" scroll={false} className={linkCn}>
+            Retention e flight risk
           </Link>
           .
         </>

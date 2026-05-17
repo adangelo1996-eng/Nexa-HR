@@ -77,7 +77,8 @@ export function canAccessNexaPortalRoute(
     { prefix: "/hr-center/", base: "/hr-center" },
     { prefix: "/employee/", base: "/employee" },
     { prefix: "/lifecycle/", base: "/lifecycle" },
-    { prefix: "/analytics/", base: "/analytics" }
+    { prefix: "/analytics/", base: "/analytics" },
+    { prefix: "/hr/", base: "/hr-recap" }
   ];
 
   for (const { prefix, base } of prefixToBase) {
@@ -121,7 +122,6 @@ export function canAccessNexaPortalRoute(
           sessionCanAccessHrRecapDashboard(user) ||
           sessionCanAccessPersonnelBudgetArea(user) === true)
       );
-    case "/insights":
     case "/recruiting":
     case "/contracts":
     case "/tools/third-party-licenses":
@@ -141,6 +141,7 @@ export function canAccessNexaPortalRoute(
           sessionCanAccessPersonnelBudgetArea(user) === true)
       );
     case "/hr-recap":
+    case "/hr/dashboard":
       return !hide && sessionCanAccessHrRecapDashboard(user);
     case "/payroll-hebb":
       return !hide && sessionCanAccessPayrollArea(user);

@@ -4,6 +4,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from
 import { CurrentAuth, type AuthContext, type AuthRole } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AiHrService } from "./ai-hr.service";
+import { NexaPlatformAgentService, type PlatformAgentTurn } from "./nexa-platform-agent.service";
 
 class AssistantScopeBodyDto {
   @IsIn(["self", "user", "team", "cost_center"])
@@ -62,10 +63,32 @@ class TriageDto {
   text!: string;
 }
 
+class PlatformAgentChatDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(8000)
+  message!: string;
+
+  @IsString()
+  @MaxLength(256)
+  page?: string;
+
+  @IsOptional()
+  history?: PlatformAgentTurn[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AssistantScopeBodyDto)
+  scope?: AssistantScopeBodyDto;
+}
+
 @Controller("ai/hr")
 @UseGuards(NexaPermissionGuard)
 export class AiHrController {
-  constructor(private readonly aiHr: AiHrService) {}
+  constructor(
+    private readonly aiHr: AiHrService,
+    private readonly platformAgent: NexaPlatformAgentService
+  ) {}
 
   @Post("assistant")
   @RequireNexaPermissions("nexa.ai_assistant:read")
@@ -135,5 +158,22 @@ export class AiHrController {
     @Body() body: TriageDto
   ): ReturnType<AiHrService["triage"]> {
     return this.aiHr.triage({ userId: auth.userId, role: auth.role as AuthRole }, body);
+  }
+
+  @Post("platform-agent/chat")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  postPlatformAgentChat(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: PlatformAgentChatDto
+  ): ReturnType<NexaPlatformAgentService["chat"]> {
+    return this.platformAgent.chat(
+      { userId: auth.userId, role: auth.role as AuthRole },
+      {
+        message: body.message,
+        page: body.page,
+        history: body.history,
+        scope: body.scope
+      }
+    );
   }
 }

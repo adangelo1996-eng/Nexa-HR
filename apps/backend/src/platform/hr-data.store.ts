@@ -7900,7 +7900,7 @@ export class HrDataStore {
       routes: {
         approvals: "/workflow/approvals",
         smartworking: "/smartworking",
-        insights: "/insights",
+        insights: "/analytics/retention",
         workforcePlanning: "/workforce-planning"
       }
     };
@@ -8176,7 +8176,7 @@ export class HrDataStore {
             read: false,
             createdAt: createdAt,
             kind: "hr_alert",
-            actionPath: "/insights"
+            actionPath: "/analytics/retention"
           });
           notified += 1;
         }
@@ -8223,7 +8223,7 @@ export class HrDataStore {
           read: false,
           createdAt: at,
           kind: "hr_alert",
-          actionPath: "/insights"
+          actionPath: "/analytics/retention"
         });
         notified += 1;
       }

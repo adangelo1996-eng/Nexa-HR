@@ -41,13 +41,13 @@ import {
 import { AppMainContentFrame } from "@/components/app-experience-frame";
 import { SessionIdleGuard } from "@/components/session-idle-guard";
 import { HeaderNotifications } from "@/components/header-notifications";
-import { SelfServiceChat } from "@/components/self-service-chat";
+import { NexaGuidePanel } from "@/components/nexa-guide-panel";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
+import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
-import { buildHrNavPillars, type HrNavItem } from "@/lib/nexa-hr-nav";
-import { buildSixCatNavSections } from "@/lib/nexa-six-category-nav";
+import { buildHrNavPillars } from "@/lib/nexa-hr-nav";
 import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
@@ -60,7 +60,7 @@ const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 const SIDEBAR_SCROLL_DESKTOP_KEY = "nexa_hr_sidebar_scroll_desktop_v1";
 const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
-type NavItem = HrNavItem;
+type NavItem = SixCatNavItem;
 
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
@@ -197,15 +197,13 @@ function SidebarCollapsibleSection(props: {
           <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
             {section.subgroups.map((sg) => (
               <div key={`${section.id}-${sg.id}`}>
-                {sg.title.trim() ? (
-                  pc ? (
-                    <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
-                  ) : (
-                    <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                      {sg.title}
-                    </div>
-                  )
-                ) : null}
+                {pc ? (
+                  <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
+                ) : (
+                  <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                    {sg.title}
+                  </div>
+                )}
                 <div className="mt-0.5 space-y-0.5">
                   {sg.items.map((item) => (
                     <SidebarNavLink
@@ -418,7 +416,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const usesEmployeeNav =
     hideSensitiveHrBecausePreview || sessionIsPlainEmployee(user ?? undefined);
 
-  const navSections = useMemo(() => {
+  const sixNavSections = useMemo(() => {
     if (usesHrNav) {
       return buildHrNavPillars(user, hideSensitiveHrBecausePreview).map((p) => ({
         id: p.id,
@@ -538,8 +536,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
-      {navSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
-      {navSections.map((section) => (
+      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
+      {sixNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}
           section={{
@@ -555,7 +553,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
-      {navSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
+      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink
           key={`settings-${item.href}`}
@@ -802,7 +800,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           )}
         </AppMainContentFrame>
       </div>
-      <SelfServiceChat />
+      <NexaGuidePanel />
     </div>
   );
 }

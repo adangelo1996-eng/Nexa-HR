@@ -5,11 +5,12 @@ import { AiAuditService } from "./ai-audit.service";
 import { AiHrController } from "./ai-hr.controller";
 import { AiHrService } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
+import { NexaPlatformAgentService } from "./nexa-platform-agent.service";
 
 @Module({
   imports: [AiPrivacyModule, CorporatePoliciesModule],
   controllers: [AiHrController],
-  providers: [AiHrService, AiAuditService, AiOpenAiRefinementService],
-  exports: [AiAuditService, AiOpenAiRefinementService]
+  providers: [AiHrService, AiAuditService, AiOpenAiRefinementService, NexaPlatformAgentService],
+  exports: [AiAuditService, AiOpenAiRefinementService, NexaPlatformAgentService]
 })
 export class AiHrModule {}

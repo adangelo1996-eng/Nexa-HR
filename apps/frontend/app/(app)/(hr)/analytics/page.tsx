@@ -9,41 +9,35 @@ import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import {
   fetchAnalyticsHubCatalog,
-  postAnalyticsHubRun,
+  postAdvancedAnalysisInsight,
   type AnalyticsHubCardDto,
-  type AnalyticsHubRunResult
+  type StructuredAnalyticsInsightDto
 } from "@/lib/api";
 import { getToken, sessionCanUseNexaAiOpenAiLlm, getSessionUser } from "@/lib/auth-session";
 
-function NarrativeBlock(props: { narrative: AnalyticsHubRunResult["narrative"] }): React.JSX.Element {
-  const { narrative } = props;
+function InsightPreviewBlock(props: { insight: StructuredAnalyticsInsightDto }): React.JSX.Element {
+  const { insight } = props;
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] p-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-base font-semibold text-[var(--prom-text)]">{narrative.title}</h3>
+        <h3 className="text-base font-semibold text-[var(--prom-text)]">{insight.title}</h3>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-            narrative.llmApplied
+            insight.llmApplied
               ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
               : "bg-[var(--prom-line)] text-[var(--prom-muted)]"
           }`}
         >
-          {narrative.llmApplied ? "Sintesi AI" : "Template locale"}
+          {insight.llmApplied ? "Insight AI" : "Template locale"}
         </span>
       </div>
-      {narrative.bullets.length > 0 ? (
-        <ul className="list-inside list-disc space-y-1.5 text-[var(--prom-text)]">
-          {narrative.bullets.map((b, i) => (
-            <li key={i} className="leading-relaxed">
-              {b}
-            </li>
+      <p className="leading-relaxed text-[var(--prom-text)]">{insight.situazione}</p>
+      {insight.azioni7giorni.length > 0 ? (
+        <ul className="list-inside list-disc space-y-1 text-[var(--prom-muted)]">
+          {insight.azioni7giorni.slice(0, 3).map((b, i) => (
+            <li key={i}>{b}</li>
           ))}
         </ul>
-      ) : null}
-      {narrative.summary ? (
-        <p className="border-t border-[var(--prom-line)] pt-3 leading-relaxed text-[var(--prom-muted)]">
-          {narrative.summary}
-        </p>
       ) : null}
     </div>
   );
@@ -55,12 +49,12 @@ export default function AnalyticsHubPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [useLlm, setUseLlm] = useState(true);
-  const [results, setResults] = useState<Record<string, AnalyticsHubRunResult>>({});
+  const [results, setResults] = useState<Record<string, StructuredAnalyticsInsightDto>>({});
   const sessionUser = getSessionUser();
   const llmAllowed = sessionCanUseNexaAiOpenAiLlm(sessionUser ?? undefined);
   const llmBanner = {
     active: sessionUser?.nexaAiOpenAiEnabled === true,
-    refineApplied: Object.values(results).some((r) => r.narrative.llmApplied)
+    refineApplied: Object.values(results).some((r) => r.llmApplied)
   };
 
   const load = useCallback(async (): Promise<void> => {
@@ -93,7 +87,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
       setBusyId(card.id);
       setError(null);
       try {
-        const out = await postAnalyticsHubRun(token, card.id, {
+        const out = await postAdvancedAnalysisInsight(token, card.id, {
           useLlm: useLlm && card.llmCapable && llmAllowed
         });
         setResults((prev) => ({ ...prev, [card.id]: out }));
@@ -165,18 +159,18 @@ export default function AnalyticsHubPage(): React.JSX.Element {
                     disabled={busy}
                     onClick={() => void runAnalysis(card)}
                   >
-                    {busy ? "Analisi in corso…" : "Esegui analisi AI"}
+                    {busy ? "Analisi in corso…" : "Anteprima insight AI"}
                   </Button>
                   <Link
                     href={card.href as Route}
                     scroll={false}
                     className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--prom-text)] transition-colors hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]"
                   >
-                    Apri sezione
+                    Apri analisi completa
                     <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
                   </Link>
                 </div>
-                {result ? <NarrativeBlock narrative={result.narrative} /> : null}
+                {result ? <InsightPreviewBlock insight={result} /> : null}
               </article>
             );
           })}

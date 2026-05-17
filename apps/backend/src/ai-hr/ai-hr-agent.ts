@@ -29,7 +29,29 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/organigramma", labelIt: "Organigramma strutturale", topicsIt: "struttura, reparti, gerarchia" },
   { path: "/corporate-policies", labelIt: "Corporate Policies", topicsIt: "regolamento, policy, documenti, linee guida" },
   { path: "/reports", labelIt: "Report presenze", topicsIt: "report presenze, timbrature, export" },
-  { path: "/insights", labelIt: "Turnover e retention", topicsIt: "turnover, retention, score, trend, rischi" },
+  { path: "/analytics", labelIt: "Hub Analytics HR", topicsIt: "analisi, analytics, intelligence, report hr" },
+  {
+    path: "/analytics/economico",
+    labelIt: "Analisi — controllo economico workforce",
+    topicsIt: "budget, actual, forecast, varianza, centro di costo, controller"
+  },
+  {
+    path: "/analytics/retention",
+    labelIt: "Analisi — retention e flight risk",
+    topicsIt: "turnover score, retention, flight risk, assenze, tenure"
+  },
+  {
+    path: "/analytics/competenze",
+    labelIt: "Analisi — gap competenze",
+    topicsIt: "competenze, skills, gap, ruoli, hiring, formazione"
+  },
+  {
+    path: "/analytics/operativo",
+    labelIt: "Analisi — sintesi operativa HR",
+    topicsIt: "approvazioni, onboarding, offboarding, briefing hr, attività"
+  },
+  { path: "/hr/dashboard", labelIt: "Dashboard HR", topicsIt: "dashboard hr, approvazioni, alert, analisi" },
+  { path: "/hr-recap", labelIt: "Attività HR", topicsIt: "recap, task hr, solleciti, organico" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },
   { path: "/hr-center/analisi", labelIt: "Analisi costi HR", topicsIt: "cdc, costi personale, aggregati, forecast" },

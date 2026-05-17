@@ -110,9 +110,33 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "HEBB AI for HR"
   },
   {
+    href: "/hr/dashboard" as Route,
+    title: "Dashboard HR",
+    blurb: "Organico, task prioritari e accesso alle quattro analisi strategiche.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/economico" as Route,
+    title: "Controllo economico workforce",
+    blurb: "Budget vs actual vs forecast per centro di costo con insight AI.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/retention" as Route,
+    title: "Retention e flight risk",
+    blurb: "Turnover e tenure su aggregati per fascia e centro di costo.",
+    category: "HEBB AI for HR"
+  },
+  {
     href: "/analytics/competenze" as Route,
-    title: "Gap competenze",
-    blurb: "Confronto fabbisogno competenze vs livelli mappati per ruolo.",
+    title: "Competenze e copertura ruoli",
+    blurb: "Gap competenze vs fabbisogno con matrice hiring vs formazione.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/operativo" as Route,
+    title: "Sintesi operativa HR",
+    blurb: "Briefing giornaliero: approvazioni, lifecycle e backlog.",
     category: "HEBB AI for HR"
   },
   {
@@ -149,12 +173,6 @@ export const PORTAL_TILES: PortalTile[] = [
     href: "/ai-hub" as Route,
     title: "Assistente personale",
     blurb: "Conversazione con modello linguistico su policy, ferie e dati consentiti dal tuo ruolo.",
-    category: "HEBB AI for HR"
-  },
-  {
-    href: "/insights",
-    title: "Turnover e retention",
-    blurb: "Dinamiche di ingresso e uscita con lettura qualitativa.",
     category: "HEBB AI for HR"
   },
   {

@@ -12,7 +12,12 @@ function routeDefinesOwnShell(pathname: string): boolean {
   }
   const own = new Set([
     "/ai-hub",
-    "/insights",
+    "/analytics",
+    "/analytics/economico",
+    "/analytics/retention",
+    "/analytics/competenze",
+    "/analytics/operativo",
+    "/hr/dashboard",
     "/workforce-planning",
     "/manager-copilot",
     "/payroll-hebb",

@@ -94,6 +94,16 @@ class HubRunDto {
   useLlm?: boolean;
 }
 
+class AnalysisChatDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  message!: string;
+
+  @IsOptional()
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
 @Controller("analytics")
 @UseGuards(NexaPermissionGuard)
 export class AnalyticsController {
@@ -118,6 +128,38 @@ export class AnalyticsController {
     @Body() body: HubRunDto
   ): ReturnType<AnalyticsOrchestratorService["runHubAnalysis"]> {
     return this.orchestrator.runHubAnalysis(auth, analysisId, { useLlm: body.useLlm });
+  }
+
+  @Get("advanced/:analysisId/kpis")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  getAdvancedKpis(
+    @CurrentAuth() auth: AuthContext,
+    @Param("analysisId") analysisId: string
+  ): ReturnType<AnalyticsOrchestratorService["getAnalysisKpis"]> {
+    return this.orchestrator.getAnalysisKpis(auth, analysisId);
+  }
+
+  @Post("advanced/:analysisId/insight")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  postAdvancedInsight(
+    @CurrentAuth() auth: AuthContext,
+    @Param("analysisId") analysisId: string,
+    @Body() body: HubRunDto
+  ): ReturnType<AnalyticsOrchestratorService["generateStructuredInsight"]> {
+    return this.orchestrator.generateStructuredInsight(auth, analysisId, { useLlm: body.useLlm });
+  }
+
+  @Post("advanced/:analysisId/chat")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  postAdvancedChat(
+    @CurrentAuth() auth: AuthContext,
+    @Param("analysisId") analysisId: string,
+    @Body() body: AnalysisChatDto
+  ): ReturnType<AnalyticsOrchestratorService["chatWithAnalyst"]> {
+    return this.orchestrator.chatWithAnalyst(auth, analysisId, {
+      message: body.message,
+      history: body.history
+    });
   }
 
   @Post("payroll-what-if")

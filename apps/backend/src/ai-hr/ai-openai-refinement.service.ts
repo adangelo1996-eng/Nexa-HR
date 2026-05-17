@@ -148,6 +148,35 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Produci analisi in italiano: title accattivante, bullets (max 6) con priorità e rischi operativi, summary con azioni consigliate; " +
         "non aggiungere nomi di persone né ID; non affermare cause legali/mediche."
       );
+    case "ai_advanced_analytics_v1":
+      return (
+        base +
+        " Ruolo: consulente HR / HR controller senior (Italia). " +
+        " Schema: {\"envelope\":{\"title\":\"stringa\",\"situazione\":\"stringa (4-6 frasi)\",\"correlazioni\":[\"stringa\"],\"rischi\":[\"stringa\"],\"azioni7giorni\":[\"stringa\"]}}. " +
+        " L'ingresso ha envelope.analysisId, envelope.topic, envelope.facts (solo aggregati) e envelope.insightSeed (bozza). " +
+        " Migliora in italiano professionale: situazione con numeri da facts; correlazioni max 5 (legami tra budget, turnover, gap, operatività); " +
+        " rischi max 5 (operativi, non legali vincolanti); azioni7giorni esattamente 5 passi concreti per HR/controller. " +
+        " Non inventare cifre assenti da facts; nessun nominativo."
+      );
+    case "ai_advanced_analytics_chat_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"reply\":\"stringa\"}}. " +
+        " Sei l'analista AI scoped a una singola analisi Nexa HR (envelope.analysisId, envelope.topic). " +
+        " Rispondi in italiano alla envelope.message usando SOLO envelope.facts e envelope.history; " +
+        " se i dati non bastano, dillo e indica cosa verificare in app. Max 12 righe. Nessun nominativo. " +
+        " Migliora envelope.replySeed mantenendo coerenza con i fatti."
+      );
+    case "ai_platform_agent_v1":
+      return (
+        getNexaHrConversationalAgentSystemPrompt() +
+          "\n\n" +
+          base +
+          " Schema: {\"envelope\":{\"reply\":\"stringa\"}}. " +
+          " Conversazione multi-turno: envelope.history (ultimi messaggi), envelope.message (domanda corrente), envelope.replySeed (bozza). " +
+          " Usa envelope.knowledgeExcerpt, platformCapabilities, routeHints e permissionsSummary; " +
+          " rispondi in italiano con link Markdown [testo](/path) solo per path reali; non inventare permessi assenti da permissionsSummary."
+      );
     case "ai_hr_center_analytics_v1":
       return (
         base +

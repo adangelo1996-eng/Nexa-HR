@@ -102,7 +102,12 @@ const PILLAR_DEFS: Array<{
         id: "a-hub",
         title: "Centro analisi",
         items: [
-          { href: "/analytics" as Route, label: "Analisi", icon: BarChart3, exact: true },
+          { href: "/hr/dashboard" as Route, label: "Dashboard HR", icon: LayoutDashboard },
+          { href: "/analytics" as Route, label: "Hub analisi", icon: BarChart3, exact: true },
+          { href: "/analytics/economico" as Route, label: "Controllo economico", icon: BarChart2 },
+          { href: "/analytics/retention" as Route, label: "Retention", icon: BarChart2 },
+          { href: "/analytics/competenze" as Route, label: "Competenze", icon: BarChart2 },
+          { href: "/analytics/operativo" as Route, label: "Sintesi operativa", icon: ClipboardList },
           { href: "/hr-recap" as Route, label: "Attività HR", icon: ClipboardList }
         ]
       }

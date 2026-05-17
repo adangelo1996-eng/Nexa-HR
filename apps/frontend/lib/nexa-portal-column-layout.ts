@@ -46,7 +46,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "h-ai",
       title: "Assistente e sintesi AI",
-      hrefs: ["/ai-hub" as Route, "/insights"]
+      hrefs: ["/ai-hub" as Route, "/analytics/retention" as Route]
     }
   ],
   "Selezione e documenti": [

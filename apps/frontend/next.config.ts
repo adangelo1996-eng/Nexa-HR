@@ -35,7 +35,9 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/payroll-calc", destination: "/payroll-hebb", permanent: true },
-      { source: "/payroll-batch", destination: "/payroll-hebb", permanent: true }
+      { source: "/payroll-batch", destination: "/payroll-hebb", permanent: true },
+      { source: "/insights", destination: "/analytics/retention", permanent: true },
+      { source: "/insights/:path*", destination: "/analytics/retention", permanent: true }
     ];
   }
 };

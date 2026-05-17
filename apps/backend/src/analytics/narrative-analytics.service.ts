@@ -48,7 +48,12 @@ export class NarrativeAnalyticsService {
     let llmApplied = false;
 
     const refineSchema =
-      topic === "turnover_insights_deep"
+      topic === "workforce_economic_control" ||
+      topic === "retention_flight_risk" ||
+      topic === "skills_role_coverage" ||
+      topic === "hr_operational_briefing"
+        ? "ai_advanced_analytics_v1"
+        : topic === "turnover_insights_deep"
         ? "ai_turnover_insights_deep_v1"
         : topic === "process_bottlenecks"
           ? "ai_process_bottlenecks_v1"

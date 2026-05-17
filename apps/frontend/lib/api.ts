@@ -626,6 +626,96 @@ export async function postAnalyticsHubRun(
   return (await response.json()) as AnalyticsHubRunResult;
 }
 
+export type AnalyticsKpiDto = { id: string; labelIt: string; value: string; hintIt?: string };
+
+export type StructuredAnalyticsInsightDto = {
+  analysisId: string;
+  title: string;
+  situazione: string;
+  correlazioni: string[];
+  rischi: string[];
+  azioni7giorni: string[];
+  llmApplied: boolean;
+  templateOnly: boolean;
+  llmActive: boolean;
+};
+
+export async function fetchAdvancedAnalysisKpis(
+  token: string,
+  analysisId: string
+): Promise<{ analysisId: string; kpis: AnalyticsKpiDto[] }> {
+  const response = await fetch(buildApiUrl(`/analytics/advanced/${encodeURIComponent(analysisId)}/kpis`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { analysisId: string; kpis: AnalyticsKpiDto[] };
+}
+
+export async function postAdvancedAnalysisInsight(
+  token: string,
+  analysisId: string,
+  body?: { useLlm?: boolean }
+): Promise<StructuredAnalyticsInsightDto> {
+  const response = await fetch(buildApiUrl(`/analytics/advanced/${encodeURIComponent(analysisId)}/insight`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body ?? {})
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as StructuredAnalyticsInsightDto;
+}
+
+export async function postAdvancedAnalysisChat(
+  token: string,
+  analysisId: string,
+  body: { message: string; history?: Array<{ role: "user" | "assistant"; content: string }> }
+): Promise<{ reply: string; llmApplied: boolean; llmActive: boolean }> {
+  const response = await fetch(buildApiUrl(`/analytics/advanced/${encodeURIComponent(analysisId)}/chat`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { reply: string; llmApplied: boolean; llmActive: boolean };
+}
+
+export type PlatformAgentTurnDto = { role: "user" | "assistant"; content: string };
+
+export async function postPlatformAgentChat(
+  token: string,
+  payload: {
+    message: string;
+    page?: string;
+    history?: PlatformAgentTurnDto[];
+    scope?: AiAssistantScopePayload;
+  }
+): Promise<{ reply: string; sources: string[] } & AiAssistantResponseMeta> {
+  const response = await fetch(buildApiUrl("/ai/hr/platform-agent/chat"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as Record<string, unknown>;
+  const reply = typeof body.reply === "string" ? body.reply : "";
+  const sources = Array.isArray(body.sources) ? (body.sources as string[]) : [];
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    reply,
+    sources,
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
+}
+
 export async function fetchCurrentUser(token: string): Promise<SessionUser> {
   const response = await fetch(buildApiUrl("/users/me"), {
     method: "GET",

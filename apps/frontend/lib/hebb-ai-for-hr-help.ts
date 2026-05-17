@@ -74,7 +74,7 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Vista operativa per responsabili: approvazioni in sospeso nel proprio ambito, team diretto, remote working in attesa e (se permesso) indicatori turnover aggregati.",
     howToUse: [
       "Controlla i riquadri numerici e usa i link per approvare in Workflow o Remote working.",
-      "Per approfondire il turnover del team apri Turnover e retention e aggiorna gli snapshot se necessario."
+      "Per approfondire il turnover del team apri Analisi — Retention (`/analytics/retention`) e genera insight su aggregati."
     ],
     bestPractices: [
       "Intervalli regolari (es. inizio settimana) riducono accumulo di richieste.",
@@ -82,13 +82,13 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   insights: {
-    title: "Turnover e retention",
+    title: "Retention e flight risk",
     summary:
-      "Elenco ordinato per rischio sintetico (non è una diagnosi medica o legale), con trend nel tempo. Il filtro centri di costo mostra il nome del reparto come in anagrafica aziendale.",
+      "Analisi avanzata su `/analytics/retention`: KPI aggregati, insight strutturato (situazione, rischi, azioni 7 giorni) e chat analista su dati pseudonimizzati. Il vecchio percorso `/insights` reindirizza qui.",
     howToUse: [
-      "Dopo cambi importanti in anagrafica premi «Aggiorna segnali» per allineare i punteggi.",
-      "Filtra per centro di costo per limitare la vista al tuo perimetro.",
-      "«Genera sintesi» produce un commento su medie e trend; il passaggio in AI è opzionale e solo se abilitato in ambiente."
+      "Consulta i KPI in alto, poi «Genera insight AI» per la sintesi strutturata.",
+      "Usa «Chiedi all'analista» per domande sul dataset di retention (senza nominativi nel modello).",
+      "Per il dettaglio operativo con elenco score individuali, usa i report HR autorizzati o il pannello manager."
     ],
     bestPractices: [
       "Incrocia sempre i punteggi con colloqui e contesto: sono indicatori di attenzione.",

@@ -63,7 +63,7 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/hr-center/recap": ClipboardList,
   "/hr-center/budget-report": Wallet2,
   "/ai-hub": Wand2,
-  "/insights": TrendingUp,
+  "/analytics/retention": TrendingUp,
   "/recruiting": UserRoundSearch,
   "/recruiting/onboarding": UserPlus,
   "/contracts": PenLine,
