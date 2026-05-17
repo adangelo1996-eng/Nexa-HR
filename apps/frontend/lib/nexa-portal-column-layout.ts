@@ -11,7 +11,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "q-presenza",
       title: "Presenza e pianificazione",
-      hrefs: ["/", "/attendance", "/work-calendar", "/workflow"]
+      hrefs: ["/", "/attendance", "/work-calendar", "/sale-riunioni" as Route, "/workflow"]
     },
     {
       id: "q-retrib",
@@ -30,6 +30,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
       title: "Pianificazione e presenza team",
       hrefs: [
         "/scheduling",
+        "/sale-riunioni" as Route,
         "/smartworking",
         "/manager-copilot" as Route,
         "/workflow/approvals",

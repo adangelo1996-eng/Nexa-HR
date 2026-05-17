@@ -18,7 +18,8 @@ function buildChecklist(state: EmploymentState): ChecklistItem[] {
       { id: "settings", label: "Completa profilo e recapiti", href: "/settings" as Route },
       { id: "payslips", label: "Verifica accesso cedolini", href: "/payslips" as Route },
       { id: "policies", label: "Consulta policy aziendali (se disponibili)" },
-      { id: "team", label: "Conosci manager e team", href: "/il-mio-team" as Route }
+      { id: "team", label: "Conosci manager e team", href: "/il-mio-team" as Route },
+      { id: "formazione", label: "Completa i corsi di formazione", href: "/percorso/formazione" as Route }
     ];
   }
   if (state === "offboarding") {
@@ -94,6 +95,14 @@ export default function PercorsoPage(): React.JSX.Element {
         <div className="space-y-6">
           <p className="text-sm text-[var(--prom-muted)]">
             Profilo: <span className="font-medium text-[var(--prom-text)]">{user?.fullName ?? "—"}</span>
+          </p>
+          <p className="text-sm">
+            <Link
+              href={"/percorso/formazione" as Route}
+              className="font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+            >
+              Vai alla formazione assegnata →
+            </Link>
           </p>
           <ol className="space-y-3">
             {checklist.map((item, idx) => (

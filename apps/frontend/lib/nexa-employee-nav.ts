@@ -4,6 +4,7 @@ import {
   Calendar,
   CalendarDays,
   Clock3,
+  DoorOpen,
   FileText,
   LayoutDashboard,
   Laptop,
@@ -40,8 +41,10 @@ const ALL_SECTIONS: EmployeeNavSection[] = [
       { href: "/scheduling", label: "Turni", icon: CalendarDays },
       { href: "/smartworking", label: "Remote working", icon: Laptop },
       { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
+      { href: "/sale-riunioni" as Route, label: "Sale riunioni", icon: DoorOpen },
       { href: "/il-mio-team" as Route, label: "Manager e colleghi", icon: Users },
-      { href: "/percorso" as Route, label: "Onboarding e uscita", icon: RouteIcon }
+      { href: "/percorso" as Route, label: "Onboarding e uscita", icon: RouteIcon },
+      { href: "/percorso/formazione" as Route, label: "Formazione", icon: FileText }
     ]
   },
   {

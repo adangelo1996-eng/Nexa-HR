@@ -7,7 +7,9 @@ import { CompensationModule } from "./compensation/compensation.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { HrContractsModule } from "./hr-contracts/hr-contracts.module";
 import { HrCenterModule } from "./hr-center/hr-center.module";
+import { HrOnboardingModule } from "./hr-onboarding/hr-onboarding.module";
 import { HrRecapModule } from "./hr-recap/hr-recap.module";
+import { TrainingModule } from "./training/training.module";
 import { ExpensesModule } from "./expenses/expenses.module";
 import { InnovationModule } from "./innovation/innovation.module";
 import { LifecycleModule } from "./lifecycle/lifecycle.module";
@@ -43,6 +45,8 @@ import { WorkforceModule } from "./workforce/workforce.module";
     AiHrModule,
     HrCenterModule,
     HrRecapModule,
+    HrOnboardingModule,
+    TrainingModule,
     SuiteIntegrationsModule
   ]
 })

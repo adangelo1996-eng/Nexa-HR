@@ -519,32 +519,28 @@ export default function AttendancePage(): React.JSX.Element {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Timbrature</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">Storico giornaliero e giorni passati per {user?.fullName}.</p>
-          <p className="mt-2 text-sm font-medium text-[#3a5466] dark:text-[#8aa3b3]">
-            <Link href="/mappa-portale" className="underline-offset-2 hover:underline">
-              Timbratura entrata e uscita: vai alla Dashboard
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Timbrature</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Storico e straordinario · timbra da{" "}
+            <Link href="/" className="font-medium text-[#3a5466] underline-offset-2 hover:underline dark:text-[#8aa3b3]">
+              Dashboard
             </Link>
-            .
           </p>
-          {user && sessionCanAccessPayrollArea(user) ? (
-            <Link href="/payroll-hebb" className="synapse-nav-link-compact mt-2 inline-block">
-              Vai a Calcolo Cedolino
-            </Link>
-          ) : null}
         </div>
-        <Link href="/mappa-portale" className="synapse-nav-link">
-          Torna alla dashboard
-        </Link>
+        {user && sessionCanAccessPayrollArea(user) ? (
+          <Link
+            href="/payroll-hebb"
+            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-900/50"
+          >
+            Cedolini
+          </Link>
+        ) : null}
       </header>
 
       <section className="card mb-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Straordinario</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Ore e minuti accumulati (riferimento: data odierna). «Oggi» include anche la timbratura in corso.
-        </p>
         {aggregates ? (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(
@@ -1054,22 +1050,15 @@ export default function AttendancePage(): React.JSX.Element {
       ) : null}
 
       <section className="card mt-6">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Riepilogo giorni lavorati</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Giorno in stile calendario, barra ore (tema) e straordinario (stesso colore più scuro), modalità Sede / Remote working
-          working / Trasferta (da calendario).
-        </p>
-        <div className="mt-3">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Giorni lavorati</h2>
+        <div className="mt-4">
           <WorkedDaySummaryCards rows={summary} user={user} travelDates={travelDates} />
         </div>
       </section>
 
       <section className="card mt-6">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Storico timbrature di oggi</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Coppie entrata/uscita, tempo lavorato nel segmento. Lo straordinario è riferito all’intera giornata.
-        </p>
-        <div className="mt-3 space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Oggi</h2>
+        <div className="mt-4 space-y-4">
           {todayWorkPairs.length === 0 ? (
             <p className="text-slate-600 dark:text-slate-400">Nessuna timbratura registrata oggi.</p>
           ) : (

@@ -25,7 +25,8 @@ import {
   Workflow,
   Building2,
   Laptop,
-  CalendarDays
+  CalendarDays,
+  DoorOpen
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
 import { buildPortalColumns } from "@/lib/nexa-portal-column-layout";
@@ -46,6 +47,7 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/": LayoutDashboard,
   "/attendance": Clock3,
   "/work-calendar": Calendar,
+  "/sale-riunioni": DoorOpen,
   "/workflow": Workflow,
   "/expenses": Receipt,
   "/payslips": FileText,

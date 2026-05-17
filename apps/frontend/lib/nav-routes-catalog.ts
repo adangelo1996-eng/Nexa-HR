@@ -41,6 +41,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/admin/payslip-import" as Route, label: "Import cedolini PDF" },
   { href: "/scheduling", label: "Turni" },
   { href: "/work-calendar", label: "Calendario lavoro" },
+  { href: "/sale-riunioni" as Route, label: "Sale riunioni" },
   { href: "/compensation/bench", label: "Benchmark retribuzione" },
   { href: "/lifecycle/offboard", label: "Offboarding" },
   { href: "/forecast", label: "Forecast costi" },

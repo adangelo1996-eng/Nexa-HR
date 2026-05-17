@@ -38,6 +38,12 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Quotidiano"
   },
   {
+    href: "/sale-riunioni" as Route,
+    title: "Sale riunioni",
+    blurb: "Prenota sale meeting: disponibilità in tempo reale per la tua azienda.",
+    category: "Quotidiano"
+  },
+  {
     href: "/workflow",
     title: "Workflow",
     blurb: "Le tue richieste (ferie, permessi, remoto, spese in workflow): invio, stato, storico personale.",

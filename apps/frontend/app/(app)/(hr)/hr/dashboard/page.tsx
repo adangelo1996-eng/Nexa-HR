@@ -57,9 +57,8 @@ export default function HrDashboardPage(): React.JSX.Element | null {
 
   return (
     <NexaHrAppPage
-      eyebrow="HR"
       title="Dashboard HR"
-      subtitle="Priorità operative del giorno: organico, task in coda e accesso rapido alle analisi strategiche."
+      subtitle="Organico, task urgenti e accessi rapidi."
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-200">
@@ -163,7 +162,7 @@ export default function HrDashboardPage(): React.JSX.Element | null {
 function StatCard(props: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="rounded-xl border border-[var(--card-border)] p-4" style={{ background: "var(--card-bg)" }}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--prom-muted)]">{props.label}</p>
+      <p className="text-xs text-[var(--prom-muted)]">{props.label}</p>
       <p className="mt-1 text-2xl font-semibold text-[var(--prom-text)]">{props.value}</p>
     </div>
   );

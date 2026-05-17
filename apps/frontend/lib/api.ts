@@ -679,7 +679,16 @@ export async function postAdvancedAnalysisChat(
   return (await response.json()) as { reply: string; llmApplied: boolean; llmActive: boolean };
 }
 
-export type PlatformAgentTurnDto = { role: "user" | "assistant"; content: string };
+export type PlatformAgentTurnDto = {
+  role: "user" | "assistant";
+  content: string;
+  structured?: PlatformAgentStructuredDto | null;
+};
+
+export type PlatformAgentActionDto = { label: string; href: string };
+export type PlatformAgentBulletDto = { text: string; action?: PlatformAgentActionDto };
+export type PlatformAgentSectionDto = { title: string; bullets: PlatformAgentBulletDto[] };
+export type PlatformAgentStructuredDto = { sections: PlatformAgentSectionDto[] };
 
 export async function postPlatformAgentChat(
   token: string,
@@ -689,7 +698,7 @@ export async function postPlatformAgentChat(
     history?: PlatformAgentTurnDto[];
     scope?: AiAssistantScopePayload;
   }
-): Promise<{ reply: string; sources: string[] } & AiAssistantResponseMeta> {
+): Promise<{ reply: string; structured: PlatformAgentStructuredDto | null; sources: string[] } & AiAssistantResponseMeta> {
   const response = await fetch(buildApiUrl("/ai/hr/platform-agent/chat"), {
     method: "POST",
     headers: getAuthHeaders(token),
@@ -698,11 +707,13 @@ export async function postPlatformAgentChat(
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as Record<string, unknown>;
   const reply = typeof body.reply === "string" ? body.reply : "";
+  const structured = parsePlatformAgentStructuredDto(body.structured);
   const sources = Array.isArray(body.sources) ? (body.sources as string[]) : [];
   const llmRaw = body.llm as Record<string, unknown> | undefined;
   const privRaw = body.privacy as Record<string, unknown> | undefined;
   return {
     reply,
+    structured,
     sources,
     llm: {
       configured: llmRaw?.configured === true,
@@ -714,6 +725,57 @@ export async function postPlatformAgentChat(
       schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
     }
   };
+}
+
+function parsePlatformAgentStructuredDto(raw: unknown): PlatformAgentStructuredDto | null {
+  if (!raw || typeof raw !== "object" || !("sections" in raw)) {
+    return null;
+  }
+  const sectionsRaw = (raw as { sections?: unknown }).sections;
+  if (!Array.isArray(sectionsRaw)) {
+    return null;
+  }
+  const sections: PlatformAgentSectionDto[] = [];
+  for (const s of sectionsRaw) {
+    if (!s || typeof s !== "object") {
+      continue;
+    }
+    const title = typeof (s as { title?: unknown }).title === "string" ? (s as { title: string }).title.trim() : "";
+    const bulletsRaw = (s as { bullets?: unknown }).bullets;
+    if (!title || !Array.isArray(bulletsRaw)) {
+      continue;
+    }
+    const bullets: PlatformAgentBulletDto[] = [];
+    for (const b of bulletsRaw) {
+      if (!b || typeof b !== "object") {
+        continue;
+      }
+      const text = typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text.trim() : "";
+      if (!text) {
+        continue;
+      }
+      const actionRaw = (b as { action?: unknown }).action;
+      let action: PlatformAgentActionDto | undefined;
+      if (actionRaw && typeof actionRaw === "object") {
+        const label =
+          typeof (actionRaw as { label?: unknown }).label === "string"
+            ? (actionRaw as { label: string }).label.trim()
+            : "";
+        const href =
+          typeof (actionRaw as { href?: unknown }).href === "string"
+            ? (actionRaw as { href: string }).href.trim()
+            : "";
+        if (label && href.startsWith("/")) {
+          action = { label, href };
+        }
+      }
+      bullets.push(action ? { text, action } : { text });
+    }
+    if (bullets.length > 0) {
+      sections.push({ title, bullets });
+    }
+  }
+  return sections.length > 0 ? { sections } : null;
 }
 
 export async function fetchCurrentUser(token: string): Promise<SessionUser> {
@@ -2782,6 +2844,151 @@ export async function fetchRecruitOnboardingBoard(token: string): Promise<{ item
     return fallback.json() as Promise<{ items: RecruitOnboardingRowDto[] }>;
   }
   return await parseError(primary);
+}
+
+export type HrOnboardingWizardStepDef = {
+  key: string;
+  titleIt: string;
+  descriptionIt: string;
+};
+
+export type HrOnboardingWizardDto = {
+  userId: string;
+  companyId: string;
+  recruitCandidateId: string | null;
+  currentStepIndex: number;
+  steps: Record<string, { done: boolean; data: Record<string, unknown>; savedAt?: string }>;
+  completedAt: string | null;
+  updatedAt: string;
+  stepDefinitions: HrOnboardingWizardStepDef[];
+};
+
+export async function startHrOnboardingFromCandidate(
+  token: string,
+  payload: {
+    candidateId: string;
+    roleId?: string;
+    costCenterId?: string;
+    contractType?: string;
+    hireDate?: string;
+    managerId?: string;
+  }
+): Promise<{ user: { id: string; fullName: string; email: string }; wizard: HrOnboardingWizardDto }> {
+  const response = await fetch(buildApiUrl("/hr-onboarding/start-from-candidate"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ user: { id: string; fullName: string; email: string }; wizard: HrOnboardingWizardDto }>;
+}
+
+export async function fetchHrOnboardingWizard(token: string, userId: string): Promise<HrOnboardingWizardDto> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrOnboardingWizardDto>;
+}
+
+export async function saveHrOnboardingWizardStep(
+  token: string,
+  userId: string,
+  payload: { stepKey: string; data: Record<string, unknown>; markDone: boolean }
+): Promise<HrOnboardingWizardDto> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/step`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrOnboardingWizardDto>;
+}
+
+export type TrainingCourseDto = {
+  id: string;
+  companyId: string;
+  code: string;
+  title: string;
+  description: string;
+  category: "mandatory" | "optional";
+  durationMinutes: number;
+  hasQuizPlaceholder: boolean;
+};
+
+export type TrainingAssignmentDto = {
+  id: string;
+  userId: string;
+  courseId: string;
+  dueDate: string;
+  status: "not_started" | "in_progress" | "completed";
+  completedAt: string | null;
+  course?: TrainingCourseDto;
+};
+
+export type TrainingProgressDto = {
+  total: number;
+  completed: number;
+  inProgress: number;
+  overdue: number;
+  percentComplete: number;
+};
+
+export async function fetchTrainingCourses(
+  token: string,
+  category?: "mandatory" | "optional"
+): Promise<{ items: TrainingCourseDto[] }> {
+  const q = category ? `?category=${encodeURIComponent(category)}` : "";
+  const response = await fetch(buildApiUrl(`/training/courses${q}`), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingCourseDto[] }>;
+}
+
+export async function fetchMyTrainingAssignments(token: string): Promise<{
+  items: TrainingAssignmentDto[];
+  progress: TrainingProgressDto;
+}> {
+  const response = await fetch(buildApiUrl("/training/my-assignments"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[]; progress: TrainingProgressDto }>;
+}
+
+export async function fetchUserTrainingAssignments(
+  token: string,
+  userId: string
+): Promise<{ items: TrainingAssignmentDto[]; progress: TrainingProgressDto }> {
+  const response = await fetch(buildApiUrl(`/training/assignments/${encodeURIComponent(userId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[]; progress: TrainingProgressDto }>;
+}
+
+export async function assignTrainingCourses(
+  token: string,
+  payload: { userId: string; courseIds: string[]; dueDate: string }
+): Promise<{ items: TrainingAssignmentDto[] }> {
+  const response = await fetch(buildApiUrl("/training/assign"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[] }>;
+}
+
+export async function patchTrainingAssignmentStatus(
+  token: string,
+  assignmentId: string,
+  status: TrainingAssignmentDto["status"]
+): Promise<TrainingAssignmentDto> {
+  const response = await fetch(buildApiUrl(`/training/assignments/${encodeURIComponent(assignmentId)}/status`), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ status })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<TrainingAssignmentDto>;
 }
 
 export type HrRecapSummaryDto = {

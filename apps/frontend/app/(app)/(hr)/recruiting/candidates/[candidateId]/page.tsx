@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import type { Route } from "next";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import {
   exportRecruitCandidateJson,
   fetchRecruitCandidateDetail,
   fetchRecruitCandidateDocuments,
+  startHrOnboardingFromCandidate,
   uploadRecruitCandidateDocument
 } from "@/lib/api";
 
@@ -26,6 +28,7 @@ export default function CandidateDetailPage(): React.JSX.Element {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchRecruitCandidateDetail>> | null>(null);
   const [docs, setDocs] = useState<Awaited<ReturnType<typeof fetchRecruitCandidateDocuments>>>([]);
   const [token, setToken] = useState<string | null>(null);
+  const [startingOnboarding, setStartingOnboarding] = useState(false);
 
   const reload = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -118,6 +121,21 @@ export default function CandidateDetailPage(): React.JSX.Element {
     }
   }
 
+  async function onStartOnboarding(): Promise<void> {
+    if (!token) return;
+    setStartingOnboarding(true);
+    setError(null);
+    try {
+      const { user } = await startHrOnboardingFromCandidate(token, { candidateId });
+      const q = new URLSearchParams({ name: user.fullName || "Dipendente" });
+      router.push(`/hr/onboarding/wizard/${encodeURIComponent(user.id)}?${q.toString()}` as Route);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Avvio onboarding non riuscito");
+    } finally {
+      setStartingOnboarding(false);
+    }
+  }
+
   async function onDownloadDoc(documentId: string, label: string): Promise<void> {
     if (!token) return;
     setError(null);
@@ -140,6 +158,14 @@ export default function CandidateDetailPage(): React.JSX.Element {
           >
             Torna a candidati
           </Link>
+          <Button
+            type="button"
+            size="sm"
+            disabled={startingOnboarding}
+            onClick={() => void onStartOnboarding()}
+          >
+            {startingOnboarding ? "Avvio…" : "Avvia onboarding"}
+          </Button>
           <Button type="button" variant="secondary" size="sm" onClick={() => void onExport()}>
             Esporta dati (JSON)
           </Button>

@@ -16,10 +16,17 @@ import {
 import { assertMessageHasNoKnownPersonFullNames } from "./ai-hr-message-policy";
 import { AiHrService, type AssistantScopePayload } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
+import {
+  parsePlatformAgentStructured,
+  structuredToPlainReply,
+  tryParseStructuredFromText,
+  type PlatformAgentStructured
+} from "./platform-agent-structured";
 
 const SCHEMA_PLATFORM_AGENT = "ai_platform_agent_v1";
 
 export type PlatformAgentTurn = { role: "user" | "assistant"; content: string };
+export type { PlatformAgentStructured } from "./platform-agent-structured";
 
 @Injectable()
 export class NexaPlatformAgentService implements OnModuleInit {
@@ -62,6 +69,7 @@ export class NexaPlatformAgentService implements OnModuleInit {
     }
   ): Promise<{
     reply: string;
+    structured: PlatformAgentStructured | null;
     sources: string[];
     llm: { configured: boolean; refineApplied: boolean };
     privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
@@ -81,8 +89,15 @@ export class NexaPlatformAgentService implements OnModuleInit {
       scope: body.scope
     });
 
-    if (!this.openAi.isActive() || history.length === 0) {
-      return assistantOut;
+    if (!this.openAi.isActive()) {
+      const structuredFallback = tryParseStructuredFromText(assistantOut.reply);
+      return {
+        ...assistantOut,
+        structured: structuredFallback,
+        reply: structuredFallback
+          ? structuredToPlainReply(structuredFallback, assistantOut.reply.split("\n")[0])
+          : assistantOut.reply
+      };
     }
 
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
@@ -104,11 +119,18 @@ export class NexaPlatformAgentService implements OnModuleInit {
       const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, SCHEMA_PLATFORM_AGENT);
       const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, SCHEMA_PLATFORM_AGENT);
       let reply = assistantOut.reply;
+      let structured: PlatformAgentStructured | null = null;
       let refineApplied = false;
       if (refined.ok && refined.data && typeof refined.data === "object") {
-        const envReply = (refined.data as { envelope?: { reply?: string } }).envelope?.reply;
-        if (typeof envReply === "string" && envReply.trim()) {
-          reply = envReply.trim();
+        const envelope = (refined.data as { envelope?: Record<string, unknown> }).envelope;
+        const envReply = typeof envelope?.reply === "string" ? envelope.reply.trim() : "";
+        structured = parsePlatformAgentStructured(envelope ?? null);
+        if (structured) {
+          reply = structuredToPlainReply(structured, envReply || undefined);
+          refineApplied = true;
+        } else if (envReply) {
+          reply = envReply;
+          structured = tryParseStructuredFromText(envReply);
           refineApplied = true;
         }
       }
@@ -126,6 +148,7 @@ export class NexaPlatformAgentService implements OnModuleInit {
       });
       return {
         reply,
+        structured,
         sources: [...assistantOut.sources, "platform_agent", "nexa_agent_knowledge"],
         llm: { configured: true, refineApplied },
         privacy: {

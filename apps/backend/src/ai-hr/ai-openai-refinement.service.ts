@@ -172,10 +172,11 @@ function systemPromptForSchema(schemaVersion: string): string {
         getNexaHrConversationalAgentSystemPrompt() +
           "\n\n" +
           base +
-          " Schema: {\"envelope\":{\"reply\":\"stringa\"}}. " +
-          " Conversazione multi-turno: envelope.history (ultimi messaggi), envelope.message (domanda corrente), envelope.replySeed (bozza). " +
-          " Usa envelope.knowledgeExcerpt, platformCapabilities, routeHints e permissionsSummary; " +
-          " rispondi in italiano con link Markdown [testo](/path) solo per path reali; non inventare permessi assenti da permissionsSummary."
+          " Schema obbligatorio: {\"envelope\":{\"reply\":\"stringa (1-2 frasi intro)\",\"sections\":[{\"title\":\"stringa\",\"bullets\":[{\"text\":\"stringa\",\"action\":{\"label\":\"stringa\",\"href\":\"/path\"}}]}]}}. " +
+          " sections: 1-4 blocchi con title utili (es. Cosa fare, Dove andare, Passi successivi); bullets: 2-6 voci ciascuna, text conciso; " +
+          " action opzionale solo se c'è un percorso reale in routeHints/platformCapabilities (href deve essere path esatto, es. /workflow/approvals); " +
+          " reply breve; conversazione multi-turno: envelope.history, envelope.message, envelope.replySeed; " +
+          " usa envelope.knowledgeExcerpt, platformCapabilities, routeHints e permissionsSummary; non inventare permessi assenti da permissionsSummary."
       );
     case "ai_hr_center_analytics_v1":
       return (

@@ -60,6 +60,12 @@ export function canAccessNexaPortalRoute(
   if (r === "/recruiting/onboarding" || r.startsWith("/recruiting/onboarding/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
+  if (r === "/hr/onboarding" || r.startsWith("/hr/onboarding/")) {
+    return !hide && sessionCanAccessHrRecapDashboard(user);
+  }
+  if (r === "/percorso/formazione" || r === "/formazione") {
+    return true;
+  }
   if (r === "/hr-center/budget-report" || r.startsWith("/hr-center/budget-report/")) {
     return (
       !hide &&
@@ -101,6 +107,7 @@ export function canAccessNexaPortalRoute(
     case "/percorso":
     case "/scheduling":
     case "/smartworking":
+    case "/sale-riunioni":
       return true;
     case "/org-chart":
       return sessionUsesHrReorganizedNav(user, hideSensitiveHr);

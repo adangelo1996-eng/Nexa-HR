@@ -1,11 +1,12 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchRecruitOnboardingBoard, type RecruitOnboardingRowDto } from "@/lib/api";
+import { fetchRecruitOnboardingBoard, startHrOnboardingFromCandidate, type RecruitOnboardingRowDto } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
 function formatUpdated(iso: string): string {
@@ -36,6 +37,7 @@ export default function RecruitingOnboardingPage(): React.JSX.Element {
   const [items, setItems] = useState<RecruitOnboardingRowDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
 
   const sorted = useMemo(
     () => [...items].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))),
@@ -189,6 +191,30 @@ export default function RecruitingOnboardingPage(): React.JSX.Element {
                             >
                               Pipeline
                             </Link>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={!token || busyCandidateId === row.candidate.id}
+                              onClick={() => {
+                                if (!token) return;
+                                setBusyCandidateId(row.candidate.id);
+                                setError(null);
+                                void startHrOnboardingFromCandidate(token, { candidateId: row.candidate.id })
+                                  .then(({ user }) => {
+                                    const name = `${row.candidate.first_name} ${row.candidate.last_name}`.trim();
+                                    const q = new URLSearchParams({ name: name || user.fullName });
+                                    router.push(
+                                      `/hr/onboarding/wizard/${encodeURIComponent(user.id)}?${q.toString()}` as Route
+                                    );
+                                  })
+                                  .catch((e) =>
+                                    setError(e instanceof Error ? e.message : "Avvio onboarding non riuscito")
+                                  )
+                                  .finally(() => setBusyCandidateId(null));
+                              }}
+                            >
+                              {busyCandidateId === row.candidate.id ? "Avvio…" : "Avvia onboarding"}
+                            </Button>
                           </div>
                         </td>
                       </tr>

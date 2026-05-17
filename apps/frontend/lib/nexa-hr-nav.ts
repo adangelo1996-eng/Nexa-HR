@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarDays,
   ClipboardList,
+  DoorOpen,
   FileText,
   KeyRound,
   LayoutDashboard,
@@ -79,6 +80,7 @@ const PILLAR_DEFS: Array<{
         items: [
           { href: "/reports", label: "Report presenze", icon: PieChart },
           { href: "/scheduling", label: "Turni", icon: CalendarDays },
+          { href: "/sale-riunioni" as Route, label: "Sale riunioni", icon: DoorOpen },
           { href: "/manager-copilot" as Route, label: "Pannello manager", icon: ClipboardList }
         ]
       },

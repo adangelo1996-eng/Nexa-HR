@@ -101,11 +101,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
   );
 
   return (
-    <NexaHrAppPage
-      eyebrow="Analytics & Intelligence"
-      title="Hub Analytics"
-      subtitle="Quattro analisi strategiche su dati aggregati e pseudonimizzati. Ogni esecuzione passa da AiPrivacyGateway prima del modello linguistico."
-    >
+    <NexaHrAppPage title="Hub Analytics" subtitle="Quattro analisi strategiche su dati aggregati.">
       <LlmUsageStatusBanner
         className="mb-6"
         idle={Object.keys(results).length === 0}
@@ -119,7 +115,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
             onChange={(e) => setUseLlm(e.target.checked)}
             className="rounded border-[var(--prom-line)]"
           />
-          Usa OpenAI per la narrativa (dati sempre pseudonimizzati)
+          Narrativa AI (dati pseudonimizzati)
         </label>
       ) : null}
       {error ? (
@@ -141,34 +137,32 @@ export default function AnalyticsHubPage(): React.JSX.Element {
                 style={{ background: "var(--card-bg)" }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--prom-muted)]">
-                      {card.id.toUpperCase()}
-                    </p>
-                    <h2 className="mt-1 text-lg font-semibold text-[var(--prom-text)]">{card.titleIt}</h2>
-                  </div>
+                  <h2 className="text-lg font-semibold text-[var(--prom-text)]">{card.titleIt}</h2>
                   {card.llmCapable ? (
                     <Sparkles className="h-5 w-5 shrink-0 text-[#002D72] opacity-70 dark:text-sky-300" aria-hidden />
                   ) : null}
                 </div>
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--prom-muted)]">{card.blurbIt}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void runAnalysis(card)}
-                  >
-                    {busy ? "Analisi in corso…" : "Anteprima insight AI"}
-                  </Button>
+                <div className="mt-5 flex flex-wrap items-center gap-2">
                   <Link
                     href={card.href as Route}
                     scroll={false}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--prom-text)] transition-colors hover:bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)]"
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#002D72] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 dark:bg-sky-800"
                   >
-                    Apri analisi completa
-                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                    Apri analisi
+                    <ArrowUpRight className="h-4 w-4" aria-hidden />
                   </Link>
+                  {card.llmCapable ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void runAnalysis(card)}
+                    >
+                      {busy ? "In corso…" : "Anteprima AI"}
+                    </Button>
+                  ) : null}
                 </div>
                 {result ? <InsightPreviewBlock insight={result} /> : null}
               </article>

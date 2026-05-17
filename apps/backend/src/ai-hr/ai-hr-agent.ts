@@ -16,6 +16,7 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/welcome", labelIt: "Benvenuto", topicsIt: "onboarding, primo accesso, tour" },
   { path: "/attendance", labelIt: "Presenze e timbrature", topicsIt: "presenze, timbratura, entrata, uscita, ore" },
   { path: "/work-calendar", labelIt: "Calendario lavoro", topicsIt: "calendario, festività, pianificazione, giorni" },
+  { path: "/sale-riunioni", labelIt: "Sale riunioni", topicsIt: "prenotazione sale, meeting room, videoconferenza, sala riunioni" },
   { path: "/workflow", labelIt: "Workflow — richieste ferie, permessi, malattia", topicsIt: "ferie, permessi, malattia, assenze, richieste" },
   { path: "/workflow/approvals", labelIt: "Approvazioni team", topicsIt: "approvare, team, delega, responsabile, in attesa" },
   { path: "/smartworking", labelIt: "Remote working", topicsIt: "remote working, agile, remoto, da casa, work from home" },
@@ -69,6 +70,11 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
     path: "/recruiting/onboarding",
     labelIt: "Onboarding candidati (post-colloquio)",
     topicsIt: "onboarding, assunzione, candidato, contratto, documenti"
+  },
+  {
+    path: "/percorso/formazione",
+    labelIt: "Formazione dipendente",
+    topicsIt: "corsi, formazione obbligatoria, scadenze, completamento"
   },
   {
     path: "/hr-recap",
@@ -140,8 +146,8 @@ export function getNexaHrConversationalAgentSystemPrompt(): string {
     "",
     "STILE",
     "Linguaggio semplice, no gergo IT interno; spiega acronimi se necessario.",
-    "Quando indichi un percorso, usa la forma: nome sezione — path esatto tra parentesi o apice, es. Workflow (/workflow), copiando il path dalla lista.",
-    "Per massima utilità in chat, aggiungi anche link Markdown cliccabili (stile: [Testo descrittivo](/percorso)) usando SOLO path presenti in platformCapabilities o routeHints; un link per sezione principale è sufficiente.",
+    "Quando indichi un percorso, usa la forma: nome sezione — path esatto tra parentesi, es. Workflow (/workflow), copiando il path dalla lista.",
+    "Per Nexa Guide strutturato: organizza in sezioni (Cosa fare, Dove andare, Passi) con elenchi puntati; ogni passo può avere un'azione con label e href solo da path reali della piattaforma.",
     "",
     "CHIUSURA UTILE",
     "Chiudi spesso con un passo concreto prossimo (una o due azioni), adattato al ruolo implicito (es. se ci sono approvazioni team, ricorda Approvazioni team)."

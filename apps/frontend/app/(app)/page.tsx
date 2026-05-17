@@ -448,8 +448,7 @@ export default function HomePage(): React.JSX.Element {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-2xl font-semibold text-[var(--prom-text)]">{user.fullName}</p>
-          <p className="mt-1 text-sm text-[var(--prom-muted)]">Il tuo profilo nel portale</p>
+          <p className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">{user.fullName}</p>
         </div>
         {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
           <Link
@@ -526,15 +525,8 @@ export default function HomePage(): React.JSX.Element {
                 </span>
               )}
               <span className="text-[10px] font-normal leading-tight text-[var(--prom-muted)]">
-                Residuo obiettivo
+                Residuo
               </span>
-              <Link
-                href="/workflow"
-                prefetch
-                className="text-[10px] font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
-              >
-                Workflow (ferie / permessi)
-              </Link>
             </div>
             <Link
               href="/expenses"
@@ -587,11 +579,11 @@ export default function HomePage(): React.JSX.Element {
       </div>
 
       <section className="card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--prom-line)] pb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--prom-text)]">
             <Bell className="h-5 w-5 text-[var(--prom-gold)] opacity-90" aria-hidden />
-            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Notifiche</h2>
-          </div>
+            Notifiche
+          </h2>
           {notifications.length > 0 ? (
             <Button
               type="button"
@@ -676,9 +668,7 @@ export default function HomePage(): React.JSX.Element {
 
         {periodTab === "today" && todayEntriesChronological.length > 0 ? (
           <div className="mt-5">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-              Timbrature di oggi
-            </h3>
+            <h3 className="mb-3 text-xs font-medium text-[var(--prom-muted)]">Oggi</h3>
             <ul className="space-y-0">
               {todayEntriesChronological.map((entry, index) => {
                 const next = todayEntriesChronological[index + 1];

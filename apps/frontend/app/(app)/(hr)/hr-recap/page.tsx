@@ -357,6 +357,14 @@ export default function HrRecapPage(): React.JSX.Element {
                       <EmployeeLink userId={u.id} label={u.fullName} viewer={user} className="font-medium text-[#002D72] hover:underline dark:text-sky-200" />
                     </div>
                     <div className="text-xs text-synapse-muted dark:text-[#b4c9dc]">{u.email}</div>
+                    {peopleCategory === "hr_onboarding" ? (
+                      <Link
+                        href={`/hr/onboarding/wizard/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
+                        className="mt-2 inline-block text-xs font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+                      >
+                        Apri wizard onboarding →
+                      </Link>
+                    ) : null}
                   </li>
                 ))}
               </ul>
