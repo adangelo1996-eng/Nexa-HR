@@ -204,7 +204,7 @@ export default function SaleRiunioniPage(): React.JSX.Element {
 
   return (
     <NexaHrAppPage
-      badge="Prenotazioni"
+      eyebrow="Prenotazioni"
       title="Sale riunioni"
       subtitle="Scegli sala, data e fascia oraria. Le prenotazioni sono condivise in azienda."
     >
