@@ -4,7 +4,6 @@ import {
   BarChart2,
   BarChart3,
   Building2,
-  Calculator,
   CalendarDays,
   ClipboardList,
   FileText,
@@ -14,13 +13,10 @@ import {
   PieChart,
   Receipt,
   Sparkles,
-  TrendingUp,
   UserCog,
   UserPlus,
   UserRoundSearch,
   Users,
-  Wallet2,
-  Wand2,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
@@ -99,36 +95,15 @@ const PILLAR_DEFS: Array<{
   },
   {
     id: "hr-analytics",
-    title: "Analytics & Intelligence",
+    title: "Analisi HR",
     portalCategory: "Analytics",
     subgroups: [
       {
         id: "a-hub",
-        title: "Centro analisi AI",
+        title: "Centro analisi",
         items: [
-          { href: "/analytics" as Route, label: "Hub Analytics", icon: BarChart3, exact: true },
-          { href: "/hr-center/analisi" as Route, label: "Analisi costi HR", icon: PieChart },
-          { href: "/insights", label: "Turnover e retention", icon: TrendingUp },
-          { href: "/hr-center/recap" as Route, label: "Recap AI dipendenti", icon: ClipboardList }
-        ]
-      },
-      {
-        id: "a-budget",
-        title: "Budget e forecast",
-        items: [
-          { href: "/personnel-budget", label: "Budget personale", icon: Wallet2 },
-          { href: "/forecast", label: "Forecast costi", icon: TrendingUp },
-          { href: "/hr-center/budget-report" as Route, label: "Report budget LLM", icon: Wallet2 },
-          { href: "/compensation/bench", label: "Benchmark retribuzione", icon: BarChart2 }
-        ]
-      },
-      {
-        id: "a-ai",
-        title: "Hebb for HR",
-        items: [
-          { href: "/ai-hub" as Route, label: "Hebb for HR", icon: Wand2 },
-          { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList },
-          { href: "/tools/cost-calculator" as Route, label: "Calcolatore costo", icon: Calculator }
+          { href: "/analytics" as Route, label: "Analisi", icon: BarChart3, exact: true },
+          { href: "/hr-recap" as Route, label: "Attività HR", icon: ClipboardList }
         ]
       }
     ]

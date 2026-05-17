@@ -106,7 +106,13 @@ export const PORTAL_TILES: PortalTile[] = [
   {
     href: "/analytics" as Route,
     title: "Hub Analytics",
-    blurb: "Centro analisi AI: otto analisi strategiche con pseudonimizzazione e HITL.",
+    blurb: "Quattro analisi strategiche su aggregati pseudonimizzati con narrativa AI.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/competenze" as Route,
+    title: "Gap competenze",
+    blurb: "Confronto fabbisogno competenze vs livelli mappati per ruolo.",
     category: "HEBB AI for HR"
   },
   {

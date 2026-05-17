@@ -17,15 +17,15 @@ export type AnalyticsHubCard = {
 const HUB_CARDS: AnalyticsHubCard[] = [
   {
     id: "a1",
-    titleIt: "Radar costo del personale",
-    blurbIt: "Varianza budget/consuntivo per centro di costo con narrativa AI.",
-    href: "/personnel-budget/analysis",
+    titleIt: "Radar economico del personale",
+    blurbIt: "Varianza budget e consuntivo per centro di costo, con narrativa AI su aggregati.",
+    href: "/personnel-budget",
     topic: "personnel_cost_radar",
     llmCapable: true
   },
   {
     id: "a2",
-    titleIt: "Turnover predittivo spiegabile",
+    titleIt: "Retention e rischio turnover",
     blurbIt: "Score retention e trend settimanali su aggregati pseudonimizzati.",
     href: "/insights",
     topic: "turnover_insights_deep",
@@ -34,52 +34,58 @@ const HUB_CARDS: AnalyticsHubCard[] = [
   {
     id: "a3",
     titleIt: "Gap competenze vs fabbisogno",
-    blurbIt: "Heatmap gap per ruolo e centro di costo.",
-    href: "/hr-center/analisi",
+    blurbIt: "Heatmap gap per ruolo e competenza rispetto al fabbisogno mappato.",
+    href: "/analytics/competenze",
     topic: "skills_gap",
     llmCapable: true
   },
   {
-    id: "a4",
-    titleIt: "Colli di bottiglia operativi",
-    blurbIt: "SLA approvazioni ferie, spese e onboarding.",
-    href: "/workflow/approvals",
-    topic: "process_bottlenecks",
-    llmCapable: true
-  },
-  {
-    id: "a5",
-    titleIt: "Anomalie presenze e payroll",
-    blurbIt: "Pattern timbrature e incongruenze indicative.",
-    href: "/reports",
-    topic: "attendance_payroll_anomalies",
-    llmCapable: true
-  },
-  {
     id: "a6",
-    titleIt: "Sintesi executive perimetro",
-    blurbIt: "Narrativa board su KPI HR aggregati.",
+    titleIt: "Sintesi executive del perimetro",
+    blurbIt: "Narrativa board su KPI HR aggregati del perimetro selezionato.",
     href: "/hr-center/recap",
     topic: "executive_recap",
     llmCapable: true
-  },
-  {
-    id: "a7",
-    titleIt: "Benchmark retribuzione",
-    blurbIt: "Posizionamento RAL vs mediana interna.",
-    href: "/compensation/bench",
-    topic: "compensation_bench",
-    llmCapable: true
-  },
-  {
-    id: "a8",
-    titleIt: "What-if assunzione / uscita",
-    blurbIt: "Impatto costo azienda su scenari hiring.",
-    href: "/workforce-planning",
-    topic: "workforce_planning",
-    llmCapable: true
   }
 ];
+
+function turnoverAggregateForLlm(
+  items: Array<{ score: number; costCenterId: string | null }>,
+  trend: Array<{ weekStart: string; avgScore: number; sampleSize: number }>,
+  modelVersion: string,
+  costCenters: Array<{ id: string; label: string }>
+): Record<string, unknown> {
+  const bands = { low: 0, mid: 0, high: 0 };
+  for (const it of items) {
+    const s = Number(it.score);
+    if (!Number.isFinite(s)) continue;
+    if (s < 34) bands.low += 1;
+    else if (s < 67) bands.mid += 1;
+    else bands.high += 1;
+  }
+  const byCc = new Map<string, { label: string; sum: number; n: number }>();
+  for (const it of items) {
+    const key = it.costCenterId ?? "__none__";
+    const hit = it.costCenterId ? costCenters.find((c) => c.id === it.costCenterId) : undefined;
+    const label = hit?.label ?? (it.costCenterId ? it.costCenterId : "Senza centro di costo");
+    const cur = byCc.get(key) ?? { label, sum: 0, n: 0 };
+    cur.sum += Number(it.score) || 0;
+    cur.n += 1;
+    byCc.set(key, cur);
+  }
+  const byCostCenter = [...byCc.values()].map((v) => ({
+    label: v.label,
+    count: v.n,
+    avgScore: v.n ? Math.round((v.sum / v.n) * 10) / 10 : 0
+  }));
+  return {
+    modelVersion,
+    trend,
+    itemsCount: items.length,
+    scoreBands: bands,
+    byCostCenter
+  };
+}
 
 @Injectable()
 export class AnalyticsOrchestratorService {
@@ -114,7 +120,7 @@ export class AnalyticsOrchestratorService {
       throw new ForbiddenException("Azienda non disponibile");
     }
 
-    const payload = await this.buildPayload(auth, card.id, companyId);
+    const payload = await this.buildPayload(card.id, companyId);
     const narrative = await this.narrative.generate(auth, {
       topic: card.topic,
       payload,
@@ -129,50 +135,33 @@ export class AnalyticsOrchestratorService {
     };
   }
 
-  private async buildPayload(
-    auth: AuthContext,
-    analysisId: string,
-    companyId: string
-  ): Promise<Record<string, unknown>> {
+  private async buildPayload(analysisId: string, companyId: string): Promise<Record<string, unknown>> {
     switch (analysisId) {
       case "a1": {
         const summary = await this.store.getHrDashboardSummary();
         return { summary, focus: "personnel_budget_variance" };
       }
       case "a2": {
-        const [items, trend] = await Promise.all([
+        const [rawItems, trend, costCenters] = await Promise.all([
           this.store.getLatestTurnoverRetention(companyId),
-          this.store.getTurnoverRetentionTrend(companyId, 8)
+          this.store.getTurnoverRetentionTrend(companyId, 8),
+          this.store.listCostCentersForTurnoverFilter(companyId)
         ]);
-        return { items, trend, modelVersion: "rule-v1" };
+        return turnoverAggregateForLlm(
+          rawItems.map((r) => ({ score: r.score, costCenterId: r.costCenterId })),
+          trend,
+          "rule-v1",
+          costCenters
+        );
       }
       case "a3": {
         const items = await this.store.getSkillsGapReport(companyId);
         return { items, itemCount: items.length };
       }
-      case "a4": {
-        const metrics = await this.store.getProcessCycleMetrics(companyId);
-        return { metrics, eventSummaries: [] };
-      }
-      case "a5": {
-        const summary = await this.store.getHrDashboardSummary();
-        return {
-          headcount: summary.headcount,
-          pendingExpenseCount: summary.pendingExpenseCount,
-          note: "Anomalie indicative v0: usare report presenze per dettaglio operativo."
-        };
-      }
       case "a6": {
         const summary = await this.store.getHrDashboardSummary();
         const cockpit = await this.store.getWorkforceCockpit("base", 6);
         return { summary, workforce: cockpit.summary };
-      }
-      case "a7": {
-        return { focus: "compensation_bench", companyId, note: "Aggregati retribuzione senza nominativi in payload LLM." };
-      }
-      case "a8": {
-        const cockpit = await this.store.getWorkforceCockpit("growth", 12);
-        return { ...cockpit, scenario: "growth" };
       }
       default:
         return {};

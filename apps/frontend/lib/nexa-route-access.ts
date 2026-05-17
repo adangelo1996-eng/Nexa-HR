@@ -134,7 +134,12 @@ export function canAccessNexaPortalRoute(
     case "/corporate-policies":
       return !hide && sessionCanNexaAdmin(user);
     case "/personnel-budget":
-      return !hide && sessionCanNexaAdmin(user);
+      return (
+        !hide &&
+        (sessionCanNexaAdmin(user) ||
+          sessionCanAccessHrRecapDashboard(user) ||
+          sessionCanAccessPersonnelBudgetArea(user) === true)
+      );
     case "/hr-recap":
       return !hide && sessionCanAccessHrRecapDashboard(user);
     case "/payroll-hebb":

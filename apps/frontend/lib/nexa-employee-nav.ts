@@ -31,44 +31,30 @@ const ALL_SECTIONS: EmployeeNavSection[] = [
     items: [{ href: "/" as Route, label: "Dashboard", icon: LayoutDashboard }]
   },
   {
-    id: "emp-oggi",
-    title: "Oggi",
+    id: "emp-io",
+    title: "Io",
     items: [
       { href: "/attendance", label: "Presenze", icon: Clock3 },
       { href: "/workflow", label: "Workflow", icon: Workflow },
-      { href: "/expenses", label: "Note spese", icon: Receipt }
+      { href: "/expenses", label: "Note spese", icon: Receipt },
+      { href: "/scheduling", label: "Turni", icon: CalendarDays },
+      { href: "/smartworking", label: "Remote working", icon: Laptop },
+      { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
+      { href: "/il-mio-team" as Route, label: "Manager e colleghi", icon: Users },
+      { href: "/percorso" as Route, label: "Onboarding e uscita", icon: RouteIcon }
     ]
   },
   {
     id: "emp-docs",
-    title: "Documenti e paghe",
+    title: "Documenti",
     items: [
       { href: "/payslips", label: "Cedolini", icon: FileText },
       { href: "/settings", label: "Impostazioni", icon: Settings }
     ]
-  },
-  {
-    id: "emp-team",
-    title: "Il mio team",
-    items: [{ href: "/il-mio-team" as Route, label: "Manager e colleghi", icon: Users }]
-  },
-  {
-    id: "emp-plan",
-    title: "Pianificazione",
-    items: [
-      { href: "/scheduling", label: "Turni", icon: CalendarDays },
-      { href: "/smartworking", label: "Remote working", icon: Laptop },
-      { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar }
-    ]
-  },
-  {
-    id: "emp-percorso",
-    title: "Percorso",
-    items: [{ href: "/percorso" as Route, label: "Onboarding e uscita", icon: RouteIcon }]
   }
 ];
 
-/** Menu sidebar semplificato per dipendenti (senza pilastri HR). */
+/** Menu sidebar semplificato per dipendenti (tre sezioni top-level). */
 export function buildEmployeeNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean

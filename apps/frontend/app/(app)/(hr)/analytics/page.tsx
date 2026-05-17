@@ -110,7 +110,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
     <NexaHrAppPage
       eyebrow="Analytics & Intelligence"
       title="Hub Analytics"
-      subtitle="Otto analisi strategiche su dati aggregati e pseudonimizzati. Ogni esecuzione passa da AiPrivacyGateway prima del modello linguistico."
+      subtitle="Quattro analisi strategiche su dati aggregati e pseudonimizzati. Ogni esecuzione passa da AiPrivacyGateway prima del modello linguistico."
     >
       <LlmUsageStatusBanner
         className="mb-6"

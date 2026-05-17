@@ -37,14 +37,10 @@ const LIFECYCLE_HREFS: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], R
 
 /** Tile Analytics (riga dedicata sotto le colonne lifecycle). */
 export const PORTAL_ANALYTICS_ROW_HREFS: Route[] = [
-  "/analytics" as Route,
-  "/hr-center/analisi" as Route,
+  "/personnel-budget" as Route,
   "/insights",
-  "/personnel-budget",
-  "/forecast",
-  "/hr-center/budget-report" as Route,
-  "/hr-center/recap" as Route,
-  "/ai-hub" as Route
+  "/analytics/competenze" as Route,
+  "/hr-center/recap" as Route
 ];
 
 function tileByHref(href: string): PortalTile | undefined {

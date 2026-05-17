@@ -232,30 +232,39 @@ export class NarrativeAnalyticsService {
     }
 
     if (topic === "turnover_insights_deep" || topic === "turnover_retention" || topic === "turnover_insights") {
-      const items = Array.isArray(payload.items)
-        ? (payload.items as Array<{ score?: number; costCenterLabel?: string }>)
-        : [];
       const trend = Array.isArray(payload.trend)
         ? (payload.trend as Array<{ weekStart?: string; avgScore?: number; sampleSize?: number }>)
         : [];
       const modelVersion = String(payload.modelVersion ?? "rule-v1");
-      const bands = { low: 0, mid: 0, high: 0 };
-      for (const it of items) {
-        const s = Number(it.score);
-        if (!Number.isFinite(s)) continue;
-        if (s < 34) bands.low += 1;
-        else if (s < 67) bands.mid += 1;
-        else bands.high += 1;
-      }
+      const itemsCount = Number(payload.itemsCount ?? NaN);
+      const bandsRaw = payload.scoreBands as { low?: number; mid?: number; high?: number } | undefined;
+      const bands =
+        bandsRaw && typeof bandsRaw === "object"
+          ? { low: Number(bandsRaw.low ?? 0), mid: Number(bandsRaw.mid ?? 0), high: Number(bandsRaw.high ?? 0) }
+          : (() => {
+              const items = Array.isArray(payload.items)
+                ? (payload.items as Array<{ score?: number }>)
+                : [];
+              const b = { low: 0, mid: 0, high: 0 };
+              for (const it of items) {
+                const s = Number(it.score);
+                if (!Number.isFinite(s)) continue;
+                if (s < 34) b.low += 1;
+                else if (s < 67) b.mid += 1;
+                else b.high += 1;
+              }
+              return b;
+            })();
+      const sampleN = Number.isFinite(itemsCount) ? itemsCount : bands.low + bands.mid + bands.high;
       const byCc = Array.isArray(payload.byCostCenter)
         ? (payload.byCostCenter as Array<{ label: string; count: number; avgScore: number }>)
         : [];
       const lastTrend = trend.length ? trend[trend.length - 1] : undefined;
       return {
-        title: "Turnover e retention — analisi aggregata",
+        title: "Retention e rischio turnover — analisi aggregata",
         bullets: [
           `Modello segnali: ${modelVersion}.`,
-          `Distribuzione score: basso ${bands.low}, medio ${bands.mid}, alto ${bands.high} (su ${items.length} persone).`,
+          `Distribuzione score: basso ${bands.low}, medio ${bands.mid}, alto ${bands.high} (campione ${sampleN} profili).`,
           byCc.length
             ? `Per centro di costo: ${byCc
                 .slice(0, 5)
@@ -267,7 +276,7 @@ export class NarrativeAnalyticsService {
             : ""
         ].filter(Boolean),
         summary:
-          "Analisi su aggregati HR: utile per priorità e colloqui, non per decisioni automatiche su singole persone."
+          "Analisi su aggregati HR pseudonimizzati: utile per priorità e colloqui, non per decisioni automatiche su singole persone."
       };
     }
 
@@ -310,9 +319,21 @@ export class NarrativeAnalyticsService {
 
     if (topic === "skills_gap") {
       const count = Number(payload.itemCount ?? (Array.isArray(payload.items) ? payload.items.length : 0));
+      const items = Array.isArray(payload.items)
+        ? (payload.items as Array<{ roleName?: string; skillName?: string; gap?: number }>)
+        : [];
+      const topGaps = items
+        .filter((r) => Number(r.gap) > 0)
+        .sort((a, b) => Number(b.gap ?? 0) - Number(a.gap ?? 0))
+        .slice(0, 4)
+        .map((r) => `${r.roleName ?? "Ruolo"} · ${r.skillName ?? "Skill"} (gap ${r.gap})`);
       return {
-        title: "Gap competenze",
-        bullets: [`Righe gap nel report: ${count}.`, "Dettaglio per ruolo disponibile nella pagina Analisi costi HR."],
+        title: "Gap competenze vs fabbisogno",
+        bullets: [
+          `Righe gap nel report: ${count}.`,
+          topGaps.length ? `Priorità indicative: ${topGaps.join(" · ")}` : "Nessun gap rilevato sulle righe attuali.",
+          "Dettaglio per ruolo nella pagina Gap competenze."
+        ].filter(Boolean),
         summary: "Confronta fabbisogno e competenze mappate; priorità formazione e hiring da validare con HR."
       };
     }
