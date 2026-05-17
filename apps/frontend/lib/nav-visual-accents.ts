@@ -5,6 +5,13 @@
 export function portalCategoryAccentClass(category: string): string {
   const map: Record<string, string> = {
     Quotidiano: "text-cyan-600 dark:text-cyan-300",
+    Oggi: "text-cyan-600 dark:text-cyan-300",
+    Io: "text-emerald-600 dark:text-emerald-300",
+    Documenti: "text-amber-600 dark:text-amber-300",
+    Persone: "text-emerald-600 dark:text-emerald-300",
+    Operazioni: "text-cyan-600 dark:text-cyan-300",
+    Analytics: "text-violet-600 dark:text-violet-300",
+    Amministrazione: "text-orange-600 dark:text-orange-300",
     "Persone e organizzazione": "text-emerald-600 dark:text-emerald-300",
     "HEBB AI for HR": "text-violet-600 dark:text-violet-300",
     "Selezione e documenti": "text-amber-600 dark:text-amber-300",
@@ -25,6 +32,13 @@ export function portalCategoryGlassColumnHeaderClass(category: string, density: 
       : "w-full px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em]";
   const tints: Record<string, string> = {
     Quotidiano: `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
+    Oggi: `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
+    Io: `border-emerald-500/70 bg-gradient-to-br from-emerald-400/50 via-emerald-600/30 to-emerald-950/50 text-emerald-950 dark:border-emerald-400/55 dark:from-emerald-400/38 dark:via-emerald-600/22 dark:to-emerald-950/45 dark:text-emerald-50`,
+    Documenti: `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
+    Persone: `border-emerald-500/70 bg-gradient-to-br from-emerald-400/50 via-emerald-600/30 to-emerald-950/50 text-emerald-950 dark:border-emerald-400/55 dark:from-emerald-400/38 dark:via-emerald-600/22 dark:to-emerald-950/45 dark:text-emerald-50`,
+    Operazioni: `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
+    Analytics: `border-violet-500/70 bg-gradient-to-br from-violet-400/50 via-violet-600/35 to-violet-950/55 text-violet-950 dark:border-violet-400/55 dark:from-violet-400/40 dark:via-violet-600/28 dark:to-violet-950/50 dark:text-violet-50`,
+    Amministrazione: `border-orange-500/70 bg-gradient-to-br from-orange-400/48 via-orange-600/28 to-orange-950/50 text-orange-950 dark:border-orange-400/55 dark:from-orange-400/36 dark:via-orange-600/22 dark:to-orange-950/45 dark:text-orange-50`,
     "Persone e organizzazione": `border-emerald-500/70 bg-gradient-to-br from-emerald-400/50 via-emerald-600/30 to-emerald-950/50 text-emerald-950 dark:border-emerald-400/55 dark:from-emerald-400/38 dark:via-emerald-600/22 dark:to-emerald-950/45 dark:text-emerald-50`,
     "HEBB AI for HR": `border-violet-500/70 bg-gradient-to-br from-violet-400/50 via-violet-600/35 to-violet-950/55 text-violet-950 dark:border-violet-400/55 dark:from-violet-400/40 dark:via-violet-600/28 dark:to-violet-950/50 dark:text-violet-50`,
     "Selezione e documenti": `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
@@ -57,6 +71,13 @@ export function portalSubgroupGlassClass(portalCategory: string, density: "compa
 export function portalCategoryTileTopAccentClass(category: string): string {
   const map: Record<string, string> = {
     Quotidiano: "border-t-2 border-t-cyan-400/85",
+    Oggi: "border-t-2 border-t-cyan-400/85",
+    Io: "border-t-2 border-t-emerald-400/85",
+    Documenti: "border-t-2 border-t-amber-400/85",
+    Persone: "border-t-2 border-t-emerald-400/85",
+    Operazioni: "border-t-2 border-t-cyan-400/85",
+    Analytics: "border-t-2 border-t-violet-400/85",
+    Amministrazione: "border-t-2 border-t-orange-400/85",
     "Persone e organizzazione": "border-t-2 border-t-emerald-400/85",
     "HEBB AI for HR": "border-t-2 border-t-violet-400/85",
     "Selezione e documenti": "border-t-2 border-t-amber-400/85",

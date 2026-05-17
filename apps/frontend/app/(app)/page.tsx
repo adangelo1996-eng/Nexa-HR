@@ -449,6 +449,7 @@ export default function HomePage(): React.JSX.Element {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">{user.fullName}</p>
+          <p className="mt-1 text-sm text-[var(--prom-muted)]">Timbrature, ferie e notifiche della giornata.</p>
         </div>
         {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
           <Link

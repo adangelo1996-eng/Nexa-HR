@@ -158,6 +158,18 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Quotidiano"
   },
   {
+    href: "/percorso/formazione" as Route,
+    title: "Formazione",
+    blurb: "Corsi obbligatori e facoltativi assegnati da HR, con moduli e scadenze.",
+    category: "Quotidiano"
+  },
+  {
+    href: "/hr/formazione" as Route,
+    title: "Formazione HR",
+    blurb: "Catalogo corsi, assegnazioni dipendenti e panoramica aziendale.",
+    category: "Persone e organizzazione"
+  },
+  {
     href: "/hr-center/analisi" as Route,
     title: "Analisi costi HR",
     blurb: "Costo personale per centro di costo con sintesi LLM o offline.",

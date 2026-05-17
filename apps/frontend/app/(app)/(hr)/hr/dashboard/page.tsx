@@ -58,7 +58,7 @@ export default function HrDashboardPage(): React.JSX.Element | null {
   return (
     <NexaHrAppPage
       title="Dashboard HR"
-      subtitle="Organico, task urgenti e accessi rapidi."
+      subtitle="Sintesi organico, task urgenti e collegamenti alle analisi."
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-200">

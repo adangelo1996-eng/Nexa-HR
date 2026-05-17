@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   fetchMyTrainingAssignments,
   patchTrainingAssignmentStatus,
-  type TrainingAssignmentDto,
-  type TrainingCourseModuleDto
+  type TrainingAssignmentDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
@@ -23,31 +22,6 @@ function formatDue(d: string): string {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
   return dt.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function CourseModulesPanel({ modules }: { modules: TrainingCourseModuleDto[] }): React.JSX.Element {
-  return (
-    <ol className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
-      {modules.map((mod, i) => (
-        <li
-          key={mod.id}
-          className="rounded-lg border border-[var(--prom-line)]/80 bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] px-3 py-3"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">
-            Modulo {i + 1} · {mod.title}
-          </p>
-          {mod.summary ? <p className="mt-1 text-sm text-[var(--prom-muted)]">{mod.summary}</p> : null}
-          {mod.steps.length > 0 ? (
-            <ul className="mt-2 list-inside list-decimal space-y-1 text-sm text-[var(--prom-text)]">
-              {mod.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ul>
-          ) : null}
-        </li>
-      ))}
-    </ol>
-  );
 }
 
 export default function FormazionePage(): React.JSX.Element {
@@ -101,7 +75,12 @@ export default function FormazionePage(): React.JSX.Element {
 
   function renderList(list: TrainingAssignmentDto[], empty: string): React.JSX.Element {
     if (list.length === 0) {
-      return <p className="text-sm text-[var(--prom-muted)]">{empty}</p>;
+      return (
+        <div className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-8 text-center">
+          <p className="text-sm text-[var(--prom-muted)]">{empty}</p>
+          <p className="mt-1 text-xs text-[var(--prom-muted)]">HR ti assegnerà i corsi dal pannello Formazione.</p>
+        </div>
+      );
     }
     const today = new Date().toISOString().slice(0, 10);
     return (
@@ -109,31 +88,22 @@ export default function FormazionePage(): React.JSX.Element {
         {list.map((a) => {
           const overdue = a.status !== "completed" && a.dueDate < today;
           const modules = a.course?.courseContent ?? [];
-          const hasModules = modules.length > 0;
-          const expanded = expandedId === a.id;
+          const open = expandedId === a.id;
           return (
             <li
               key={a.id}
-              className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-4 py-3"
+              className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)] px-4 py-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-[var(--prom-text)]">{a.course?.title ?? "Corso"}</p>
                   <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                    Scadenza: {formatDue(a.dueDate)}
+                    Scadenza {formatDue(a.dueDate)}
                     {overdue ? " · in ritardo" : ""}
+                    {modules.length > 0 ? ` · ${modules.length} moduli` : ""}
                   </p>
                   {a.course?.description ? (
                     <p className="mt-2 text-sm text-[var(--prom-muted)]">{a.course.description}</p>
-                  ) : null}
-                  {hasModules && !expanded ? (
-                    <p className="mt-2 text-xs text-[var(--prom-muted)]">
-                      Percorso guidato in {modules.length} moduli — apri per i passaggi operativi.
-                    </p>
-                  ) : null}
-                  {hasModules && expanded ? <CourseModulesPanel modules={modules} /> : null}
-                  {!hasModules && a.course?.hasQuizPlaceholder ? (
-                    <p className="mt-1 text-xs italic text-[var(--prom-muted)]">Quiz in arrivo (placeholder)</p>
                   ) : null}
                 </div>
                 <div className="flex flex-col items-end gap-2">
@@ -148,15 +118,10 @@ export default function FormazionePage(): React.JSX.Element {
                   >
                     {statusLabel(a.status)}
                   </span>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    {hasModules ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setExpandedId(expanded ? null : a.id)}
-                      >
-                        {expanded ? "Chiudi moduli" : "Vedi moduli"}
+                  <div className="flex flex-wrap gap-1">
+                    {modules.length > 0 ? (
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setExpandedId(open ? null : a.id)}>
+                        {open ? "Nascondi moduli" : "Vedi moduli"}
                       </Button>
                     ) : null}
                     {a.status === "not_started" ? (
@@ -177,12 +142,31 @@ export default function FormazionePage(): React.JSX.Element {
                         disabled={busyId === a.id}
                         onClick={() => void onStatus(a, "completed")}
                       >
-                        Segna completato
+                        Completa
                       </Button>
                     ) : null}
                   </div>
                 </div>
               </div>
+              {open && modules.length > 0 ? (
+                <ol className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
+                  {modules.map((mod, idx) => (
+                    <li key={mod.id} className="text-sm">
+                      <p className="font-medium text-[var(--prom-text)]">
+                        {idx + 1}. {mod.title}
+                      </p>
+                      {mod.summary ? <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{mod.summary}</p> : null}
+                      {mod.steps?.length ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[var(--prom-muted)]">
+                          {mod.steps.map((step) => (
+                            <li key={step}>{step}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
             </li>
           );
         })}
@@ -191,14 +175,14 @@ export default function FormazionePage(): React.JSX.Element {
   }
 
   return (
-    <NexaHrAppPage
-      eyebrow="Percorso"
-      title="Formazione"
-      subtitle="Corsi obbligatori e facoltativi assegnati da HR. Tieni sotto controllo scadenze e completamento."
-    >
+    <NexaHrAppPage eyebrow="Percorso" title="Formazione" subtitle="Corsi assegnati da HR: scadenze, moduli e completamento.">
       <p className="mb-4 text-sm">
         <Link href={"/percorso" as Route} className="text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200">
-          ← Torna al percorso
+          ← Percorso
+        </Link>
+        {" · "}
+        <Link href={"/hub/io" as Route} className="text-[var(--prom-muted)] underline-offset-2 hover:underline">
+          Hub Io
         </Link>
       </p>
 
@@ -208,7 +192,7 @@ export default function FormazionePage(): React.JSX.Element {
       {!loading ? (
         <div className="space-y-6">
           <section className="rounded-xl border border-[var(--prom-line)] p-4">
-            <p className="text-xs uppercase tracking-wide text-[var(--prom-muted)]">Avanzamento complessivo</p>
+            <p className="text-xs uppercase tracking-wide text-[var(--prom-muted)]">Avanzamento</p>
             <p className="mt-1 text-2xl font-semibold text-[#002D72] dark:text-white">{progress.percentComplete}%</p>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
               <div
@@ -217,7 +201,7 @@ export default function FormazionePage(): React.JSX.Element {
               />
             </div>
             <p className="mt-2 text-xs text-[var(--prom-muted)]">
-              {progress.completed} completati su {progress.total}
+              {progress.completed} su {progress.total} completati
               {progress.overdue > 0 ? ` · ${progress.overdue} in ritardo` : ""}
             </p>
           </section>
@@ -229,7 +213,7 @@ export default function FormazionePage(): React.JSX.Element {
 
           <section>
             <h2 className="mb-2 text-sm font-semibold text-[var(--prom-text)]">Facoltativi</h2>
-            {renderList(optional, "Nessun corso facoltativo assegnato.")}
+            {renderList(optional, "Nessun corso facoltativo.")}
           </section>
         </div>
       ) : null}

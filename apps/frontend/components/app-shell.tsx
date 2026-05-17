@@ -47,7 +47,7 @@ import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes
 import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
-import { buildHrNavPillars } from "@/lib/nexa-hr-nav";
+import { buildHrNavPillars, type HrNavPillar } from "@/lib/nexa-hr-nav";
 import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
@@ -119,10 +119,11 @@ function SidebarNavLink(props: {
   pathname: string;
   onNavigate: () => void;
   beforeNavigate?: () => void;
+  isActive?: boolean;
 }): React.JSX.Element {
-  const { item, pathname, onNavigate, beforeNavigate } = props;
+  const { item, pathname, onNavigate, beforeNavigate, isActive } = props;
   const { href, label, icon: Icon, exact } = item;
-  const active = pathActive(pathname, href, exact);
+  const active = isActive ?? pathActive(pathname, href, exact);
   return (
     <Link
       href={href}
@@ -416,23 +417,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const usesEmployeeNav =
     hideSensitiveHrBecausePreview || sessionIsPlainEmployee(user ?? undefined);
 
-  const sixNavSections = useMemo(() => {
-    if (usesHrNav) {
-      return buildHrNavPillars(user, hideSensitiveHrBecausePreview).map((p) => ({
-        id: p.id,
-        title: p.title,
-        portalCategory: p.portalCategory,
-        subgroups: p.subgroups
-      }));
-    }
-    if (usesEmployeeNav) {
-      return buildEmployeeNavSections(user, hideSensitiveHrBecausePreview).map((s) => ({
-        id: s.id,
-        title: s.title,
-        portalCategory: undefined as string | undefined,
-        subgroups: [{ id: `${s.id}-items`, title: "", items: s.items }]
-      }));
-    }
+  const hrNavPillars = useMemo((): HrNavPillar[] => {
+    if (!usesHrNav) return [];
+    return buildHrNavPillars(user, hideSensitiveHrBecausePreview);
+  }, [user, hideSensitiveHrBecausePreview, usesHrNav]);
+
+  const employeeNavHubs = useMemo(() => {
+    if (!usesEmployeeNav) return [];
+    return buildEmployeeNavSections(user, hideSensitiveHrBecausePreview);
+  }, [user, hideSensitiveHrBecausePreview, usesEmployeeNav]);
+
+  const legacySixNavSections = useMemo(() => {
+    if (usesHrNav || usesEmployeeNav) return [];
     return buildSixCatNavSections(user, hideSensitiveHrBecausePreview);
   }, [user, hideSensitiveHrBecausePreview, usesHrNav, usesEmployeeNav]);
 
@@ -490,6 +486,13 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
   }, [pathname]);
 
+  function hubLinkActive(hubHref: Route, childHrefs: Route[]): boolean {
+    if (pathActive(pathname, hubHref)) {
+      return true;
+    }
+    return childHrefs.some((href) => pathActive(pathname, href));
+  }
+
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
@@ -536,8 +539,44 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
-      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
-      {sixNavSections.map((section) => (
+      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
+        <div className="my-2 border-t border-[var(--prom-line)]" />
+      ) : null}
+      {hrNavPillars.map((pillar) => {
+        const childHrefs = pillar.subgroups.flatMap((sg) => sg.items.map((i) => i.href));
+        return (
+          <SidebarNavLink
+            key={pillar.id}
+            item={{
+              href: pillar.hubHref,
+              label: pillar.title,
+              icon: pillar.subgroups[0]?.items[0]?.icon ?? LayoutDashboard
+            }}
+            pathname={pathname}
+            isActive={hubLinkActive(pillar.hubHref, childHrefs)}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+        );
+      })}
+      {employeeNavHubs.map((section) => (
+        <SidebarNavLink
+          key={section.id}
+          item={{
+            href: section.hubHref,
+            label: section.title,
+            icon: section.sectionIcon
+          }}
+          pathname={pathname}
+          isActive={hubLinkActive(
+            section.hubHref,
+            section.items.map((i) => i.href)
+          )}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ))}
+      {legacySixNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}
           section={{
@@ -553,7 +592,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
-      {sixNavSections.length > 0 ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
+      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
+        <div className="my-2 border-t border-[var(--prom-line)]" />
+      ) : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink
           key={`settings-${item.href}`}

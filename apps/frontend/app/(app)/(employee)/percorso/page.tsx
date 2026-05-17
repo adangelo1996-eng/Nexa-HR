@@ -40,16 +40,16 @@ function buildChecklist(state: EmploymentState): ChecklistItem[] {
 
 const STATE_HEADLINE: Record<EmploymentState, { title: string; blurb: string }> = {
   active: {
-    title: "Percorso in corso",
-    blurb: "Sei in regime di impiego ordinario. Usa le voci sotto per tenere aggiornati dati e flussi quotidiani."
+    title: "In servizio",
+    blurb: "Passi utili per tenere aggiornati profilo, presenze e riferimenti del team."
   },
   hr_onboarding: {
-    title: "Onboarding in corso",
-    blurb: "Checklist guidata per completare l'ingresso in azienda. HR può aggiornare lo stato da anagrafica."
+    title: "Onboarding",
+    blurb: "Checklist per completare l'ingresso in azienda."
   },
   offboarding: {
-    title: "Uscita in corso",
-    blurb: "Passaggi consigliati prima della cessazione del rapporto. Coordina con HR e il tuo manager."
+    title: "Uscita",
+    blurb: "Passi consigliati prima della fine del rapporto. Coordina con HR e il manager."
   }
 };
 

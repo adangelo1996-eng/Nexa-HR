@@ -206,7 +206,7 @@ export default function SaleRiunioniPage(): React.JSX.Element {
     <NexaHrAppPage
       eyebrow="Prenotazioni"
       title="Sale riunioni"
-      subtitle="Scegli sala, data e fascia oraria. Le prenotazioni sono condivise in azienda."
+      subtitle="Scegli sala, giorno e orario. Le prenotazioni sono visibili in azienda."
     >
       <StepIndicator step={step} />
 

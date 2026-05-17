@@ -101,7 +101,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
   );
 
   return (
-    <NexaHrAppPage title="Hub Analytics" subtitle="Quattro analisi strategiche su dati aggregati.">
+    <NexaHrAppPage title="Analytics" subtitle="Analisi su dati aggregati, con narrativa AI opzionale.">
       <LlmUsageStatusBanner
         className="mb-6"
         idle={Object.keys(results).length === 0}

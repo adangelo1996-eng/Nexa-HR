@@ -521,12 +521,13 @@ export default function AttendancePage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Timbrature</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Presenze</h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Storico e straordinario · timbra da{" "}
+            Storico e straordinario. Per timbrare usa la{" "}
             <Link href="/" className="font-medium text-[#3a5466] underline-offset-2 hover:underline dark:text-[#8aa3b3]">
               Dashboard
             </Link>
+            .
           </p>
         </div>
         {user && sessionCanAccessPayrollArea(user) ? (

@@ -1,6 +1,8 @@
 import type { Route } from "next";
 import type { SessionUser } from "@/lib/auth-session";
+import { buildEmployeeHubTiles } from "@/lib/nexa-hub-config";
 import { filterPortalHref } from "@/lib/nexa-route-access";
+import { portalBlurbForHref } from "@/lib/portal-tile-blurb";
 import { PORTAL_TILES, type PortalTile } from "@/lib/portal-mappa";
 
 /** Colonne del ciclo di vita per la mappa portale HR. */
@@ -29,6 +31,7 @@ const LIFECYCLE_HREFS: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], R
     "/organigramma",
     "/org-chart",
     "/workforce-planning" as Route,
+    "/hr/formazione" as Route,
     "/manager-copilot" as Route,
     "/compensation/bench" as Route
   ],
@@ -89,4 +92,41 @@ export function buildAnalyticsPortalRow(
     tiles.push(tile);
   }
   return tiles;
+}
+
+/** Colonne hub dipendente (sostituiscono le 6 categorie legacy in mappa portale). */
+export const PORTAL_EMPLOYEE_HUB_COLUMNS = [
+  { id: "home", title: "Home", subtitle: "Dashboard e giornata", accentCategory: "Home" },
+  { id: "io", title: "Io", subtitle: "Presenze, richieste e team", accentCategory: "Io" },
+  { id: "documenti", title: "Documenti", subtitle: "Cedolini e profilo", accentCategory: "Documenti" }
+] as const;
+
+export type EmployeeHubColumnModel = {
+  id: (typeof PORTAL_EMPLOYEE_HUB_COLUMNS)[number]["id"];
+  title: string;
+  subtitle: string;
+  accentCategory: string;
+  tiles: PortalTile[];
+};
+
+export function buildEmployeeHubPortalColumns(
+  user: SessionUser | null,
+  hideSensitiveHr: boolean
+): EmployeeHubColumnModel[] {
+  return PORTAL_EMPLOYEE_HUB_COLUMNS.map((col) => {
+    const hubTiles = buildEmployeeHubTiles(col.id, user, hideSensitiveHr);
+    const tiles: PortalTile[] = hubTiles.map((t) => ({
+      href: t.href,
+      title: t.label,
+      blurb: portalBlurbForHref(t.href) || t.blurb,
+      category: col.accentCategory
+    }));
+    return {
+      id: col.id,
+      title: col.title,
+      subtitle: col.subtitle,
+      accentCategory: col.accentCategory,
+      tiles
+    };
+  }).filter((c) => c.tiles.length > 0);
 }

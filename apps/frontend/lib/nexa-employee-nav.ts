@@ -6,15 +6,18 @@ import {
   Clock3,
   DoorOpen,
   FileText,
+  Home,
   LayoutDashboard,
   Laptop,
   Receipt,
   Route as RouteIcon,
   Settings,
+  User,
   Users,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
+import { employeeHubSlugForSectionId, hubPathForSlug } from "@/lib/nexa-hub-paths";
 import { filterPortalHref } from "@/lib/nexa-route-access";
 
 export type EmployeeNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
@@ -22,18 +25,22 @@ export type EmployeeNavItem = { href: Route; label: string; icon: LucideIcon; ex
 export type EmployeeNavSection = {
   id: string;
   title: string;
+  hubHref: Route;
+  sectionIcon: LucideIcon;
   items: EmployeeNavItem[];
 };
 
-const ALL_SECTIONS: EmployeeNavSection[] = [
+const ALL_SECTIONS: Omit<EmployeeNavSection, "hubHref">[] = [
   {
     id: "emp-home",
     title: "Home",
+    sectionIcon: Home,
     items: [{ href: "/" as Route, label: "Dashboard", icon: LayoutDashboard }]
   },
   {
     id: "emp-io",
     title: "Io",
+    sectionIcon: User,
     items: [
       { href: "/attendance", label: "Presenze", icon: Clock3 },
       { href: "/workflow", label: "Workflow", icon: Workflow },
@@ -50,6 +57,7 @@ const ALL_SECTIONS: EmployeeNavSection[] = [
   {
     id: "emp-docs",
     title: "Documenti",
+    sectionIcon: FileText,
     items: [
       { href: "/payslips", label: "Cedolini", icon: FileText },
       { href: "/settings", label: "Impostazioni", icon: Settings }
@@ -58,12 +66,22 @@ const ALL_SECTIONS: EmployeeNavSection[] = [
 ];
 
 /** Menu sidebar semplificato per dipendenti (tre sezioni top-level). */
+function withHubHref(section: Omit<EmployeeNavSection, "hubHref">): EmployeeNavSection {
+  const slug = employeeHubSlugForSectionId(section.id);
+  return {
+    ...section,
+    hubHref: slug ? hubPathForSlug(slug) : ("/" as Route)
+  };
+}
+
 export function buildEmployeeNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): EmployeeNavSection[] {
-  return ALL_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => filterPortalHref(item.href, user, hideSensitiveHr))
-  })).filter((s) => s.items.length > 0);
+  return ALL_SECTIONS.map((section) =>
+    withHubHref({
+      ...section,
+      items: section.items.filter((item) => filterPortalHref(item.href, user, hideSensitiveHr))
+    })
+  ).filter((s) => s.items.length > 0);
 }
