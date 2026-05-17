@@ -78,7 +78,10 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/payroll-hebb": Sparkles,
   "/admin": UserCog,
   "/admin/data-export": FileText,
-  "/admin/cost-centers": Building2
+  "/admin/cost-centers": Building2,
+  "/analytics": BarChart2,
+  "/il-mio-team": Users,
+  "/percorso": Calendar
 };
 
 function slugCategory(cat: string): string {

@@ -14,6 +14,7 @@ import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Mi
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
+import { AnalyticsOrchestratorService } from "./analytics-orchestrator.service";
 import { NarrativeAnalyticsService } from "./narrative-analytics.service";
 
 class PayrollWhatIfDto {
@@ -86,14 +87,38 @@ class HitlProposalDraftDto {
   useLlm?: boolean;
 }
 
+class HubRunDto {
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  useLlm?: boolean;
+}
+
 @Controller("analytics")
 @UseGuards(NexaPermissionGuard)
 export class AnalyticsController {
   constructor(
     private readonly store: HrDataStore,
     private readonly narrative: NarrativeAnalyticsService,
+    private readonly orchestrator: AnalyticsOrchestratorService,
     private readonly permissions: PermissionsService
   ) {}
+
+  @Get("hub")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  hubCatalog(): { cards: ReturnType<AnalyticsOrchestratorService["listHubCards"]> } {
+    return { cards: this.orchestrator.listHubCards() };
+  }
+
+  @Post("hub/:analysisId/run")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  runHubAnalysis(
+    @CurrentAuth() auth: AuthContext,
+    @Param("analysisId") analysisId: string,
+    @Body() body: HubRunDto
+  ): ReturnType<AnalyticsOrchestratorService["runHubAnalysis"]> {
+    return this.orchestrator.runHubAnalysis(auth, analysisId, { useLlm: body.useLlm });
+  }
 
   @Post("payroll-what-if")
   @RequireNexaPermissions("nexa.reports_hr:read")

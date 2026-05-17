@@ -4,6 +4,9 @@ import type { Route } from "next";
 export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/mappa-portale" as Route, label: "Mappa portale" },
+  { href: "/analytics" as Route, label: "Hub Analytics" },
+  { href: "/il-mio-team" as Route, label: "Il mio team" },
+  { href: "/percorso" as Route, label: "Il mio percorso" },
   { href: "/attendance", label: "Presenze" },
   { href: "/workflow", label: "Workflow (tue richieste)" },
   { href: "/manager-copilot" as Route, label: "Pannello manager" },

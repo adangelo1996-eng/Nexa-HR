@@ -16,7 +16,14 @@ import {
   type User
 } from "@/lib/api";
 import { CostCenterLink, EmployeeLink } from "@/components/nexa-entity-links";
-import { getToken, getSessionUser, type SessionUser, type UserRole } from "@/lib/auth-session";
+import {
+  getToken,
+  getSessionUser,
+  sessionIsPlainEmployee,
+  sessionUsesHrReorganizedNav,
+  type SessionUser,
+  type UserRole
+} from "@/lib/auth-session";
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "user", label: "Utente (accesso standard)" },
@@ -106,6 +113,26 @@ export default function OrgChartPage(): React.JSX.Element {
     }
     return fromNodes.sort().map((id) => ({ id, name: id }));
   }, [data.nodes, centers]);
+
+  const canSeeFullOrg = user && sessionUsesHrReorganizedNav(user, false);
+  if (!loading && user && !canSeeFullOrg) {
+    return (
+      <div className="mx-auto max-w-lg rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)] p-6 text-center">
+        <h1 className="text-lg font-semibold text-[var(--prom-text)]">Organigramma riservato</h1>
+        <p className="mt-2 text-sm text-[var(--prom-muted)]">
+          {sessionIsPlainEmployee(user)
+            ? "Come dipendente vedi solo il tuo perimetro in «Il mio team», non l'intera azienda."
+            : "Non hai permesso per l'organigramma completo."}
+        </p>
+        <Link
+          href={"/il-mio-team" as Route}
+          className="mt-4 inline-flex rounded-lg bg-[var(--prom-gold)] px-4 py-2 text-sm font-medium text-[#0a1628]"
+        >
+          Vai a Il mio team
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="relative space-y-6">

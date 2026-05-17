@@ -9,6 +9,7 @@ import {
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanOpenEmployeeRecapPage,
   sessionCanViewOrgExpenseClaims,
+  sessionUsesHrReorganizedNav,
   type SessionUser
 } from "@/lib/auth-session";
 
@@ -75,7 +76,8 @@ export function canAccessNexaPortalRoute(
     { prefix: "/personnel-budget/", base: "/personnel-budget" },
     { prefix: "/hr-center/", base: "/hr-center" },
     { prefix: "/employee/", base: "/employee" },
-    { prefix: "/lifecycle/", base: "/lifecycle" }
+    { prefix: "/lifecycle/", base: "/lifecycle" },
+    { prefix: "/analytics/", base: "/analytics" }
   ];
 
   for (const { prefix, base } of prefixToBase) {
@@ -94,10 +96,13 @@ export function canAccessNexaPortalRoute(
     case "/expenses":
     case "/payslips":
     case "/settings":
-    case "/org-chart":
+    case "/il-mio-team":
+    case "/percorso":
     case "/scheduling":
     case "/smartworking":
       return true;
+    case "/org-chart":
+      return sessionUsesHrReorganizedNav(user, hideSensitiveHr);
     case "/organigramma":
     case "/workforce-planning":
     case "/reports":
@@ -108,6 +113,14 @@ export function canAccessNexaPortalRoute(
       return !hide && sessionCanUseNexaAiOpenAiLlm(user);
     case "/ai-hub":
       return !hide && sessionCanUseNexaAiOpenAiLlm(user);
+    case "/analytics":
+      return (
+        !hide &&
+        sessionCanUseNexaAiOpenAiLlm(user) &&
+        (sessionCanNexaAdmin(user) ||
+          sessionCanAccessHrRecapDashboard(user) ||
+          sessionCanAccessPersonnelBudgetArea(user) === true)
+      );
     case "/insights":
     case "/recruiting":
     case "/contracts":

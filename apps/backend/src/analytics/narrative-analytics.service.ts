@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { AuthContext } from "../platform/auth";
+import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { AiAuditService } from "../ai-hr/ai-audit.service";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
@@ -32,11 +33,13 @@ export class NarrativeAnalyticsService {
   constructor(
     private readonly store: HrDataStore,
     private readonly audit: AiAuditService,
-    private readonly openAi: AiOpenAiRefinementService
+    private readonly openAi: AiOpenAiRefinementService,
+    private readonly gateway: AiPrivacyGateway
   ) {}
 
   async generate(auth: AuthContext, body: NarrativeAnalyticsRequest): Promise<NarrativeAnalyticsResponse> {
     const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId || "synapse-default";
     const topic = body.topic.trim().slice(0, 80);
     const seed = this.buildTemplate(topic, body.payload);
     let title = seed.title;
@@ -49,31 +52,39 @@ export class NarrativeAnalyticsService {
         ? "ai_turnover_insights_deep_v1"
         : topic === "process_bottlenecks"
           ? "ai_process_bottlenecks_v1"
-          : "ai_narrative_aggregate_v1";
+          : topic === "compensation_bench"
+            ? "ai_compensation_bench_v1"
+            : topic === "attendance_payroll_anomalies"
+              ? "ai_attendance_payroll_anomalies_v1"
+              : "ai_narrative_aggregate_v1";
 
     if (body.useLlm === true && this.openAi.isActive()) {
-      const refined = await this.openAi.refinePseudonymizedJson(
-        {
+      const sessionId = (await this.gateway.beginSession(companyId, auth.userId)).sessionId;
+      try {
+        const envelopePayload = {
           envelope: {
             facts: body.payload,
             narrativeSeed: seed
           }
-        },
-        refineSchema
-      );
-      if (refined.ok && refined.data && typeof refined.data === "object") {
-        const env = (refined.data as { envelope?: { title?: string; bullets?: unknown; summary?: string } }).envelope;
-        if (env?.title && env?.summary) {
-          title = env.title;
-          summary = env.summary;
-          if (Array.isArray(env.bullets)) {
-            bullets = env.bullets.filter((b): b is string => typeof b === "string").slice(0, 8);
+        };
+        const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, refineSchema);
+        const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, refineSchema);
+        if (refined.ok && refined.data && typeof refined.data === "object") {
+          const env = (refined.data as { envelope?: { title?: string; bullets?: unknown; summary?: string } }).envelope;
+          if (env?.title && env?.summary) {
+            title = env.title;
+            summary = env.summary;
+            if (Array.isArray(env.bullets)) {
+              bullets = env.bullets.filter((b): b is string => typeof b === "string").slice(0, 8);
+            }
+            if (bullets.length === 0) {
+              bullets = [...seed.bullets];
+            }
+            llmApplied = true;
           }
-          if (bullets.length === 0) {
-            bullets = [...seed.bullets];
-          }
-          llmApplied = true;
         }
+      } finally {
+        await this.gateway.endSession(sessionId);
       }
     }
 
@@ -87,7 +98,7 @@ export class NarrativeAnalyticsService {
 
     const text = JSON.stringify(out);
     await this.audit.append({
-      companyId: me.companyId || "synapse-default",
+      companyId,
       userId: auth.userId,
       roleSnapshot: auth.role,
       feature: "narrative_analytics",
@@ -106,6 +117,7 @@ export class NarrativeAnalyticsService {
     body: { intent: string; useLlm?: boolean }
   ): Promise<HitlProposalDraftResponse> {
     const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId || "synapse-default";
     const intent = body.intent.trim().slice(0, 2000);
     const allowedKinds = hitlProposalKindIds();
     const defaultKind = allowedKinds[0] ?? "reminder.leave_balance";
@@ -114,7 +126,7 @@ export class NarrativeAnalyticsService {
       bullets: HITL_PROPOSAL_KIND_CATALOG.map((k) => `${k.labelIt} — codice: ${k.id}`).slice(0, 6),
       summary:
         intent.length > 0
-          ? `Intento HR (testo libero, da rivedere prima dell’invio): ${intent.slice(0, 800)}`
+          ? `Intento HR (testo libero, da rivedere prima dell'invio): ${intent.slice(0, 800)}`
           : "Descrivi in poche frase cosa vuoi proporre; poi usa «Genera bozza con AI» se disponibile."
     };
     let kind = defaultKind;
@@ -122,7 +134,7 @@ export class NarrativeAnalyticsService {
     let rationale =
       intent.length > 0
         ? `Richiesta in sintesi: ${intent}\n\nTipo predefinito suggerito: «${defaultKind}». Modifica il tipo dal menu se non è adatto, poi invia.`
-        : "Compila l’intento della proposta, scegli il tipo dal catalogo e invia quando sei sicuro.";
+        : "Compila l'intento della proposta, scegli il tipo dal catalogo e invia quando sei sicuro.";
     let checklist = [
       "Verifica che il tipo di proposta sia coerente con policy aziendali.",
       "Il revisore umano approverà o rifiuterà: nessuna azione automatica su cedolini o contratti da questa coda."
@@ -130,8 +142,9 @@ export class NarrativeAnalyticsService {
     let llmApplied = false;
 
     if (body.useLlm === true && this.openAi.isActive() && intent.length > 0) {
-      const refined = await this.openAi.refinePseudonymizedJson(
-        {
+      const sessionId = (await this.gateway.beginSession(companyId, auth.userId)).sessionId;
+      try {
+        const envelopePayload = {
           envelope: {
             facts: {
               intent,
@@ -140,36 +153,39 @@ export class NarrativeAnalyticsService {
             },
             narrativeSeed: seed
           }
-        },
-        "ai_hitl_draft_v1"
-      );
-      if (refined.ok && refined.data && typeof refined.data === "object") {
-        const env = (
-          refined.data as { envelope?: { kind?: string; title?: string; rationale?: string; checklist?: unknown } }
-        ).envelope;
-        const k = typeof env?.kind === "string" ? env.kind.trim() : "";
-        if (k && allowedKinds.includes(k)) {
-          kind = k;
-        }
-        if (typeof env?.title === "string" && env.title.trim()) {
-          title = env.title.trim();
-        }
-        if (typeof env?.rationale === "string" && env.rationale.trim()) {
-          rationale = env.rationale.trim();
-        }
-        if (Array.isArray(env?.checklist)) {
-          const cl = env.checklist.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean);
-          if (cl.length > 0) {
-            checklist = cl.slice(0, 6);
+        };
+        const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, "ai_hitl_draft_v1");
+        const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_hitl_draft_v1");
+        if (refined.ok && refined.data && typeof refined.data === "object") {
+          const env = (
+            refined.data as { envelope?: { kind?: string; title?: string; rationale?: string; checklist?: unknown } }
+          ).envelope;
+          const k = typeof env?.kind === "string" ? env.kind.trim() : "";
+          if (k && allowedKinds.includes(k)) {
+            kind = k;
           }
+          if (typeof env?.title === "string" && env.title.trim()) {
+            title = env.title.trim();
+          }
+          if (typeof env?.rationale === "string" && env.rationale.trim()) {
+            rationale = env.rationale.trim();
+          }
+          if (Array.isArray(env?.checklist)) {
+            const cl = env.checklist.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean);
+            if (cl.length > 0) {
+              checklist = cl.slice(0, 6);
+            }
+          }
+          llmApplied = true;
         }
-        llmApplied = true;
+      } finally {
+        await this.gateway.endSession(sessionId);
       }
     }
 
     const text = JSON.stringify({ kind, title, rationale, checklist });
     await this.audit.append({
-      companyId: me.companyId || "synapse-default",
+      companyId,
       userId: auth.userId,
       roleSnapshot: auth.role,
       feature: "hitl_proposal_draft",
@@ -215,7 +231,7 @@ export class NarrativeAnalyticsService {
       };
     }
 
-    if (topic === "turnover_insights_deep") {
+    if (topic === "turnover_insights_deep" || topic === "turnover_retention" || topic === "turnover_insights") {
       const items = Array.isArray(payload.items)
         ? (payload.items as Array<{ score?: number; costCenterLabel?: string }>)
         : [];
@@ -239,43 +255,19 @@ export class NarrativeAnalyticsService {
         title: "Turnover e retention — analisi aggregata",
         bullets: [
           `Modello segnali: ${modelVersion}.`,
-          `Distribuzione score (proxy): basso 0–33: ${bands.low}, medio 34–66: ${bands.mid}, alto 67–100: ${bands.high} (su ${items.length} persone).`,
+          `Distribuzione score: basso ${bands.low}, medio ${bands.mid}, alto ${bands.high} (su ${items.length} persone).`,
           byCc.length
-            ? `Per centro di costo (solo aggregati): ${byCc
+            ? `Per centro di costo: ${byCc
                 .slice(0, 5)
                 .map((c) => `${c.label}: n=${c.count}, media ${c.avgScore}`)
-                .join(" · ")}${byCc.length > 5 ? " …" : ""}`
+                .join(" · ")}`
             : "",
           lastTrend?.weekStart && Number.isFinite(Number(lastTrend.avgScore))
-            ? `Ultima settimana trend (${lastTrend.weekStart}): media score ${lastTrend.avgScore}, campione ${lastTrend.sampleSize ?? "n/d"}.`
+            ? `Ultima settimana trend (${lastTrend.weekStart}): media score ${lastTrend.avgScore}.`
             : ""
         ].filter(Boolean),
         summary:
-          "Analisi solo su numeri aggregati e medie per reparto: utile per priorità HR e colloqui, non per decisioni automatiche su singole persone."
-      };
-    }
-
-    if (topic === "turnover_retention" || topic === "turnover_insights") {
-      const items = Array.isArray(payload.items) ? (payload.items as Array<{ score?: number }>) : [];
-      const trend = Array.isArray(payload.trend) ? (payload.trend as Array<{ weekStart?: string; avgScore?: number }>) : [];
-      const modelVersion = String(payload.modelVersion ?? "rule-v1");
-      const avg =
-        items.length > 0
-          ? Math.round((items.reduce((s, r) => s + (Number(r.score) || 0), 0) / items.length) * 10) / 10
-          : NaN;
-      const lastTrend = trend.length ? trend[trend.length - 1] : undefined;
-      return {
-        title: "Turnover e retention — sintesi",
-        bullets: [
-          `Modello segnali: ${modelVersion}.`,
-          items.length ? `Persone nel campione (ultimo run): ${items.length}.` : "Nessun elemento nel campione: eseguire l'aggiornamento segnali.",
-          Number.isFinite(avg) ? `Score medio (ultimo run): ${avg} su 100.` : "",
-          lastTrend?.weekStart && Number.isFinite(Number(lastTrend.avgScore))
-            ? `Media settimanale trend più recente (${lastTrend.weekStart}): ${lastTrend.avgScore}.`
-            : ""
-        ].filter(Boolean),
-        summary:
-          "I valori sono proxy operativi su aggregati HR, non diagnosi individuali. Usare il trend settimanale per contestualizzare picchi rispetto agli snapshot salvati."
+          "Analisi su aggregati HR: utile per priorità e colloqui, non per decisioni automatiche su singole persone."
       };
     }
 
@@ -297,19 +289,67 @@ export class NarrativeAnalyticsService {
           m?.note ? `Nota tecnica: ${String(m.note).slice(0, 200)}` : ""
         ].filter(Boolean),
         summary:
-          "Le metriche sono indicative (v0). L’analisi AI deve proporre azioni realistiche su processi, non modifiche ai dati."
+          "Le metriche sono indicative (v0). L'analisi AI propone azioni su processi, non modifiche ai dati."
+      };
+    }
+
+    if (topic === "personnel_cost_radar" || topic === "executive_recap") {
+      const summary = payload.summary as { headcount?: number; budgetEur?: number; pendingExpenseCount?: number } | undefined;
+      return {
+        title: topic === "executive_recap" ? "Sintesi executive HR" : "Radar costo del personale",
+        bullets: [
+          summary?.headcount != null ? `Headcount: ${summary.headcount}.` : "",
+          summary?.budgetEur != null
+            ? `Budget indicativo: ${new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(summary.budgetEur)}.`
+            : "",
+          summary?.pendingExpenseCount != null ? `Spese in attesa: ${summary.pendingExpenseCount}.` : ""
+        ].filter(Boolean),
+        summary: "Snapshot aggregato perimetro HR: verificare i numeri in budget personale e report prima di decisioni."
+      };
+    }
+
+    if (topic === "skills_gap") {
+      const count = Number(payload.itemCount ?? (Array.isArray(payload.items) ? payload.items.length : 0));
+      return {
+        title: "Gap competenze",
+        bullets: [`Righe gap nel report: ${count}.`, "Dettaglio per ruolo disponibile nella pagina Analisi costi HR."],
+        summary: "Confronta fabbisogno e competenze mappate; priorità formazione e hiring da validare con HR."
+      };
+    }
+
+    if (topic === "compensation_bench") {
+      return {
+        title: "Benchmark retribuzione",
+        bullets: [
+          "Confronto su aggregati interni senza nominativi nel payload inviato al modello.",
+          "Usa la pagina Benchmark retribuzione per il dettaglio per ruolo e centro di costo."
+        ],
+        summary: "Posizionamento RAL rispetto alla mediana interna: validare con policy retributive prima di comunicazioni ai team."
+      };
+    }
+
+    if (topic === "attendance_payroll_anomalies") {
+      const headcount = Number((payload as { headcount?: number }).headcount ?? NaN);
+      const pending = Number((payload as { pendingExpenseCount?: number }).pendingExpenseCount ?? NaN);
+      return {
+        title: "Anomalie presenze e payroll (indicative)",
+        bullets: [
+          Number.isFinite(headcount) ? `Headcount di riferimento: ${headcount}.` : "",
+          Number.isFinite(pending) ? `Spese in attesa di approvazione: ${pending}.` : "",
+          String(payload.note ?? "Verificare report presenze per il dettaglio operativo.")
+        ].filter(Boolean),
+        summary: "Segnali aggregati v0: non sostituiscono controlli payroll formali né decisioni disciplinari."
       };
     }
 
     return {
       title: "Sintesi analytics",
       bullets: [
-        `Topic generico «${topic}».`,
+        `Topic «${topic}».`,
         `Campi in ingresso: ${Object.keys(payload).length}.`,
-        "Per sintesi più ricche usare topic «workforce_cockpit» o «turnover_retention» con payload degli endpoint analytics corrispondenti."
+        "Per sintesi più ricche usare topic dedicati dal hub Analytics."
       ],
-      summary:
-        "Ricevuto un payload aggregato non mappato a un template dedicato: verificare il topic o arricchire i campi numerici nel corpo della richiesta."
+      summary: "Payload aggregato ricevuto: verificare il topic o arricchire i campi numerici."
     };
   }
 }

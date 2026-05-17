@@ -104,6 +104,24 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Persone e organizzazione"
   },
   {
+    href: "/analytics" as Route,
+    title: "Hub Analytics",
+    blurb: "Centro analisi AI: otto analisi strategiche con pseudonimizzazione e HITL.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/il-mio-team" as Route,
+    title: "Il mio team",
+    blurb: "Manager diretto e colleghi del tuo perimetro: non l'intera azienda.",
+    category: "Persone e organizzazione"
+  },
+  {
+    href: "/percorso" as Route,
+    title: "Il mio percorso",
+    blurb: "Checklist onboarding, policy e uscita in base al tuo stato lavorativo.",
+    category: "Quotidiano"
+  },
+  {
     href: "/hr-center/analisi" as Route,
     title: "Analisi costi HR",
     blurb: "Costo personale per centro di costo con sintesi LLM o offline.",

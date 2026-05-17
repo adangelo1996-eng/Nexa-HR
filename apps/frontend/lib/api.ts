@@ -565,6 +565,67 @@ export async function loginWithSynapseSso(synapseSsoToken: string): Promise<{ to
   return (await response.json()) as { token: string; user: SessionUser };
 }
 
+export type TeamContextDto = {
+  employmentState: "active" | "hr_onboarding" | "offboarding";
+  manager: { id: string; fullName: string } | null;
+  peers: Array<{ id: string; fullName: string }>;
+  directReports: Array<{ id: string; fullName: string }>;
+};
+
+export async function fetchMyTeamContext(token: string): Promise<TeamContextDto> {
+  const response = await fetch(buildApiUrl("/users/me/team-context"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as TeamContextDto;
+}
+
+export type AnalyticsHubCardDto = {
+  id: string;
+  titleIt: string;
+  blurbIt: string;
+  href: string;
+  topic: string;
+  llmCapable: boolean;
+};
+
+export type AnalyticsHubRunResult = {
+  analysisId: string;
+  payload: Record<string, unknown>;
+  narrative: {
+    title: string;
+    bullets: string[];
+    summary: string;
+    llmApplied: boolean;
+    templateOnly: boolean;
+  };
+  llmActive: boolean;
+};
+
+export async function fetchAnalyticsHubCatalog(
+  token: string
+): Promise<{ cards: AnalyticsHubCardDto[] }> {
+  const response = await fetch(buildApiUrl("/analytics/hub"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { cards: AnalyticsHubCardDto[] };
+}
+
+export async function postAnalyticsHubRun(
+  token: string,
+  analysisId: string,
+  body?: { useLlm?: boolean }
+): Promise<AnalyticsHubRunResult> {
+  const response = await fetch(buildApiUrl(`/analytics/hub/${encodeURIComponent(analysisId)}/run`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body ?? {})
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as AnalyticsHubRunResult;
+}
+
 export async function fetchCurrentUser(token: string): Promise<SessionUser> {
   const response = await fetch(buildApiUrl("/users/me"), {
     method: "GET",

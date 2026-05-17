@@ -69,6 +69,8 @@ export interface SessionUser {
   taxMunicipalityIt?: string;
   /** Da impostazioni aziendali (`company_settings`), solo lettura per dipendente. */
   companyCcnl?: string | null;
+  /** Stato ciclo di vita: active | hr_onboarding | offboarding (da GET /users/me). */
+  employmentState?: "active" | "hr_onboarding" | "offboarding";
   /** Permesso catalogo budget (backend); la sezione `/personnel-budget` in UI è mostrata solo con `canNexaAdmin`. */
   canAccessPersonnelBudgetArea?: boolean;
   /** Recap operativo HR (`/hr-recap`): report HR o console HR estesa. */
@@ -253,6 +255,45 @@ export function sessionCanUseNexaAiOpenAiLlm(
   u: Pick<SessionUser, "nexaAiOpenAiEnabled"> | null | undefined
 ): boolean {
   return u?.nexaAiOpenAiEnabled === true;
+}
+
+/** Dipendente senza console HR estesa (menu semplificato). */
+export function sessionIsPlainEmployee(
+  u: Pick<
+    SessionUser,
+    "role" | "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"
+  > | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return false;
+  }
+  if (sessionCanNexaAdmin(u) || u.canAccessHrExtendedConsole === true) {
+    return false;
+  }
+  if (sessionCanAccessHrRecapDashboard(u)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Navigazione a tre pilastri HR + Analytics (non menu dipendente semplificato).
+ * Disattivata con toggle «Vista solo dipendente» per admin Synapse.
+ */
+export function sessionUsesHrReorganizedNav(
+  u: Pick<
+    SessionUser,
+    "role" | "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"
+  > | null | undefined,
+  hideSensitiveHrPreview: boolean
+): boolean {
+  if (!u || hideSensitiveHrPreview) {
+    return false;
+  }
+  return !sessionIsPlainEmployee(u);
 }
 
 /** Timbrature altrui / azioni HR su presenze: HR esteso o centro HR (`canManageTeamAttendance`). */

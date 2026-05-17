@@ -637,6 +637,49 @@ export class UserController {
     return this.store.updateUser(auth.userId, dto);
   }
 
+  @Get("me/team-context")
+  async teamContext(@CurrentAuth() auth: AuthContext): Promise<{
+    employmentState: "active" | "hr_onboarding" | "offboarding";
+    manager: { id: string; fullName: string } | null;
+    peers: Array<{ id: string; fullName: string }>;
+    directReports: Array<{ id: string; fullName: string }>;
+  }> {
+    const me = await this.store.getUser(auth.userId);
+    const employmentState = me.employmentState ?? "active";
+    let manager: { id: string; fullName: string } | null = null;
+    if (me.managerId?.trim()) {
+      try {
+        const m = await this.store.getUser(me.managerId.trim());
+        if (m.companyId === me.companyId) {
+          manager = { id: m.id, fullName: m.fullName };
+        }
+      } catch {
+        manager = null;
+      }
+    }
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    const peers: Array<{ id: string; fullName: string }> = [];
+    const seen = new Set<string>([auth.userId]);
+    if (me.managerId?.trim()) {
+      for (const u of companyUsers) {
+        if (u.id === auth.userId) continue;
+        if (u.managerId?.trim() === me.managerId.trim()) {
+          if (!seen.has(u.id)) {
+            seen.add(u.id);
+            peers.push({ id: u.id, fullName: u.fullName });
+          }
+        }
+        if (peers.length >= 24) break;
+      }
+    }
+    const directs = await this.store.listUsersByManager(auth.userId);
+    const directReports = directs
+      .filter((u) => u.companyId === me.companyId)
+      .slice(0, 48)
+      .map((u) => ({ id: u.id, fullName: u.fullName }));
+    return { employmentState, manager, peers, directReports };
+  }
+
   @Get("me")
   async me(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
