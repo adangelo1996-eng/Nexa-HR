@@ -18,9 +18,11 @@ import {
   UserPlus,
   UserRoundSearch,
   Users,
+  GraduationCap,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
+import { hubPathForSlug } from "@/lib/nexa-hub-paths";
 import { filterPortalHref } from "@/lib/nexa-route-access";
 
 export type HrNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
@@ -30,6 +32,8 @@ export type HrNavSubgroup = { id: string; title: string; items: HrNavItem[] };
 export type HrNavPillar = {
   id: string;
   title: string;
+  hubSlug: string;
+  hubHref: Route;
   portalCategory: string;
   subgroups: HrNavSubgroup[];
 };
@@ -37,12 +41,14 @@ export type HrNavPillar = {
 const PILLAR_DEFS: Array<{
   id: string;
   title: string;
+  hubSlug: string;
   portalCategory: string;
   subgroups: Array<{ id: string; title: string; items: HrNavItem[] }>;
 }> = [
   {
     id: "hr-persone",
     title: "Persone",
+    hubSlug: "persone",
     portalCategory: "Persone",
     subgroups: [
       {
@@ -50,7 +56,8 @@ const PILLAR_DEFS: Array<{
         title: "Selezione e onboarding",
         items: [
           { href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch },
-          { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus }
+          { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus },
+          { href: "/hr/formazione" as Route, label: "Formazione", icon: GraduationCap }
         ]
       },
       {
@@ -72,6 +79,7 @@ const PILLAR_DEFS: Array<{
   {
     id: "hr-operazioni",
     title: "Operazioni",
+    hubSlug: "operazioni",
     portalCategory: "Operazioni",
     subgroups: [
       {
@@ -98,6 +106,7 @@ const PILLAR_DEFS: Array<{
   {
     id: "hr-analytics",
     title: "Analisi HR",
+    hubSlug: "analisi",
     portalCategory: "Analytics",
     subgroups: [
       {
@@ -118,6 +127,7 @@ const PILLAR_DEFS: Array<{
   {
     id: "hr-admin",
     title: "Amministrazione",
+    hubSlug: "amministrazione",
     portalCategory: "Amministrazione",
     subgroups: [
       {
@@ -157,6 +167,8 @@ export function buildHrNavPillars(user: SessionUser | null, hideSensitiveHr: boo
       pillars.push({
         id: def.id,
         title: def.title,
+        hubSlug: def.hubSlug,
+        hubHref: hubPathForSlug(def.hubSlug),
         portalCategory: def.portalCategory,
         subgroups
       });

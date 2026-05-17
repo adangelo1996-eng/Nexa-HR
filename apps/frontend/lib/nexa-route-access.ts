@@ -12,6 +12,7 @@ import {
   sessionUsesHrReorganizedNav,
   type SessionUser
 } from "@/lib/auth-session";
+import { EMPLOYEE_HUB_SECTIONS, HR_HUB_SECTIONS } from "@/lib/nexa-hub-config";
 
 function normalizePath(href: string): string {
   const base = (href.split("?")[0] ?? href).trim();
@@ -63,8 +64,20 @@ export function canAccessNexaPortalRoute(
   if (r === "/hr/onboarding" || r.startsWith("/hr/onboarding/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
+  if (r === "/hr/formazione" || r.startsWith("/hr/formazione/")) {
+    return !hide && sessionCanAccessHrRecapDashboard(user);
+  }
   if (r === "/percorso/formazione" || r === "/formazione") {
     return true;
+  }
+  if (r === "/hub" || r.startsWith("/hub/")) {
+    const slug = r === "/hub" ? "" : r.slice("/hub/".length).split("/")[0] ?? "";
+    if (!slug) {
+      return true;
+    }
+    const hrNav = sessionUsesHrReorganizedNav(user, hideSensitiveHr);
+    const allowed = hrNav ? HR_HUB_SECTIONS : EMPLOYEE_HUB_SECTIONS;
+    return allowed.some((s) => s.slug === slug);
   }
   if (r === "/hr-center/budget-report" || r.startsWith("/hr-center/budget-report/")) {
     return (

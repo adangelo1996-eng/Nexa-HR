@@ -43,6 +43,14 @@ export class TrainingController {
     return { items, progress: this.svc.progressSummary(items) };
   }
 
+  @Get("assignments")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async companyAssignments(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    const companyId = auth.tenantId ?? "comp-1";
+    const items = await this.svc.listAssignmentsForCompany(companyId);
+    return { items };
+  }
+
   @Get("assignments/:userId")
   @RequireNexaPermissions("nexa.lifecycle:read")
   async userAssignments(@Param("userId") userId: string): Promise<unknown> {

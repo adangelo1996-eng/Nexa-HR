@@ -277,6 +277,11 @@ export class HrOnboardingService {
       this.memWizard.set(input.userId, updated);
       if (allDone) {
         await this.store.updateUser(input.userId, { employmentState: "active" });
+        await this.training.ensureNexaPlatformCourseAssigned({
+          companyId: wizard.companyId,
+          userId: input.userId,
+          assignedBy: input.actorUserId
+        });
       }
       return updated;
     }
@@ -298,6 +303,11 @@ export class HrOnboardingService {
     }
     if (allDone) {
       await this.store.updateUser(input.userId, { employmentState: "active" });
+      await this.training.ensureNexaPlatformCourseAssigned({
+        companyId: wizard.companyId,
+        userId: input.userId,
+        assignedBy: input.actorUserId
+      });
     }
     return this.mapRow(data as Record<string, unknown>);
   }
@@ -354,17 +364,23 @@ export class HrOnboardingService {
           assignedBy: actorUserId
         });
       }
-      return;
+    } else {
+      for (const courseId of courseIds) {
+        await this.training.assignCourse({
+          companyId,
+          userId,
+          courseId,
+          dueDate,
+          assignedBy: actorUserId
+        });
+      }
     }
-    for (const courseId of courseIds) {
-      await this.training.assignCourse({
-        companyId,
-        userId,
-        courseId,
-        dueDate,
-        assignedBy: actorUserId
-      });
-    }
+    await this.training.ensureNexaPlatformCourseAssigned({
+      companyId,
+      userId,
+      dueDate,
+      assignedBy: actorUserId
+    });
   }
 
   async linkExistingUser(input: {

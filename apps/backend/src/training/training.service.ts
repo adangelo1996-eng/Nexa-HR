@@ -4,6 +4,13 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 export type TrainingCourseCategory = "mandatory" | "optional";
 export type TrainingAssignmentStatus = "not_started" | "in_progress" | "completed";
 
+export type TrainingCourseModule = {
+  id: string;
+  title: string;
+  summary: string;
+  steps: string[];
+};
+
 export interface TrainingCourseDto {
   id: string;
   companyId: string;
@@ -13,7 +20,10 @@ export interface TrainingCourseDto {
   category: TrainingCourseCategory;
   durationMinutes: number;
   hasQuizPlaceholder: boolean;
+  courseContent: TrainingCourseModule[];
 }
+
+export const NEXA_HR_PLATFORM_COURSE_CODE = "nexa-hr-piattaforma";
 
 export interface TrainingAssignmentDto {
   id: string;
@@ -53,7 +63,8 @@ export class TrainingService {
         description: "Normativa D.Lgs. 81/08, DPI, emergenze e cultura della sicurezza.",
         category: "mandatory",
         durationMinutes: 90,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
       },
       {
         id: "tc-gdpr",
@@ -63,7 +74,8 @@ export class TrainingService {
         description: "Trattamento dati personali, diritti interessati e obblighi del dipendente.",
         category: "mandatory",
         durationMinutes: 60,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
       },
       {
         id: "tc-etico",
@@ -73,7 +85,8 @@ export class TrainingService {
         description: "Valori, conflitti di interesse e canali di segnalazione.",
         category: "mandatory",
         durationMinutes: 45,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
       },
       {
         id: "tc-harass",
@@ -83,7 +96,8 @@ export class TrainingService {
         description: "Prevenzione molestie, discriminazioni e ambiente inclusivo.",
         category: "mandatory",
         durationMinutes: 50,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
       },
       {
         id: "tc-excel",
@@ -93,7 +107,8 @@ export class TrainingService {
         description: "Tabelle pivot, formule avanzate e automazioni per il lavoro quotidiano.",
         category: "optional",
         durationMinutes: 120,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
       },
       {
         id: "tc-speaking",
@@ -103,11 +118,48 @@ export class TrainingService {
         description: "Comunicazione efficace in riunioni e presentazioni.",
         category: "optional",
         durationMinutes: 90,
-        hasQuizPlaceholder: true
+        hasQuizPlaceholder: true,
+        courseContent: []
+      },
+      {
+        id: "tc-nexa-platform",
+        companyId,
+        code: NEXA_HR_PLATFORM_COURSE_CODE,
+        title: "Nexa HR — Guida alla piattaforma",
+        description: "Percorso guidato su timbratura, ferie, cedolini, sale riunioni, formazione e Nexa Guide.",
+        category: "mandatory",
+        durationMinutes: 45,
+        hasQuizPlaceholder: false,
+        courseContent: [
+          {
+            id: "timbratura",
+            title: "Timbratura e presenze",
+            summary: "Registra entrate/uscite dalla sezione Presenze.",
+            steps: ["Apri Presenze.", "Avvia/Termina timbratura.", "Rettifiche via Workflow se necessario."]
+          }
+        ]
       }
     ];
     this.memCourses.set(companyId, seeded);
     return seeded;
+  }
+
+  private mapCourseContent(raw: unknown): TrainingCourseModule[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw
+      .map((m) => {
+        const mod = m as Record<string, unknown>;
+        const steps = Array.isArray(mod.steps) ? mod.steps.map((s) => String(s)) : [];
+        return {
+          id: String(mod.id ?? ""),
+          title: String(mod.title ?? ""),
+          summary: String(mod.summary ?? ""),
+          steps
+        };
+      })
+      .filter((m) => m.id && m.title);
   }
 
   private mapCourse(row: Record<string, unknown>): TrainingCourseDto {
@@ -119,7 +171,8 @@ export class TrainingService {
       description: String(row.description ?? ""),
       category: row.category as TrainingCourseCategory,
       durationMinutes: Number(row.duration_minutes ?? 60),
-      hasQuizPlaceholder: Boolean(row.has_quiz_placeholder ?? true)
+      hasQuizPlaceholder: Boolean(row.has_quiz_placeholder ?? true),
+      courseContent: this.mapCourseContent(row.course_content)
     };
   }
 
@@ -156,6 +209,57 @@ export class TrainingService {
       throw new InternalServerErrorException(error.message);
     }
     return (data ?? []).map((r) => this.mapCourse(r as Record<string, unknown>));
+  }
+
+  async listAssignmentsForCompany(companyId: string): Promise<TrainingAssignmentDto[]> {
+    const sb = this.sb();
+    if (!sb) {
+      const all: TrainingAssignmentDto[] = [];
+      for (const [, list] of this.memAssignments) {
+        all.push(...list);
+      }
+      return all.filter((a) => a.course?.companyId === companyId);
+    }
+    const { data, error } = await sb
+      .from("training_assignments")
+      .select("*, training_courses (*)")
+      .eq("company_id", companyId)
+      .order("due_date", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return (data ?? []).map((r) => {
+      const raw = r as Record<string, unknown>;
+      const nested = raw.training_courses as Record<string, unknown> | null;
+      const course = nested ? this.mapCourse(nested) : undefined;
+      return this.mapAssignment(raw, course);
+    });
+  }
+
+  async findCourseByCode(companyId: string, code: string): Promise<TrainingCourseDto | null> {
+    const courses = await this.listCourses(companyId);
+    return courses.find((c) => c.code === code) ?? null;
+  }
+
+  async ensureNexaPlatformCourseAssigned(input: {
+    companyId: string;
+    userId: string;
+    assignedBy?: string;
+    dueDate?: string;
+  }): Promise<TrainingAssignmentDto | null> {
+    const course = await this.findCourseByCode(input.companyId, NEXA_HR_PLATFORM_COURSE_CODE);
+    if (!course) {
+      return null;
+    }
+    const dueDate =
+      input.dueDate ?? new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    return this.assignCourse({
+      companyId: input.companyId,
+      userId: input.userId,
+      courseId: course.id,
+      dueDate,
+      assignedBy: input.assignedBy
+    });
   }
 
   async listAssignmentsForUser(userId: string): Promise<TrainingAssignmentDto[]> {

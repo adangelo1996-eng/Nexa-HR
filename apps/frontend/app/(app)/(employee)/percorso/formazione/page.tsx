@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import {
   fetchMyTrainingAssignments,
   patchTrainingAssignmentStatus,
-  type TrainingAssignmentDto
+  type TrainingAssignmentDto,
+  type TrainingCourseModuleDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
@@ -24,12 +25,38 @@ function formatDue(d: string): string {
   return dt.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function CourseModulesPanel({ modules }: { modules: TrainingCourseModuleDto[] }): React.JSX.Element {
+  return (
+    <ol className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
+      {modules.map((mod, i) => (
+        <li
+          key={mod.id}
+          className="rounded-lg border border-[var(--prom-line)]/80 bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)] px-3 py-3"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">
+            Modulo {i + 1} · {mod.title}
+          </p>
+          {mod.summary ? <p className="mt-1 text-sm text-[var(--prom-muted)]">{mod.summary}</p> : null}
+          {mod.steps.length > 0 ? (
+            <ul className="mt-2 list-inside list-decimal space-y-1 text-sm text-[var(--prom-text)]">
+              {mod.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ul>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function FormazionePage(): React.JSX.Element {
   const [items, setItems] = useState<TrainingAssignmentDto[]>([]);
   const [progress, setProgress] = useState({ total: 0, completed: 0, inProgress: 0, overdue: 0, percentComplete: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const mandatory = useMemo(() => items.filter((a) => a.course?.category === "mandatory"), [items]);
   const optional = useMemo(() => items.filter((a) => a.course?.category === "optional"), [items]);
@@ -81,13 +108,16 @@ export default function FormazionePage(): React.JSX.Element {
       <ul className="space-y-3">
         {list.map((a) => {
           const overdue = a.status !== "completed" && a.dueDate < today;
+          const modules = a.course?.courseContent ?? [];
+          const hasModules = modules.length > 0;
+          const expanded = expandedId === a.id;
           return (
             <li
               key={a.id}
               className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-4 py-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-[var(--prom-text)]">{a.course?.title ?? "Corso"}</p>
                   <p className="mt-1 text-xs text-[var(--prom-muted)]">
                     Scadenza: {formatDue(a.dueDate)}
@@ -96,7 +126,13 @@ export default function FormazionePage(): React.JSX.Element {
                   {a.course?.description ? (
                     <p className="mt-2 text-sm text-[var(--prom-muted)]">{a.course.description}</p>
                   ) : null}
-                  {a.course?.hasQuizPlaceholder ? (
+                  {hasModules && !expanded ? (
+                    <p className="mt-2 text-xs text-[var(--prom-muted)]">
+                      Percorso guidato in {modules.length} moduli — apri per i passaggi operativi.
+                    </p>
+                  ) : null}
+                  {hasModules && expanded ? <CourseModulesPanel modules={modules} /> : null}
+                  {!hasModules && a.course?.hasQuizPlaceholder ? (
                     <p className="mt-1 text-xs italic text-[var(--prom-muted)]">Quiz in arrivo (placeholder)</p>
                   ) : null}
                 </div>
@@ -112,7 +148,17 @@ export default function FormazionePage(): React.JSX.Element {
                   >
                     {statusLabel(a.status)}
                   </span>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {hasModules ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setExpandedId(expanded ? null : a.id)}
+                      >
+                        {expanded ? "Chiudi moduli" : "Vedi moduli"}
+                      </Button>
+                    ) : null}
                     {a.status === "not_started" ? (
                       <Button
                         type="button"

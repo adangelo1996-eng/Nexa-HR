@@ -2905,6 +2905,13 @@ export async function saveHrOnboardingWizardStep(
   return response.json() as Promise<HrOnboardingWizardDto>;
 }
 
+export type TrainingCourseModuleDto = {
+  id: string;
+  title: string;
+  summary: string;
+  steps: string[];
+};
+
 export type TrainingCourseDto = {
   id: string;
   companyId: string;
@@ -2914,6 +2921,7 @@ export type TrainingCourseDto = {
   category: "mandatory" | "optional";
   durationMinutes: number;
   hasQuizPlaceholder: boolean;
+  courseContent?: TrainingCourseModuleDto[];
 };
 
 export type TrainingAssignmentDto = {
@@ -2951,6 +2959,14 @@ export async function fetchMyTrainingAssignments(token: string): Promise<{
   const response = await fetch(buildApiUrl("/training/my-assignments"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<{ items: TrainingAssignmentDto[]; progress: TrainingProgressDto }>;
+}
+
+export async function fetchCompanyTrainingAssignments(
+  token: string
+): Promise<{ items: TrainingAssignmentDto[] }> {
+  const response = await fetch(buildApiUrl("/training/assignments"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[] }>;
 }
 
 export async function fetchUserTrainingAssignments(
