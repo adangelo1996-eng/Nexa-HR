@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
  * Pre-deploy guard: same compile steps as Render (render.yaml).
- * Skips Supabase migrate (needs SUPABASE_DB_URL); use pnpm supabase:migrate:optional locally if needed.
  *
- * Usage: pnpm render:verify-build
+ * Mirrors:
+ *   nexa-hr-backend:  pnpm install --frozen-lockfile && pnpm run build:backend:render
+ *   nexa-hr-frontend: pnpm install --frozen-lockfile && pnpm --filter @payday/frontend build
+ *
+ * Skips: supabase-remote-push.mjs --optional (needs SUPABASE_DB_URL on Render).
+ *
+ * Usage: pnpm render:verify-build | pnpm prepush
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";

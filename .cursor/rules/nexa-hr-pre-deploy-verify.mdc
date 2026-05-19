@@ -1,0 +1,51 @@
+---
+description: Prima di ogni commit/push su main, verifica locale obbligatoria che replica la build Render (backend + frontend).
+alwaysApply: true
+---
+
+# Pre-deploy verify (obbligatorio)
+
+## Regola per agenti e sviluppatori
+
+**Il commit dell'utente deve essere definitivo:** prima che l'agente chieda (o accetti) un commit/push, **`pnpm render:verify-build` deve passare al 100% in locale**. Se fallisce, **correggere prima** — non proporre commit finché lo script non termina con `OK`.
+
+### Comando
+
+```bash
+pnpm render:verify-build
+```
+
+Equivalente a `node scripts/verify-render-build.mjs`: replica i passi di **compile** di `render.yaml` (senza migrazioni Supabase, che richiedono `SUPABASE_DB_URL` su Render).
+
+| Step | Comando | Servizio Render |
+|------|---------|-----------------|
+| 1 | `pnpm install --frozen-lockfile` | entrambi |
+| 2 | `pnpm run build:backend:render` | `nexa-hr-backend` |
+| 3 | `pnpm --filter @payday/frontend build` | `nexa-hr-frontend` |
+
+### Fine sessione agente
+
+Alla chiusura di **ogni** blocco di lavoro che tocca codice applicativo:
+
+1. Eseguire `pnpm render:verify-build`.
+2. Se fallisce: diagnosticare (es. `pnpm --filter @payday/backend exec tsc --noEmit`, build frontend isolata), correggere, rieseguire fino a verde.
+3. Solo allora indicare all'utente i file da `git add` e che può committare.
+4. **Non** dichiarare il deploy «a posto» finché l'utente non ha pushato il commit verde (Render deploya dal remote).
+
+### Opzionale prima del push
+
+```bash
+pnpm render:verify-build   # alias consigliato
+# oppure
+pnpm prepush               # stesso script (vedi package.json)
+```
+
+### Escluso dallo script locale
+
+- `node scripts/supabase-remote-push.mjs --optional` (solo build Render backend con DB URL configurato).
+- Per migrazioni SQL: dopo push, verificare con MCP Supabase (`list_migrations`), non assumere successo.
+
+### Guardrail
+
+- Vietato suggerire commit con build rossa o senza aver eseguito verify in sessione.
+- `pnpm render:verify-build` non sostituisce audit sicurezza / review auth: vedi anche `nexa-hr-security-hardening-eod.mdc`.

@@ -357,7 +357,10 @@ export class AnalyticsController {
     @Query("companyId") companyIdOverride?: string
   ): Promise<Awaited<ReturnType<HrDataStore["regenerateSkillsFromRolesForCompany"]>>> {
     const viewer = await this.store.getUser(auth.userId);
-    if (viewer.role !== "superuser" && viewer.role !== "admin") {
+    const isHrAdmin =
+      viewer.role === "superuser" ||
+      (await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, viewer.email));
+    if (!isHrAdmin) {
       throw new ForbiddenException("Solo admin HR possono rigenerare le competenze aziendali");
     }
     const companyId = (companyIdOverride?.trim() || viewer.companyId || auth.tenantId || "").trim();

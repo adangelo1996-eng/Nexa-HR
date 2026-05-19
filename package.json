@@ -38,6 +38,7 @@
     "render:frontend:start-command": "node scripts/render-update-frontend-start.mjs",
     "render:backend:start-command": "node scripts/render-update-backend-start.mjs",
     "render:verify-build": "node scripts/verify-render-build.mjs",
+    "prepush": "node scripts/verify-render-build.mjs",
     "vercel:link": "corepack pnpm dlx vercel link --cwd apps/frontend",
     "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",
     "vercel:preview": "corepack pnpm dlx vercel --cwd apps/frontend",

@@ -32,9 +32,25 @@ Se un rischio non è correggibile subito, **issue o nota tecnica** con severity 
 - Non dichiarare il blocco «completato in sicurezza» senza aver almeno eseguito audit dipendenze e un passaggio mirato su auth/input sul codice toccato.
 - Per modifiche solo documentazione/isolate, ridurre scope ma mantenere audit dipendenze se è passato molto tempo dall’ultimo run nel branch.
 
+## Pre-commit / pre-push (obbligatorio)
+
+**Il commit dell'utente deve essere definitivo:** prima di commit o push su `main`, eseguire in locale:
+
+```bash
+pnpm render:verify-build
+```
+
+- L'agente **non** deve chiedere all'utente di committare finché questo comando non termina con `[render:verify-build] OK`.
+- Se fallisce: correggere tutti gli errori (backend `nest build`, frontend `next build`) e rieseguire fino a verde.
+- Lo script replica `render.yaml` (install frozen + `build:backend:render` + build frontend); **non** esegue migrazioni Supabase (servono env su Render).
+- Regola Cursor sempre attiva: `.cursor/rules/nexa-hr-pre-deploy-verify.mdc`.
+- Alias opzionale: `pnpm prepush` (stesso script).
+
+Dopo il push, il deploy Render parte dal remote: verificare stato con MCP Render se necessario.
+
 ## Deploy Render
 
-Prima di push su `main`: `pnpm render:verify-build` (stessi step di compile di `render.yaml`, senza migrazioni DB).
+Prima di push su `main`: `pnpm render:verify-build` (vedi sezione sopra).
 
 ## Operatività: accessi esterni (Render / Supabase)
 
