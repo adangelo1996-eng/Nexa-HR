@@ -8,7 +8,7 @@ export default function AnalyticsCompetenzePage(): React.JSX.Element {
     <AdvancedAnalyticsPage
       analysisId="competenze"
       title="Competenze e copertura ruoli"
-      subtitle="Gap headcount e competenze per ruolo, impatto economico stimato e collegamenti a budget e forecast. Insight AI su aggregati pseudonimizzati."
+      subtitle="Gap headcount e competenze per ruolo, con impatto economico e collegamenti budget."
       pageHelpKey="analytics-competenze"
     >
       <CompetenzeAnalyticsWorkspace />

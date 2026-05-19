@@ -33,7 +33,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }): Reac
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setThemeState(readThemeFromDocument());
+    let mode: ThemeMode = "dark";
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === "light" || stored === "dark") {
+        mode = stored;
+      }
+    } catch {
+      // ignore
+    }
+    applyClass(mode);
+    setThemeState(mode);
     setMounted(true);
   }, []);
 

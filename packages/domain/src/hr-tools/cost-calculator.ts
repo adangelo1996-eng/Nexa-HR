@@ -11,6 +11,14 @@ export interface CostCalculatorAgevolazioni {
   otherNotes?: string;
 }
 
+/** Benefit in natura / welfare (stima mensile o annua convertita). */
+export interface CostCalculatorBenefits {
+  welfareAnnualEuros?: number;
+  mealVouchersMonthlyEuros?: number;
+  smartWorkingMonthlyEuros?: number;
+  otherBenefitsMonthlyEuros?: number;
+}
+
 export interface CostCalculatorInput {
   mode: CostCalculatorInputMode;
   weeklyContractHours: number;
@@ -19,6 +27,10 @@ export interface CostCalculatorInput {
   annualGrossSalaryEuros?: number;
   targetNetMonthlyEuros?: number;
   agevolazioni?: CostCalculatorAgevolazioni;
+  benefits?: CostCalculatorBenefits;
+  /** Solo contesto contrattuale (non modifica aliquote nel motore MVP). */
+  ccnlCode?: string;
+  ccnlLevel?: string;
   assumptions?: ItalyEmployeeCostAssumptions;
 }
 
@@ -129,7 +141,18 @@ function computeFromRal(
   const inailMonthly = (grossMonthly * assumptions.inailPercent) / 100;
   const tfrMonthly = assumptions.tfrDivisor > 0 ? grossMonthly / assumptions.tfrDivisor : 0;
 
-  const companyCostMonthly = grossMonthly + employerInpsMonthly + inailMonthly + tfrMonthly;
+  const b = input.benefits;
+  const welfareMonthly =
+    b?.welfareAnnualEuros != null && Number.isFinite(b.welfareAnnualEuros)
+      ? Math.max(0, b.welfareAnnualEuros) / 12
+      : 0;
+  const mealVouchersMonthly = Math.max(0, safeNumber(b?.mealVouchersMonthlyEuros, 0));
+  const smartWorkingMonthly = Math.max(0, safeNumber(b?.smartWorkingMonthlyEuros, 0));
+  const otherBenefitsMonthly = Math.max(0, safeNumber(b?.otherBenefitsMonthlyEuros, 0));
+  const benefitsMonthly = welfareMonthly + mealVouchersMonthly + smartWorkingMonthly + otherBenefitsMonthly;
+
+  const payrollCostMonthly = grossMonthly + employerInpsMonthly + inailMonthly + tfrMonthly;
+  const companyCostMonthly = payrollCostMonthly + benefitsMonthly;
 
   if (ptFactor !== 1) {
     warnings.push(`Calcolo pro-rata part-time: ${(ptFactor * 100).toFixed(1)}% (ore contratto / full-time).`);
@@ -145,6 +168,20 @@ function computeFromRal(
     { key: "inail", label: "INAIL (stima)", euros: inailMonthly },
     { key: "tfr", label: "TFR accantonato (stima)", euros: tfrMonthly }
   ];
+  if (benefitsMonthly > 0) {
+    if (welfareMonthly > 0) {
+      breakdown.push({ key: "welfare", label: "Welfare (quota mensile)", euros: welfareMonthly });
+    }
+    if (mealVouchersMonthly > 0) {
+      breakdown.push({ key: "meal_vouchers", label: "Buoni pasto (stima)", euros: mealVouchersMonthly });
+    }
+    if (smartWorkingMonthly > 0) {
+      breakdown.push({ key: "smart_working", label: "Smart working / benefit flessibili", euros: smartWorkingMonthly });
+    }
+    if (otherBenefitsMonthly > 0) {
+      breakdown.push({ key: "other_benefits", label: "Altri benefit", euros: otherBenefitsMonthly });
+    }
+  }
 
   return {
     monthly: {

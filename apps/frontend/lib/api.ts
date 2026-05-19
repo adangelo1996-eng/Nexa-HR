@@ -784,6 +784,163 @@ export async function postPlatformAgentChat(
   };
 }
 
+export type HrCopilotPanelId = "today" | "people_risk" | "hiring" | "budget_alert";
+export type HrCopilotActionDto = { label: string; rationale: string; evidence: string; href?: string };
+export type HrCopilotPanelDto = {
+  id: HrCopilotPanelId;
+  title: string;
+  priority: "high" | "medium" | "low";
+  summary: string;
+  actions: HrCopilotActionDto[];
+};
+export type HrCopilotStructuredDto = { intro: string; panels: HrCopilotPanelDto[]; reply?: string };
+export type HrCopilotSignalsDto = {
+  scope: "org" | "manager";
+  generatedAt: string;
+  headcount: number;
+  pendingApprovals: number;
+  openHrAlerts: number;
+  skillsGapCount: number;
+  retentionHighRiskCount: number;
+  openPositionsCount: number;
+  trainingOverdueCount: number;
+  budgetVariancePct: number | null;
+};
+
+function parseHrCopilotStructuredDto(raw: unknown): HrCopilotStructuredDto | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const intro = typeof (raw as { intro?: unknown }).intro === "string" ? (raw as { intro: string }).intro : "";
+  const panelsRaw = (raw as { panels?: unknown }).panels;
+  if (!intro || !Array.isArray(panelsRaw)) {
+    return null;
+  }
+  const panels: HrCopilotPanelDto[] = [];
+  for (const p of panelsRaw) {
+    if (!p || typeof p !== "object") {
+      continue;
+    }
+    const id = (p as { id?: unknown }).id;
+    const title = typeof (p as { title?: unknown }).title === "string" ? (p as { title: string }).title : "";
+    const summary = typeof (p as { summary?: unknown }).summary === "string" ? (p as { summary: string }).summary : "";
+    const priorityRaw = (p as { priority?: unknown }).priority;
+    const priority =
+      priorityRaw === "high" || priorityRaw === "low" || priorityRaw === "medium" ? priorityRaw : "medium";
+    const actionsRaw = (p as { actions?: unknown }).actions;
+    if (!title || !summary || !Array.isArray(actionsRaw)) {
+      continue;
+    }
+    const actions: HrCopilotActionDto[] = [];
+    for (const a of actionsRaw) {
+      if (!a || typeof a !== "object") {
+        continue;
+      }
+      const label = typeof (a as { label?: unknown }).label === "string" ? (a as { label: string }).label : "";
+      const rationale =
+        typeof (a as { rationale?: unknown }).rationale === "string" ? (a as { rationale: string }).rationale : "";
+      const evidence =
+        typeof (a as { evidence?: unknown }).evidence === "string" ? (a as { evidence: string }).evidence : "";
+      const hrefRaw = (a as { href?: unknown }).href;
+      const href = typeof hrefRaw === "string" && hrefRaw.startsWith("/") ? hrefRaw : undefined;
+      if (label && rationale) {
+        actions.push({ label, rationale, evidence: evidence || "—", href });
+      }
+    }
+    if (
+      id === "today" ||
+      id === "people_risk" ||
+      id === "hiring" ||
+      id === "budget_alert"
+    ) {
+      panels.push({ id, title, priority, summary, actions });
+    }
+  }
+  if (!panels.length) {
+    return null;
+  }
+  const reply = typeof (raw as { reply?: unknown }).reply === "string" ? (raw as { reply: string }).reply : undefined;
+  return { intro, panels, reply };
+}
+
+export async function fetchHrCopilotBrief(token: string): Promise<
+  { structured: HrCopilotStructuredDto; signals: HrCopilotSignalsDto } & AiAssistantResponseMeta
+> {
+  const response = await fetch(buildApiUrl("/ai/hr/copilot/brief"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as Record<string, unknown>;
+  const structured = parseHrCopilotStructuredDto(body.structured);
+  if (!structured) {
+    throw new Error("Risposta Copilot non valida");
+  }
+  const signalsRaw = body.signals as Record<string, unknown> | undefined;
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    structured,
+    signals: {
+      scope: signalsRaw?.scope === "manager" ? "manager" : "org",
+      generatedAt: typeof signalsRaw?.generatedAt === "string" ? signalsRaw.generatedAt : "",
+      headcount: typeof signalsRaw?.headcount === "number" ? signalsRaw.headcount : 0,
+      pendingApprovals: typeof signalsRaw?.pendingApprovals === "number" ? signalsRaw.pendingApprovals : 0,
+      openHrAlerts: typeof signalsRaw?.openHrAlerts === "number" ? signalsRaw.openHrAlerts : 0,
+      skillsGapCount: typeof signalsRaw?.skillsGapCount === "number" ? signalsRaw.skillsGapCount : 0,
+      retentionHighRiskCount:
+        typeof signalsRaw?.retentionHighRiskCount === "number" ? signalsRaw.retentionHighRiskCount : 0,
+      openPositionsCount: typeof signalsRaw?.openPositionsCount === "number" ? signalsRaw.openPositionsCount : 0,
+      trainingOverdueCount:
+        typeof signalsRaw?.trainingOverdueCount === "number" ? signalsRaw.trainingOverdueCount : 0,
+      budgetVariancePct:
+        typeof signalsRaw?.budgetVariancePct === "number" ? signalsRaw.budgetVariancePct : null
+    },
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
+}
+
+export type HrCopilotChatTurnDto = { role: "user" | "assistant"; content: string };
+
+export async function postHrCopilotChat(
+  token: string,
+  payload: { message: string; history?: HrCopilotChatTurnDto[] }
+): Promise<
+  { reply: string; structured: HrCopilotStructuredDto | null } & AiAssistantResponseMeta
+> {
+  const response = await fetch(buildApiUrl("/ai/hr/copilot/chat"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as Record<string, unknown>;
+  const reply = typeof body.reply === "string" ? body.reply : "";
+  const structured = parseHrCopilotStructuredDto(body.structured);
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    reply,
+    structured,
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
+}
+
 function parsePlatformAgentStructuredDto(raw: unknown): PlatformAgentStructuredDto | null {
   if (!raw || typeof raw !== "object" || !("sections" in raw)) {
     return null;
@@ -4557,6 +4714,125 @@ export async function postCompensationBenchEstimate(
     roleResolved: string;
     llm: { active: boolean; refineApplied: boolean };
   };
+}
+
+export type HiringSimulatorAdvisePhase = "criteria" | "agevolazioni" | "benefits" | "validate";
+
+export type HiringSimulatorInputBody = {
+  mode: "ral" | "net";
+  weeklyContractHours: number;
+  weeklyFullTimeHours?: number;
+  payMonthsPerYear: 12 | 13 | 14;
+  annualGrossSalaryEuros?: number;
+  targetNetMonthlyEuros?: number;
+  agevolazioni?: {
+    female?: boolean;
+    under36?: boolean;
+    southZes?: boolean;
+    naspi?: boolean;
+    protectedCategories?: boolean;
+    otherNotes?: string;
+  };
+  benefits?: {
+    welfareAnnualEuros?: number;
+    mealVouchersMonthlyEuros?: number;
+    smartWorkingMonthlyEuros?: number;
+    otherBenefitsMonthlyEuros?: number;
+  };
+  ccnlCode?: string;
+  ccnlLevel?: string;
+  contractType?: string;
+  roleTitle?: string;
+  location?: string;
+};
+
+export type HiringSimulatorAdviseResponse = {
+  advise: {
+    advisorMessage: string;
+    suggestedChips: string[];
+    agevolazioniVerificate: Array<{
+      code: string;
+      label: string;
+      applicable: boolean;
+      rationale: string;
+    }>;
+    benefitSuggestions: Array<{
+      key: string;
+      label: string;
+      monthlyEurosEstimate: number | null;
+      rationale: string;
+    }>;
+    validationOk: boolean;
+    validationNotes: string[];
+  };
+  compute: import("@payday/domain").CostCalculatorResult;
+  llm: { active: boolean; refineApplied: boolean };
+};
+
+export type HiringSimulatorScenarioRow = {
+  id: string;
+  name: string;
+  payloadJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function postHiringSimulatorCompute(
+  token: string,
+  body: HiringSimulatorInputBody
+): Promise<import("@payday/domain").CostCalculatorResult> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/compute"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  const data = (await response.json()) as { result: import("@payday/domain").CostCalculatorResult };
+  return data.result;
+}
+
+export async function postHiringSimulatorAdvise(
+  token: string,
+  body: HiringSimulatorInputBody & { phase: HiringSimulatorAdvisePhase; userQuestion?: string }
+): Promise<HiringSimulatorAdviseResponse> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/advise"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as HiringSimulatorAdviseResponse;
+}
+
+export async function fetchHiringSimulatorScenarios(token: string): Promise<HiringSimulatorScenarioRow[]> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const data = (await response.json()) as { items: HiringSimulatorScenarioRow[] };
+  return data.items ?? [];
+}
+
+export async function saveHiringSimulatorScenario(
+  token: string,
+  body: HiringSimulatorInputBody & { name: string; id?: string }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteHiringSimulatorScenario(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    method: "DELETE",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ id })
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export type WorkforceCockpitScenario = "base" | "growth" | "freeze" | "custom";

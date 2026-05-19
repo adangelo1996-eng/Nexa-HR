@@ -4,6 +4,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from
 import { CurrentAuth, type AuthContext, type AuthRole } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AiHrService } from "./ai-hr.service";
+import { HrCopilotService, type HrCopilotTurn } from "./hr-copilot.service";
 import { NexaPlatformAgentService, type PlatformAgentTurn } from "./nexa-platform-agent.service";
 
 class AssistantScopeBodyDto {
@@ -63,6 +64,16 @@ class TriageDto {
   text!: string;
 }
 
+class HrCopilotChatDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(8000)
+  message!: string;
+
+  @IsOptional()
+  history?: HrCopilotTurn[];
+}
+
 class PlatformAgentChatDto {
   @IsString()
   @MinLength(1)
@@ -87,7 +98,8 @@ class PlatformAgentChatDto {
 export class AiHrController {
   constructor(
     private readonly aiHr: AiHrService,
-    private readonly platformAgent: NexaPlatformAgentService
+    private readonly platformAgent: NexaPlatformAgentService,
+    private readonly hrCopilot: HrCopilotService
   ) {}
 
   @Post("assistant")
@@ -158,6 +170,24 @@ export class AiHrController {
     @Body() body: TriageDto
   ): ReturnType<AiHrService["triage"]> {
     return this.aiHr.triage({ userId: auth.userId, role: auth.role as AuthRole }, body);
+  }
+
+  @Get("copilot/brief")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  getHrCopilotBrief(@CurrentAuth() auth: AuthContext): ReturnType<HrCopilotService["generateBrief"]> {
+    return this.hrCopilot.generateBrief({
+      userId: auth.userId,
+      role: auth.role as AuthRole
+    });
+  }
+
+  @Post("copilot/chat")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  postHrCopilotChat(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: HrCopilotChatDto
+  ): ReturnType<HrCopilotService["chat"]> {
+    return this.hrCopilot.chat({ userId: auth.userId, role: auth.role as AuthRole }, { message: body.message, history: body.history });
   }
 
   @Post("platform-agent/chat")

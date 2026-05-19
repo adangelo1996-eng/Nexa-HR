@@ -58,7 +58,7 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     const intent = (pseudonymizedInput as { envelope?: { facts?: { intent?: unknown } } })?.envelope?.facts?.intent;
     return typeof intent === "string" ? collectTokensFromString(intent) : new Set();
   }
-  if (schemaVersion === "ai_hr_center_analytics_v1") {
+  if (schemaVersion === "ai_hr_center_analytics_v1" || schemaVersion === "ai_hiring_simulator_advise_v1") {
     // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
     return new Set();
   }
@@ -181,6 +181,16 @@ function systemPromptForSchema(schemaVersion: string): string {
           " reply breve; conversazione multi-turno: envelope.history, envelope.message, envelope.replySeed; " +
           " usa envelope.knowledgeExcerpt, platformCapabilities, routeHints e permissionsSummary; non inventare permessi assenti da permissionsSummary."
       );
+    case "ai_hr_copilot_v1":
+      return (
+        base +
+        " Ruolo: senior HR business partner italiano, orientato all'azione con evidenze numeriche. " +
+        " Schema obbligatorio: {\"envelope\":{\"intro\":\"stringa (2-3 frasi)\",\"reply\":\"stringa opzionale per follow-up chat\",\"panels\":[{\"id\":\"today|people_risk|hiring|budget_alert\",\"title\":\"stringa\",\"priority\":\"high|medium|low\",\"summary\":\"stringa\",\"actions\":[{\"label\":\"stringa\",\"rationale\":\"stringa\",\"evidence\":\"stringa con numeri da envelope.signals\",\"href\":\"/path opzionale\"}]}]}}. " +
+        " Usa SOLO envelope.signals (aggregati pseudonimizzati) e envelope.seed come bozza; migliora intro, summary e actions; ogni action deve avere evidence con conteggi/percentuali presenti in signals; " +
+        " href solo da envelope.platformCapabilities.path; non inventare numeri; non usare nomi di persone reali (usa Collaboratore A/B se serve); " +
+        " panels: esattamente 4 con id today, people_risk, hiring, budget_alert; 2-4 actions per panel; " +
+        " se envelope.message è presente (chat), compila envelope.reply (max 12 righe) rispondendo come HRBP usando signals e history."
+      );
     case "ai_hr_center_analytics_v1":
       return (
         base +
@@ -239,6 +249,17 @@ function systemPromptForSchema(schemaVersion: string): string {
         " summary: 2-3 frasi operative per HR in italiano. Non inventare esperienze assenti dal CV; non citare dati sensibili non pertinenti; " +
         " tono professionale, nessuna discriminazione; ricorda che è supporto decisionale umano."
       );
+    case "ai_hiring_simulator_advise_v1":
+      return (
+        base +
+        " Ruolo: consulente del lavoro senior (Italia). Supporti HR nella simulazione di un'assunzione. " +
+        " Schema: {\"envelope\":{\"advisorMessage\":\"stringa\",\"suggestedChips\":[\"stringa\"],\"agevolazioniVerificate\":[{\"code\":\"stringa\",\"label\":\"stringa\",\"applicable\":boolean,\"rationale\":\"stringa\"}],\"benefitSuggestions\":[{\"key\":\"stringa\",\"label\":\"stringa\",\"monthlyEurosEstimate\":number|null,\"rationale\":\"stringa\"}],\"validationOk\":boolean,\"validationNotes\":[\"stringa\"]}}. " +
+        " L'ingresso ha envelope.facts.phase (criteria|agevolazioni|benefits|validate), contract, agevolazioni, benefits, resultSummary (solo numeri aggregati), warnings, disclaimer. " +
+        " advisorMessage: 3-6 frasi operative in italiano; suggestedChips: max 6 azioni brevi cliccabili; " +
+        " per phase=agevolazioni compila agevolazioniVerificate su female, under36, south, naspi, protected con applicable e rationale prudente; " +
+        " per phase=benefits proponi benefitSuggestions realistiche; per phase=validate imposta validationOk e validationNotes incrociando warnings e numeri; " +
+        " non promettere risparmi certi; non citare nominativi; non inventare importi non coerenti con resultSummary."
+      );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
   }
@@ -268,12 +289,13 @@ export class AiOpenAiRefinementService {
     const maxTokens =
       schemaVersion === "ai_assistant_v1"
         ? 4096
-        : schemaVersion === "ai_hr_center_analytics_v1"
+        : schemaVersion === "ai_hr_center_analytics_v1" || schemaVersion === "ai_hr_copilot_v1"
           ? 4096
           : schemaVersion === "ai_hitl_draft_v1" ||
               schemaVersion === "ai_turnover_insights_deep_v1" ||
               schemaVersion === "ai_compensation_benchmark_v1" ||
-              schemaVersion === "ai_payslip_explain_v1"
+              schemaVersion === "ai_payslip_explain_v1" ||
+              schemaVersion === "ai_hiring_simulator_advise_v1"
             ? 2048
             : 2048;
 

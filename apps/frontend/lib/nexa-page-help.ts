@@ -17,6 +17,7 @@ export const NEXA_PAGE_HELP_KEYS = [
   "org-chart",
   "workforce-planning",
   "manager-copilot",
+  "nexa-hr-copilot",
   "hr-formazione",
   "formazione",
   "personnel-budget",
@@ -186,6 +187,20 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
       "Collega a Retention per approfondire il team."
     ]
   },
+  "nexa-hr-copilot": {
+    title: "NEXA HR Copilot",
+    summary:
+      "Assistente task-oriented per HR e manager: brief giornaliero con pannelli Cosa fare oggi, Rischi persone, Assunzioni e Budget alert. I segnali inviati al modello sono pseudonimizzati.",
+    howToUse: [
+      "All’apertura viene generato un brief con azioni prioritarie ed evidenze numeriche.",
+      "Usa la barra in basso per follow-up (es. priorità settimana, budget, retention).",
+      "Ogni azione con link «Apri» porta al modulo operativo Nexa (approvazioni, recruiting, analytics)."
+    ],
+    bestPractices: [
+      "Non digitare nominativi nel follow-up: usa ruoli o «il team».",
+      "Per decisioni ufficiali usa sempre i moduli dedicati (Workflow, Budget, Recruiting)."
+    ]
+  },
   "hr-formazione": {
     title: "Formazione HR",
     summary: "Catalogo, assegnazioni e monitoraggio per dipendente con promemoria gentile.",
@@ -215,13 +230,10 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "analytics-competenze": {
     title: "Competenze e coperture",
-    summary:
-      "Due livelli: copertura ruoli (persone mancanti e RAL) e gap competenze (livello richiesto vs media in ruolo). La sintesi mostra l'impatto hiring annuo stimato.",
+    summary: "Copertura ruoli (headcount, RAL) e gap competenze (livello richiesto vs media).",
     howToUse: [
-      "Leggi i KPI orchestrator in alto, poi la sintesi operativa sotto.",
-      "Usa «Aggiungi gap» o «Modifica» per headcount e RAL — il form compare solo su richiesta.",
-      "Apri forecast personale o workforce planning dai collegamenti budget.",
-      "Usa la matrice competenze per priorità hiring vs formazione per ruolo."
+      "Leggi i KPI, poi gestisci i gap di copertura con «Aggiungi gap».",
+      "Matrice e Dettaglio per priorità skill; collegamenti budget in fondo pagina."
     ]
   },
   "analytics-retention": {

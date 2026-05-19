@@ -55,6 +55,11 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/hr-recap", labelIt: "Attività HR", topicsIt: "recap, task hr, solleciti, organico" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },
+  {
+    path: "/nexa-hr-copilot",
+    labelIt: "NEXA HR Copilot",
+    topicsIt: "assistente hr, brief giornaliero, rischi persone, assunzioni, budget, azioni prioritarie"
+  },
   { path: "/hr-center/analisi", labelIt: "Analisi costi HR", topicsIt: "cdc, costi personale, aggregati, forecast" },
   { path: "/hr-center/recap", labelIt: "Recap AI dipendenti", topicsIt: "skills, contratto, formazione, filtri team/cdc" },
   {
@@ -101,7 +106,12 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   },
   { path: "/forecast", labelIt: "Forecast costi", topicsIt: "previsioni, forecast, costi futuri" },
   { path: "/compensation/bench", labelIt: "Benchmark retribuzione", topicsIt: "benchmark, mercato, retribuzione" },
-  { path: "/tools/cost-calculator", labelIt: "Calcolatore costo azienda / netto", topicsIt: "costo azienda, netto, simulazione stipendio" },
+  {
+    path: "/personnel-budget/simulatore-assunzione",
+    labelIt: "Simulatore assunzione",
+    topicsIt: "costo azienda, netto, assunzione, agevolazioni, benefit, RAL"
+  },
+  { path: "/tools/cost-calculator", labelIt: "Calcolatore costo (legacy)", topicsIt: "reindirizza simulatore assunzione" },
   { path: "/tools/third-party-licenses", labelIt: "Utenze e licenze terze", topicsIt: "licenze, software, terze parti" },
   { path: "/payroll-hebb", labelIt: "Payroll", topicsIt: "payroll, hebb, elaborazione paghe" },
   { path: "/admin", labelIt: "Area amministrazione", topicsIt: "admin, amministratore, configurazione" },

@@ -8749,6 +8749,98 @@ export class HrDataStore {
     }
   }
 
+  async listHiringSimulationScenarios(
+    companyId: string
+  ): Promise<
+    Array<{ id: string; name: string; payloadJson: Record<string, unknown>; createdAt: string; updatedAt: string }>
+  > {
+    const cid = companyId.trim();
+    if (!cid) {
+      return [];
+    }
+    if (!this.useDb) {
+      return [];
+    }
+    const { data, error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .select("id, name, payload_json, created_at, updated_at")
+      .eq("company_id", cid)
+      .order("updated_at", { ascending: false })
+      .limit(40);
+    if (error) {
+      throw new BadRequestException(`Lettura scenari assunzione: ${error.message}`);
+    }
+    return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      id: String(r.id),
+      name: String(r.name ?? ""),
+      payloadJson: (r.payload_json as Record<string, unknown>) ?? {},
+      createdAt: String(r.created_at ?? ""),
+      updatedAt: String(r.updated_at ?? "")
+    }));
+  }
+
+  async saveHiringSimulationScenario(
+    companyId: string,
+    actorUserId: string,
+    input: { id?: string; name: string; payloadJson: Record<string, unknown> }
+  ): Promise<{ id: string }> {
+    const cid = companyId.trim();
+    const name = input.name.trim().slice(0, 120);
+    if (!cid || !name) {
+      throw new BadRequestException("Nome scenario obbligatorio.");
+    }
+    if (!this.useDb) {
+      return { id: input.id?.trim() || `demo-hiring-${Date.now()}` };
+    }
+    const row = {
+      company_id: cid,
+      name,
+      payload_json: input.payloadJson ?? {},
+      created_by_user_id: actorUserId,
+      updated_at: new Date().toISOString()
+    };
+    const id = input.id?.trim();
+    if (id) {
+      const { error } = await this.supabase!
+        .from("hiring_simulation_scenarios")
+        .update(row)
+        .eq("id", id)
+        .eq("company_id", cid);
+      if (error) {
+        throw new BadRequestException(`Aggiornamento scenario assunzione: ${error.message}`);
+      }
+      return { id };
+    }
+    const { data, error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio scenario assunzione: ${error.message}`);
+    }
+    return { id: String((data as { id: string }).id) };
+  }
+
+  async deleteHiringSimulationScenario(companyId: string, scenarioId: string): Promise<void> {
+    const cid = companyId.trim();
+    const sid = scenarioId.trim();
+    if (!cid || !sid) {
+      throw new BadRequestException("Scenario non valido.");
+    }
+    if (!this.useDb) {
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .delete()
+      .eq("id", sid)
+      .eq("company_id", cid);
+    if (error) {
+      throw new BadRequestException(`Eliminazione scenario assunzione: ${error.message}`);
+    }
+  }
+
   async listRoleCoverageGaps(companyId: string): Promise<HrRoleCoverageGapRow[]> {
     const cid = companyId.trim();
     if (!cid) {

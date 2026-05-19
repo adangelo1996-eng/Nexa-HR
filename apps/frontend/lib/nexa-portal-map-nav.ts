@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart2,
   Building2,
+  Calculator,
   Calendar,
   CalendarDays,
   ClipboardList,
@@ -70,6 +71,7 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/tools/third-party-licenses": KeyRound,
   "/compensation/bench": BarChart2,
   "/personnel-budget": Wallet2,
+  "/personnel-budget/simulatore-assunzione": Calculator,
   "/hr-recap": ClipboardList,
   "/expenses/org": Receipt,
   "/payroll-hebb": Sparkles,

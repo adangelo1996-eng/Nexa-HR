@@ -224,9 +224,9 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Selezione e documenti"
   },
   {
-    href: "/tools/cost-calculator" as Route,
-    title: "Calcolatore costo / netto",
-    blurb: "Simulazioni indicative su costo azienda e netto.",
+    href: "/personnel-budget/simulatore-assunzione" as Route,
+    title: "Simulatore assunzione",
+    blurb: "Costo azienda, netto, agevolazioni e benefit con consulente AI.",
     category: "Analisi e pianificazione"
   },
   {

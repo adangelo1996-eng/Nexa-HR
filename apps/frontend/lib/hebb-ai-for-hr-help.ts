@@ -9,8 +9,10 @@ export const HEBB_AI_PAGE_KEYS = [
   "payroll-hebb",
   "workforce-planning",
   "manager-copilot",
+  "nexa-hr-copilot",
   "insights",
   "cost-calculator",
+  "hiring-simulator",
   "hr-center-analisi",
   "hr-center-budget-report",
   "hr-center-recap"
@@ -81,6 +83,20 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Non condividere screenshot con dati individuali fuori dai canali aziendali."
     ]
   },
+  "nexa-hr-copilot": {
+    title: "NEXA HR Copilot",
+    summary:
+      "Copilot HRBP con pannelli operativi e follow-up conversazionale. Aggrega headcount, gap, retention, posizioni aperte, approvazioni, formazione scaduta e varianza budget — pseudonimizzati prima dell’LLM.",
+    howToUse: [
+      "Leggi i quattro pannelli e le evidenze numeriche sotto ogni azione suggerita.",
+      "Chiedi follow-up nella barra fissa in basso per ricalibrare priorità.",
+      "Rigenera il brief dopo aver smaltito backlog o aggiornato i dati in app."
+    ],
+    bestPractices: [
+      "Serve permesso assistente AI e profilo HR esteso, report HR o ruolo manager.",
+      "L’audit registra solo fingerprint dell’input, non il testo in chiaro."
+    ]
+  },
   insights: {
     title: "Retention e flight risk",
     summary:
@@ -98,14 +114,23 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "cost-calculator": {
     title: "Calcolatore costo azienda / netto",
     summary:
-      "Simulatore lato browser con logica dominio Italia: passa da RAL a costo azienda o da netto target a struttura retributiva indicativa.",
+      "Percorso legacy reindirizzato al Simulatore assunzione.",
+    howToUse: ["Usa /personnel-budget/simulatore-assunzione per la versione corrente."],
+    bestPractices: []
+  },
+  "hiring-simulator": {
+    title: "Simulatore assunzione",
+    summary:
+      "Wizard contratto → agevolazioni → benefit con breakdown live e consulente AI (OpenAI via gateway pseudonimizzazione). Calcolo server e salvataggio scenari opzionale.",
     howToUse: [
-      "Scegli modalità RAL o netto mensile target, imposta ore settimanali e mensilità (12–14).",
-      "Compila agevolazioni applicabili per vedere l’effetto sulle aliquote indicative."
+      "Compila CCNL, livello, RAL o netto target e part-time.",
+      "Attiva le agevolazioni e chiedi al consulente AI la verifica (chip suggeriti).",
+      "Aggiungi welfare, buoni pasto e smart working: il costo azienda si aggiorna.",
+      "Salva scenari se hai permesso scrittura budget personale."
     ],
     bestPractices: [
-      "È uno strumento orientativo, non sostituisce consulenza fiscale o contrattuale.",
-      "Esporta o annota gli input se devi confrontare più scenari."
+      "Output indicativo: validare sempre con consulente del lavoro prima dell’offerta.",
+      "Non inserire dati personali del candidato nel testo libero."
     ]
   },
   "hr-center-analisi": {

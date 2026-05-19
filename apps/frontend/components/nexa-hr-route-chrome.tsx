@@ -20,6 +20,7 @@ function routeDefinesOwnShell(pathname: string): boolean {
     "/hr/dashboard",
     "/workforce-planning",
     "/manager-copilot",
+    "/nexa-hr-copilot",
     "/payroll-hebb",
     "/tools/cost-calculator",
     "/mappa-portale"

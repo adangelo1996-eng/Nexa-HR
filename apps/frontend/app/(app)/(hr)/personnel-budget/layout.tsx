@@ -10,7 +10,8 @@ const TABS: { href: Route; label: string }[] = [
   { href: "/personnel-budget/annual", label: "Annuale" },
   { href: "/personnel-budget/forecast", label: "Forecast" },
   { href: "/personnel-budget/analysis", label: "Analysis" },
-  { href: "/personnel-budget/assumptions" as Route, label: "Assunzioni" }
+  { href: "/personnel-budget/assumptions" as Route, label: "Assunzioni" },
+  { href: "/personnel-budget/simulatore-assunzione" as Route, label: "Simulatore assunzione" }
 ];
 
 export default function PersonnelBudgetSectionLayout({

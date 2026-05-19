@@ -15,6 +15,7 @@ import {
   Moon,
   Search,
   Settings,
+  Sparkles,
   Sun,
   User,
   UserCog,
@@ -76,7 +77,10 @@ const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
   id: "profile",
   title: "Profilo",
-  items: [{ href: "/settings", label: "Impostazioni", icon: Settings }]
+  items: [
+    { href: "/settings", label: "Impostazioni", icon: Settings },
+    { href: "/nexa-hr-copilot" as Route, label: "NEXA HR Copilot", icon: Sparkles }
+  ]
 };
 
 function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
@@ -521,7 +525,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       <hr className="nexa-sidebar-divider" />
       <p className="nexa-sidebar-section-label">{NAV_PROFILE_SECTION.title}</p>
       <div className="flex flex-col gap-0.5">
-        {NAV_PROFILE_SECTION.items.map((item) => (
+        {NAV_PROFILE_SECTION.items
+          .filter((item) =>
+            item.href === "/settings" ||
+            (user && canAccessNexaPortalRoute(String(item.href), user, hideSensitiveHrBecausePreview))
+          )
+          .map((item) => (
           <SidebarNavLink
             key={`settings-${item.href}`}
             item={item}

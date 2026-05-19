@@ -113,6 +113,14 @@ export function canAccessNexaPortalRoute(
     if (r === "/manager-copilot" || r.startsWith("/manager-copilot/")) {
       return sessionCanAccessManagerPanel(user);
     }
+    if (r === "/nexa-hr-copilot" || r.startsWith("/nexa-hr-copilot/")) {
+      return (
+        sessionCanUseNexaAiOpenAiLlm(user) &&
+        (sessionCanAccessManagerPanel(user) ||
+          sessionCanAccessHrRecapDashboard(user) ||
+          sessionCanNexaAdmin(user))
+      );
+    }
     if (!plainEmployeeMayAccessRoute(r)) {
       return false;
     }
@@ -202,6 +210,14 @@ export function canAccessNexaPortalRoute(
       return !hide && hrExtras;
     case "/manager-copilot":
       return !hide && sessionCanAccessManagerPanel(user);
+    case "/nexa-hr-copilot":
+      return (
+        !hide &&
+        sessionCanUseNexaAiOpenAiLlm(user) &&
+        (sessionCanAccessManagerPanel(user) ||
+          sessionCanAccessHrRecapDashboard(user) ||
+          sessionCanNexaAdmin(user))
+      );
     case "/hr-center":
       return !hide && sessionCanUseNexaAiOpenAiLlm(user);
     case "/ai-hub":

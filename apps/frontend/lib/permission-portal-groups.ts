@@ -18,6 +18,7 @@ const HREF_TO_RESOURCE_KEY: Partial<Record<string, string>> = {
   "/scheduling": "shifts",
   "/smartworking": "attendance",
   "/manager-copilot": "reports_hr",
+  "/nexa-hr-copilot": "ai_assistant",
   "/workflow/approvals": "approvals",
   "/reports": "reports_hr",
   "/hr-center/analisi": "reports_hr",

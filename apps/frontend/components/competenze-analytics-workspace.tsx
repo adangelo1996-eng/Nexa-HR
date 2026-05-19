@@ -29,6 +29,7 @@ import { NEXA_CHART } from "@/lib/nexa-chart-theme";
 import { getToken } from "@/lib/auth-session";
 
 type SkillGapRow = Awaited<ReturnType<typeof fetchSkillsGap>>["items"][number];
+type WorkspaceTab = "coverage" | "matrix" | "details";
 
 type CoverageFormState = {
   id?: string;
@@ -43,6 +44,12 @@ const EMPTY_COVERAGE_FORM: CoverageFormState = {
   headcountGap: 1,
   expectedRalAnnual: "",
   notes: ""
+};
+
+const TAB_LABELS: Record<WorkspaceTab, string> = {
+  coverage: "Copertura ruoli",
+  matrix: "Matrice competenze",
+  details: "Dettaglio gap"
 };
 
 function fmtEur(n: number | null | undefined): string {
@@ -60,44 +67,6 @@ function gapSeverityClass(gap: number): string {
     return "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100";
   }
   return "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
-}
-
-function CompetenzeLegend(): React.JSX.Element {
-  return (
-    <section className="mb-8 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] p-5">
-      <h2 className="text-sm font-semibold text-[var(--prom-text)]">Come leggere questa pagina</h2>
-      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <LegendRolesBlock />
-        <LegendSkillsBlock />
-      </div>
-      <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-[var(--prom-muted)]">
-        <li>I KPI in alto si aggiornano con l&apos;orchestrator analytics; le tabelle riflettono il caricamento locale.</li>
-        <li>Modifica headcount e RAL solo tramite «Aggiungi gap» o «Modifica» — i form non restano sempre visibili.</li>
-      </ul>
-    </section>
-  );
-}
-
-function LegendRolesBlock(): React.JSX.Element {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--prom-muted)]">Copertura ruoli</p>
-      <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">
-        Persone mancanti per titolo ruolo e RAL attesa. I costi stimati alimentano forecast budget e workforce planning.
-      </p>
-    </div>
-  );
-}
-
-function LegendSkillsBlock(): React.JSX.Element {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--prom-muted)]">Gap competenze</p>
-      <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">
-        Confronto tra livello richiesto dal ruolo e media livelli mappati in anagrafica. Priorità hiring vs formazione.
-      </p>
-    </div>
-  );
 }
 
 function SummaryCard(props: {
@@ -195,6 +164,106 @@ function CoverageGapForm(props: {
   );
 }
 
+function WorkspaceTabBar(props: {
+  activeTab: WorkspaceTab;
+  counts: Record<WorkspaceTab, number>;
+  onChange: (tab: WorkspaceTab) => void;
+}): React.JSX.Element {
+  const tabs: WorkspaceTab[] = ["coverage", "matrix", "details"];
+  return (
+    <div
+      className="mb-6 flex flex-wrap gap-2 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] p-1.5"
+      role="tablist"
+      aria-label="Sezioni competenze"
+    >
+      {tabs.map((tab) => {
+        const active = props.activeTab === tab;
+        return (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-controls={`competenze-panel-${tab}`}
+            id={`competenze-tab-${tab}`}
+            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              active
+                ? "bg-[#002D72] text-white shadow-sm dark:bg-sky-600"
+                : "text-[var(--prom-muted)] hover:bg-[#002D72]/5 hover:text-[var(--prom-text)] dark:hover:bg-sky-500/10"
+            }`}
+            onClick={() => props.onChange(tab)}
+          >
+            {TAB_LABELS[tab]}
+            <span
+              className={`inline-flex min-w-[1.25rem] justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+                active ? "bg-white/20 text-white" : "bg-[var(--prom-line)] text-[var(--prom-muted)]"
+              }`}
+            >
+              {props.counts[tab]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SkillRoleFilter(props: {
+  skillRoleFilter: string;
+  roleFilterOptions: Array<[string, string]>;
+  onFilter: (v: string) => void;
+}): React.JSX.Element {
+  return (
+    <label className="text-xs text-[var(--prom-muted)]">
+      Filtra ruolo
+      <select
+        className="mt-1 block min-w-[180px] rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
+        value={props.skillRoleFilter}
+        onChange={(e) => props.onFilter(e.target.value)}
+      >
+        <option value="all">Tutti i ruoli</option>
+        {props.roleFilterOptions.map(([id, name]) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function BudgetLinksFooter(props: { annualHiringCost: number }): React.JSX.Element {
+  const links: Array<{ href: Route; label: string }> = [
+    { href: "/personnel-budget/forecast" as Route, label: "Forecast personale" },
+    { href: "/personnel-budget/analysis" as Route, label: "Analisi budget" },
+    { href: "/analytics/economico" as Route, label: "Controllo economico" },
+    { href: "/workforce-planning" as Route, label: "Workforce planning" }
+  ];
+
+  return (
+    <section className="mt-8 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-[var(--prom-muted)]">Budget e pianificazione</span>
+        {links.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line)] px-2.5 py-1 text-xs font-medium text-[#002D72] hover:bg-[#002D72]/5 dark:text-sky-200 dark:hover:bg-sky-500/10"
+          >
+            {link.label}
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
+        ))}
+        {props.annualHiringCost > 0 ? (
+          <span className="ml-auto text-xs text-[var(--prom-muted)]">
+            Hiring stimato: <strong className="text-[var(--prom-text)]">{fmtEur(props.annualHiringCost)}</strong>/anno
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
   const [coverageItems, setCoverageItems] = useState<HrRoleCoverageGapDto[]>([]);
   const [skillItems, setSkillItems] = useState<SkillGapRow[]>([]);
@@ -203,7 +272,7 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [coverageForm, setCoverageForm] = useState<CoverageFormState | null>(null);
   const [skillRoleFilter, setSkillRoleFilter] = useState<string>("all");
-  const [showSkillMatrix, setShowSkillMatrix] = useState(true);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("coverage");
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -306,8 +375,18 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
     return hit ? [hit] : [];
   }, [skillGapsByRole, skillRoleFilter]);
 
+  const tabCounts = useMemo(
+    (): Record<WorkspaceTab, number> => ({
+      coverage: coverageItems.length,
+      matrix: skillGapsByRole.length,
+      details: filteredSkillGaps.length
+    }),
+    [coverageItems.length, skillGapsByRole.length, filteredSkillGaps.length]
+  );
+
   function openCreateCoverage(): void {
     setCoverageForm({ ...EMPTY_COVERAGE_FORM });
+    setActiveTab("coverage");
   }
 
   function openEditCoverage(row: HrRoleCoverageGapDto): void {
@@ -318,6 +397,7 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
       expectedRalAnnual: row.expectedRalAnnual != null ? String(row.expectedRalAnnual) : "",
       notes: row.notes ?? ""
     });
+    setActiveTab("coverage");
   }
 
   async function onSaveCoverage(): Promise<void> {
@@ -369,42 +449,40 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
 
   return (
     <>
-      <CompetenzeLegend />
-
       {error ? (
         <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-200">
           {error}
         </p>
       ) : null}
 
-      <section className="mb-8">
+      <section className="mb-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-[var(--prom-text)]">Sintesi operativa</h2>
+          <h2 className="text-sm font-semibold text-[var(--prom-text)]">Sintesi</h2>
           <Button type="button" size="sm" variant="secondary" disabled={loading || busy} onClick={() => void load()}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            Aggiorna dati
+            Aggiorna
           </Button>
         </div>
         {loading ? (
-          <p className="text-sm text-[var(--prom-muted)]">Caricamento sintesi…</p>
+          <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               label="Persone mancanti"
               value={String(summary.headcountMissing)}
-              hint={`${coverageItems.length} righe copertura ruoli`}
+              hint={`${coverageItems.length} righe copertura`}
               icon={<Users className="h-4 w-4" />}
             />
             <SummaryCard
-              label="Costo annuo stimato (hiring)"
+              label="Costo hiring stimato"
               value={fmtEur(summary.annualHiringCost)}
-              hint="Headcount × RAL attesa per riga"
+              hint="Headcount × RAL attesa"
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <SummaryCard
               label="Gap competenze"
               value={String(summary.skillGapsCount)}
-              hint="Requisiti sotto soglia"
+              hint="Sotto soglia richiesta"
               icon={<Layers className="h-4 w-4" />}
             />
             <SummaryCard
@@ -416,152 +494,127 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
         )}
       </section>
 
-      <section className="mb-8 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_90%,transparent)] px-4 py-3">
-        <span className="text-xs font-medium text-[var(--prom-muted)]">Collegamenti budget:</span>
-        <Link
-          href={"/personnel-budget/forecast" as Route}
-          className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line)] px-2.5 py-1 text-xs font-medium text-[#002D72] hover:bg-[#002D72]/5 dark:text-sky-200 dark:hover:bg-sky-500/10"
-        >
-          Forecast personale
-          <ArrowRight className="h-3 w-3" aria-hidden />
-        </Link>
-        <Link
-          href={"/personnel-budget/analysis" as Route}
-          className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line)] px-2.5 py-1 text-xs font-medium text-[#002D72] hover:bg-[#002D72]/5 dark:text-sky-200 dark:hover:bg-sky-500/10"
-        >
-          Analisi budget
-          <ArrowRight className="h-3 w-3" aria-hidden />
-        </Link>
-        <Link
-          href={"/analytics/economico" as Route}
-          className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line)] px-2.5 py-1 text-xs font-medium text-[#002D72] hover:bg-[#002D72]/5 dark:text-sky-200 dark:hover:bg-sky-500/10"
-        >
-          Controllo economico
-          <ArrowRight className="h-3 w-3" aria-hidden />
-        </Link>
-        <Link
-          href={"/workforce-planning" as Route}
-          className="inline-flex items-center gap-1 rounded-lg border border-[var(--prom-line)] px-2.5 py-1 text-xs font-medium text-[#002D72] hover:bg-[#002D72]/5 dark:text-sky-200 dark:hover:bg-sky-500/10"
-        >
-          Workforce planning
-          <ArrowRight className="h-3 w-3" aria-hidden />
-        </Link>
-        {summary.annualHiringCost > 0 ? (
-          <span className="ml-auto text-xs text-[var(--prom-muted)]">
-            Impatto hiring configurato:{" "}
-            <strong className="text-[var(--prom-text)]">{fmtEur(summary.annualHiringCost)}</strong> / anno
-          </span>
-        ) : null}
-      </section>
+      <WorkspaceTabBar activeTab={activeTab} counts={tabCounts} onChange={setActiveTab} />
 
-      {!loading && (coverageCostChart.length > 0 || skillGapChart.length > 0) ? (
-        <div className="mb-8 grid gap-4 lg:grid-cols-2">
-          {coverageCostChart.length > 0 ? (
-            <NexaSimpleBarChart
-              title="Costo hiring stimato per ruolo"
-              description="Headcount mancante × RAL attesa (top 10)."
-              data={coverageCostChart}
-              valueFormatter={(n) =>
-                new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n)
-              }
+      {activeTab === "coverage" ? (
+        <section
+          id="competenze-panel-coverage"
+          role="tabpanel"
+          aria-labelledby="competenze-tab-coverage"
+          className="mb-2"
+        >
+          <CoverageSectionHeader coverageForm={coverageForm} busy={busy} onOpenCreate={openCreateCoverage} />
+          {coverageForm ? (
+            <CoverageGapForm
+              draft={coverageForm}
+              busy={busy}
+              isEdit={Boolean(coverageForm.id)}
+              onChange={setCoverageForm}
+              onSave={() => void onSaveCoverage()}
+              onCancel={() => setCoverageForm(null)}
             />
           ) : null}
-          {skillGapChart.length > 0 ? (
-            <NexaSimpleBarChart
-              title="Gap competenze prioritari"
-              description="Delta livello richiesto vs media ruolo."
-              data={skillGapChart}
-            />
+          {!loading && coverageCostChart.length > 0 ? (
+            <div className="mb-4">
+              <NexaSimpleBarChart
+                title="Costo hiring per ruolo"
+                description="Top 10 per headcount × RAL attesa."
+                data={coverageCostChart}
+                valueFormatter={(n) =>
+                  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n)
+                }
+              />
+            </div>
           ) : null}
-        </div>
+          <CoverageTable
+            loading={loading}
+            coverageItems={coverageItems}
+            busy={busy}
+            onOpenEdit={openEditCoverage}
+            onDelete={(id) => void onDeleteCoverage(id)}
+          />
+        </section>
       ) : null}
 
-      <section className="mb-10">
-        <CoverageSectionHeader coverageForm={coverageForm} busy={busy} onOpenCreate={openCreateCoverage} />
-        {coverageForm ? (
-          <CoverageGapForm
-            draft={coverageForm}
-            busy={busy}
-            isEdit={Boolean(coverageForm.id)}
-            onChange={setCoverageForm}
-            onSave={() => void onSaveCoverage()}
-            onCancel={() => setCoverageForm(null)}
+      {activeTab === "matrix" ? (
+        <section id="competenze-panel-matrix" role="tabpanel" aria-labelledby="competenze-tab-matrix" className="mb-2">
+          <SkillsMatrixSection
+            loading={loading}
+            skillGapsByRole={skillGapsByRole}
+            matrixRoles={matrixRoles}
+            skillRoleFilter={skillRoleFilter}
+            roleFilterOptions={roleFilterOptions}
+            onFilter={setSkillRoleFilter}
+            skillGapChart={skillGapChart}
           />
-        ) : null}
-        <CoverageTable
-          loading={loading}
-          coverageItems={coverageItems}
-          busy={busy}
-          onOpenEdit={openEditCoverage}
-          onDelete={(id) => void onDeleteCoverage(id)}
-        />
-      </section>
+        </section>
+      ) : null}
 
-      <SkillsMatrixSection
-        loading={loading}
-        skillGapsByRole={skillGapsByRole}
-        matrixRoles={matrixRoles}
-        showSkillMatrix={showSkillMatrix}
-        skillRoleFilter={skillRoleFilter}
-        roleFilterOptions={roleFilterOptions}
-        onToggle={() => setShowSkillMatrix((v) => !v)}
-        onFilter={setSkillRoleFilter}
-      />
-
-      <section className="mb-4">
-        <h2 className="mb-1 text-base font-semibold text-[var(--prom-text)]">Dettaglio gap competenze</h2>
-        <p className="mb-3 text-sm text-[var(--prom-muted)]">
-          Confronto livello minimo richiesto vs media nel ruolo. Ordinato per gap decrescente.
-        </p>
-        {loading ? (
-          <p className="text-sm text-[var(--prom-muted)]">Caricamento gap…</p>
-        ) : filteredSkillGaps.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-6 text-center text-sm text-[var(--prom-muted)]">
-            Nessun gap competenze rilevato sui requisiti configurati.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-[var(--card-border)]" style={{ background: "var(--card-bg)" }}>
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-[var(--prom-line)] text-[10px] font-semibold uppercase tracking-wider text-[var(--prom-muted)]">
-                <tr>
-                  <th className="px-4 py-3">Ruolo</th>
-                  <th className="px-4 py-3">Competenza</th>
-                  <th className="px-4 py-3">Richiesto</th>
-                  <th className="px-4 py-3">Media ruolo</th>
-                  <th className="px-4 py-3">Gap</th>
-                  <th className="px-4 py-3">Headcount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSkillGaps.slice(0, 40).map((row) => (
-                  <tr key={`${row.roleId}-${row.skillId}`} className="border-b border-[var(--prom-line)] last:border-0">
-                    <td className="px-4 py-2.5 text-[var(--prom-text)]">{row.roleName}</td>
-                    <td className="px-4 py-2.5 text-[var(--prom-muted)]">
-                      {row.skillName}
-                      <span className="ml-1 text-[10px]">({row.skillCode})</span>
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums">{row.minLevel}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{row.avgUserLevel}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex min-w-[2rem] justify-center rounded-md border px-2 py-0.5 text-xs font-semibold tabular-nums ${gapSeverityClass(row.gap)}`}
-                      >
-                        {row.gap}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums">{row.headcountInRole}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredSkillGaps.length > 40 ? (
-              <p className="border-t border-[var(--prom-line)] px-4 py-2 text-xs text-[var(--prom-muted)]">
-                Mostrate le prime 40 righe su {filteredSkillGaps.length}. Affina il filtro ruolo nella matrice sopra.
-              </p>
-            ) : null}
+      {activeTab === "details" ? (
+        <section id="competenze-panel-details" role="tabpanel" aria-labelledby="competenze-tab-details" className="mb-2">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--prom-text)]">Dettaglio gap competenze</h2>
+              <p className="mt-1 text-sm text-[var(--prom-muted)]">Livello richiesto vs media nel ruolo.</p>
+            </div>
+            <SkillRoleFilter
+              skillRoleFilter={skillRoleFilter}
+              roleFilterOptions={roleFilterOptions}
+              onFilter={setSkillRoleFilter}
+            />
           </div>
-        )}
-      </section>
+          {loading ? (
+            <p className="text-sm text-[var(--prom-muted)]">Caricamento gap…</p>
+          ) : filteredSkillGaps.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-6 text-center text-sm text-[var(--prom-muted)]">
+              Nessun gap competenze rilevato.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-[var(--card-border)]" style={{ background: "var(--card-bg)" }}>
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-[var(--prom-line)] text-[10px] font-semibold uppercase tracking-wider text-[var(--prom-muted)]">
+                  <tr>
+                    <th className="px-4 py-3">Ruolo</th>
+                    <th className="px-4 py-3">Competenza</th>
+                    <th className="px-4 py-3">Richiesto</th>
+                    <th className="px-4 py-3">Media ruolo</th>
+                    <th className="px-4 py-3">Gap</th>
+                    <th className="px-4 py-3">Headcount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSkillGaps.slice(0, 40).map((row) => (
+                    <tr key={`${row.roleId}-${row.skillId}`} className="border-b border-[var(--prom-line)] last:border-0">
+                      <td className="px-4 py-2.5 text-[var(--prom-text)]">{row.roleName}</td>
+                      <td className="px-4 py-2.5 text-[var(--prom-muted)]">
+                        {row.skillName}
+                        <span className="ml-1 text-[10px]">({row.skillCode})</span>
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums">{row.minLevel}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{row.avgUserLevel}</td>
+                      <td className="px-4 py-2.5">
+                        <span
+                          className={`inline-flex min-w-[2rem] justify-center rounded-md border px-2 py-0.5 text-xs font-semibold tabular-nums ${gapSeverityClass(row.gap)}`}
+                        >
+                          {row.gap}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums">{row.headcountInRole}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filteredSkillGaps.length > 40 ? (
+                <p className="border-t border-[var(--prom-line)] px-4 py-2 text-xs text-[var(--prom-muted)]">
+                  Prime 40 righe su {filteredSkillGaps.length}. Affina il filtro ruolo.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      <BudgetLinksFooter annualHiringCost={summary.annualHiringCost} />
     </>
   );
 }
@@ -575,10 +628,7 @@ function CoverageSectionHeader(props: {
     <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 className="text-base font-semibold text-[var(--prom-text)]">Copertura ruoli</h2>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--prom-muted)]">
-          Headcount mancante e RAL attesa per titolo ruolo. Usa questi dati per stimare il fabbisogno di assunzioni nel
-          budget.
-        </p>
+        <p className="mt-1 text-sm text-[var(--prom-muted)]">Headcount mancante e RAL attesa per titolo ruolo.</p>
       </div>
       {!props.coverageForm ? (
         <Button type="button" size="sm" onClick={props.onOpenCreate} disabled={props.busy}>
@@ -603,7 +653,7 @@ function CoverageTable(props: {
   if (props.coverageItems.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-8 text-center text-sm text-[var(--prom-muted)]">
-        Nessun gap ruolo configurato. Clicca «Aggiungi gap» per registrare persone mancanti e RAL attesa.
+        Nessun gap ruolo configurato. Usa «Aggiungi gap» per registrare persone mancanti e RAL attesa.
       </p>
     );
   }
@@ -672,90 +722,82 @@ function SkillsMatrixSection(props: {
   loading: boolean;
   skillGapsByRole: Array<{ roleId: string; roleName: string; skills: SkillGapRow[] }>;
   matrixRoles: Array<{ roleId: string; roleName: string; skills: SkillGapRow[] }>;
-  showSkillMatrix: boolean;
   skillRoleFilter: string;
   roleFilterOptions: Array<[string, string]>;
-  onToggle: () => void;
   onFilter: (v: string) => void;
+  skillGapChart: Array<{ name: string; value: number; fill?: string }>;
 }): React.JSX.Element {
   if (!props.skillGapsByRole.length && !props.loading) {
     return (
-      <section className="mb-10">
+      <>
         <h2 className="text-base font-semibold text-[var(--prom-text)]">Matrice competenze per ruolo</h2>
         <p className="mt-2 text-sm text-[var(--prom-muted)]">
-          Nessun fabbisogno competenze configurato o livelli allineati. Verifica ruoli e mappature skill in anagrafica.
+          Nessun gap skill rilevato. Verifica ruoli e mappature in anagrafica.
         </p>
-      </section>
+      </>
     );
   }
 
   return (
-    <section className="mb-10">
+    <>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-[var(--prom-text)]">Matrice competenze per ruolo</h2>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--prom-muted)]">
-            Cluster di gap per ruolo (solo competenze sotto soglia). Verde = gap contenuto, ambra/rosso = priorità maggiore.
+          <p className="mt-1 text-sm text-[var(--prom-muted)]">
+            Gap per ruolo — verde contenuto, ambra/rosso priorità alta.
           </p>
-          <Button type="button" size="sm" variant="ghost" className="mt-2 px-0" onClick={props.onToggle}>
-            {props.showSkillMatrix ? "Nascondi matrice" : "Mostra matrice"}
-          </Button>
         </div>
-        <label className="text-xs text-[var(--prom-muted)]">
-          Filtra ruolo
-          <select
-            className="mt-1 block min-w-[180px] rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
-            value={props.skillRoleFilter}
-            onChange={(e) => props.onFilter(e.target.value)}
-          >
-            <option value="all">Tutti i ruoli</option>
-            {props.roleFilterOptions.map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SkillRoleFilter
+          skillRoleFilter={props.skillRoleFilter}
+          roleFilterOptions={props.roleFilterOptions}
+          onFilter={props.onFilter}
+        />
       </div>
 
-      {props.showSkillMatrix ? (
-        props.loading ? (
-          <p className="text-sm text-[var(--prom-muted)]">Caricamento matrice…</p>
-        ) : props.matrixRoles.length === 0 ? (
-          <p className="text-sm text-[var(--prom-muted)]">Nessun gap per il filtro selezionato.</p>
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {props.matrixRoles.map((group) => (
-              <article
-                key={group.roleId}
-                className="rounded-xl border border-[var(--card-border)] p-4"
-                style={{ background: "var(--card-bg)" }}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="font-semibold text-[var(--prom-text)]">{group.roleName}</h3>
-                  <span className="text-xs text-[var(--prom-muted)]">
-                    {group.skills[0]?.headcountInRole ?? 0} in ruolo · {group.skills.length} gap
-                  </span>
-                </div>
-                <ul className="flex flex-wrap gap-2">
-                  {group.skills.map((sk) => (
-                    <li
-                      key={sk.skillId}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs ${gapSeverityClass(sk.gap)}`}
-                      title={`Richiesto ${sk.minLevel} · Media ${sk.avgUserLevel}`}
-                    >
-                      <span className="font-medium">{sk.skillName}</span>
-                      <span className="ml-1.5 tabular-nums opacity-80">Δ {sk.gap}</span>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        )
+      {!props.loading && props.skillGapChart.length > 0 ? (
+        <div className="mb-4">
+          <NexaSimpleBarChart
+            title="Gap competenze prioritari"
+            description="Top 12 per delta livello."
+            data={props.skillGapChart}
+          />
+        </div>
+      ) : null}
+
+      {props.loading ? (
+        <p className="text-sm text-[var(--prom-muted)]">Caricamento matrice…</p>
+      ) : props.matrixRoles.length === 0 ? (
+        <p className="text-sm text-[var(--prom-muted)]">Nessun gap per il filtro selezionato.</p>
       ) : (
-        <p className="text-xs text-[var(--prom-muted)]">Matrice nascosta — espandi per visualizzare i cluster per ruolo.</p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {props.matrixRoles.map((group) => (
+            <article
+              key={group.roleId}
+              className="rounded-xl border border-[var(--card-border)] p-4"
+              style={{ background: "var(--card-bg)" }}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-[var(--prom-text)]">{group.roleName}</h3>
+                <span className="text-xs text-[var(--prom-muted)]">
+                  {group.skills[0]?.headcountInRole ?? 0} in ruolo · {group.skills.length} gap
+                </span>
+              </div>
+              <ul className="flex flex-wrap gap-2">
+                {group.skills.map((sk) => (
+                  <li
+                    key={sk.skillId}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs ${gapSeverityClass(sk.gap)}`}
+                    title={`Richiesto ${sk.minLevel} · Media ${sk.avgUserLevel}`}
+                  >
+                    <span className="font-medium">{sk.skillName}</span>
+                    <span className="ml-1.5 tabular-nums opacity-80">Δ {sk.gap}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
       )}
-    </section>
+    </>
   );
 }
