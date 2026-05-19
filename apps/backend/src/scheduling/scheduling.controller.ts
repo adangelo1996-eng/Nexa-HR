@@ -1,6 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsOptional, IsString, Matches, ValidateNested } from "class-validator";
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsISO8601,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  ValidateNested
+} from "class-validator";
 import type { Shift } from "@payday/domain";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
@@ -33,6 +46,67 @@ class BulkCreateShiftsDto {
 class PublishWeekDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "weekStart deve essere YYYY-MM-DD" })
   weekStart!: string;
+}
+
+class CreateShiftPresetDto {
+  @IsString()
+  name!: string;
+
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/)
+  startTime!: string;
+
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/)
+  endTime!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(480)
+  breakMinutes?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsString()
+  workTeamId?: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+}
+
+class UpdateShiftPresetDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/)
+  startTime?: string;
+
+  @IsOptional()
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/)
+  endTime?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(480)
+  breakMinutes?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsString()
+  workTeamId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  userId?: string | null;
 }
 
 @Controller("scheduling")
@@ -94,6 +168,50 @@ export class SchedulingController {
   @RequireNexaPermissions("nexa.shifts:write")
   async deleteShift(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
     await this.store.deleteShift(auth.userId, auth.role, id);
+    return { ok: true };
+  }
+
+  @Get("presets")
+  @RequireNexaPermissions("nexa.shifts:read")
+  async listPresets(@CurrentAuth() auth: AuthContext): Promise<{ items: Awaited<ReturnType<HrDataStore["listShiftPresets"]>> }> {
+    return { items: await this.store.listShiftPresets(auth.userId) };
+  }
+
+  @Get("presets/resolve")
+  @RequireNexaPermissions("nexa.shifts:read")
+  async resolvePreset(
+    @CurrentAuth() auth: AuthContext,
+    @Query("userId") userId?: string
+  ): Promise<{ preset: Awaited<ReturnType<HrDataStore["resolveShiftPresetForUser"]>> }> {
+    const uid = userId?.trim() || auth.userId;
+    return { preset: await this.store.resolveShiftPresetForUser(uid) };
+  }
+
+  @Post("presets")
+  @RequireNexaPermissions("nexa.shifts:write")
+  async createPreset(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: CreateShiftPresetDto
+  ): Promise<{ item: Awaited<ReturnType<HrDataStore["createShiftPreset"]>> }> {
+    const item = await this.store.createShiftPreset(auth.userId, dto);
+    return { item };
+  }
+
+  @Patch("presets/:id")
+  @RequireNexaPermissions("nexa.shifts:write")
+  async updatePreset(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Body() dto: UpdateShiftPresetDto
+  ): Promise<{ item: Awaited<ReturnType<HrDataStore["updateShiftPreset"]>> }> {
+    const item = await this.store.updateShiftPreset(auth.userId, id, dto);
+    return { item };
+  }
+
+  @Delete("presets/:id")
+  @RequireNexaPermissions("nexa.shifts:write")
+  async deletePreset(@CurrentAuth() auth: AuthContext, @Param("id") id: string): Promise<{ ok: true }> {
+    await this.store.deleteShiftPreset(auth.userId, id);
     return { ok: true };
   }
 }

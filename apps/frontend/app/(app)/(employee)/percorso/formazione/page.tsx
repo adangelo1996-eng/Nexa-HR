@@ -2,8 +2,12 @@
 
 import type { Route } from "next";
 import Link from "next/link";
+import type { Route } from "next";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PlayCircle } from "lucide-react";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import {
   fetchMyTrainingAssignments,
@@ -30,7 +34,6 @@ export default function FormazionePage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const mandatory = useMemo(() => items.filter((a) => a.course?.category === "mandatory"), [items]);
   const optional = useMemo(() => items.filter((a) => a.course?.category === "optional"), [items]);
@@ -88,7 +91,6 @@ export default function FormazionePage(): React.JSX.Element {
         {list.map((a) => {
           const overdue = a.status !== "completed" && a.dueDate < today;
           const modules = a.course?.courseContent ?? [];
-          const open = expandedId === a.id;
           return (
             <li
               key={a.id}
@@ -120,11 +122,15 @@ export default function FormazionePage(): React.JSX.Element {
                   </span>
                   <div className="flex flex-wrap gap-1">
                     {modules.length > 0 ? (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setExpandedId(open ? null : a.id)}>
-                        {open ? "Nascondi moduli" : "Vedi moduli"}
-                      </Button>
+                      <Link
+                        href={`/percorso/formazione/${a.id}` as Route}
+                        className="inline-flex items-center gap-1 rounded-lg bg-synapse-gold px-3 py-1 text-xs font-medium text-white shadow-sm hover:brightness-110 dark:bg-synapse-gold-bright"
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                        {a.status === "completed" ? "Rivedi corso" : "Apri corso"}
+                      </Link>
                     ) : null}
-                    {a.status === "not_started" ? (
+                    {a.status === "not_started" && modules.length === 0 ? (
                       <Button
                         type="button"
                         size="sm"
@@ -135,7 +141,7 @@ export default function FormazionePage(): React.JSX.Element {
                         Inizia
                       </Button>
                     ) : null}
-                    {a.status !== "completed" ? (
+                    {a.status !== "completed" && modules.length === 0 ? (
                       <Button
                         type="button"
                         size="sm"
@@ -148,25 +154,6 @@ export default function FormazionePage(): React.JSX.Element {
                   </div>
                 </div>
               </div>
-              {open && modules.length > 0 ? (
-                <ol className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-4">
-                  {modules.map((mod, idx) => (
-                    <li key={mod.id} className="text-sm">
-                      <p className="font-medium text-[var(--prom-text)]">
-                        {idx + 1}. {mod.title}
-                      </p>
-                      {mod.summary ? <p className="mt-0.5 text-xs text-[var(--prom-muted)]">{mod.summary}</p> : null}
-                      {mod.steps?.length ? (
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[var(--prom-muted)]">
-                          {mod.steps.map((step) => (
-                            <li key={step}>{step}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
             </li>
           );
         })}
@@ -175,7 +162,12 @@ export default function FormazionePage(): React.JSX.Element {
   }
 
   return (
-    <NexaHrAppPage eyebrow="Percorso" title="Formazione" subtitle="Corsi assegnati da HR: scadenze, moduli e completamento.">
+    <NexaHrAppPage
+      eyebrow="Percorso"
+      title="Formazione"
+      subtitle="Corsi assegnati da HR: apri il player per seguire moduli e passi fino al completamento."
+      headerTrailing={<NexaPageHelpButton pageKey="formazione" />}
+    >
       <p className="mb-4 text-sm">
         <Link href={"/percorso" as Route} className="text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200">
           ← Percorso

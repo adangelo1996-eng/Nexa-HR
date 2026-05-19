@@ -9,6 +9,7 @@ import {
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanOpenEmployeeRecapPage,
   sessionCanViewOrgExpenseClaims,
+  sessionIsPlainEmployee,
   sessionUsesHrReorganizedNav,
   type SessionUser
 } from "@/lib/auth-session";
@@ -34,6 +35,39 @@ function normalizePath(href: string): string {
  * `NexaPermissionGuard`, `RoleGuard`, controlli in service). La “vista dipendente” da admin è anteprima UX
  * (`sessionStorage`): manipolare Inspect cambia solo i link mostrati, non i permessi sul server.
  */
+/** Percorsi consentiti al dipendente senza console HR (self-service + aree comuni). */
+const PLAIN_EMPLOYEE_EXACT_ROUTES = new Set([
+  "/",
+  "/mappa-portale",
+  "/attendance",
+  "/work-calendar",
+  "/workflow",
+  "/expenses",
+  "/payslips",
+  "/settings",
+  "/il-mio-team",
+  "/percorso",
+  "/percorso/formazione",
+  "/formazione",
+  "/scheduling",
+  "/smartworking",
+  "/sale-riunioni"
+]);
+
+function plainEmployeeMayAccessRoute(r: string): boolean {
+  if (PLAIN_EMPLOYEE_EXACT_ROUTES.has(r)) {
+    return true;
+  }
+  if (r.startsWith("/hub/")) {
+    const slug = r === "/hub" ? "" : r.slice("/hub/".length).split("/")[0] ?? "";
+    return slug === "home" || slug === "io" || slug === "documenti";
+  }
+  if (r.startsWith("/percorso/")) {
+    return true;
+  }
+  return false;
+}
+
 export function canAccessNexaPortalRoute(
   href: string,
   user: SessionUser | null,
@@ -47,6 +81,10 @@ export function canAccessNexaPortalRoute(
   const hrTools = !hide && sessionCanNexaAdmin(user);
 
   const r = normalizePath(href);
+
+  if (sessionIsPlainEmployee(user) && !hide && !plainEmployeeMayAccessRoute(r)) {
+    return false;
+  }
 
   /**
    * Route “sezione/*” reali (App Router): abilita per prefisso quando la pagina base è consentita.

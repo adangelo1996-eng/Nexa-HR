@@ -63,8 +63,8 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/org-chart",
-    title: "Organigramma (persone)",
-    blurb: "Chi è chi: collegamenti tra persone e ruoli.",
+    title: "Organigramma Visivo",
+    blurb: "Vista grafica delle relazioni tra persone e ruoli.",
     category: "Persone e organizzazione"
   },
   {

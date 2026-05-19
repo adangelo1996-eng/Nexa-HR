@@ -536,12 +536,24 @@ export class HrCenterService {
       contractMix[k] = (contractMix[k] ?? 0) + 1;
     }
 
+    const employees = subjects.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      contractType: u.contractType?.trim() || null,
+      hireDate: u.hireDate?.trim() || null,
+      employmentState: u.employmentState ?? "active",
+      costCenterId: u.costCenterId?.trim() || null,
+      teamId: u.teamId?.trim() || null
+    }));
+
     const facts: Record<string, unknown> =
       subjects.length === 1
         ? {
             scope: scope.mode,
             recapMode: "single",
             subjectUserId: subjects[0]!.id,
+            employees,
             contractType: subjects[0]!.contractType ?? null,
             hireDate: subjects[0]!.hireDate ?? null,
             contractEndDate: subjects[0]!.contractEndDate ?? null,
@@ -550,7 +562,7 @@ export class HrCenterService {
             skillCodesSample: (await this.fetchUserSkillCodes(subjects[0]!.id)).slice(0, 8),
             suggestedActions: [
               { id: "open_contracts", label: "Apri Contratti standard", href: "/contracts" },
-              { id: "open_settings", label: "Profilo e formazione (impostazioni)", href: "/settings" },
+              { id: "open_employee", label: "Scheda dipendente", href: `/employee/${subjects[0]!.id}` },
               { id: "open_workflow", label: "Approvazioni team", href: "/workflow/approvals" }
             ],
             disclaimer:
@@ -560,6 +572,7 @@ export class HrCenterService {
             scope: scope.mode,
             recapMode: "aggregate",
             subjectCount: subjects.length,
+            employees,
             contractTypeMix: contractMix,
             hireDateSample: subjects.slice(0, 6).map((u) => u.hireDate ?? null),
             weeklyHoursAvg:
@@ -568,8 +581,8 @@ export class HrCenterService {
             skillCountDistinct: skillCodeSet.size,
             skillCodesSample,
             suggestedActions: [
-              { id: "open_settings", label: "Profilo e formazione (impostazioni)", href: "/settings" },
-              { id: "open_workflow", label: "Workflow richieste", href: "/workflow" }
+              { id: "open_workflow", label: "Workflow richieste", href: "/workflow" },
+              { id: "open_personnel_budget", label: "Budget personale", href: "/personnel-budget" }
             ],
             disclaimer:
               "Suggerimenti informativi su gruppo selezionato: verificare sempre stato contrattuale e anagrafica in fonti ufficiali."

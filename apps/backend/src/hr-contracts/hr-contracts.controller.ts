@@ -175,6 +175,13 @@ export class HrContractsController {
     return { items };
   }
 
+  @Get("presets")
+  @RequireNexaPermissions("nexa.standard_contracts:read")
+  async listPresets(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {
+    const items = await this.svc.listPresetsForCompany(auth.tenantId ?? "comp-1");
+    return { items };
+  }
+
   @Get(":id/linked-file/:documentId")
   @RequireNexaPermissions("nexa.standard_contracts:read")
   async downloadLinkedFile(

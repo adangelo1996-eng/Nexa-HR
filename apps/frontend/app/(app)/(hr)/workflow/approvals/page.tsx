@@ -164,20 +164,27 @@ function ApprovalRow(props: {
             <p className="mt-1 text-xs text-[var(--prom-muted)]">{item.requestedCalendarDays} gg</p>
           ) : null}
           {showMetrics && item.type === "smartworking" ? (
-            <p
-              className="mt-1 text-xs text-[var(--prom-muted)]"
-              title="Conteggio su settimana lun–dom (UTC). Conteggiati solo stati non rifiutati."
-            >
-              SW:{" "}
-              <span className="font-medium text-[var(--prom-text)]">
-                {item.smartworkingWeekUsed ?? "—"}/{item.smartworkingWeekQuota ?? "—"}
-              </span>{" "}
-              (sett.) ·{" "}
-              <span className="font-medium text-[var(--prom-text)]">
-                {item.smartworkingMonthUsed ?? "—"}/{item.smartworkingMonthQuota ?? "—"}
-              </span>{" "}
-              (mese)
-            </p>
+            <>
+              {item.requestedCalendarDays != null && item.requestedCalendarDays > 1 ? (
+                <p className="mt-2 rounded-lg border border-violet-500/45 bg-violet-500/15 px-3 py-2 text-sm font-semibold text-violet-950 dark:text-violet-100">
+                  Periodo richiesto: {periodLabel(item)} · {item.requestedCalendarDays} giorni lavorativi nel range
+                </p>
+              ) : null}
+              <p
+                className="mt-1 text-xs text-[var(--prom-muted)]"
+                title="Conteggio su settimana lun–dom (UTC). Conteggiati solo stati non rifiutati."
+              >
+                SW:{" "}
+                <span className="font-medium text-[var(--prom-text)]">
+                  {item.smartworkingWeekUsed ?? "—"}/{item.smartworkingWeekQuota ?? "—"}
+                </span>{" "}
+                (sett.) ·{" "}
+                <span className="font-medium text-[var(--prom-text)]">
+                  {item.smartworkingMonthUsed ?? "—"}/{item.smartworkingMonthQuota ?? "—"}
+                </span>{" "}
+                (mese)
+              </p>
+            </>
           ) : null}
           {item.note ? <p className="mt-1 text-xs italic text-[var(--prom-muted)]">{item.note}</p> : null}
           <WorkflowApprovalFlowDiagram

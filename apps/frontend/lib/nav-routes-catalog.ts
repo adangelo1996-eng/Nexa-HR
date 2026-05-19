@@ -31,7 +31,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/hr-center/budget-report" as Route, label: "Report budget personale (LLM)" },
   { href: "/expenses", label: "Spese" },
   { href: "/settings", label: "Impostazioni" },
-  { href: "/org-chart", label: "Organigramma (persone)" },
+  { href: "/org-chart", label: "Organigramma Visivo" },
   { href: "/organigramma", label: "Organigramma strutturale" },
   { href: "/payslips", label: "Cedolini" },
   { href: "/smartworking", label: "Remote working" },

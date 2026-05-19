@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "rea
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import {
   cancelPendingLeavePlan,
@@ -232,9 +233,10 @@ function appendOptimisticSickness(
 
 function appendOptimisticSmartworking(
   events: CalendarEventDto[],
-  args: { userId: string; day: string; note?: string; clientId: string }
+  args: { userId: string; day: string; endDay?: string; note?: string; clientId: string }
 ): CalendarEventDto[] {
   const d = args.day.slice(0, 10);
+  const end = (args.endDay ?? args.day).slice(0, 10);
   const meta: Record<string, unknown> = {
     swRequestId: `opt-sw-${args.clientId}`,
     status: "pending",
@@ -244,9 +246,9 @@ function appendOptimisticSmartworking(
   const ev: CalendarEventDto = {
     id: `opt-cal-swr-${args.clientId}`,
     kind: "smartworking",
-    title: "Remote working (in attesa)",
+    title: end !== d ? `Remote working (in attesa) · ${d} → ${end}` : "Remote working (in attesa)",
     start: d,
-    end: d,
+    end,
     userId: args.userId,
     meta
   };
@@ -616,6 +618,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
   const [editingSicknessId, setEditingSicknessId] = useState<string | null>(null);
   const [swPendingDay, setSwPendingDay] = useState("");
+  const [swPendingEndDay, setSwPendingEndDay] = useState("");
   const [travelNote, setTravelNote] = useState("");
   const [travelPendingDay, setTravelPendingDay] = useState("");
   const [travelOptimistic, setTravelOptimistic] = useState<boolean | null>(null);
@@ -1336,12 +1339,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
     if (next) {
       if (serverSwForm.on) return;
       const dayIso = (swPendingDay || modal.day).slice(0, 10);
+      const endIso = (swPendingEndDay || swPendingDay || modal.day).slice(0, 10);
       const clientId = newClientOptimisticId();
       flushSync(() => {
         setEvents((prev) =>
           appendOptimisticSmartworking(prev, {
             userId: modal.row.id,
             day: dayIso,
+            endDay: endIso !== dayIso ? endIso : undefined,
             note: swNote.trim() || undefined,
             clientId
           })
@@ -1349,6 +1354,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       });
       void createSmartworkingRequest(t, {
         day: dayIso,
+        endDay: endIso !== dayIso ? endIso : undefined,
         note: swNote.trim() || undefined,
         ...(me.role === "superuser" && !isOwnRow ? { userId: modal.row.id } : {})
       })
@@ -1822,6 +1828,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
             )}
           </p>
         </div>
+        <NexaPageHelpButton pageKey="work-calendar" />
         <div className="flex flex-wrap items-center gap-2">
           <div
             className="flex items-center gap-1 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-1 py-0.5 shadow-[var(--glass-shadow)] backdrop-blur-sm"
@@ -2779,11 +2786,24 @@ export default function WorkCalendarPage(): React.JSX.Element {
                   <div className="space-y-3">
                     <p className="text-xs font-medium text-[var(--prom-text)]">Remote working</p>
                     <label className="block text-[11px] text-[var(--prom-muted)]">
-                      Giorno
+                      Dal
                       <input
                         type="date"
                         value={(swPendingDay || modal.day).slice(0, 10)}
-                        onChange={(e) => setSwPendingDay(e.target.value)}
+                        onChange={(e) => {
+                          setSwPendingDay(e.target.value);
+                          if (e.target.value > (swPendingEndDay || swPendingDay)) setSwPendingEndDay(e.target.value);
+                        }}
+                        className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
+                      />
+                    </label>
+                    <label className="block text-[11px] text-[var(--prom-muted)]">
+                      Al
+                      <input
+                        type="date"
+                        min={(swPendingDay || modal.day).slice(0, 10)}
+                        value={(swPendingEndDay || swPendingDay || modal.day).slice(0, 10)}
+                        onChange={(e) => setSwPendingEndDay(e.target.value)}
                         className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1.5 text-[var(--prom-text)]"
                       />
                     </label>

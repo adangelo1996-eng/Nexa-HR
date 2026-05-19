@@ -189,6 +189,19 @@ export function sessionCanAccessHrRecapDashboard(
   return u?.canAccessHrRecapDashboard === true || u?.canNexaAdmin === true;
 }
 
+/** RAL, bonus e massa retributiva: superuser o console HR estesa. */
+export function sessionCanViewHrEconomicData(
+  u: Pick<SessionUser, "role" | "canAccessHrExtendedConsole" | "canNexaAdmin"> | null | undefined
+): boolean {
+  if (!u) {
+    return false;
+  }
+  if (normalizeStoredRole(u.role) === "superuser") {
+    return true;
+  }
+  return u.canNexaAdmin === true || u.canAccessHrExtendedConsole === true;
+}
+
 /** Ricerca dipendenti e pagina recap: admin Synapse, HR esteso o recap operativo. */
 export function sessionCanOpenEmployeeRecapPage(
   u: Pick<SessionUser, "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"> | null | undefined
@@ -312,13 +325,15 @@ export function shouldClearSessionOnUnauthorizedApiError(error: unknown): boolea
 const TOKEN_KEY = "nexa_hr_auth_token";
 const USER_KEY = "nexa_hr_auth_user";
 const COOKIE_KEY = "nexa_hr_token";
+/** Allineato al refresh token HttpOnly (7 giorni) — evita logout middleware dopo 30 min. */
+const SESSION_COOKIE_MAX_AGE_SEC = 7 * 24 * 60 * 60;
 
 export function saveSession(token: string, user: SessionUser): void {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
   const secure = isHttps ? "; secure" : "";
-  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=1800; samesite=lax${secure}`;
+  document.cookie = `${COOKIE_KEY}=1; path=/; max-age=${SESSION_COOKIE_MAX_AGE_SEC}; samesite=lax${secure}`;
 }
 
 export function getToken(): string | null {

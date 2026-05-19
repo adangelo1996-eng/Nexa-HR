@@ -945,6 +945,7 @@ export class RecruitingService {
         .select(RECRUIT_CANDIDATE_DB_COLS)
         .eq("id", String(st.candidate_id))
         .eq("company_id", companyId)
+        .is("onboarded_at", null)
         .maybeSingle();
       if (cErr || !candRow) {
         continue;

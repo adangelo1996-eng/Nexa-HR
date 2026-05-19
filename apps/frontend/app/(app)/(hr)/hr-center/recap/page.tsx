@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { AiNarrativeDisplay } from "@/components/ai-narrative-display";
-import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
+import { EmployeeLink } from "@/components/nexa-entity-links";
 import { fetchHrCenterMeta, postHrCenterRecap } from "@/lib/api";
-import { getToken } from "@/lib/auth-session";
+import { getSessionUser, getToken } from "@/lib/auth-session";
 
 function toggleInSet(prev: Set<string>, id: string): Set<string> {
   const next = new Set(prev);
@@ -67,6 +68,18 @@ export default function HrCenterRecapPage(): React.JSX.Element {
   }, [selCc, selEmp, selTeam]);
 
   const actions = (facts?.suggestedActions as { id?: string; label?: string; href?: string }[] | undefined) ?? [];
+  const employees =
+    (facts?.employees as
+      | Array<{
+          id: string;
+          fullName: string;
+          email: string;
+          contractType?: string | null;
+          employmentState?: string | null;
+        }>
+      | undefined) ?? [];
+  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
+  const viewer = getSessionUser();
 
   return (
     <div className="space-y-4">
@@ -137,7 +150,7 @@ export default function HrCenterRecapPage(): React.JSX.Element {
             : "Nessun filtro: viene analizzato il tuo profilo."}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <HebbAiPageHelpButton pageKey="hr-center-recap" />
+          <NexaPageHelpButton pageKey="hr-center-recap" />
           <Button type="button" size="sm" disabled={loading} onClick={() => void run()}>
             {loading ? "Elaborazione…" : "Genera recap"}
           </Button>
@@ -158,6 +171,59 @@ export default function HrCenterRecapPage(): React.JSX.Element {
         {error ? <p className="text-xs text-rose-600">{error}</p> : null}
         {facts ? (
           <div className="space-y-4">
+            {employees.length > 0 ? (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase text-[var(--prom-muted)]">
+                  Dipendenti nel perimetro ({employees.length})
+                </p>
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-[var(--prom-line)]">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-[var(--card-bg)] text-[10px] uppercase text-[var(--prom-muted)]">
+                      <tr>
+                        <th className="px-3 py-2">Seleziona</th>
+                        <th className="px-3 py-2">Nome</th>
+                        <th className="px-3 py-2">Stato</th>
+                        <th className="px-3 py-2">Scheda</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employees.map((emp) => (
+                        <tr key={emp.id} className="border-t border-[var(--prom-line)]">
+                          <td className="px-3 py-2">
+                            <input
+                              type="radio"
+                              name="recap-emp"
+                              checked={selectedEmpId === emp.id}
+                              onChange={() => setSelectedEmpId(emp.id)}
+                            />
+                          </td>
+                          <td className="px-3 py-2 font-medium text-[var(--prom-text)]">{emp.fullName}</td>
+                          <td className="px-3 py-2 capitalize text-[var(--prom-muted)]">
+                            {emp.employmentState?.replace("_", " ") ?? "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <EmployeeLink
+                              userId={emp.id}
+                              label="Apri scheda"
+                              viewer={viewer ?? undefined}
+                              className="text-[#002D72] underline dark:text-sky-200"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {selectedEmpId ? (
+                  <Link
+                    href={`/employee/${encodeURIComponent(selectedEmpId)}` as Route}
+                    className="mt-3 inline-flex rounded-full border border-[var(--prom-line-strong)] px-4 py-1.5 text-xs font-medium text-[var(--prom-text)] hover:bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)]"
+                  >
+                    Vai alla pagina personale del selezionato →
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
             {actions.length > 0 ? (
               <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Azioni suggerite</p>

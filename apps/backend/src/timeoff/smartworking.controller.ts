@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Patch, Param, Post, UseGuards } from "@nestjs/common";
-import { IsOptional, IsString, Matches } from "class-validator";
+import { IsOptional, IsString, Matches, ValidateIf } from "class-validator";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
@@ -8,6 +8,11 @@ import { PermissionsService } from "../platform/permissions.service";
 class CreateSwDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   day!: string;
+
+  @IsOptional()
+  @ValidateIf((o: CreateSwDto) => Boolean(o.endDay?.trim()))
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDay?: string;
 
   @IsOptional()
   @IsString()
@@ -50,7 +55,7 @@ export class SmartworkingController {
       }
       targetUserId = proxy;
     }
-    return this.store.createSmartworkingRequest(targetUserId, dto.day, dto.note, auth.role);
+    return this.store.createSmartworkingRequest(targetUserId, dto.day, dto.note, auth.role, dto.endDay);
   }
 
   @Delete("request/:id")
@@ -105,7 +110,7 @@ export class SmartworkingController {
         }
       }
     }
-    return this.store.updateSmartworkingRequest(auth.userId, id, dto.day, dto.note, auth.role);
+    return this.store.updateSmartworkingRequest(auth.userId, id, dto.day, dto.note, auth.role, dto.endDay);
   }
 
   @Get("pending")

@@ -7,6 +7,8 @@ import { ArrowLeft, MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
+import type { NexaPageHelpKey } from "@/lib/nexa-page-help";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import {
   fetchAdvancedAnalysisKpis,
@@ -24,6 +26,7 @@ export type AdvancedAnalyticsPageConfig = {
   title: string;
   subtitle: string;
   eyebrow?: string;
+  pageHelpKey?: NexaPageHelpKey;
   children?: React.ReactNode;
 };
 
@@ -73,7 +76,7 @@ function InsightList(props: { title: string; items: string[] }): React.JSX.Eleme
 }
 
 export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React.JSX.Element {
-  const { analysisId, title, subtitle, eyebrow = "Analytics & Intelligence", children } = props;
+  const { analysisId, title, subtitle, eyebrow = "Analytics & Intelligence", pageHelpKey, children } = props;
   const [kpis, setKpis] = useState<AnalyticsKpiDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +161,12 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
   }, [analysisId, chatInput, chatTurns]);
 
   return (
-    <NexaHrAppPage eyebrow={eyebrow} title={title} subtitle={subtitle}>
+    <NexaHrAppPage
+      eyebrow={eyebrow}
+      title={title}
+      subtitle={subtitle}
+      headerTrailing={pageHelpKey ? <NexaPageHelpButton pageKey={pageHelpKey} /> : undefined}
+    >
       <div className="mb-6">
         <Link
           href={"/analytics" as Route}

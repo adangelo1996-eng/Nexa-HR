@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdvancedAnalyticsPage } from "@/components/advanced-analytics-page";
+import { RoleCoverageGapsPanel } from "@/components/role-coverage-gaps-panel";
 import { fetchSkillsGap } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 
@@ -47,7 +48,9 @@ export default function AnalyticsCompetenzePage(): React.JSX.Element {
       analysisId="competenze"
       title="Competenze e copertura ruoli"
       subtitle="Gap competenze vs fabbisogno per ruolo. Matrice raccomandazioni hiring vs formazione con insight AI su aggregati."
+      pageHelpKey="analytics-competenze"
     >
+      <RoleCoverageGapsPanel />
       {error ? (
         <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-200">
           {error}

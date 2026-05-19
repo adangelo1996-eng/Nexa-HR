@@ -216,13 +216,18 @@ function systemPromptForSchema(schemaVersion: string): string {
     case "ai_payslip_explain_v1":
       return (
         base +
-        " Schema: {\"envelope\":{\"plainSummary\":\"stringa\",\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
+        " Schema: {\"envelope\":{\"plainSummary\":\"stringa\",\"withholdingsExplanation\":\"stringa (4-8 frasi: perché IRPEF, INPS, addizionali e altre trattenute)\"," +
+        "\"howToReadPayslip\":\"stringa (3-6 frasi: guida pratica alla lettura del cedolino)\"," +
+        "\"parsedPayslipAnalysis\":\"stringa (analisi strutturata delle righe in facts.lines, raggruppate per competenze/trattenenti)\"," +
+        "\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
         "\"lineHighlights\":[" +
         "{\"lineRef\":\"stringa (codice o descrizione sintetica)\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}" +
         "],\"closingTip\":\"stringa (max 2 frasi)\"}}. " +
-        "L'ingresso ha envelope.facts con period, importi lordo/netto, elenco linee (code, description, amount), itProfile (residenceLine, ccnl), disclaimer. " +
-        "plainSummary: 3-6 frasi semplici per un dipendente. residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
-        "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 3-8 voci su righe interessanti o trattenute; " +
+        "L'ingresso ha envelope.facts con period, importi lordo/netto, elenco linee (code, description, amount), parsedLinesDigest, itProfile (residenceLine, ccnl), disclaimer. " +
+        "plainSummary: sintesi generale 3-6 frasi. withholdingsExplanation: motivazioni delle trattenute senza inventare aliquote. " +
+        "howToReadPayslip: ordine di lettura consigliato per un dipendente. parsedPayslipAnalysis: commento sulle righe reali fornite. " +
+        "residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
+        "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 4-10 voci su righe interessanti; " +
         "non inventare codici o importi non presenti in facts.lines."
       );
     default:

@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/glass-card";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Input } from "@/components/ui/input";
 import {
   fetchCompensationBenchOrgRoles,
@@ -71,7 +72,10 @@ export default function CompensationBenchPage(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
+        <NexaPageHelpButton pageKey="compensation-bench" />
+      </div>
       <p className="max-w-3xl text-sm text-[var(--prom-muted)]">
         Stima RAL annua lorda di mercato (Italia) in base a ruolo, CCNL (opz.), località e anzianità. Output strutturato
         con LLM se abilitato; altrimenti fascia euristica. Non sostituisce consulenza retributiva né policy interne.

@@ -3,8 +3,9 @@
 import type { Route } from "next";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchManagerCopilot } from "@/lib/api";
-import { getToken } from "@/lib/auth-session";
+import { fetchManagerCopilot, type ManagerCopilotDirectReport } from "@/lib/api";
+import { EmployeeLink } from "@/components/nexa-entity-links";
+import { getSessionUser, getToken } from "@/lib/auth-session";
 import {
   HebbAiErrorBanner,
   HebbAiExperienceShell,
@@ -12,7 +13,7 @@ import {
   HebbAiGlassTile,
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
-import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 export default function ManagerCopilotPage(): React.JSX.Element {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchManagerCopilot>> | null>(null);
@@ -59,13 +60,13 @@ export default function ManagerCopilotPage(): React.JSX.Element {
         <>
           Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, remote working del team. Il punteggio
           turnover medio richiede permesso report HR e snapshot in{" "}
-          <Link href="/analytics/retention" scroll={false} className={linkCn}>
+          <Link href={"/analytics/retention" as Route} scroll={false} className={linkCn}>
             Retention e flight risk
           </Link>
           .
         </>
       }
-      headerTrailing={<HebbAiPageHelpButton pageKey="manager-copilot" />}
+      headerTrailing={<NexaPageHelpButton pageKey="manager-copilot" />}
     >
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
@@ -131,6 +132,86 @@ export default function ManagerCopilotPage(): React.JSX.Element {
               ))}
             </ul>
           </HebbAiGlassPanel>
+
+          {data.directReports.length > 0 ? (
+            <HebbAiGlassPanel>
+              <h2 className="text-lg font-semibold text-[var(--prom-text)]">Report diretti</h2>
+              <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                Panoramica operativa sul team.{" "}
+                {data.includeEconomicData
+                  ? "RAL e supplemento mensile visibili perché hai permessi HR economici."
+                  : "Dati retributivi nascosti: servono permessi HR estesi o superuser."}
+              </p>
+              <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--prom-line)]">
+                <table className="min-w-[720px] w-full text-left text-sm">
+                  <thead className="border-b border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-[10px] font-semibold uppercase tracking-wider text-[var(--prom-muted)]">
+                    <tr>
+                      <th className="px-3 py-2">Nome</th>
+                      <th className="px-3 py-2">Stato</th>
+                      <th className="px-3 py-2">Assunzione</th>
+                      <th className="px-3 py-2">Approvazioni</th>
+                      <th className="px-3 py-2">Flight risk</th>
+                      {data.includeEconomicData ? (
+                        <>
+                          <th className="px-3 py-2">RAL annua</th>
+                          <th className="px-3 py-2">Suppl. / mese</th>
+                        </>
+                      ) : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.directReports.map((row: ManagerCopilotDirectReport) => (
+                      <tr key={row.id} className="border-b border-[var(--prom-line)] last:border-0">
+                        <td className="px-3 py-2.5">
+                          <EmployeeLink
+                            userId={row.id}
+                            label={row.fullName}
+                            viewer={getSessionUser() ?? undefined}
+                            className="font-medium text-[var(--prom-text)] hover:underline"
+                          />
+                          <p className="text-[11px] text-[var(--prom-muted)]">{row.email}</p>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs capitalize text-[var(--prom-muted)]">
+                          {row.employmentState?.replace("_", " ") ?? "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs tabular-nums text-[var(--prom-muted)]">
+                          {row.hireDate
+                            ? new Date(row.hireDate).toLocaleDateString("it-IT")
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums">{row.pendingApprovalsCount}</td>
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {row.turnoverScore != null ? row.turnoverScore : "—"}
+                        </td>
+                        {data.includeEconomicData ? (
+                          <>
+                            <td className="px-3 py-2.5 tabular-nums text-[var(--prom-text)]">
+                              {row.ralAnnualEur != null
+                                ? new Intl.NumberFormat("it-IT", {
+                                    style: "currency",
+                                    currency: "EUR",
+                                    maximumFractionDigits: 0
+                                  }).format(row.ralAnnualEur)
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-2.5 tabular-nums text-[var(--prom-text)]">
+                              {row.bonusMonthlyEur != null
+                                ? new Intl.NumberFormat("it-IT", {
+                                    style: "currency",
+                                    currency: "EUR",
+                                    maximumFractionDigits: 0
+                                  }).format(row.bonusMonthlyEur)
+                                : "—"}
+                            </td>
+                          </>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </HebbAiGlassPanel>
+          ) : null}
 
           {data.topPendingPreview.length > 0 ? (
             <HebbAiGlassPanel>

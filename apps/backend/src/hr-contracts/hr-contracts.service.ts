@@ -21,6 +21,15 @@ export interface HrStandardContractDto {
   signatures?: Record<string, unknown>;
 }
 
+export interface HrContractPresetDto {
+  id: string;
+  templateKey: string;
+  label: string;
+  description: string | null;
+  defaultParty: Record<string, unknown>;
+  sortOrder: number;
+}
+
 interface ContractRow {
   id: string;
   company_id: string;
@@ -97,6 +106,30 @@ export class HrContractsService {
       throw new InternalServerErrorException(`Contratti: ${error.message}`);
     }
     return (data ?? []).map((r) => rowToDto(recordToRow(r as Record<string, unknown>)));
+  }
+
+  async listPresetsForCompany(companyId: string): Promise<HrContractPresetDto[]> {
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("hr_contract_presets")
+      .select("id, template_key, label, description, default_party_json, sort_order")
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true })
+      .order("label", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(`Preset contratti: ${error.message}`);
+    }
+    return (data ?? []).map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        templateKey: String(row.template_key),
+        label: String(row.label),
+        description: row.description != null ? String(row.description) : null,
+        defaultParty: (row.default_party_json as Record<string, unknown>) ?? {},
+        sortOrder: Number(row.sort_order ?? 0)
+      };
+    });
   }
 
   async getById(companyId: string, id: string): Promise<HrStandardContractDto> {

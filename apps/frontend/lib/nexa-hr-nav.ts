@@ -64,7 +64,7 @@ const PILLAR_DEFS: Array<{
         id: "p-org",
         title: "Anagrafica e organizzazione",
         items: [
-          { href: "/org-chart", label: "Organigramma persone", icon: Users },
+          { href: "/org-chart", label: "Organigramma Visivo", icon: Users },
           { href: "/organigramma", label: "Organigramma strutturale", icon: Building2 },
           { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 }
         ]

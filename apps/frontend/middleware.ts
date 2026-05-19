@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const AUTH_COOKIE = "nexa_hr_token";
+const REFRESH_COOKIE = "nexa_hr_refresh";
+
+function hasAuthSession(request: NextRequest): boolean {
+  return (
+    Boolean(request.cookies.get(AUTH_COOKIE)?.value) ||
+    Boolean(request.cookies.get(REFRESH_COOKIE)?.value)
+  );
+}
 
 function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/welcome")) return true;
@@ -13,7 +21,7 @@ function isPublicPath(pathname: string): boolean {
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-  const hasSession = Boolean(request.cookies.get(AUTH_COOKIE)?.value);
+  const hasSession = hasAuthSession(request);
   const isLoginPage = pathname.startsWith("/login");
   const isHealthCheck = pathname === "/health";
 

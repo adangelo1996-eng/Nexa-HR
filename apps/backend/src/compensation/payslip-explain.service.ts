@@ -72,10 +72,22 @@ export class PayslipExplainService {
         ccnlCode: employee.ccnlCode ?? null,
         ccnlLevel: employee.ccnlLevel ?? null
       },
+      parsedLinesDigest: lineSummary,
       disclaimer:
         "Spiegazione semplice a scopo informativo: non è consulenza fiscale. Per dettagli ufficiali usare modelli, CUD e commercialista."
     };
-    const seed = `Spiega in italiano chiaro le voci del cedolino per il periodo ${payslip.period}, con attenzione ad addizionali IRPEF regionali e comunali ove presenti, e al legame con residenza/domicilio fiscale in anagrafica. Evidenzia voci utili o da verificare, senza inventare importi.`;
+    const seed =
+      "Spiega in italiano chiaro e completo il cedolino del periodo indicato. " +
+      "1) Perché ci sono queste trattenute (IRPEF, INPS, addizionali, altre voci) in relazione a lordo/netto. " +
+      "2) Come leggere il cedolino: cosa guardare per primi, differenza competenze/trattenute, netto in busta. " +
+      "3) Analisi dettagliata delle righe parse fornite in facts.lines (codice, descrizione, importo) senza inventare voci. " +
+      "Collega residenza/domicilio fiscale alle addizionali solo se plausibile; altrimenti invita a verificare in CUD. " +
+      "Tono rassicurante, non consulenza legale.";
+
+    const lineSummary = (payslip.lines || [])
+      .slice(0, 40)
+      .map((l) => `${l.code}: ${l.description} = ${l.amount}`)
+      .join("; ");
 
     const wrapped = { envelope: { seed, facts } };
     let envelope: Record<string, unknown> | null = null;

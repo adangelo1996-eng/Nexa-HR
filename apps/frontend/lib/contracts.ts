@@ -645,6 +645,18 @@ export const HR_CONTRACT_TEMPLATE_OPTIONS: Array<{
   }
 ];
 
+/** Mappa chiavi legacy DB (es. migration 070 `part_time`) ai template editor. */
+export function normalizeContractPresetTemplateKey(key: string): HrContractTemplateKey {
+  const aliases: Record<string, HrContractTemplateKey> = {
+    part_time: "part_time_indeterminato"
+  };
+  const resolved = aliases[key] ?? key;
+  if (HR_CONTRACT_TEMPLATE_OPTIONS.some((o) => o.key === resolved)) {
+    return resolved as HrContractTemplateKey;
+  }
+  return "indeterminato";
+}
+
 export type ContractTemplateFormConfig = {
   showEndDate: boolean;
   showFixedTermReason: boolean;

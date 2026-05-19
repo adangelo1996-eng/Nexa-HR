@@ -3,11 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  deleteWorkforcePlanningScenario,
   fetchCurrentUser,
   fetchWorkforceCockpit,
+  fetchWorkforcePlanningScenarios,
   postAnalyticsNarrative,
-  type WorkforceCockpitScenario
+  saveWorkforcePlanningScenario,
+  type WorkforceCockpitScenario,
+  type WorkforcePlanningScenarioDto
 } from "@/lib/api";
+import {
+  downloadWorkforcePlanningExcel,
+  downloadWorkforcePlanningPdfLandscape,
+  type WorkforceExportBundle
+} from "@/lib/workforce-planning-export";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +27,7 @@ import {
   HebbAiGlassTile,
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
-import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 const WORKFORCE_SNAP_KEY = "nexa-hr-workforce-snapshots-v1";
 
@@ -72,6 +81,11 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   const [compareLive, setCompareLive] = useState<CockpitPayload | null>(null);
   const [snapshots, setSnapshots] = useState<WorkforceSnapshot[]>([]);
   const [compareBusy, setCompareBusy] = useState(false);
+  const [dbScenarios, setDbScenarios] = useState<WorkforcePlanningScenarioDto[]>([]);
+  const [scenarioName, setScenarioName] = useState("");
+  const [scenarioNotes, setScenarioNotes] = useState("");
+  const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const customParamSig = useMemo(
     () => `${customFte}|${customFlat}|${customScale}`,
@@ -81,6 +95,21 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   useEffect(() => {
     setSnapshots(readSnapshots());
   }, []);
+
+  const loadDbScenarios = useCallback(async (): Promise<void> => {
+    const t = getToken();
+    if (!t) return;
+    try {
+      const res = await fetchWorkforcePlanningScenarios(t);
+      setDbScenarios(res.items);
+    } catch {
+      setDbScenarios([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDbScenarios();
+  }, [loadDbScenarios]);
 
   const saveSnapshot = (): void => {
     if (!data) return;
@@ -188,6 +217,84 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     });
   }, [data, compareLive]);
 
+  const buildExportBundle = (): WorkforceExportBundle | null => {
+    if (!data) return null;
+    return {
+      scenarioLabel: scenarioName.trim() || (scenario === "custom" ? "What-if" : scenario),
+      savedAt: new Date().toLocaleString("it-IT"),
+      assumptions: {
+        scenario,
+        notes: scenarioNotes.trim() || null,
+        custom: data.custom ?? null,
+        compareWithBase: compareLive != null
+      },
+      cockpit: data,
+      narrative: narrative
+        ? { title: narrative.title, bullets: narrative.bullets, summary: narrative.summary }
+        : null
+    };
+  };
+
+  const saveDbScenario = async (): Promise<void> => {
+    const t = getToken();
+    if (!t || !data) return;
+    const name = scenarioName.trim();
+    if (!name) {
+      setError("Indica un nome per lo scenario da salvare.");
+      return;
+    }
+    setScenarioBusy(true);
+    setError(null);
+    try {
+      await saveWorkforcePlanningScenario(t, {
+        name,
+        assumptionsJson: {
+          scenario,
+          customFte,
+          customFlat,
+          customScale,
+          notes: scenarioNotes.trim() || null
+        },
+        payloadJson: data as unknown as Record<string, unknown>,
+        analysisText: narrative?.summary ?? null
+      });
+      setScenarioName("");
+      await loadDbScenarios();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Salvataggio scenario non riuscito");
+    } finally {
+      setScenarioBusy(false);
+    }
+  };
+
+  const applyDbScenario = (row: WorkforcePlanningScenarioDto): void => {
+    const payload = row.payloadJson as CockpitPayload | undefined;
+    if (payload?.series) {
+      setData(payload);
+      setScenario(payload.scenario ?? "base");
+      setNarrative(null);
+    }
+    setScenarioName(row.name);
+    setScenarioNotes(String((row.assumptionsJson as { notes?: string })?.notes ?? ""));
+  };
+
+  const runExportExcel = async (): Promise<void> => {
+    const bundle = buildExportBundle();
+    if (!bundle) return;
+    setExportBusy(true);
+    try {
+      await downloadWorkforcePlanningExcel(bundle);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const runExportPdf = (): void => {
+    const bundle = buildExportBundle();
+    if (!bundle) return;
+    downloadWorkforcePlanningPdfLandscape(bundle);
+  };
+
   const runNarrative = async (): Promise<void> => {
     const t = getToken();
     if (!t || !data) {
@@ -236,7 +343,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
           .
         </>
       }
-      headerTrailing={<HebbAiPageHelpButton pageKey="workforce-planning" />}
+      headerTrailing={<NexaPageHelpButton pageKey="workforce-planning" />}
     >
       <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
         {(
@@ -574,6 +681,27 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
               </HebbAiGlassPanel>
             </>
           )}
+
+          <HebbAiGlassPanel className="space-y-4">
+            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Scenari salvati (database)</h2>
+            <div className="flex flex-wrap gap-2">
+              <Input className="max-w-xs" placeholder="Nome scenario" value={scenarioName} onChange={(e) => setScenarioName(e.target.value)} />
+              <Input className="min-w-[200px] flex-1" placeholder="Note assunzioni" value={scenarioNotes} onChange={(e) => setScenarioNotes(e.target.value)} />
+              <Button type="button" size="sm" variant="outline" disabled={!data || scenarioBusy} onClick={() => void saveDbScenario()}>Salva scenario</Button>
+              <Button type="button" size="sm" variant="outline" disabled={!data || exportBusy} onClick={() => void runExportExcel()}>Export Excel</Button>
+              <Button type="button" size="sm" variant="outline" disabled={!data} onClick={() => runExportPdf()}>PDF landscape</Button>
+            </div>
+            {dbScenarios.length > 0 ? (
+              <ul className="divide-y divide-[var(--prom-line)] rounded-xl border border-[var(--prom-line)] text-sm">
+                {dbScenarios.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                    <button type="button" className="font-medium hover:underline" onClick={() => applyDbScenario(s)}>{s.name}</button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => { const t = getToken(); if (t) void deleteWorkforcePlanningScenario(t, s.id).then(() => loadDbScenarios()); }}>Elimina</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </HebbAiGlassPanel>
 
           <HebbAiGlassPanel>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

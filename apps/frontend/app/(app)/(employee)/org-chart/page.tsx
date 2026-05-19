@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { OrgChart, type OrgChartNode } from "@/components/org-chart";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import {
   fetchAdminCostCenters,
@@ -137,10 +138,11 @@ export default function OrgChartPage(): React.JSX.Element {
   return (
     <div className="relative space-y-6">
       <div className="flex flex-wrap items-end gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold text-[var(--prom-text)]">Organigramma</h1>
           <p className="text-sm text-[var(--prom-muted)]">Filtri e dettaglio persona</p>
         </div>
+        <NexaPageHelpButton pageKey="org-chart" />
         <label className="text-sm text-[var(--prom-muted)]">
           Sede
           <select

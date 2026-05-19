@@ -7,6 +7,7 @@ import {
   Grid3x3,
   ListOrdered,
   Megaphone,
+  Settings2,
   Square,
   Trash2,
   UserRound,
@@ -14,18 +15,23 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HebbAiGlassPanel } from "@/components/hebb-ai-experience-shell";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import { EmployeeLink } from "@/components/nexa-entity-links";
 import {
+  createShiftPreset,
   deleteShift,
+  deleteShiftPreset,
   fetchCurrentUser,
   fetchSchedulingWeek,
+  fetchShiftPresets,
   fetchShiftProposals,
   fetchUsers,
   postCreateShift,
   postPublishShiftsWeek,
   postShiftsBulk,
   type ShiftDto,
+  type ShiftPresetDto,
   type ShiftProposalDto,
   type User
 } from "@/lib/api";
@@ -78,12 +84,111 @@ function dayHeaderLabel(ymd: string): string {
   return new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(d);
 }
 
-type Panel = "grid" | "proposals";
+type Panel = "grid" | "proposals" | "presets";
 
-const PRESETS = {
+const FALLBACK_PRESETS = {
   morning: { label: "Mattina 08–17 UTC", start: "T08:00:00.000Z", end: "T17:00:00.000Z" },
   evening: { label: "Sera 14–22 UTC", start: "T14:00:00.000Z", end: "T22:00:00.000Z" }
 } as const;
+
+function presetTimeSuffix(t: string): string {
+  const p = t.trim().split(":");
+  const hh = (p[0] ?? "08").padStart(2, "0");
+  const mm = (p[1] ?? "00").padStart(2, "0");
+  const ss = (p[2] ?? "00").padStart(2, "0");
+  return `T${hh}:${mm}:${ss}.000Z`;
+}
+
+function presetWindowForDay(ymd: string, preset: ShiftPresetDto): { start: string; end: string } {
+  return { start: `${ymd}${presetTimeSuffix(preset.startTime)}`, end: `${ymd}${presetTimeSuffix(preset.endTime)}` };
+}
+
+type PresetFormState = {
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  isDefault: boolean;
+  workTeamId: string;
+  userId: string;
+};
+
+function PresetsPanel(props: {
+  shiftPresets: ShiftPresetDto[];
+  presetForm: PresetFormState;
+  setPresetForm: React.Dispatch<React.SetStateAction<PresetFormState>>;
+  busy: boolean;
+  onCreate: () => void;
+  onDelete: (id: string) => void;
+}): React.JSX.Element {
+  const { shiftPresets, presetForm, setPresetForm, busy, onCreate, onDelete } = props;
+  return (
+    <HebbAiGlassPanel className="space-y-4">
+      <h3 className="text-sm font-semibold text-[var(--prom-text)]">Preset turno salvati</h3>
+      <p className="text-xs text-[var(--prom-muted)]">
+        Crea preset con orario UTC e imposta default azienda (o assegna team/dipendente dal form API).
+      </p>
+      <ul className="space-y-2">
+        {shiftPresets.map((p) => (
+          <li
+            key={p.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--prom-line)] px-3 py-2 text-sm"
+          >
+            <div>
+              <p className="font-medium text-[var(--prom-text)]">{p.name}</p>
+              <p className="text-xs text-[var(--prom-muted)]">
+                {p.startTime.slice(0, 5)}–{p.endTime.slice(0, 5)} UTC{p.isDefault ? " · default" : ""}
+              </p>
+            </div>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDelete(p.id)}>
+              Elimina
+            </Button>
+          </li>
+        ))}
+        {shiftPresets.length === 0 ? <li className="text-sm text-[var(--prom-muted)]">Nessun preset.</li> : null}
+      </ul>
+      <div className="grid gap-3 border-t border-[var(--prom-line)] pt-4 sm:grid-cols-2">
+        <label className="text-xs text-[var(--prom-muted)]">
+          Nome
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
+            value={presetForm.name}
+            onChange={(e) => setPresetForm((f) => ({ ...f, name: e.target.value }))}
+          />
+        </label>
+        <label className="text-xs text-[var(--prom-muted)]">
+          Inizio UTC
+          <input
+            type="time"
+            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] px-2 py-1.5 text-sm"
+            value={presetForm.startTime}
+            onChange={(e) => setPresetForm((f) => ({ ...f, startTime: e.target.value }))}
+          />
+        </label>
+        <label className="text-xs text-[var(--prom-muted)]">
+          Fine UTC
+          <input
+            type="time"
+            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] px-2 py-1.5 text-sm"
+            value={presetForm.endTime}
+            onChange={(e) => setPresetForm((f) => ({ ...f, endTime: e.target.value }))}
+          />
+        </label>
+        <label className="flex items-center gap-2 text-xs sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={presetForm.isDefault}
+            onChange={(e) => setPresetForm((f) => ({ ...f, isDefault: e.target.checked }))}
+          />
+          Default azienda
+        </label>
+      </div>
+      <Button type="button" size="sm" disabled={busy} onClick={onCreate}>
+        Salva preset
+      </Button>
+    </HebbAiGlassPanel>
+  );
+}
 
 export default function SchedulingPage(): React.JSX.Element {
   const [panel, setPanel] = useState<Panel>("grid");
@@ -99,7 +204,28 @@ export default function SchedulingPage(): React.JSX.Element {
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [dayMask, setDayMask] = useState<boolean[]>(() => [true, true, true, true, true, false, false]);
-  const [presetKey, setPresetKey] = useState<keyof typeof PRESETS>("morning");
+  const [presetKey, setPresetKey] = useState<keyof typeof FALLBACK_PRESETS>("morning");
+  const [shiftPresets, setShiftPresets] = useState<ShiftPresetDto[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [workTeams, setWorkTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [presetForm, setPresetForm] = useState({
+    name: "",
+    startTime: "08:00",
+    endTime: "17:00",
+    breakMinutes: 0,
+    isDefault: false,
+    workTeamId: "",
+    userId: ""
+  });
+
+  const activePresetWindow = useMemo(() => {
+    const dbPreset = shiftPresets.find((p) => p.id === selectedPresetId);
+    if (dbPreset) {
+      return (ymd: string) => presetWindowForDay(ymd, dbPreset);
+    }
+    const fb = FALLBACK_PRESETS[presetKey];
+    return (ymd: string) => ({ start: `${ymd}${fb.start}`, end: `${ymd}${fb.end}` });
+  }, [shiftPresets, selectedPresetId, presetKey]);
 
   const dayDates = useMemo(() => weekDayDatesUtc(week), [week]);
 
@@ -134,11 +260,15 @@ export default function SchedulingPage(): React.JSX.Element {
     try {
       const me = await fetchCurrentUser(token);
       setViewer(me);
-      const [w, users] = await Promise.all([
+      const [w, users, presetsRes] = await Promise.all([
         fetchSchedulingWeek(token, week),
-        fetchUsers(token).catch(() => [] as User[])
+        fetchUsers(token).catch(() => [] as User[]),
+        fetchShiftPresets(token).catch(() => ({ items: [] as ShiftPresetDto[] }))
       ]);
       setWeekShifts((w.items ?? []).filter((it) => Boolean(it.id && it.userId)));
+      const presets = presetsRes.items ?? [];
+      setShiftPresets(presets);
+      if (!selectedPresetId && presets[0]) setSelectedPresetId(presets[0].id);
       const map: Record<string, User> = {};
       for (const u of users) map[u.id] = u;
       setUsersById(map);
@@ -149,10 +279,36 @@ export default function SchedulingPage(): React.JSX.Element {
     }
   }, [week]);
 
+  const loadPresets = useCallback(async (): Promise<void> => {
+    const token = getToken();
+    if (!token) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const [me, presetsRes, users] = await Promise.all([
+        fetchCurrentUser(token),
+        fetchShiftPresets(token),
+        fetchUsers(token).catch(() => [] as User[])
+      ]);
+      setViewer(me);
+      const items = presetsRes.items ?? [];
+      setShiftPresets(items);
+      if (!selectedPresetId && items[0]) setSelectedPresetId(items[0].id);
+      const map: Record<string, User> = {};
+      for (const u of users) map[u.id] = u;
+      setUsersById(map);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Errore caricamento preset");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (panel === "proposals") void loadProposals();
+    else if (panel === "presets") void loadPresets();
     else void loadGrid();
-  }, [panel, loadProposals, loadGrid]);
+  }, [panel, loadProposals, loadGrid, loadPresets]);
 
   const sortedProposals = useMemo(() => [...proposalItems].sort((a, b) => a.startAt.localeCompare(b.startAt)), [proposalItems]);
 
@@ -199,14 +355,14 @@ export default function SchedulingPage(): React.JSX.Element {
       setErr("Seleziona almeno un dipendente.");
       return;
     }
-    const pr = PRESETS[presetKey];
     const items: Array<{ userId: string; startAt: string; endAt: string }> = [];
     for (const uid of selected) {
       for (let i = 0; i < 7; i += 1) {
         if (!dayMask[i]) continue;
         const ymd = dayDates[i];
         if (!ymd) continue;
-        items.push({ userId: uid, startAt: `${ymd}${pr.start}`, endAt: `${ymd}${pr.end}` });
+        const w = activePresetWindow(ymd);
+        items.push({ userId: uid, startAt: w.start, endAt: w.end });
       }
     }
     if (items.length === 0) {
@@ -259,14 +415,65 @@ export default function SchedulingPage(): React.JSX.Element {
     }
   };
 
-  const onQuickAdd = async (userId: string, ymd: string): Promise<void> => {
+  const onCreatePreset = async (): Promise<void> => {
     const token = getToken();
     if (!token) return;
-    const pr = PRESETS[presetKey];
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      const { item } = await createShiftPreset(token, {
+        name: presetForm.name,
+        startTime: presetForm.startTime,
+        endTime: presetForm.endTime,
+        breakMinutes: presetForm.breakMinutes,
+        isDefault: presetForm.isDefault,
+        workTeamId: presetForm.workTeamId || undefined,
+        userId: presetForm.userId || undefined
+      });
+      setSelectedPresetId(item.id);
+      setPresetForm({
+        name: "",
+        startTime: "08:00",
+        endTime: "17:00",
+        breakMinutes: 0,
+        isDefault: false,
+        workTeamId: "",
+        userId: ""
+      });
+      setMsg(`Preset «${item.name}» creato.`);
+      await loadPresets();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Creazione preset non riuscita");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDeletePreset = async (presetId: string): Promise<void> => {
+    const token = getToken();
+    if (!token) return;
     setBusy(true);
     setErr(null);
     try {
-      await postCreateShift(token, { userId, startAt: `${ymd}${pr.start}`, endAt: `${ymd}${pr.end}` });
+      await deleteShiftPreset(token, presetId);
+      if (selectedPresetId === presetId) setSelectedPresetId("");
+      await loadPresets();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Eliminazione preset non riuscita");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onQuickAdd = async (userId: string, ymd: string): Promise<void> => {
+    const token = getToken();
+    if (!token) return;
+    const w = activePresetWindow(ymd);
+    setBusy(true);
+    setErr(null);
+    try {
+      await postCreateShift(token, { userId, startAt: w.start, endAt: w.end });
       await loadGrid();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Creazione turno non riuscita");
@@ -322,10 +529,29 @@ export default function SchedulingPage(): React.JSX.Element {
                 <ListOrdered className="h-3.5 w-3.5" aria-hidden />
                 Proposte
               </button>
+              <button
+                type="button"
+                className={[
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                  panel === "presets" ? "bg-[#002D72] text-white shadow" : "text-[var(--prom-muted)]"
+                ].join(" ")}
+                onClick={() => setPanel("presets")}
+              >
+                <Settings2 className="h-3.5 w-3.5" aria-hidden />
+                Preset
+              </button>
             </div>
-            <Button type="button" size="sm" onClick={() => void (panel === "grid" ? loadGrid() : loadProposals())} disabled={loading}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                void (panel === "grid" ? loadGrid() : panel === "presets" ? loadPresets() : loadProposals())
+              }
+              disabled={loading}
+            >
               {loading ? "Aggiornamento…" : "Aggiorna"}
             </Button>
+            <NexaPageHelpButton pageKey="scheduling" />
           </div>
         </div>
       </HebbAiGlassPanel>
@@ -400,6 +626,15 @@ export default function SchedulingPage(): React.JSX.Element {
             </ul>
           )}
         </>
+      ) : panel === "presets" ? (
+        <PresetsPanel
+          shiftPresets={shiftPresets}
+          presetForm={presetForm}
+          setPresetForm={setPresetForm}
+          busy={busy}
+          onCreate={() => void onCreatePreset()}
+          onDelete={(id) => void onDeletePreset(id)}
+        />
       ) : (
         <>
           <HebbAiGlassPanel className="space-y-4">
@@ -423,11 +658,26 @@ export default function SchedulingPage(): React.JSX.Element {
                 Preset orario
                 <select
                   className="mt-1 block rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
-                  value={presetKey}
-                  onChange={(e) => setPresetKey(e.target.value as keyof typeof PRESETS)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v.startsWith("db:")) {
+                      setSelectedPresetId(v.slice(3));
+                    } else {
+                      setSelectedPresetId("");
+                      setPresetKey(v as keyof typeof FALLBACK_PRESETS);
+                    }
+                  }}
+                  value={selectedPresetId ? `db:${selectedPresetId}` : presetKey}
                 >
-                  <option value="morning">{PRESETS.morning.label}</option>
-                  <option value="evening">{PRESETS.evening.label}</option>
+                  {shiftPresets.map((p) => (
+                    <option key={p.id} value={`db:${p.id}`}>
+                      {p.name}
+                      {p.isDefault ? " · default" : ""}
+                      {p.userId ? " · dip." : p.workTeamId ? " · team" : ""}
+                    </option>
+                  ))}
+                  <option value="morning">{FALLBACK_PRESETS.morning.label}</option>
+                  <option value="evening">{FALLBACK_PRESETS.evening.label}</option>
                 </select>
               </label>
               <div className="flex flex-wrap gap-1">

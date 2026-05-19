@@ -236,9 +236,60 @@ export class TrainingService {
     });
   }
 
+  async getCourseById(companyId: string, courseId: string): Promise<TrainingCourseDto> {
+    const courses = await this.listCourses(companyId);
+    const course = courses.find((c) => c.id === courseId);
+    if (!course) {
+      throw new NotFoundException("Corso non trovato");
+    }
+    return course;
+  }
+
   async findCourseByCode(companyId: string, code: string): Promise<TrainingCourseDto | null> {
     const courses = await this.listCourses(companyId);
     return courses.find((c) => c.code === code) ?? null;
+  }
+
+  async listAssignableEmployeeIds(companyId: string): Promise<string[]> {
+    const sb = this.sb();
+    if (!sb) {
+      return [];
+    }
+    const { data, error } = await sb
+      .from("users")
+      .select("id")
+      .eq("company_id", companyId)
+      .neq("role", "superuser");
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return (data ?? []).map((r) => String((r as { id: string }).id));
+  }
+
+  async assignCoursesBatch(input: {
+    companyId: string;
+    userIds: string[];
+    courseIds: string[];
+    dueDate: string;
+    assignedBy?: string;
+  }): Promise<TrainingAssignmentDto[]> {
+    const uniqueUsers = [...new Set(input.userIds.filter(Boolean))];
+    const uniqueCourses = [...new Set(input.courseIds.filter(Boolean))];
+    const items: TrainingAssignmentDto[] = [];
+    for (const userId of uniqueUsers) {
+      for (const courseId of uniqueCourses) {
+        items.push(
+          await this.assignCourse({
+            companyId: input.companyId,
+            userId,
+            courseId,
+            dueDate: input.dueDate,
+            assignedBy: input.assignedBy
+          })
+        );
+      }
+    }
+    return items;
   }
 
   async ensureNexaPlatformCourseAssigned(input: {

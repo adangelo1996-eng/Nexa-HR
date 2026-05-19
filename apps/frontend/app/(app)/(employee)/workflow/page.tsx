@@ -9,6 +9,10 @@ import { WorkflowExpenseRow } from "@/components/workflow-expense-row";
 import {
   approveApproval,
   approveExpenseClaim,
+  cancelPendingLeavePlan,
+  cancelPendingSicknessEvent,
+  cancelSmartworkingRequest,
+  cancelTravelRequest,
   fetchApprovals,
   fetchCurrentUser,
   fetchExpenseWorkflow,
@@ -17,6 +21,7 @@ import {
   type ApprovalItem,
   type ExpenseWorkflowRowDto
 } from "@/lib/api";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
   clearSession,
   getToken,
@@ -173,6 +178,33 @@ export default function WorkflowPage(): React.JSX.Element {
     }
   }
 
+  async function onCancelMine(item: ApprovalItem): Promise<void> {
+    if (!token || item.status !== "pending") {
+      return;
+    }
+    if (!window.confirm("Annullare questa richiesta? L'operazione non è reversibile.")) {
+      return;
+    }
+    setBusyId(item.id);
+    setError(null);
+    try {
+      if (item.type === "leave") {
+        await cancelPendingLeavePlan(token, item.entityId);
+      } else if (item.type === "sickness") {
+        await cancelPendingSicknessEvent(token, item.entityId);
+      } else if (item.type === "smartworking") {
+        await cancelSmartworkingRequest(token, item.entityId);
+      } else if (item.type === "travel") {
+        await cancelTravelRequest(token, item.entityId);
+      }
+      await refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Annullamento non riuscito");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onExpenseAction(claimId: string, action: "approve" | "reject"): Promise<void> {
     if (!token) {
       return;
@@ -195,7 +227,13 @@ export default function WorkflowPage(): React.JSX.Element {
 
   function renderCard(
     item: ApprovalItem,
-    opts: { showActions: boolean; showPriority: boolean; compact?: boolean; showRequester?: boolean }
+    opts: {
+      showActions: boolean;
+      showPriority: boolean;
+      compact?: boolean;
+      showRequester?: boolean;
+      showCancel?: boolean;
+    }
   ): React.JSX.Element {
     const urgent = opts.showPriority && isHighPriorityPending(item);
     return (
@@ -264,6 +302,18 @@ export default function WorkflowPage(): React.JSX.Element {
             </Button>
           </div>
         ) : null}
+        {opts.showCancel && item.status === "pending" ? (
+          <div className="mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busyId === item.id}
+              onClick={() => void onCancelMine(item)}
+            >
+              Annulla richiesta
+            </Button>
+          </div>
+        ) : null}
       </article>
     );
   }
@@ -282,16 +332,19 @@ export default function WorkflowPage(): React.JSX.Element {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Workflow</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {user?.fullName} · {user?.role}
           </p>
         </div>
-        <Link href="/mappa-portale" className="synapse-nav-link">
-          Dashboard
-        </Link>
+        <div className="flex items-center gap-2">
+          <NexaPageHelpButton pageKey="workflow" />
+          <Link href="/mappa-portale" className="synapse-nav-link">
+            Dashboard
+          </Link>
+        </div>
       </header>
 
       <div className="space-y-10">
@@ -340,7 +393,14 @@ export default function WorkflowPage(): React.JSX.Element {
               <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta aperta da te.</p>
             ) : null}
             {mine.map((item) => (
-              <Fragment key={item.id}>{renderCard(item, { showActions: false, showPriority: true, compact: true })}</Fragment>
+              <Fragment key={item.id}>
+                {renderCard(item, {
+                  showActions: false,
+                  showPriority: true,
+                  compact: true,
+                  showCancel: true
+                })}
+              </Fragment>
             ))}
             {expenseMineOpen.map((row) => (
               <WorkflowExpenseRow key={`exp-mine-${row.claim.id}`} row={row} variant="mine" showActions={false} />

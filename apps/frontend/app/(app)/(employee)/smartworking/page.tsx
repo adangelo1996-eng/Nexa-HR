@@ -6,11 +6,13 @@ import {
   cancelSmartworkingRequest,
   createSmartworkingRequest,
   fetchSmartworkingMe,
+  formatSmartworkingPeriod,
   updateSmartworkingRequest,
   type SmartworkingRequestDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { HebbAiGlassPanel, HebbAiGlassTile } from "@/components/hebb-ai-experience-shell";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 
 function formatDayIt(isoDay: string): string {
@@ -54,11 +56,12 @@ export default function SmartworkingPage(): React.JSX.Element {
   const [balance, setBalance] = useState<{ used: number; quota: number } | null>(null);
   const [items, setItems] = useState<SmartworkingRequestDto[]>([]);
   const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDay, setEndDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cancelId, setCancelId] = useState<string | null>(null);
-  const [edits, setEdits] = useState<Record<string, { day: string; note: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { day: string; endDay: string; note: string }>>({});
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -88,14 +91,20 @@ export default function SmartworkingPage(): React.JSX.Element {
     const dayEdit = edits[r.id]?.day ?? r.day;
     const noteEdit = edits[r.id]?.note ?? r.note ?? "";
     const dayNorm = dayEdit.slice(0, 10);
+    const endNorm = (edits[r.id]?.endDay ?? r.endDay ?? r.day).slice(0, 10);
     const noteNorm = noteEdit.trim() || null;
     const prevNote = (r.note ?? "").trim() || null;
-    if (dayNorm === r.day.slice(0, 10) && noteNorm === prevNote) {
+    const prevEnd = (r.endDay ?? r.day).slice(0, 10);
+    if (dayNorm === r.day.slice(0, 10) && endNorm === prevEnd && noteNorm === prevNote) {
       return;
     }
     setBusy(true);
     try {
-      await updateSmartworkingRequest(token, r.id, { day: dayNorm, note: noteNorm ?? undefined });
+      await updateSmartworkingRequest(token, r.id, {
+        day: dayNorm,
+        endDay: endNorm !== dayNorm ? endNorm : undefined,
+        note: noteNorm ?? undefined
+      });
       void load();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Errore aggiornamento");
@@ -127,13 +136,18 @@ export default function SmartworkingPage(): React.JSX.Element {
       return;
     }
     const dayNorm = day.slice(0, 10);
-    if (items.some((r) => r.day.slice(0, 10) === dayNorm && r.status !== "rejected")) {
-      setErr("Remote working già richiesto per questa data");
+    const endNorm = (endDay || day).slice(0, 10);
+    if (endNorm < dayNorm) {
+      setErr("La data fine non può essere precedente alla data inizio");
       return;
     }
     setBusy(true);
     try {
-      await createSmartworkingRequest(token, { day: dayNorm, note: note || undefined });
+      await createSmartworkingRequest(token, {
+        day: dayNorm,
+        endDay: endNorm !== dayNorm ? endNorm : undefined,
+        note: note || undefined
+      });
       setNote("");
       void load();
     } catch (ex) {
@@ -145,15 +159,18 @@ export default function SmartworkingPage(): React.JSX.Element {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 pb-8">
-      <header className="space-y-1">
-        <div className="flex items-center gap-2 text-[var(--prom-gold)]">
-          <Laptop className="h-5 w-5" aria-hidden />
-          <span className="text-xs font-semibold uppercase tracking-wider">Richieste</span>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[var(--prom-gold)]">
+            <Laptop className="h-5 w-5" aria-hidden />
+            <span className="text-xs font-semibold uppercase tracking-wider">Richieste</span>
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">Remote working</h1>
+          <p className="text-sm text-[var(--prom-muted)]">
+            Richiedi un singolo giorno o un periodo: il responsabile vede l&apos;intervallo in approvazione.
+          </p>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">Remote working</h1>
-        <p className="text-sm text-[var(--prom-muted)]">
-          Pianifica i giorni in remoto: salva le modifiche mentre la richiesta è in attesa, annulla se cambi idea.
-        </p>
+        <NexaPageHelpButton pageKey="smartworking" />
       </header>
 
       {balance ? (
@@ -188,7 +205,9 @@ export default function SmartworkingPage(): React.JSX.Element {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-[var(--prom-text)]">Nuova richiesta</h2>
-            <p className="mt-0.5 text-xs text-[var(--prom-muted)]">Scegli il giorno e un messaggio opzionale per il responsabile.</p>
+            <p className="mt-0.5 text-xs text-[var(--prom-muted)]">
+              Indica inizio e fine periodo (stesso giorno = singola giornata).
+            </p>
           </div>
         </div>
 
@@ -197,16 +216,32 @@ export default function SmartworkingPage(): React.JSX.Element {
             <label className="group flex flex-col gap-1.5 text-xs font-medium text-[var(--prom-muted)]">
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
-                Giorno
+                Dal
               </span>
               <input
                 type="date"
                 value={day}
-                onChange={(e) => setDay(e.target.value)}
+                onChange={(e) => {
+                  setDay(e.target.value);
+                  if (e.target.value > endDay) setEndDay(e.target.value);
+                }}
                 className="rounded-xl border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface)_88%,transparent)] px-3 py-2.5 text-sm text-[var(--prom-text)] shadow-sm transition focus:border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]"
               />
             </label>
-            <label className="flex flex-col gap-1.5 text-xs font-medium text-[var(--prom-muted)]">
+            <label className="group flex flex-col gap-1.5 text-xs font-medium text-[var(--prom-muted)]">
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
+                Al
+              </span>
+              <input
+                type="date"
+                value={endDay}
+                min={day}
+                onChange={(e) => setEndDay(e.target.value)}
+                className="rounded-xl border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface)_88%,transparent)] px-3 py-2.5 text-sm text-[var(--prom-text)] shadow-sm transition focus:border-[color-mix(in_srgb,var(--prom-gold)_50%,var(--prom-line))] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs font-medium text-[var(--prom-muted)] sm:col-span-2">
               Nota per il responsabile (facoltativa)
               <input
                 value={note}
@@ -237,8 +272,15 @@ export default function SmartworkingPage(): React.JSX.Element {
                 <HebbAiGlassPanel className="space-y-3 !p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-medium text-[var(--prom-text)]">{formatDayIt(r.day)}</p>
-                      <p className="text-xs text-[var(--prom-muted)]">{r.day.slice(0, 10)}</p>
+                      <p className="font-medium text-[var(--prom-text)]">
+                        {formatDayIt(r.day)}
+                        {(r.endDay ?? r.day).slice(0, 10) !== r.day.slice(0, 10)
+                          ? ` → ${formatDayIt(r.endDay ?? r.day)}`
+                          : ""}
+                      </p>
+                      <p className="text-xs font-medium text-violet-200/90">
+                        {formatSmartworkingPeriod(r.day, r.endDay)}
+                      </p>
                     </div>
                     <span
                       className={
@@ -258,14 +300,37 @@ export default function SmartworkingPage(): React.JSX.Element {
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <label className="block min-w-0 flex-1 text-xs text-[var(--prom-muted)]">
-                          Giorno
+                          Dal
                           <input
                             type="date"
                             value={edits[r.id]?.day ?? r.day}
                             onChange={(ev) =>
                               setEdits((prev) => ({
                                 ...prev,
-                                [r.id]: { day: ev.target.value, note: prev[r.id]?.note ?? r.note ?? "" }
+                                [r.id]: {
+                                  day: ev.target.value,
+                                  endDay: prev[r.id]?.endDay ?? r.endDay ?? r.day,
+                                  note: prev[r.id]?.note ?? r.note ?? ""
+                                }
+                              }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-2 text-[var(--prom-text)]"
+                          />
+                        </label>
+                        <label className="block min-w-0 flex-1 text-xs text-[var(--prom-muted)]">
+                          Al
+                          <input
+                            type="date"
+                            value={edits[r.id]?.endDay ?? r.endDay ?? r.day}
+                            min={(edits[r.id]?.day ?? r.day).slice(0, 10)}
+                            onChange={(ev) =>
+                              setEdits((prev) => ({
+                                ...prev,
+                                [r.id]: {
+                                  day: prev[r.id]?.day ?? r.day,
+                                  endDay: ev.target.value,
+                                  note: prev[r.id]?.note ?? r.note ?? ""
+                                }
                               }))
                             }
                             className="mt-1 w-full rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-2 text-[var(--prom-text)]"
@@ -278,7 +343,11 @@ export default function SmartworkingPage(): React.JSX.Element {
                             onChange={(ev) =>
                               setEdits((prev) => ({
                                 ...prev,
-                                [r.id]: { day: prev[r.id]?.day ?? r.day, note: ev.target.value }
+                                [r.id]: {
+                                  day: prev[r.id]?.day ?? r.day,
+                                  endDay: prev[r.id]?.endDay ?? r.endDay ?? r.day,
+                                  note: ev.target.value
+                                }
                               }))
                             }
                             className="mt-1 w-full rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-2 text-[var(--prom-text)]"

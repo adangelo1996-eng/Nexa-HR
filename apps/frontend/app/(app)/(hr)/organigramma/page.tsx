@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Network } from "lucide-react";
+import { EmployeeSideDrawer, type EmployeeDrawerSubject } from "@/components/employee-side-drawer";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { OrgStructureTeamTree } from "@/components/org-structure-tree";
 import { Button } from "@/components/ui/button";
-import { fetchCurrentUser, fetchOrgStructure, type OrgStructureResponse } from "@/lib/api";
+import { fetchCurrentUser, fetchOrgStructure, type OrgStructureResponse, type OrgStructureTreeNode } from "@/lib/api";
 import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
 
 export default function OrganigrammaPage(): React.JSX.Element {
@@ -13,6 +15,16 @@ export default function OrganigrammaPage(): React.JSX.Element {
   const [data, setData] = useState<OrgStructureResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<EmployeeDrawerSubject | null>(null);
+
+  const onPersonClick = (node: OrgStructureTreeNode): void => {
+    setDrawer({
+      userId: node.id,
+      fullName: node.fullName,
+      email: node.email,
+      roleName: node.roleName ?? node.role
+    });
+  };
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -62,9 +74,12 @@ export default function OrganigrammaPage(): React.JSX.Element {
             </p>
           </div>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
-          Aggiorna
-        </Button>
+        <div className="flex items-center gap-2">
+          <NexaPageHelpButton pageKey="organigramma" />
+          <Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
+            Aggiorna
+          </Button>
+        </div>
       </header>
 
       {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
@@ -100,7 +115,7 @@ export default function OrganigrammaPage(): React.JSX.Element {
                       <h3 className="mb-2 border-b border-[var(--prom-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-text)]">
                         Team · {team.name}
                       </h3>
-                      <OrgStructureTeamTree tree={team.tree} leadUserId={team.leadUserId} />
+                      <OrgStructureTeamTree tree={team.tree} leadUserId={team.leadUserId} onPersonClick={onPersonClick} />
                     </div>
                   ))}
                 </div>
@@ -110,7 +125,7 @@ export default function OrganigrammaPage(): React.JSX.Element {
                     <h3 className="mb-2 text-xs font-semibold text-[var(--prom-muted)]">
                       Senza team di lavoro (stesso CDC)
                     </h3>
-                    <OrgStructureTeamTree tree={cc.unteamedTree} leadUserId={null} />
+                    <OrgStructureTeamTree tree={cc.unteamedTree} leadUserId={null} onPersonClick={onPersonClick} />
                   </div>
                 ) : null}
               </section>
@@ -118,6 +133,8 @@ export default function OrganigrammaPage(): React.JSX.Element {
           )}
         </div>
       ) : null}
+
+      <EmployeeSideDrawer subject={drawer} onClose={() => setDrawer(null)} />
     </div>
   );
 }

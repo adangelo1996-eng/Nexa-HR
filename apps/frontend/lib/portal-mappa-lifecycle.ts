@@ -15,7 +15,7 @@ export const PORTAL_LIFECYCLE_COLUMNS = [
 ] as const;
 
 const LIFECYCLE_HREFS: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], Route[]> = {
-  selezione: ["/recruiting" as Route, "/recruiting/onboarding" as Route],
+  selezione: ["/recruiting" as Route],
   onboarding: ["/recruiting/onboarding" as Route, "/contracts" as Route],
   impiego: [
     "/" as Route,

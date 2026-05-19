@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
   fetchPersonnelBudgetAnalysis,
   fetchCurrentUser,
@@ -163,11 +164,14 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Analysis</h1>
-        <p className="text-sm text-[var(--prom-muted)]">
-          Totali per categoria e varianze forecast vs budget oltre soglia; commenti per categoria o per dipendente.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Analysis</h1>
+          <p className="text-sm text-[var(--prom-muted)]">
+            Totali per categoria e varianze forecast vs budget oltre soglia; commenti per categoria o per dipendente.
+          </p>
+        </div>
+        <NexaPageHelpButton pageKey="personnel-budget-analysis" />
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

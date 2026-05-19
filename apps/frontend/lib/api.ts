@@ -962,6 +962,9 @@ export interface PayslipExplainResult {
   addizionaliFromLines: Array<{ code: string; description: string; amount: number }>;
   envelope: {
     plainSummary?: string;
+    withholdingsExplanation?: string;
+    howToReadPayslip?: string;
+    parsedPayslipAnalysis?: string;
     residenceDomicileNote?: string;
     addizionaliNote?: string;
     lineHighlights?: Array<{ lineRef: string; signal: string; comment: string }>;
@@ -2002,6 +2005,7 @@ export interface SmartworkingRequestDto {
   id: string;
   userId: string;
   day: string;
+  endDay?: string | null;
   note?: string | null;
   status: "pending" | "approved" | "rejected";
   approverId?: string | null;
@@ -2026,7 +2030,7 @@ export async function fetchSmartworkingMe(token: string): Promise<{
 
 export async function createSmartworkingRequest(
   token: string,
-  payload: { day: string; note?: string; userId?: string }
+  payload: { day: string; endDay?: string; note?: string; userId?: string }
 ): Promise<SmartworkingRequestDto> {
   const response = await fetch(buildApiUrl("/smartworking/request"), {
     method: "POST",
@@ -2050,7 +2054,7 @@ export async function cancelSmartworkingRequest(token: string, requestId: string
 export async function updateSmartworkingRequest(
   token: string,
   requestId: string,
-  payload: { day: string; note?: string }
+  payload: { day: string; endDay?: string; note?: string }
 ): Promise<SmartworkingRequestDto> {
   const response = await fetch(buildApiUrl(`/smartworking/request/${encodeURIComponent(requestId)}`), {
     method: "PATCH",
@@ -2993,6 +2997,24 @@ export async function assignTrainingCourses(
   return response.json() as Promise<{ items: TrainingAssignmentDto[] }>;
 }
 
+export async function assignTrainingCoursesBatch(
+  token: string,
+  payload: {
+    userIds: string[];
+    courseIds: string[];
+    dueDate: string;
+    assignAllEmployees?: boolean;
+  }
+): Promise<{ items: TrainingAssignmentDto[]; assignedCount: number }> {
+  const response = await fetch(buildApiUrl("/training/assign-batch"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[]; assignedCount: number }>;
+}
+
 export async function patchTrainingAssignmentStatus(
   token: string,
   assignmentId: string,
@@ -3080,6 +3102,22 @@ export interface HrStandardContractDto {
   recruitPositionId?: string;
   signedAt?: string;
   signatures?: Record<string, unknown>;
+}
+
+export type HrContractPresetDto = {
+  id: string;
+  templateKey: string;
+  label: string;
+  description: string | null;
+  defaultParty: Record<string, unknown>;
+  sortOrder: number;
+};
+
+export async function fetchHrContractPresets(token: string): Promise<HrContractPresetDto[]> {
+  const response = await fetch(buildApiUrl("/hr-contracts/presets"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: HrContractPresetDto[] };
+  return body.items ?? [];
 }
 
 export async function fetchHrStandardContracts(token: string): Promise<HrStandardContractDto[]> {
@@ -3784,12 +3822,29 @@ export async function fetchSkillsGap(
   };
 }
 
+export type ManagerCopilotDirectReport = {
+  id: string;
+  fullName: string;
+  email: string;
+  contractType: string | null;
+  hireDate: string | null;
+  employmentState: string | null;
+  costCenterId: string | null;
+  teamId: string | null;
+  pendingApprovalsCount: number;
+  turnoverScore: number | null;
+  ralAnnualEur: number | null;
+  bonusMonthlyEur: number | null;
+};
+
 export async function fetchManagerCopilot(token: string): Promise<{
   pendingTotal: number;
   pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
   teamHeadcount: number;
   teamSmartworkingPending: number;
   teamTurnoverAvgScore: number | null;
+  includeEconomicData: boolean;
+  directReports: ManagerCopilotDirectReport[];
   topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
   routes: {
     approvals: string;
@@ -3808,6 +3863,8 @@ export async function fetchManagerCopilot(token: string): Promise<{
     teamHeadcount: number;
     teamSmartworkingPending: number;
     teamTurnoverAvgScore: number | null;
+    includeEconomicData: boolean;
+    directReports: ManagerCopilotDirectReport[];
     topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
     routes: {
       approvals: string;
@@ -3816,6 +3873,97 @@ export async function fetchManagerCopilot(token: string): Promise<{
       workforcePlanning: string;
     };
   };
+}
+
+export type WorkforcePlanningScenarioDto = {
+  id: string;
+  name: string;
+  assumptionsJson: Record<string, unknown>;
+  payloadJson: Record<string, unknown>;
+  analysisText: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchWorkforcePlanningScenarios(token: string): Promise<{
+  items: WorkforcePlanningScenarioDto[];
+}> {
+  const response = await fetch(buildApiUrl("/analytics/workforce-planning/scenarios"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: WorkforcePlanningScenarioDto[] };
+}
+
+export async function saveWorkforcePlanningScenario(
+  token: string,
+  body: {
+    id?: string;
+    name: string;
+    assumptionsJson?: Record<string, unknown>;
+    payloadJson: Record<string, unknown>;
+    analysisText?: string | null;
+  }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/analytics/workforce-planning/scenarios"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteWorkforcePlanningScenario(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/analytics/workforce-planning/scenarios/${encodeURIComponent(id)}/delete`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export type HrRoleCoverageGapDto = {
+  id: string;
+  roleTitle: string;
+  headcountGap: number;
+  expectedRalAnnual: number | null;
+  notes: string | null;
+  updatedAt: string;
+};
+
+export async function fetchRoleCoverageGaps(token: string): Promise<{ items: HrRoleCoverageGapDto[] }> {
+  const response = await fetch(buildApiUrl("/analytics/role-coverage-gaps"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: HrRoleCoverageGapDto[] };
+}
+
+export async function upsertRoleCoverageGap(
+  token: string,
+  body: {
+    id?: string;
+    roleTitle: string;
+    headcountGap: number;
+    expectedRalAnnual?: number | null;
+    notes?: string | null;
+  }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/analytics/role-coverage-gaps"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteRoleCoverageGap(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/analytics/role-coverage-gaps/${encodeURIComponent(id)}/delete`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export async function fetchHrCenterMeta(token: string): Promise<{
@@ -4292,6 +4440,86 @@ export async function deleteShift(token: string, shiftId: string): Promise<{ ok:
   return (await response.json()) as { ok: true };
 }
 
+export interface ShiftPresetDto {
+  id: string;
+  companyId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  isDefault: boolean;
+  workTeamId?: string | null;
+  userId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchShiftPresets(token: string): Promise<{ items: ShiftPresetDto[] }> {
+  const response = await fetch(buildApiUrl("/scheduling/presets"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: ShiftPresetDto[] };
+}
+
+export async function createShiftPreset(
+  token: string,
+  body: {
+    name: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes?: number;
+    isDefault?: boolean;
+    workTeamId?: string;
+    userId?: string;
+  }
+): Promise<{ item: ShiftPresetDto }> {
+  const response = await fetch(buildApiUrl("/scheduling/presets"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { item: ShiftPresetDto };
+}
+
+export async function updateShiftPreset(
+  token: string,
+  presetId: string,
+  body: Partial<{
+    name: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    isDefault: boolean;
+    workTeamId: string | null;
+    userId: string | null;
+  }>
+): Promise<{ item: ShiftPresetDto }> {
+  const response = await fetch(buildApiUrl(`/scheduling/presets/${encodeURIComponent(presetId)}`), {
+    method: "PATCH",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { item: ShiftPresetDto };
+}
+
+export async function deleteShiftPreset(token: string, presetId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl(`/scheduling/presets/${encodeURIComponent(presetId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { ok: true };
+}
+
+/** Etichetta periodo remote working (singolo giorno o intervallo). */
+export function formatSmartworkingPeriod(day: string, endDay?: string | null): string {
+  const s = day.slice(0, 10);
+  const e = (endDay?.trim() || s).slice(0, 10);
+  if (e === s) return s;
+  return `${s} → ${e}`;
+}
+
 export async function submitLifecycleOffboard(
   token: string,
   targetUserId: string,
@@ -4425,6 +4653,8 @@ export interface PersonnelBudgetAnnualMatrixRow {
   costCenterName?: string;
   teamId: string | null;
   teamName?: string;
+  hireDate?: string | null;
+  contractEndDate?: string | null;
   months: Array<{
     month: number;
     budget: {

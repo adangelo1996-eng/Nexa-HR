@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { fetchCurrentUser } from "@/lib/api";
 import {
   getSessionUser,
@@ -14,56 +15,66 @@ import {
   type SessionUser
 } from "@/lib/auth-session";
 import {
-  portalCategoryGlassColumnHeaderClass,
-  portalCategoryTileTopAccentClass
-} from "@/lib/nav-visual-accents";
-import { groupPortalTiles, PORTAL_CATEGORY_ORDER } from "@/lib/portal-mappa";
-import { buildAnalyticsPortalRow, buildLifecyclePortalColumns } from "@/lib/portal-mappa-lifecycle";
-import { buildEmployeePortalHubColumns } from "@/lib/portal-mappa-employee";
-
+  buildEmployeeLinearPortalSteps,
+  buildHrLinearPortalSteps,
+  type PortalLinearStep
+} from "@/lib/portal-mappa-linear";
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
 function TileCard(props: {
   href: Route;
   title: string;
   blurb: string;
-  accentCategory: string;
+  stepIndex: number;
 }): React.JSX.Element {
-  const { href, title, blurb, accentCategory } = props;
+  const { href, title, blurb, stepIndex } = props;
   return (
     <Link
       href={href}
       scroll={false}
-      className={`group relative flex min-h-[128px] flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_16px_40px_-20px_rgba(0,45,114,0.2)] ${portalCategoryTileTopAccentClass(accentCategory)}`}
+      className="group flex items-start gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)]"
     >
-      <span className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--prom-text)]">{title}</span>
-      {blurb ? (
-        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--prom-muted)]">{blurb}</p>
-      ) : null}
-      <ArrowUpRight className="ml-auto mt-auto h-4 w-4 text-[var(--prom-muted)] opacity-50 group-hover:opacity-100" />
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,#002D72_12%,transparent)] text-sm font-semibold text-[#002D72] dark:text-sky-200">
+        {stepIndex}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-[var(--prom-text)]">{title}</span>
+        {blurb ? <span className="mt-1 block text-xs leading-relaxed text-[var(--prom-muted)]">{blurb}</span> : null}
+      </span>
+      <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)] opacity-50 group-hover:opacity-100" />
     </Link>
   );
 }
 
-function HubColumnCard(props: {
-  hubHref: Route;
-  title: string;
-  subtitle: string;
-  tileCount: number;
-  accent: string;
-}): React.JSX.Element {
+function LinearSection(props: { step: PortalLinearStep; index: number }): React.JSX.Element {
+  const n = props.index + 1;
   return (
-    <Link
-      href={props.hubHref}
-      scroll={false}
-      className={`flex min-h-[140px] flex-col justify-between rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-5 shadow-[var(--card-shadow)] transition hover:-translate-y-0.5 ${portalCategoryTileTopAccentClass(props.accent)}`}
-    >
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">{props.title}</p>
-        <p className="mt-1 text-sm text-[var(--prom-muted)]">{props.subtitle}</p>
+    <section className="relative pl-0 sm:pl-2">
+      <PortalSectionHeader step={props.step} index={n} />
+      <div className="mt-4 space-y-2 border-l-2 border-[color-mix(in_srgb,#002D72_22%,var(--prom-line))] pl-4 sm:pl-6">
+        {props.step.tiles.map((tile) => (
+          <TileCard
+            key={String(tile.href)}
+            href={tile.href}
+            title={tile.title}
+            blurb={tile.blurb}
+            stepIndex={n}
+          />
+        ))}
       </div>
-      <p className="text-xs text-[var(--prom-muted)]">{props.tileCount} accessi rapidi →</p>
-    </Link>
+    </section>
+  );
+}
+
+function PortalSectionHeader(props: { step: PortalLinearStep; index: number }): React.JSX.Element {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#002D72] dark:text-sky-200">
+        Passo {props.index}
+      </span>
+      <h2 className="text-lg font-semibold text-[var(--prom-text)]">{props.step.title}</h2>
+      <p className="w-full text-sm text-[var(--prom-muted)] sm:w-auto sm:flex-1">{props.step.subtitle}</p>
+    </div>
   );
 }
 
@@ -86,21 +97,20 @@ export default function MappaPortalePage(): React.JSX.Element {
   const usesEmployeePortal =
     hideSensitiveHr || sessionIsPlainEmployee(user ?? undefined) || !usesHrNav;
 
-  const grouped = useMemo(() => groupPortalTiles(user, hideSensitiveHr), [user, hideSensitiveHr]);
-  const lifecycleCols = useMemo(
-    () => buildLifecyclePortalColumns(user, hideSensitiveHr),
-    [user, hideSensitiveHr]
-  );
-  const analyticsRow = useMemo(() => buildAnalyticsPortalRow(user, hideSensitiveHr), [user, hideSensitiveHr]);
-  const employeeHubs = useMemo(
-    () => buildEmployeePortalHubColumns(user, hideSensitiveHr),
-    [user, hideSensitiveHr]
-  );
+  const steps = useMemo(() => {
+    if (usesEmployeePortal) {
+      return buildEmployeeLinearPortalSteps(user, hideSensitiveHr);
+    }
+    return buildHrLinearPortalSteps(user, hideSensitiveHr);
+  }, [user, hideSensitiveHr, usesEmployeePortal]);
 
   return (
     <div className="relative isolate min-h-[72vh] overflow-hidden rounded-[2rem] border border-[color-mix(in_srgb,#002D72_14%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-surface)_90%,var(--prom-bg))] px-5 py-10 sm:px-10">
       <header className="relative z-[1] mx-auto max-w-3xl text-center">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[var(--prom-muted)]">Nexa HR</p>
+        <div className="flex justify-center">
+          <NexaPageHelpButton pageKey="mappa-portale" />
+        </div>
+        <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.32em] text-[var(--prom-muted)]">Nexa HR</p>
         <h1
           className="mt-3 text-3xl font-semibold tracking-tight text-[#002D72] sm:text-4xl dark:text-white"
           style={{ fontFamily: "var(--font-synapse-display, inherit)" }}
@@ -108,135 +118,35 @@ export default function MappaPortalePage(): React.JSX.Element {
           Mappa del portale
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--prom-muted)]">
-          {usesEmployeePortal
-            ? "Tre aree — Oggi, Io e Documenti — con le pagine che ti servono ogni giorno."
-            : usesHrNav
-              ? "Percorso del personale per fasi del ciclo di vita, con analytics dedicata."
-              : "Accessi rapidi alle sezioni del tuo profilo."}
+          Percorso lineare dall&apos;alto verso il basso: ogni passo raggruppa le funzioni che ti servono in quella fase,
+          senza colonne da interpretare.
         </p>
-        <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px]">
-          <span className="rounded-full border border-[var(--prom-line-strong)] px-3 py-1 text-[var(--prom-text)]">
-            {user?.fullName ?? "Profilo…"}
-          </span>
-          {hideSensitiveHr ? (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-amber-900 dark:text-amber-100">
-              Vista dipendente
-            </span>
-          ) : null}
-        </div>
+        <ProfileChips user={user} hideSensitiveHr={hideSensitiveHr} />
       </header>
 
-      <div className="relative z-[1] mx-auto mt-12 max-w-6xl space-y-12">
-        {usesEmployeePortal ? (
-          <>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {employeeHubs.map((hub) => (
-                <HubColumnCard
-                  key={hub.id}
-                  hubHref={hub.hubHref}
-                  title={hub.title}
-                  subtitle={hub.subtitle}
-                  tileCount={hub.tiles.length}
-                  accent={hub.title}
-                />
-              ))}
-            </div>
-            {employeeHubs.map((hub) => (
-              <section key={`tiles-${hub.id}`}>
-                <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-                  <div className={portalCategoryGlassColumnHeaderClass(hub.title, "compact")}>{hub.title}</div>
-                  <Link href={hub.hubHref} className="text-xs text-[var(--prom-muted)] hover:text-[var(--prom-text)]">
-                    Apri hub →
-                  </Link>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {hub.tiles.map((tile) => (
-                    <TileCard
-                      key={String(tile.href)}
-                      href={tile.href}
-                      title={tile.title}
-                      blurb={tile.blurb}
-                      accentCategory={hub.title}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </>
-        ) : usesHrNav ? (
-          <>
-            <div className="overflow-x-auto pb-2">
-              <div className="flex min-w-[min(100%,720px)] gap-3 md:min-w-0 md:grid md:grid-cols-5">
-                {lifecycleCols.map((col) => (
-                  <section
-                    key={col.id}
-                    className="min-w-[200px] flex-1 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] p-3 md:min-w-0"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">
-                      {col.title}
-                    </p>
-                    <p className="mb-3 text-[10px] text-[var(--prom-muted)]">{col.subtitle}</p>
-                    <div className="space-y-2">
-                      {col.tiles.map((tile) => (
-                        <TileCard
-                          key={String(tile.href)}
-                          href={tile.href}
-                          title={tile.title}
-                          blurb={tile.blurb}
-                          accentCategory="Persone"
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </div>
-            {analyticsRow.length > 0 ? (
-              <section>
-                <div className="mb-4">
-                  <span className={portalCategoryGlassColumnHeaderClass("HEBB AI for HR", "compact")}>
-                    Analytics & Intelligence
-                  </span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {analyticsRow.map((tile) => (
-                    <TileCard
-                      key={String(tile.href)}
-                      href={tile.href}
-                      title={tile.title}
-                      blurb={tile.blurb}
-                      accentCategory="HEBB AI for HR"
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        ) : (
-          PORTAL_CATEGORY_ORDER.map((cat) => {
-            const tiles = grouped.get(cat);
-            if (!tiles?.length) return null;
-            return (
-              <section key={cat}>
-                <div className="mb-4">
-                  <span className={portalCategoryGlassColumnHeaderClass(cat, "default")}>{cat}</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {tiles.map((tile) => (
-                    <TileCard
-                      key={String(tile.href)}
-                      href={tile.href}
-                      title={tile.title}
-                      blurb={tile.blurb}
-                      accentCategory={cat}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })
-        )}
+      <div className="relative z-[1] mx-auto mt-12 max-w-3xl space-y-14">
+        {steps.map((step, i) => (
+          <LinearSection key={step.id} step={step} index={i} />
+        ))}
       </div>
+    </div>
+  );
+}
+
+function ProfileChips(props: {
+  user: SessionUser | null;
+  hideSensitiveHr: boolean;
+}): React.JSX.Element {
+  return (
+    <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px]">
+      <span className="rounded-full border border-[var(--prom-line-strong)] px-3 py-1 text-[var(--prom-text)]">
+        {props.user?.fullName ?? "Profilo…"}
+      </span>
+      {props.hideSensitiveHr ? (
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-amber-900 dark:text-amber-100">
+          Vista dipendente
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchRecruitOnboardingBoard, startHrOnboardingFromCandidate, type RecruitOnboardingRowDto } from "@/lib/api";
@@ -70,12 +71,16 @@ export default function RecruitingOnboardingPage(): React.JSX.Element {
             ← Colloqui e selezione
           </Link>
         </div>
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Onboarding candidati</h1>
-        <p className="max-w-3xl text-sm leading-relaxed text-synapse-muted dark:text-[#b4c9dc]">
-          Fase dedicata dopo i colloqui: i profili selezionati stanno nella colonna «Onboarding assunzione» della
-          pipeline. Da qui passi rapidamente a scheda candidato, pipeline e — quando serve — al recap HR per
-          allineare anagrafica e contratti prima del day one.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Onboarding candidati</h1>
+            <p className="max-w-3xl text-sm leading-relaxed text-synapse-muted dark:text-[#b4c9dc]">
+              Dopo l&apos;offerta accettata: completa documentazione, contratto e anagrafica. I candidati con assunzione
+              chiusa (onboarded) non compaiono più in questa lista attiva.
+            </p>
+          </div>
+          <NexaPageHelpButton pageKey="recruiting-onboarding" />
+        </div>
       </header>
 
       <Card className="border-[var(--card-border)]">

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { IsArray, IsDateString, IsIn, IsOptional, IsString } from "class-validator";
+import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { TrainingService, type TrainingAssignmentStatus } from "./training.service";
@@ -14,6 +14,23 @@ class AssignCoursesDto {
 
   @IsDateString()
   dueDate!: string;
+}
+
+class BatchAssignCoursesDto {
+  @IsArray()
+  @IsString({ each: true })
+  userIds!: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  courseIds!: string[];
+
+  @IsDateString()
+  dueDate!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  assignAllEmployees?: boolean;
 }
 
 class PatchStatusDto {
@@ -75,6 +92,36 @@ export class TrainingController {
       );
     }
     return { items };
+  }
+
+  @Post("assign-batch")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async assignBatch(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: BatchAssignCoursesDto
+  ): Promise<{ items: unknown[]; assignedCount: number }> {
+    const companyId = auth.tenantId ?? "comp-1";
+    const userIds = dto.assignAllEmployees
+      ? await this.svc.listAssignableEmployeeIds(companyId)
+      : dto.userIds;
+    const items = await this.svc.assignCoursesBatch({
+      companyId,
+      userIds,
+      courseIds: dto.courseIds,
+      dueDate: dto.dueDate,
+      assignedBy: auth.userId
+    });
+    return { items, assignedCount: items.length };
+  }
+
+  @Get("courses/:courseId")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async getCourse(
+    @CurrentAuth() auth: AuthContext,
+    @Param("courseId") courseId: string
+  ): Promise<unknown> {
+    const companyId = auth.tenantId ?? "comp-1";
+    return this.svc.getCourseById(companyId, courseId);
   }
 
   @Patch("assignments/:assignmentId/status")

@@ -419,18 +419,27 @@ export class AnalyticsOrchestratorService {
         ];
       }
       case "competenze": {
-        const items = await this.store.getSkillsGapReport(companyId);
+        const [items, coverageGaps] = await Promise.all([
+          this.store.getSkillsGapReport(companyId),
+          this.store.listRoleCoverageGaps(companyId)
+        ]);
         const gaps = items.filter((r) => r.gap > 0);
         const roles = new Set(gaps.map((g) => g.roleId));
+        const headcountMissing = coverageGaps.reduce((s, g) => s + g.headcountGap, 0);
         return [
-          { id: "gaps", labelIt: "Gap rilevati", value: String(gaps.length) },
+          { id: "gaps", labelIt: "Gap competenze", value: String(gaps.length) },
           { id: "roles", labelIt: "Ruoli coinvolti", value: String(roles.size) },
           {
-            id: "top",
-            labelIt: "Gap massimo",
-            value: gaps.length ? String(Math.max(...gaps.map((g) => g.gap))) : "0"
+            id: "coverage",
+            labelIt: "Persone mancanti (ruoli)",
+            value: String(headcountMissing),
+            hintIt: `${coverageGaps.length} ruoli in tabella copertura`
           },
-          { id: "rows", labelIt: "Righe report", value: String(items.length) }
+          {
+            id: "top",
+            labelIt: "Gap max competenza",
+            value: gaps.length ? String(Math.max(...gaps.map((g) => g.gap))) : "0"
+          }
         ];
       }
       case "operativo": {
@@ -518,7 +527,10 @@ export class AnalyticsOrchestratorService {
         );
       }
       case "competenze": {
-        const items = await this.store.getSkillsGapReport(companyId);
+        const [items, roleCoverageGaps] = await Promise.all([
+          this.store.getSkillsGapReport(companyId),
+          this.store.listRoleCoverageGaps(companyId)
+        ]);
         const gapRows = items
           .filter((r) => r.gap > 0)
           .sort((a, b) => b.gap - a.gap)
@@ -531,7 +543,18 @@ export class AnalyticsOrchestratorService {
             minLevel: r.minLevel,
             avgUserLevel: r.avgUserLevel
           }));
-        return { items: gapRows, itemCount: items.length, gapCount: gapRows.length };
+        const coverage = roleCoverageGaps.slice(0, 16).map((g) => ({
+          roleTitle: g.roleTitle,
+          headcountGap: g.headcountGap,
+          expectedRalAnnual: g.expectedRalAnnual
+        }));
+        return {
+          items: gapRows,
+          itemCount: items.length,
+          gapCount: gapRows.length,
+          roleCoverageGaps: coverage,
+          roleCoverageHeadcountGap: coverage.reduce((s, g) => s + g.headcountGap, 0)
+        };
       }
       case "operativo": {
         const [summary, headcount, pending, alerts, cycles] = await Promise.all([

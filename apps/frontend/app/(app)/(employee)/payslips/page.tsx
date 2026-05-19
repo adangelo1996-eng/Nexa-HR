@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileDown, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
   downloadPayslipPdf,
   fetchCurrentUser,
@@ -148,13 +149,15 @@ export default function PayslipsPage(): React.JSX.Element {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
-        <p className="text-sm text-[var(--prom-muted)]">
-          Ultimi 12 mesi. Vedi solo i cedolini che l&apos;HR ha pubblicato per te (le bozze restano nella console
-          payroll). Residenza e addizionali: confronta con le righe sotto; la spiegazione semplice è generata da
-          un assistente (non è parere fiscale).
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--prom-muted)]">
+            Ultimi 12 mesi. Vedi solo i cedolini pubblicati per te. La spiegazione guidata analizza trattenute, lettura
+            del documento e righe parse — non è parere fiscale.
+          </p>
+        </div>
+        <NexaPageHelpButton pageKey="payslips" />
       </header>
 
       <div className="rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)]/80 p-4">
@@ -296,7 +299,39 @@ export default function PayslipsPage(): React.JSX.Element {
                     ) : null}
 
                     {explain && selected.id === p.id && explain.envelope ? (
-                      <div className="space-y-3 rounded-lg border border-[#002D72]/30 bg-white/[0.04] p-3 text-sm text-[var(--prom-text)]">
+                      <div className="space-y-4 rounded-xl border border-[#002D72]/25 bg-gradient-to-b from-[color-mix(in_srgb,#002D72_6%,transparent)] to-transparent p-4 text-sm text-[var(--prom-text)]">
+                        {explain.envelope.plainSummary ? (
+                          <section>
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
+                              Sintesi
+                            </h3>
+                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.plainSummary}</p>
+                          </section>
+                        ) : null}
+                        {explain.envelope.withholdingsExplanation ? (
+                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
+                              Perché queste trattenute
+                            </h3>
+                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.withholdingsExplanation}</p>
+                          </section>
+                        ) : null}
+                        {explain.envelope.howToReadPayslip ? (
+                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
+                              Come leggere il cedolino
+                            </h3>
+                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.howToReadPayslip}</p>
+                          </section>
+                        ) : null}
+                        {explain.envelope.parsedPayslipAnalysis ? (
+                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
+                              Analisi righe parse
+                            </h3>
+                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.parsedPayslipAnalysis}</p>
+                          </section>
+                        ) : null}
                         {explain.residenceSummary ? (
                           <p>
                             <span className="font-medium text-[#002D72] dark:text-sky-300">Anagrafica / residenza: </span>
@@ -305,8 +340,8 @@ export default function PayslipsPage(): React.JSX.Element {
                         ) : null}
                         {explain.addizionaliFromLines.length > 0 ? (
                           <div>
-                            <p className="font-medium text-[#002D72] dark:text-sky-300">Voci con possibili addizionali (euristiche)</p>
-                            <ul className="list-inside list-disc text-[var(--prom-muted)]">
+                            <p className="font-medium text-[#002D72] dark:text-sky-300">Voci con possibili addizionali</p>
+                            <ul className="mt-1 list-inside list-disc text-[var(--prom-muted)]">
                               {explain.addizionaliFromLines.map((x) => (
                                 <li key={x.code + x.description}>
                                   {x.code} — {x.description}: {payslipCurrency} {x.amount.toFixed(2)}
@@ -315,7 +350,6 @@ export default function PayslipsPage(): React.JSX.Element {
                             </ul>
                           </div>
                         ) : null}
-                        {explain.envelope.plainSummary ? <p className="leading-relaxed whitespace-pre-wrap">{explain.envelope.plainSummary}</p> : null}
                         {explain.envelope.residenceDomicileNote ? (
                           <p className="text-[var(--prom-muted)]">
                             <span className="font-medium text-[var(--prom-text)]">Residenza e domicilio: </span>

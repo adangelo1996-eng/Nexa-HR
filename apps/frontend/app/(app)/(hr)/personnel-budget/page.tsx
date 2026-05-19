@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
   downloadPersonnelBudgetActualExport,
   fetchPersonnelBudget,
@@ -723,6 +724,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -952,6 +954,7 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <NexaPageHelpButton pageKey="personnel-budget" />
           <label className="text-sm text-[var(--prom-muted)]">
             Anno{" "}
             <input
@@ -993,6 +996,9 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
           <Button type="button" onClick={() => void saveBudgets()} disabled={saving || !snap}>
             {saving ? "Salvataggio…" : "Salva budget"}
           </Button>
+          <Button type="button" variant="outline" onClick={() => setFullscreen((v) => !v)}>
+            {fullscreen ? "Esci schermo intero" : "Schermo intero"}
+          </Button>
         </div>
       </div>
 
@@ -1008,6 +1014,13 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
         </p>
       ) : null}
 
+      <div
+        className={
+          fullscreen
+            ? "fixed inset-0 z-50 overflow-auto bg-[var(--prom-bg)] p-4 md:p-6"
+            : undefined
+        }
+      >
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onDragEnd(e)}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {departments.map((dept) => {
@@ -1027,9 +1040,9 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
             );
           })}
         </SortableContext>
+        {departments.length > 0 ? <GrandTotalTable totals={pageTotals} th={th} td={td} /> : null}
       </DndContext>
-
-      {departments.length > 0 ? <GrandTotalTable totals={pageTotals} th={th} td={td} /> : null}
+      </div>
 
       <p className="text-xs text-[var(--prom-muted)]">
         ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileSpreadsheet } from "lucide-react";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import {
   createTeamTimeEntry,
@@ -59,6 +60,8 @@ function defaultMonthInput(): string {
 
 type EntryDraft = { atLocal: string; type: "clock_in" | "clock_out" };
 
+type AttendanceView = "storico" | "straordinario" | "team";
+
 function formatSecondsHm(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const h = Math.floor(s / 3600);
@@ -75,6 +78,23 @@ function workedSecondsFromSummary(row: WorkdaySummary): number {
 
 export default function AttendancePage(): React.JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawView = searchParams.get("view");
+  const view: AttendanceView =
+    rawView === "straordinario" || rawView === "team" ? rawView : "storico";
+  const setView = useCallback(
+    (next: AttendanceView): void => {
+      const q = new URLSearchParams(searchParams.toString());
+      if (next === "storico") {
+        q.delete("view");
+      } else {
+        q.set("view", next);
+      }
+      const suffix = q.toString();
+      router.replace(suffix ? `/attendance?${suffix}` : "/attendance");
+    },
+    [router, searchParams]
+  );
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -519,27 +539,56 @@ export default function AttendancePage(): React.JSX.Element {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Presenze</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Storico e straordinario. Per timbrare usa la{" "}
-            <Link href="/" className="font-medium text-[#3a5466] underline-offset-2 hover:underline dark:text-[#8aa3b3]">
-              Dashboard
-            </Link>
-            .
-          </p>
+      <header className="mb-6 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Presenze</h1>
+            <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-slate-400">
+              Timbrature, riepilogo mensile e straordinario. Per timbrare usa la{" "}
+              <Link href="/" className="font-medium text-[#3a5466] underline-offset-2 hover:underline dark:text-[#8aa3b3]">
+                Dashboard
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <NexaPageHelpButton pageKey="attendance" />
+            {user && sessionCanAccessPayrollArea(user) ? (
+              <Link
+                href="/payroll-hebb"
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-900/50"
+              >
+                Cedolini
+              </Link>
+            ) : null}
+          </div>
         </div>
-        {user && sessionCanAccessPayrollArea(user) ? (
-          <Link
-            href="/payroll-hebb"
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-900/50"
-          >
-            Cedolini
-          </Link>
-        ) : null}
+        <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 dark:border-slate-700" aria-label="Sezioni presenze">
+          {(
+            [
+              ["storico", "Timbrature e storico"],
+              ["straordinario", "Straordinario"],
+              ...(canHrExport ? ([["team", "Team / HR"]] as const) : [])
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setView(id)}
+              className={[
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                view === id
+                  ? "bg-[color-mix(in_srgb,#002D72_14%,transparent)] text-[#002D72] dark:text-sky-200"
+                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60"
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
       </header>
 
+      {view === "straordinario" ? (
       <section className="card mb-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Straordinario</h2>
         {aggregates ? (
@@ -569,10 +618,11 @@ export default function AttendancePage(): React.JSX.Element {
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">—</p>
         )}
       </section>
+      ) : null}
 
       {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-      {canHrExport ? (
+      {view === "team" && canHrExport ? (
         <section className="card mt-6 border-amber-200/80 dark:border-amber-900/40">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
             Gestione timbrature (HR / amministratori)
@@ -1050,6 +1100,8 @@ export default function AttendancePage(): React.JSX.Element {
         </section>
       ) : null}
 
+      {view === "storico" ? (
+      <>
       <section className="card mt-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Giorni lavorati</h2>
         <div className="mt-4">
@@ -1148,6 +1200,8 @@ export default function AttendancePage(): React.JSX.Element {
           </details>
         </div>
       </section>
+      </>
+      ) : null}
     </main>
   );
 }

@@ -45,6 +45,7 @@ import {
   type SessionUser as LocalSessionUser
 } from "@/lib/auth-session";
 import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { WorkedDaySummaryCards } from "@/components/worked-day-summary-cards";
 import { Button } from "@/components/ui/button";
 
@@ -451,15 +452,18 @@ export default function HomePage(): React.JSX.Element {
           <p className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">{user.fullName}</p>
           <p className="mt-1 text-sm text-[var(--prom-muted)]">Timbrature, ferie e notifiche della giornata.</p>
         </div>
-        {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
-          <Link
-            href="/workflow/approvals"
-            scroll={false}
-            className="text-sm font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
-          >
-            {approvals.length} in approvazione
-          </Link>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          <NexaPageHelpButton pageKey="dashboard" />
+          {sessionCanSeeApprovalsAndHrExtras(user) && approvals.length > 0 ? (
+            <Link
+              href="/workflow/approvals"
+              scroll={false}
+              className="text-sm font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
+            >
+              {approvals.length} in approvazione
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       {error ? <p className="text-sm text-amber-700 dark:text-amber-300">{error}</p> : null}

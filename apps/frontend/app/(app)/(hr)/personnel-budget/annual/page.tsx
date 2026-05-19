@@ -298,6 +298,8 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
               <th className={th}>Dipendente</th>
               <th className={th}>CDC</th>
               <th className={th}>Team</th>
+              <th className={th}>Assunzione</th>
+              <th className={th}>Uscita</th>
               {Array.from({ length: 12 }, (_, i) => (
                 <th key={i + 1} className={th}>
                   {i + 1}
@@ -313,6 +315,14 @@ export default function PersonnelBudgetAnnualPage(): React.JSX.Element | null {
                 </td>
                 <td className={`${td} text-[var(--prom-muted)]`}>{row.costCenterName ?? "—"}</td>
                 <td className={`${td} text-[var(--prom-muted)]`}>{row.teamName ?? "—"}</td>
+                <td className={`${td} text-[10px] tabular-nums text-[var(--prom-muted)]`}>
+                  {row.hireDate ? new Date(row.hireDate).toLocaleDateString("it-IT", { month: "short", year: "2-digit" }) : "—"}
+                </td>
+                <td className={`${td} text-[10px] tabular-nums text-[var(--prom-muted)]`}>
+                  {row.contractEndDate
+                    ? new Date(row.contractEndDate).toLocaleDateString("it-IT", { month: "short", year: "2-digit" })
+                    : "—"}
+                </td>
                 {row.months.map((m) => (
                   <td key={m.month} className={`${td} text-right tabular-nums`}>
                     {formatPersonnelBudgetAmount(m.budget[metric])}

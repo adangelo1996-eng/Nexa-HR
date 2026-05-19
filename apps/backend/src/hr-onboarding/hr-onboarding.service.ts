@@ -308,6 +308,13 @@ export class HrOnboardingService {
         userId: input.userId,
         assignedBy: input.actorUserId
       });
+      if (wizard.recruitCandidateId) {
+        await sb
+          .from("recruit_candidates")
+          .update({ onboarded_at: new Date().toISOString() })
+          .eq("id", wizard.recruitCandidateId)
+          .eq("company_id", wizard.companyId);
+      }
     }
     return this.mapRow(data as Record<string, unknown>);
   }
