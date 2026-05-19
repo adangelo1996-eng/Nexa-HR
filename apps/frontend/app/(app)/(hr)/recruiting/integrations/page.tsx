@@ -166,7 +166,8 @@ export default function RecruitingIntegrationsPage(): React.JSX.Element {
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
+                    size="sm"
+                    className="h-10 w-10 shrink-0 p-0"
                     onClick={() => void copyWebhookUrl()}
                     aria-label="Copia URL"
                   >

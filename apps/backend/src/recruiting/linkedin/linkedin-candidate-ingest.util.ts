@@ -37,10 +37,10 @@ export function normalizeCandidateIngestPayload(raw: Record<string, unknown>): N
   if ((!firstName || !lastName) && name) {
     const parts = name.split(/\s+/).filter(Boolean);
     if (parts.length === 1) {
-      firstName = firstName || parts[0] ?? "";
+      firstName = firstName || (parts[0] ?? "");
       lastName = lastName || "—";
     } else if (parts.length >= 2) {
-      firstName = firstName || parts[0] ?? "";
+      firstName = firstName || (parts[0] ?? "");
       lastName = lastName || parts.slice(1).join(" ");
     }
   }

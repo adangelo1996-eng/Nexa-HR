@@ -7,6 +7,7 @@ export const NEXA_PAGE_HELP_KEYS = [
   "expenses",
   "payslips",
   "recruiting",
+  "recruiting-integrations",
   "recruiting-onboarding",
   "contracts",
   "scheduling",
@@ -89,6 +90,19 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
       "Apri una posizione per vedere i candidati per colonna.",
       "Sposta il candidato solo quando il colloquio è completato.",
       "Usa le note per conmotioni al team HR."
+    ]
+  },
+  "recruiting-integrations": {
+    title: "Integrazioni recruiting",
+    summary: "Collega LinkedIn a Nexa via webhook (Zapier/Make): le candidature entrano nella pipeline della posizione.",
+    howToUse: [
+      "Configura LINKEDIN_WEBHOOK_SECRET sul backend Render prima di attivare lo Zap.",
+      "Copia l’URL webhook e imposta la firma HMAC nell’header indicato.",
+      "Usa il test ingest per verificare jobId e permessi prima della produzione."
+    ],
+    bestPractices: [
+      "Limita lo Zap a una posizione Nexa per jobId per evitare candidati sulla pipeline sbagliata.",
+      "In assenza di integrazione, usa l’import manuale dalla pagina candidati."
     ]
   },
   "recruiting-onboarding": {
