@@ -186,6 +186,60 @@ class PlannedExtraLineDto {
   budgetTfr?: number | null;
 }
 
+class PatchAssumptionsDto {
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
+
+  @IsOptional()
+  @IsNumber()
+  employerInpsPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  inailPermille?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  tfrDivisor?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  welfarePercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  bonusProvisionPercent?: number | null;
+}
+
+class PatchCellNoteDto {
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month?: number | null;
+
+  @IsOptional()
+  @IsString()
+  userId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  plannedLineId?: string | null;
+
+  @IsString()
+  fieldKey!: string;
+
+  @IsString()
+  note!: string;
+}
+
 class PatchAnalysisNoteDto {
   @IsInt()
   @Min(2020)
@@ -263,19 +317,24 @@ export class PersonnelBudgetController {
     @Query("month") monthQ?: string
   ): Promise<StreamableFile> {
     await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
     const now = new Date();
     const y = yearQ ? Number.parseInt(yearQ, 10) : now.getFullYear();
-    const mo = monthQ ? Number.parseInt(monthQ, 10) : now.getMonth() + 1;
+    const mo = monthQ ? Number.parseInt(monthQ, 10) : undefined;
     const year = Number.isFinite(y) ? y : now.getFullYear();
-    const month = Number.isFinite(mo) ? mo : now.getMonth() + 1;
-    const snap = await this.store.getPersonnelBudgetSnapshot(year, month);
+    const monthFilter = mo != null && Number.isFinite(mo) ? mo : undefined;
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("Actual");
-    ws.addRow([
+    const months =
+      monthFilter != null
+        ? [monthFilter]
+        : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+    const wsAct = wb.addWorksheet("Actual");
+    wsAct.addRow([
+      "Mese",
       "Centro di costo",
       "Dipendente",
       "userId",
-      "Periodo",
       "ACT RAL",
       "ACT Straord.",
       "ACT Trasferte",
@@ -284,29 +343,224 @@ export class PersonnelBudgetController {
       "ACT TFR",
       "ACT Tot. costo azienda"
     ]);
-    for (const d of snap.departments) {
-      for (const r of d.rows) {
-        const a = r.actual;
-        ws.addRow([
-          d.costCenterName ?? "",
-          r.fullName,
-          r.userId,
-          snap.period,
-          a.ral,
-          a.overtime,
-          a.travel,
-          a.inps,
-          a.inail,
-          a.tfr,
-          a.totalCompanyCost ?? ""
+    const wsBdg = wb.addWorksheet("Budget");
+    wsBdg.addRow([
+      "Mese",
+      "Centro di costo",
+      "Dipendente",
+      "userId",
+      "BDG RAL",
+      "BDG Straord.",
+      "BDG Trasferte",
+      "BDG INPS",
+      "BDG INAIL",
+      "BDG TFR",
+      "BDG Tot. costo azienda"
+    ]);
+    const wsFc = wb.addWorksheet("Forecast");
+    wsFc.addRow([
+      "Mese",
+      "Centro di costo",
+      "Dipendente",
+      "userId",
+      "FCST RAL",
+      "FCST Straord.",
+      "FCST Trasferte",
+      "FCST INPS",
+      "FCST INAIL",
+      "FCST TFR",
+      "FCST Tot. costo azienda"
+    ]);
+    const wsAn = wb.addWorksheet("Analysis");
+    wsAn.addRow([
+      "Mese",
+      "Categoria",
+      "Dipendente",
+      "userId",
+      "Actual",
+      "Budget",
+      "Forecast",
+      "Varianza B-F",
+      "Varianza %"
+    ]);
+
+    for (const month of months) {
+      const snap = await this.store.getPersonnelBudgetSnapshot(year, month);
+      const forecast = await this.store.getPersonnelBudgetForecastSnapshot(cid, year, month);
+      const analysis = await this.store.getPersonnelBudgetAnalysis(cid, year, month, 5, 500);
+      const fcByUser = new Map<string, (typeof forecast.departments)[0]["rows"][0]>();
+      for (const d of forecast.departments) {
+        for (const r of d.rows) {
+          fcByUser.set(r.userId, r);
+        }
+      }
+      for (const d of snap.departments) {
+        for (const r of d.rows) {
+          const a = r.actual;
+          const b = r.budget;
+          const fr = fcByUser.get(r.userId)?.forecast ?? {};
+          wsAct.addRow([
+            month,
+            d.costCenterName ?? "",
+            r.fullName,
+            r.userId,
+            a.ral,
+            a.overtime,
+            a.travel,
+            a.inps,
+            a.inail,
+            a.tfr,
+            a.totalCompanyCost ?? ""
+          ]);
+          wsBdg.addRow([
+            month,
+            d.costCenterName ?? "",
+            r.fullName,
+            r.userId,
+            b.ral ?? "",
+            b.overtime ?? "",
+            b.travel ?? "",
+            b.inps ?? "",
+            b.inail ?? "",
+            b.tfr ?? "",
+            b.totalCompanyCost ?? ""
+          ]);
+          wsFc.addRow([
+            month,
+            d.costCenterName ?? "",
+            r.fullName,
+            r.userId,
+            fr.ral ?? "",
+            fr.overtime ?? "",
+            fr.travel ?? "",
+            fr.inps ?? "",
+            fr.inail ?? "",
+            fr.tfr ?? "",
+            fr.totalCompanyCost ?? ""
+          ]);
+        }
+      }
+      for (const v of analysis.variances) {
+        wsAn.addRow([
+          month,
+          v.category,
+          v.fullName,
+          v.userId,
+          v.actual,
+          v.budget,
+          v.forecast,
+          v.varianceBf,
+          v.variancePct ?? ""
         ]);
       }
     }
+
     const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const label =
+      monthFilter != null
+        ? `${year}-${String(monthFilter).padStart(2, "0")}`
+        : String(year);
     return new StreamableFile(buf, {
-      disposition: `attachment; filename="nexa-personnel-budget-actual-${snap.period}.xlsx"`,
+      disposition: `attachment; filename="nexa-personnel-budget-${label}.xlsx"`,
       type: PERSONNEL_BUDGET_XLSX_MIME
     });
+  }
+
+  @Get("year-monthly")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async yearMonthly(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      return this.store.getPersonnelBudgetYearMonthly(cid, new Date().getFullYear());
+    }
+    return this.store.getPersonnelBudgetYearMonthly(cid, year);
+  }
+
+  @Get("assumptions")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async getAssumptions(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    if (!Number.isFinite(year)) {
+      return this.store.getPersonnelBudgetAssumptions(cid, new Date().getFullYear());
+    }
+    return this.store.getPersonnelBudgetAssumptions(cid, year);
+  }
+
+  @Patch("assumptions")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async patchAssumptions(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PatchAssumptionsDto
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    return this.store.upsertPersonnelBudgetAssumptions(
+      cid,
+      dto.year,
+      {
+        employerInpsPercent: dto.employerInpsPercent,
+        inailPermille: dto.inailPermille,
+        tfrDivisor: dto.tfrDivisor,
+        welfarePercent: dto.welfarePercent,
+        bonusProvisionPercent: dto.bonusProvisionPercent
+      },
+      auth.userId
+    );
+  }
+
+  @Get("cell-notes")
+  @RequireNexaPermissions("nexa.personnel_budget:read")
+  async listCellNotes(
+    @CurrentAuth() auth: AuthContext,
+    @Query("year") yearQ?: string,
+    @Query("month") monthQ?: string
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const year = yearQ ? Number.parseInt(yearQ, 10) : new Date().getFullYear();
+    const month = monthQ != null ? Number.parseInt(monthQ, 10) : undefined;
+    if (!Number.isFinite(year)) {
+      return this.store.listPersonnelBudgetCellNotes(cid, new Date().getFullYear());
+    }
+    return this.store.listPersonnelBudgetCellNotes(
+      cid,
+      year,
+      month != null && Number.isFinite(month) ? month : undefined
+    );
+  }
+
+  @Patch("cell-notes")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async patchCellNote(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PatchCellNoteDto
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    const me = await this.store.getUser(auth.userId);
+    return this.store.upsertPersonnelBudgetCellNote(
+      cid,
+      {
+        year: dto.year,
+        month: dto.month ?? null,
+        userId: dto.userId ?? null,
+        plannedLineId: dto.plannedLineId ?? null,
+        fieldKey: dto.fieldKey,
+        note: dto.note
+      },
+      auth.userId,
+      me.fullName
+    );
   }
 
   @Get("year-status")

@@ -7,6 +7,7 @@ import { AiNarrativeDisplay } from "@/components/ai-narrative-display";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
+import { NexaSimpleBarChart } from "@/components/nexa-charts";
 import { GlassCard } from "@/components/glass-card";
 import { EmployeeLink } from "@/components/nexa-entity-links";
 import { fetchHrCenterMeta, postHrCenterRecap } from "@/lib/api";
@@ -80,6 +81,15 @@ export default function HrCenterRecapPage(): React.JSX.Element {
       | undefined) ?? [];
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
   const viewer = getSessionUser();
+
+  const employmentStateChart = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const emp of employees) {
+      const key = emp.employmentState?.replace(/_/g, " ") ?? "Non definito";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([name, value]) => ({ name, value }));
+  }, [employees]);
 
   return (
     <div className="space-y-4">
@@ -171,6 +181,13 @@ export default function HrCenterRecapPage(): React.JSX.Element {
         {error ? <p className="text-xs text-rose-600">{error}</p> : null}
         {facts ? (
           <div className="space-y-4">
+            {employmentStateChart.length > 0 ? (
+              <NexaSimpleBarChart
+                title="Distribuzione stato impiego"
+                description="Composizione del perimetro selezionato."
+                data={employmentStateChart}
+              />
+            ) : null}
             {employees.length > 0 ? (
               <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase text-[var(--prom-muted)]">

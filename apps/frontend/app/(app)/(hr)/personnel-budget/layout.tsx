@@ -9,7 +9,8 @@ const TABS: { href: Route; label: string }[] = [
   { href: "/personnel-budget", label: "Mensile" },
   { href: "/personnel-budget/annual", label: "Annuale" },
   { href: "/personnel-budget/forecast", label: "Forecast" },
-  { href: "/personnel-budget/analysis", label: "Analysis" }
+  { href: "/personnel-budget/analysis", label: "Analysis" },
+  { href: "/personnel-budget/assumptions" as Route, label: "Assunzioni" }
 ];
 
 export default function PersonnelBudgetSectionLayout({

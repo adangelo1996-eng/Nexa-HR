@@ -10,6 +10,7 @@ import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import type { NexaPageHelpKey } from "@/lib/nexa-page-help";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
+import { NexaKpiBarChart } from "@/components/nexa-charts";
 import {
   fetchAdvancedAnalysisKpis,
   postAdvancedAnalysisChat,
@@ -226,6 +227,8 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
           </div>
         )}
       </section>
+
+      {!loading && kpis.length > 0 ? <NexaKpiBarChart kpis={kpis} className="mb-8" /> : null}
 
       {children}
 

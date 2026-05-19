@@ -13,6 +13,8 @@ import {
   HebbAiGlassTile,
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
+import { NexaFlightRiskBar, NexaSimpleBarChart } from "@/components/nexa-charts";
+import { NEXA_CHART } from "@/lib/nexa-chart-theme";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 export default function ManagerCopilotPage(): React.JSX.Element {
@@ -118,20 +120,22 @@ export default function ManagerCopilotPage(): React.JSX.Element {
             </HebbAiGlassTile>
           </div>
 
-          <HebbAiGlassPanel>
-            <h2 className="text-lg font-semibold text-[var(--prom-text)]">Conteggi per tipo</h2>
-            <ul className="mt-4 space-y-2 text-sm text-[var(--prom-muted)]">
-              {(["leave", "sickness", "smartworking", "travel"] as const).map((k) => (
-                <li
-                  key={k}
-                  className="flex justify-between gap-2 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] px-3 py-2"
-                >
-                  <span>{typeLabel(k)}</span>
-                  <span className="tabular-nums font-semibold text-[var(--prom-text)]">{data.pendingByType[k] ?? 0}</span>
-                </li>
-              ))}
-            </ul>
-          </HebbAiGlassPanel>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <NexaSimpleBarChart
+              title="Approvazioni in sospeso per tipo"
+              description="Richieste del team in attesa di decisione."
+              data={(["leave", "sickness", "smartworking", "travel"] as const).map((k, i) => ({
+                name: typeLabel(k),
+                value: data.pendingByType[k] ?? 0,
+                fill: [NEXA_CHART.brand, NEXA_CHART.warning, NEXA_CHART.brandLight, NEXA_CHART.budget][i]
+              }))}
+            />
+            <NexaFlightRiskBar
+              rows={data.directReports
+                .filter((r) => r.turnoverScore != null)
+                .map((r) => ({ name: r.fullName, score: r.turnoverScore as number }))}
+            />
+          </div>
 
           {data.directReports.length > 0 ? (
             <HebbAiGlassPanel>

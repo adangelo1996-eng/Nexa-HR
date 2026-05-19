@@ -234,3 +234,55 @@ export function navSectionTitleAccentClass(sectionId: string): string {
   };
   return map[sectionId] ?? "text-[var(--prom-text)]";
 }
+
+/** Barra sinistra sidebar — stessa famiglia cromatica del titolo sezione. */
+export function navSectionSidebarAccentBarClass(sectionId: string): string {
+  const map: Record<string, string> = {
+    presence: "bg-cyan-500 dark:bg-cyan-400",
+    daily: "bg-cyan-500 dark:bg-cyan-400",
+    people: "bg-emerald-500 dark:bg-emerald-400",
+    hire: "bg-amber-500 dark:bg-amber-400",
+    grow: "bg-indigo-500 dark:bg-indigo-400",
+    insight: "bg-sky-500 dark:bg-sky-400",
+    admin: "bg-orange-500 dark:bg-orange-400",
+    home: "bg-cyan-500 dark:bg-cyan-400",
+    io: "bg-emerald-500 dark:bg-emerald-400",
+    documenti: "bg-amber-500 dark:bg-amber-400",
+    "emp-home": "bg-cyan-500 dark:bg-cyan-400",
+    "emp-io": "bg-emerald-500 dark:bg-emerald-400",
+    "emp-docs": "bg-amber-500 dark:bg-amber-400",
+    pay: "bg-amber-500 dark:bg-amber-400",
+    profile: "bg-slate-400 dark:bg-slate-500",
+    "hebb-ai-hr": "bg-violet-500 dark:bg-violet-400",
+    "hr-sintesi": "bg-rose-500 dark:bg-rose-400",
+    "hr-selezione": "bg-orange-500 dark:bg-orange-400",
+    "hr-documenti": "bg-lime-500 dark:bg-lime-400",
+    "hr-analisi": "bg-sky-500 dark:bg-sky-400",
+    "hr-admin": "bg-stone-500 dark:bg-stone-400"
+  };
+  return map[sectionId] ?? "bg-[var(--prom-muted)]";
+}
+
+/** Bordo sinistro flyout / lista — per categoria portale. */
+export function portalCategoryFlyoutAccentBarClass(category: string): string {
+  const map: Record<string, string> = {
+    Quotidiano: "border-l-cyan-500 dark:border-l-cyan-400",
+    Oggi: "border-l-cyan-500 dark:border-l-cyan-400",
+    Io: "border-l-emerald-500 dark:border-l-emerald-400",
+    Documenti: "border-l-amber-500 dark:border-l-amber-400",
+    Persone: "border-l-emerald-500 dark:border-l-emerald-400",
+    Operazioni: "border-l-cyan-500 dark:border-l-cyan-400",
+    Analytics: "border-l-violet-500 dark:border-l-violet-400",
+    Amministrazione: "border-l-orange-500 dark:border-l-orange-400",
+    "Persone e organizzazione": "border-l-emerald-500 dark:border-l-emerald-400",
+    "HEBB AI for HR": "border-l-violet-500 dark:border-l-violet-400",
+    "Selezione e documenti": "border-l-amber-500 dark:border-l-amber-400",
+    "Analisi e pianificazione": "border-l-sky-500 dark:border-l-sky-400",
+    "Amministrazione e dati": "border-l-orange-500 dark:border-l-orange-400",
+    "Ogni giorno": "border-l-cyan-500 dark:border-l-cyan-400",
+    "Assumere e far entrare": "border-l-amber-500 dark:border-l-amber-400",
+    "Sviluppare e pianificare": "border-l-indigo-500 dark:border-l-indigo-400",
+    "Analisi e budget": "border-l-sky-500 dark:border-l-sky-400"
+  };
+  return map[category] ?? "border-l-slate-400 dark:border-l-slate-500";
+}

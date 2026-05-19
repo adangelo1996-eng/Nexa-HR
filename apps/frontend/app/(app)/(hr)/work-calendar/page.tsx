@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
+import { NexaLeaveBalancePie } from "@/components/nexa-charts";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { NexaSelect } from "@/components/nexa-select";
 import { Button } from "@/components/ui/button";
@@ -1953,33 +1954,14 @@ export default function WorkCalendarPage(): React.JSX.Element {
         <p className="mt-1 text-xs text-[var(--prom-muted)]">
           Saldo ferie dal profilo HR; giorni ROL e ferie del mese calcolati sul tuo calendario (richieste rifiutate escluse).
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Ferie residue</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
-              {leaveBalance && leaveBalance.year === year ? leaveBalance.residualDays : "—"}
-            </p>
-            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">
-              {leaveBalance && leaveBalance.year === year
-                ? `${leaveBalance.usedDays} usate su ${leaveBalance.allocatedDays} assegnate`
-                : "Saldo non disponibile"}
-            </p>
-          </div>
-          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Ferie nel mese</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
-              {myMonthStats?.giorniFerieAnnuali ?? 0}
-            </p>
-            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">giorni approvati o in attesa</p>
-          </div>
-          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">ROL nel mese</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
-              {myMonthStats?.giorniRol ?? 0}
-            </p>
-            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">giorni approvati o in attesa</p>
-          </div>
-        </div>
+        <NexaLeaveBalancePie
+          className="mt-3"
+          residual={leaveBalance && leaveBalance.year === year ? leaveBalance.residualDays : 0}
+          used={leaveBalance && leaveBalance.year === year ? leaveBalance.usedDays : 0}
+          allocated={leaveBalance && leaveBalance.year === year ? leaveBalance.allocatedDays : 0}
+          monthLeave={myMonthStats?.giorniFerieAnnuali ?? 0}
+          monthRol={myMonthStats?.giorniRol ?? 0}
+        />
       </section>
 
       {!loading && rowUsers.length === 0 ? (

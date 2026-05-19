@@ -340,6 +340,50 @@ export class AnalyticsController {
     return { items };
   }
 
+  /**
+   * Rigenera `hr_role_skill_requirements` (e opz. backfill `hr_user_skills`) da template ruolo.
+   * Query: `dryRun=true` (default sicuro) | `apply=true` per scrivere; `backup=true` obbligatorio con replace/overwrite.
+   */
+  @Post("skills/regenerate-from-roles")
+  @RequireNexaPermissions("nexa.reports_hr:write")
+  async regenerateSkillsFromRoles(
+    @CurrentAuth() auth: AuthContext,
+    @Query("dryRun") dryRun?: string,
+    @Query("apply") apply?: string,
+    @Query("backfillUsers") backfillUsers?: string,
+    @Query("replaceRoleRequirements") replaceRoleRequirements?: string,
+    @Query("backup") backup?: string,
+    @Query("overwriteUserSkills") overwriteUserSkills?: string,
+    @Query("companyId") companyIdOverride?: string
+  ): Promise<Awaited<ReturnType<HrDataStore["regenerateSkillsFromRolesForCompany"]>>> {
+    const viewer = await this.store.getUser(auth.userId);
+    if (viewer.role !== "superuser" && viewer.role !== "admin") {
+      throw new ForbiddenException("Solo admin HR possono rigenerare le competenze aziendali");
+    }
+    const companyId = (companyIdOverride?.trim() || viewer.companyId || auth.tenantId || "").trim();
+    if (!companyId) {
+      throw new ForbiddenException("Azienda non disponibile per l'utente");
+    }
+    if (companyIdOverride?.trim() && viewer.role !== "superuser" && viewer.companyId !== companyId) {
+      throw new ForbiddenException("companyId non consentito per questo utente");
+    }
+
+    const applyFlag = apply === "true" || apply === "1";
+
+    return this.store.regenerateSkillsFromRolesForCompany(
+      companyId,
+      {
+        dryRun: !applyFlag,
+        apply: applyFlag,
+        backfillUsers: backfillUsers === "true" || backfillUsers === "1",
+        replaceRoleRequirements: replaceRoleRequirements === "true" || replaceRoleRequirements === "1",
+        backup: backup === "true" || backup === "1",
+        overwriteUserSkills: overwriteUserSkills === "true" || overwriteUserSkills === "1"
+      },
+      auth.userId
+    );
+  }
+
   @Get("manager-copilot")
   async managerCopilot(@CurrentAuth() auth: AuthContext): Promise<
     Awaited<ReturnType<HrDataStore["getManagerCopilotDashboard"]>>

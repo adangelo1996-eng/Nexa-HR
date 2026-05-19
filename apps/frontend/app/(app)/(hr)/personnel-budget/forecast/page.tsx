@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PB_TABLE, PB_TABLE_WRAP, PB_TD, PB_TD_ZEBRA, PB_TH } from "@/components/personnel-budget/table-theme";
 import {
   fetchPersonnelBudgetForecastSnapshot,
   fetchCurrentUser,
@@ -163,9 +164,8 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
   const isFutureMonth =
     year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
 
-  const th =
-    "whitespace-nowrap border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-1 py-1.5 text-left text-[10px] font-medium text-[var(--prom-text)] sm:text-xs";
-  const td = "border border-[var(--prom-line)] px-1 py-1 text-[10px] text-[var(--prom-text)] sm:text-xs";
+  const th = PB_TH;
+  const td = PB_TD;
 
   return (
     <div className="space-y-4">
@@ -224,7 +224,8 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
           {snap.departments.map((dept) => (
             <div key={dept.costCenterId ?? "__none__"}>
               <h2 className="mb-2 text-sm font-semibold text-[var(--prom-text)]">{dept.costCenterName}</h2>
-              <table className="min-w-[1200px] w-full border-collapse">
+              <div className={PB_TABLE_WRAP}>
+              <table className={`${PB_TABLE} min-w-[1200px]`}>
                 <thead>
                   <tr>
                     <th className={th} rowSpan={2}>
@@ -295,7 +296,7 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                       (b.tfr ?? 0);
                     const at = row.actual.totalCompanyCost;
                     return (
-                      <tr key={row.userId}>
+                      <tr key={row.userId} className={PB_TD_ZEBRA}>
                         <td className={td}>
                           <span className="font-medium">{row.fullName}</span>
                         </td>
@@ -405,6 +406,7 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
         </div>

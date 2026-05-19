@@ -45,7 +45,7 @@ import { HeaderNotifications } from "@/components/header-notifications";
 import { NexaGuidePanel } from "@/components/nexa-guide-panel";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
-import { navSectionTitleAccentClass } from "@/lib/nav-visual-accents";
+import { navSectionSidebarAccentBarClass, navSectionTitleAccentClass } from "@/lib/nav-visual-accents";
 import { NexaNavSectionFlyout, type NexaNavFlyoutSection } from "@/components/nexa-nav-section-flyout";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import {
@@ -61,6 +61,7 @@ import {
 } from "@/lib/synapse-prefs";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
+const SIDEBAR_WIDTH_CLASS = "w-[var(--nexa-sidebar-width,15.5rem)]";
 const SIDEBAR_SCROLL_DESKTOP_KEY = "nexa_hr_sidebar_scroll_desktop_v1";
 const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
@@ -120,14 +121,13 @@ function SidebarNavLink(props: {
         beforeNavigate?.();
         onNavigate();
       }}
-      className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-[background,opacity] duration-200 ${
-        active
-          ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-          : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-      }`}
+      className={`nexa-sidebar-nav-link ${active ? "nexa-sidebar-nav-link--active" : ""}`}
+      aria-current={active ? "page" : undefined}
     >
-      <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-      <span>{label}</span>
+      <span className="nexa-sidebar-nav-link__icon">
+        <Icon className="h-[18px] w-[18px]" aria-hidden />
+      </span>
+      <span className="min-w-0 truncate">{label}</span>
     </Link>
   );
 }
@@ -147,21 +147,18 @@ function SidebarMacroSectionButton(props: {
       aria-expanded={flyoutOpen}
       aria-haspopup="dialog"
       onClick={() => onToggle(section.id)}
-      className={`mx-2 flex w-[calc(100%-1rem)] items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-[background,color] duration-200 ${
-        flyoutOpen || active
-          ? "bg-[color-mix(in_srgb,var(--prom-gold)_14%,var(--prom-surface-soft))] text-[var(--prom-text)]"
-          : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
+      className={`nexa-sidebar-macro-btn ${flyoutOpen ? "nexa-sidebar-macro-btn--open" : ""} ${
+        active ? "nexa-sidebar-macro-btn--active" : ""
       }`}
     >
+      <span
+        className={`nexa-sidebar-macro-btn__accent ${navSectionSidebarAccentBarClass(section.id)}`}
+        aria-hidden
+      />
       <span className={`min-w-0 flex-1 leading-snug ${navSectionTitleAccentClass(section.id)}`}>
         {section.title}
       </span>
-      <ChevronRight
-        className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-200 ${
-          flyoutOpen ? "translate-x-0.5" : ""
-        }`}
-        aria-hidden
-      />
+      <ChevronRight className="nexa-sidebar-macro-btn__chevron h-3.5 w-3.5" aria-hidden />
     </button>
   );
 }
@@ -447,81 +444,93 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, [pathname]);
 
   const SidebarContent = (
-    <div className="flex min-h-0 flex-col gap-1 py-4">
+    <div className="flex min-h-0 flex-col py-3">
       <Link
         href="/mappa-portale"
         scroll={false}
-        className="mb-3 flex items-center gap-2 px-3 transition-opacity hover:opacity-90"
+        className="mb-4 flex items-center px-3.5 transition-opacity hover:opacity-85"
         onClick={() => {
           persistSidebarScrollPositions();
           closeMobile();
         }}
       >
         <span
-          className="nexa-wordmark-face text-sm font-semibold uppercase tracking-[0.12em] text-[var(--prom-text)]"
+          className="nexa-wordmark-face text-[13px] font-semibold uppercase tracking-[0.14em] text-[var(--prom-text)]"
           style={synapseSuiteDisplayStyle}
         >
           Nexa HR
         </span>
       </Link>
-      <SidebarNavLink
-        item={NAV_DASHBOARD}
-        pathname={pathname}
-        onNavigate={closeMobile}
-        beforeNavigate={persistSidebarScrollPositions}
-      />
-      <SidebarNavLink
-        item={NAV_PORTAL_MAP}
-        pathname={pathname}
-        onNavigate={closeMobile}
-        beforeNavigate={persistSidebarScrollPositions}
-      />
-      {sessionCanAccessHrRecapDashboard(user ?? undefined) ? (
+
+      <p className="nexa-sidebar-section-label">Navigazione</p>
+      <div className="flex flex-col gap-0.5">
         <SidebarNavLink
-          item={NAV_HR_RECAP}
+          item={NAV_DASHBOARD}
           pathname={pathname}
           onNavigate={closeMobile}
           beforeNavigate={persistSidebarScrollPositions}
         />
-      ) : null}
-      {showManagerPanelNav ? (
         <SidebarNavLink
-          item={
-            {
-              href: "/manager-copilot" as Route,
-              label: "Pannello manager",
-              icon: ClipboardList
-            } satisfies NavItem
-          }
+          item={NAV_PORTAL_MAP}
           pathname={pathname}
           onNavigate={closeMobile}
           beforeNavigate={persistSidebarScrollPositions}
         />
+        {sessionCanAccessHrRecapDashboard(user ?? undefined) ? (
+          <SidebarNavLink
+            item={NAV_HR_RECAP}
+            pathname={pathname}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+        ) : null}
+        {showManagerPanelNav ? (
+          <SidebarNavLink
+            item={
+              {
+                href: "/manager-copilot" as Route,
+                label: "Pannello manager",
+                icon: ClipboardList
+              } satisfies NavItem
+            }
+            pathname={pathname}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+        ) : null}
+      </div>
+
+      {flyoutNavSections.length > 0 ? (
+        <>
+          <hr className="nexa-sidebar-divider" />
+          <p className="nexa-sidebar-section-label">Aree</p>
+          <div className="flex flex-col gap-0.5">
+            {flyoutNavSections.map((section) => (
+              <SidebarMacroSectionButton
+                key={section.id}
+                section={section}
+                pathname={pathname}
+                flyoutOpen={flyoutSectionId === section.id}
+                onToggle={toggleFlyoutSection}
+              />
+            ))}
+          </div>
+        </>
       ) : null}
-      {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
-        <div className="my-2 border-t border-[var(--prom-line)]" />
-      ) : null}
-      {flyoutNavSections.map((section) => (
-        <SidebarMacroSectionButton
-          key={section.id}
-          section={section}
-          pathname={pathname}
-          flyoutOpen={flyoutSectionId === section.id}
-          onToggle={toggleFlyoutSection}
-        />
-      ))}
-      {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
-        <div className="my-2 border-t border-[var(--prom-line)]" />
-      ) : null}
-      {NAV_PROFILE_SECTION.items.map((item) => (
-        <SidebarNavLink
-          key={`settings-${item.href}`}
-          item={item}
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
-      ))}
+
+      <hr className="nexa-sidebar-divider" />
+      <p className="nexa-sidebar-section-label">{NAV_PROFILE_SECTION.title}</p>
+      <div className="flex flex-col gap-0.5">
+        {NAV_PROFILE_SECTION.items.map((item) => (
+          <SidebarNavLink
+            key={`settings-${item.href}`}
+            item={item}
+            pathname={pathname}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+        ))}
+      </div>
     </div>
   );
 
@@ -557,7 +566,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       <aside
           ref={desktopAsideRef}
           onScroll={schedulePersistSidebarScroll}
-          className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
+          className={`nexa-sidebar hidden h-full min-h-0 ${SIDEBAR_WIDTH_CLASS} shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] md:block`}
           aria-label="Navigazione principale"
         >
           {SidebarContent}
@@ -579,7 +588,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           <div
             ref={mobileNavScrollRef}
             onScroll={schedulePersistSidebarScroll}
-            className="relative flex h-full w-[min(100vw,280px)] flex-col overflow-y-auto border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200"
+            className="relative flex h-full w-[min(100vw,var(--nexa-sidebar-width,15.5rem))] flex-col overflow-y-auto border-r border-[var(--prom-line)] bg-[var(--prom-surface)] shadow-xl transition-transform duration-200"
           >
             <div className="flex justify-end p-2">
               <Button

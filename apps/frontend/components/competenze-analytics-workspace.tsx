@@ -24,6 +24,8 @@ import {
   upsertRoleCoverageGap,
   type HrRoleCoverageGapDto
 } from "@/lib/api";
+import { NexaSimpleBarChart } from "@/components/nexa-charts";
+import { NEXA_CHART } from "@/lib/nexa-chart-theme";
 import { getToken } from "@/lib/auth-session";
 
 type SkillGapRow = Awaited<ReturnType<typeof fetchSkillsGap>>["items"][number];
@@ -275,6 +277,27 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
       .sort((a, b) => b.gap - a.gap || a.skillName.localeCompare(b.skillName, "it"));
   }, [skillItems, skillRoleFilter]);
 
+  const coverageCostChart = useMemo(() => {
+    return coverageItems
+      .map((row) => {
+        const est =
+          row.expectedRalAnnual != null && row.headcountGap > 0 ? row.expectedRalAnnual * row.headcountGap : 0;
+        const name = row.roleTitle.length > 20 ? `${row.roleTitle.slice(0, 18)}…` : row.roleTitle;
+        return { name, value: est };
+      })
+      .filter((d) => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [coverageItems]);
+
+  const skillGapChart = useMemo(() => {
+    return filteredSkillGaps.slice(0, 12).map((row) => ({
+      name: row.skillName.length > 16 ? `${row.skillName.slice(0, 14)}…` : row.skillName,
+      value: row.gap,
+      fill: row.gap >= 2 ? NEXA_CHART.negative : row.gap >= 1 ? NEXA_CHART.warning : NEXA_CHART.positive
+    }));
+  }, [filteredSkillGaps]);
+
   const matrixRoles = useMemo(() => {
     if (skillRoleFilter === "all") {
       return skillGapsByRole.slice(0, 12);
@@ -430,6 +453,28 @@ export function CompetenzeAnalyticsWorkspace(): React.JSX.Element {
           </span>
         ) : null}
       </section>
+
+      {!loading && (coverageCostChart.length > 0 || skillGapChart.length > 0) ? (
+        <div className="mb-8 grid gap-4 lg:grid-cols-2">
+          {coverageCostChart.length > 0 ? (
+            <NexaSimpleBarChart
+              title="Costo hiring stimato per ruolo"
+              description="Headcount mancante × RAL attesa (top 10)."
+              data={coverageCostChart}
+              valueFormatter={(n) =>
+                new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n)
+              }
+            />
+          ) : null}
+          {skillGapChart.length > 0 ? (
+            <NexaSimpleBarChart
+              title="Gap competenze prioritari"
+              description="Delta livello richiesto vs media ruolo."
+              data={skillGapChart}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="mb-10">
         <CoverageSectionHeader coverageForm={coverageForm} busy={busy} onOpenCreate={openCreateCoverage} />

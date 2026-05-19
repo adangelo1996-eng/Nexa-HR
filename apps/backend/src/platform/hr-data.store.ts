@@ -241,6 +241,52 @@ export type PersonnelBudgetAnnualMatrixResult = {
   rows: PersonnelBudgetAnnualMatrixRow[];
 };
 
+export type PersonnelBudgetAssumptionsDto = {
+  companyId: string;
+  year: number;
+  employerInpsPercent: number | null;
+  inailPermille: number | null;
+  tfrDivisor: number | null;
+  welfarePercent: number;
+  bonusProvisionPercent: number;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export type PersonnelBudgetCellNoteDto = {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number | null;
+  userId: string | null;
+  plannedLineId: string | null;
+  fieldKey: string;
+  note: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  updatedAt: string;
+};
+
+export type PersonnelBudgetYearMonthlyRow = PersonnelBudgetRow & {
+  forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+};
+
+export type PersonnelBudgetYearMonthlyDepartment = {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetYearMonthlyRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
+};
+
+export type PersonnelBudgetYearMonthlyResult = {
+  year: number;
+  months: Array<{
+    month: number;
+    departments: PersonnelBudgetYearMonthlyDepartment[];
+  }>;
+};
+
 export type PersonnelBudgetForecastSnapshot = {
   year: number;
   month: number;
@@ -702,6 +748,10 @@ export class HrDataStore {
     string,
     PersonnelBudgetPlannedExtraLine & { costCenterId: string | null }
   >();
+  /** key companyId|year */
+  private readonly personnelBudgetAssumptionsMem = new Map<string, PersonnelBudgetAssumptionsDto>();
+  /** key companyId|year|month|fieldKey|userId|plannedLineId */
+  private readonly personnelBudgetCellNotesMem = new Map<string, PersonnelBudgetCellNoteDto>();
   /** Dev senza DB: ultimi run turnover per companyId. */
   private readonly turnoverSignalRunsMem = new Map<
     string,
@@ -3375,6 +3425,41 @@ export class HrDataStore {
       this.italianPayrollProfileForUser(user, costCenter),
       defaultItalianRuleSet2026
     );
+  }
+
+  private mergeEmployerRatesWithAssumptions(
+    base: { employerInpsRate: number; inailRate: number; tfrDivisor: number },
+    assumptions: PersonnelBudgetAssumptionsDto | null
+  ): { employerInpsRate: number; inailRate: number; tfrDivisor: number } {
+    if (!assumptions) {
+      return base;
+    }
+    return {
+      employerInpsRate:
+        assumptions.employerInpsPercent != null && Number.isFinite(assumptions.employerInpsPercent)
+          ? assumptions.employerInpsPercent / 100
+          : base.employerInpsRate,
+      inailRate:
+        assumptions.inailPermille != null && Number.isFinite(assumptions.inailPermille)
+          ? assumptions.inailPermille / 1000
+          : base.inailRate,
+      tfrDivisor:
+        assumptions.tfrDivisor != null && Number.isFinite(assumptions.tfrDivisor)
+          ? assumptions.tfrDivisor
+          : base.tfrDivisor
+    };
+  }
+
+  private employerExtrasFromAssumptions(
+    gross: number,
+    assumptions: PersonnelBudgetAssumptionsDto | null
+  ): number {
+    if (!assumptions) {
+      return 0;
+    }
+    const w = (assumptions.welfarePercent ?? 0) / 100;
+    const b = (assumptions.bonusProvisionPercent ?? 0) / 100;
+    return Math.round(gross * (w + b) * 100) / 100;
   }
 
   private async buildItalianPayrollInputForUser(
@@ -8894,6 +8979,26 @@ export class HrDataStore {
     return out.sort((a, b) => b.gap - a.gap || a.roleName.localeCompare(b.roleName, "it"));
   }
 
+  /** Rigenera fabbisogni competenze da `hr_role_skill_templates` + ruoli catalogo in uso. */
+  async regenerateSkillsFromRolesForCompany(
+    companyId: string,
+    options: Omit<
+      import("./skills-regeneration").SkillsRegenerationOptions,
+      "companyId"
+    >,
+    createdBy?: string
+  ): Promise<import("./skills-regeneration").SkillsRegenerationReport> {
+    if (!this.useDb || !this.supabase) {
+      throw new BadRequestException("Rigenerazione competenze richiede database configurato");
+    }
+    const { regenerateSkillsFromRoles } = await import("./skills-regeneration");
+    return regenerateSkillsFromRoles(this.supabase, {
+      companyId: companyId.trim(),
+      ...options,
+      createdBy: createdBy ?? options.createdBy
+    });
+  }
+
   async listHrAlerts(
     companyId: string,
     status?: "open" | "ack" | "dismissed"
@@ -9768,6 +9873,8 @@ export class HrDataStore {
     const orderList = await this.fetchPersonnelBudgetOrderFromDb(year);
     const orderIdx = new Map(orderList.map((o, i) => [o.costCenterId, o.sortOrder]));
     const cells = await this.fetchPersonnelBudgetCellsFromDb(year, month);
+    const companyId = users.find((u) => u.companyId?.trim())?.companyId?.trim() ?? "comp-1";
+    const assumptions = await this.getPersonnelBudgetAssumptions(companyId, year);
 
     const deptMap = new Map<string | null, PersonnelBudgetRow[]>();
     for (const u of users) {
@@ -9782,7 +9889,11 @@ export class HrDataStore {
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
       const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-      const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+      const ratesIt = this.mergeEmployerRatesWithAssumptions(
+        this.italianEmployerRatesForUser(u, ccRow),
+        assumptions
+      );
+      const extrasAct = this.employerExtrasFromAssumptions(grossAdjusted, assumptions);
       const buckets = employerBudgetBucketsFromGrossIt(grossAdjusted, {
         employerInpsRate: ratesIt.employerInpsRate,
         inailRate: ratesIt.inailRate,
@@ -9793,6 +9904,7 @@ export class HrDataStore {
         inailRate: ratesIt.inailRate,
         tfrDivisor: ratesIt.tfrDivisor
       });
+      const extrasSug = this.employerExtrasFromAssumptions(base, assumptions);
       const actual: PersonnelBudgetMoney = {
         ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
         overtime: Math.round(overtime * 100) / 100,
@@ -9800,7 +9912,7 @@ export class HrDataStore {
         inps: buckets.employerInpsLike,
         inail: buckets.employerInailLike,
         tfr: buckets.employerTfrLike,
-        totalCompanyCost: buckets.totalCompanyCost + travel
+        totalCompanyCost: buckets.totalCompanyCost + travel + extrasAct
       };
       const bc = cells.get(u.id);
       const budgetPartial: Partial<PersonnelBudgetMoney> = {
@@ -9835,7 +9947,7 @@ export class HrDataStore {
                 inps: sugB.employerInpsLike,
                 inail: sugB.employerInailLike,
                 tfr: sugB.employerTfrLike,
-                totalCompanyCost: sugB.totalCompanyCost
+                totalCompanyCost: sugB.totalCompanyCost + extrasSug
               }
             }
           : {})
@@ -9856,8 +9968,6 @@ export class HrDataStore {
       return na.localeCompare(nb);
     });
 
-    const companyId =
-      users.find((u) => u.companyId?.trim())?.companyId?.trim() ?? "comp-1";
     const plannedByCc = await this.fetchPersonnelBudgetPlannedExtraGrouped(companyId, year, month);
 
     const departments: PersonnelBudgetDepartment[] = sortedDeptKeys.map((ccId) => ({
@@ -9965,7 +10075,7 @@ export class HrDataStore {
     if (!label) {
       throw new BadRequestException("Etichetta obbligatoria");
     }
-    const id = input.id?.trim() || `pbpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = input.id?.trim() || randomUUID();
     const row = {
       budgetRal: input.budgetRal ?? 0,
       budgetOvertime: input.budgetOvertime ?? 0,
@@ -10035,6 +10145,334 @@ export class HrDataStore {
     if (error) {
       throw new BadRequestException(`Eliminazione riga pianificata fallita: ${error.message}`);
     }
+  }
+
+  private pbAssumptionsMemKey(companyId: string, year: number): string {
+    return `${companyId.trim()}|${year}`;
+  }
+
+  private pbCellNoteMemKey(
+    companyId: string,
+    year: number,
+    month: number | null,
+    fieldKey: string,
+    userId: string | null,
+    plannedLineId: string | null
+  ): string {
+    return `${companyId.trim()}|${year}|${month ?? 0}|${fieldKey}|${userId ?? ""}|${plannedLineId ?? ""}`;
+  }
+
+  async getPersonnelBudgetAssumptions(
+    companyId: string,
+    year: number
+  ): Promise<PersonnelBudgetAssumptionsDto> {
+    const cid = companyId.trim();
+    const defaults: PersonnelBudgetAssumptionsDto = {
+      companyId: cid,
+      year,
+      employerInpsPercent: null,
+      inailPermille: null,
+      tfrDivisor: null,
+      welfarePercent: 0,
+      bonusProvisionPercent: 0,
+      updatedAt: null,
+      updatedByUserId: null
+    };
+    if (!this.useDb) {
+      return this.personnelBudgetAssumptionsMem.get(this.pbAssumptionsMemKey(cid, year)) ?? defaults;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_assumptions")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Assunzioni budget: ${error.message}`);
+    }
+    if (!data) {
+      return defaults;
+    }
+    const row = data as Record<string, unknown>;
+    return {
+      companyId: cid,
+      year,
+      employerInpsPercent:
+        row.employer_inps_percent != null ? Number(row.employer_inps_percent) : null,
+      inailPermille: row.inail_permille != null ? Number(row.inail_permille) : null,
+      tfrDivisor: row.tfr_divisor != null ? Number(row.tfr_divisor) : null,
+      welfarePercent: row.welfare_percent != null ? Number(row.welfare_percent) : 0,
+      bonusProvisionPercent:
+        row.bonus_provision_percent != null ? Number(row.bonus_provision_percent) : 0,
+      updatedAt: row.updated_at != null ? String(row.updated_at) : null,
+      updatedByUserId:
+        row.updated_by_user_id != null ? String(row.updated_by_user_id) : null
+    };
+  }
+
+  async upsertPersonnelBudgetAssumptions(
+    companyId: string,
+    year: number,
+    patch: {
+      employerInpsPercent?: number | null;
+      inailPermille?: number | null;
+      tfrDivisor?: number | null;
+      welfarePercent?: number | null;
+      bonusProvisionPercent?: number | null;
+    },
+    userId: string
+  ): Promise<PersonnelBudgetAssumptionsDto> {
+    const cid = companyId.trim();
+    const prev = await this.getPersonnelBudgetAssumptions(cid, year);
+    const dto: PersonnelBudgetAssumptionsDto = {
+      ...prev,
+      employerInpsPercent:
+        patch.employerInpsPercent !== undefined ? patch.employerInpsPercent : prev.employerInpsPercent,
+      inailPermille: patch.inailPermille !== undefined ? patch.inailPermille : prev.inailPermille,
+      tfrDivisor: patch.tfrDivisor !== undefined ? patch.tfrDivisor : prev.tfrDivisor,
+      welfarePercent:
+        patch.welfarePercent !== undefined && patch.welfarePercent != null
+          ? patch.welfarePercent
+          : prev.welfarePercent,
+      bonusProvisionPercent:
+        patch.bonusProvisionPercent !== undefined && patch.bonusProvisionPercent != null
+          ? patch.bonusProvisionPercent
+          : prev.bonusProvisionPercent,
+      updatedAt: new Date().toISOString(),
+      updatedByUserId: userId
+    };
+    if (!this.useDb) {
+      this.personnelBudgetAssumptionsMem.set(this.pbAssumptionsMemKey(cid, year), dto);
+      return dto;
+    }
+    const { error } = await this.supabase!.from("personnel_budget_assumptions").upsert(
+      {
+        company_id: cid,
+        year,
+        employer_inps_percent: dto.employerInpsPercent,
+        inail_permille: dto.inailPermille,
+        tfr_divisor: dto.tfrDivisor,
+        welfare_percent: dto.welfarePercent,
+        bonus_provision_percent: dto.bonusProvisionPercent,
+        updated_at: dto.updatedAt,
+        updated_by_user_id: userId
+      },
+      { onConflict: "company_id,year" }
+    );
+    if (error) {
+      throw new BadRequestException(`Salvataggio assunzioni budget: ${error.message}`);
+    }
+    return dto;
+  }
+
+  async listPersonnelBudgetCellNotes(
+    companyId: string,
+    year: number,
+    month?: number | null
+  ): Promise<PersonnelBudgetCellNoteDto[]> {
+    const cid = companyId.trim();
+    if (!this.useDb) {
+      return [...this.personnelBudgetCellNotesMem.values()].filter((n) => {
+        if (n.companyId !== cid || n.year !== year) {
+          return false;
+        }
+        if (month != null && n.month !== month) {
+          return false;
+        }
+        return n.note.trim().length > 0;
+      });
+    }
+    let q = this.supabase!
+      .from("personnel_budget_cell_notes")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year);
+    if (month != null) {
+      q = q.eq("month", month);
+    }
+    const { data, error } = await q;
+    if (error) {
+      throw new InternalServerErrorException(`Note celle budget: ${error.message}`);
+    }
+    return (data ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        companyId: cid,
+        year,
+        month: row.month != null ? Number(row.month) : null,
+        userId: row.user_id != null ? String(row.user_id) : null,
+        plannedLineId: row.planned_line_id != null ? String(row.planned_line_id) : null,
+        fieldKey: String(row.field_key),
+        note: String(row.note ?? ""),
+        authorUserId: row.author_user_id != null ? String(row.author_user_id) : null,
+        authorName: row.author_name != null ? String(row.author_name) : null,
+        updatedAt: String(row.updated_at ?? new Date().toISOString())
+      };
+    });
+  }
+
+  async upsertPersonnelBudgetCellNote(
+    companyId: string,
+    input: {
+      year: number;
+      month: number | null;
+      userId: string | null;
+      plannedLineId: string | null;
+      fieldKey: string;
+      note: string;
+    },
+    authorUserId: string,
+    authorName: string | null
+  ): Promise<PersonnelBudgetCellNoteDto | null> {
+    const cid = companyId.trim();
+    const fieldKey = input.fieldKey.trim();
+    if (!fieldKey) {
+      throw new BadRequestException("fieldKey obbligatorio");
+    }
+    if (!input.userId && !input.plannedLineId) {
+      throw new BadRequestException("userId o plannedLineId obbligatorio");
+    }
+    const note = input.note.trim();
+    const memKey = this.pbCellNoteMemKey(
+      cid,
+      input.year,
+      input.month,
+      fieldKey,
+      input.userId,
+      input.plannedLineId
+    );
+    if (!note) {
+      if (!this.useDb) {
+        for (const [k, v] of this.personnelBudgetCellNotesMem) {
+          if (
+            v.companyId === cid &&
+            v.year === input.year &&
+            v.month === input.month &&
+            v.fieldKey === fieldKey &&
+            v.userId === input.userId &&
+            v.plannedLineId === input.plannedLineId
+          ) {
+            this.personnelBudgetCellNotesMem.delete(k);
+          }
+        }
+        return null;
+      }
+      let del = this.supabase!
+        .from("personnel_budget_cell_notes")
+        .delete()
+        .eq("company_id", cid)
+        .eq("year", input.year)
+        .eq("field_key", fieldKey);
+      if (input.month != null) {
+        del = del.eq("month", input.month);
+      } else {
+        del = del.is("month", null);
+      }
+      if (input.userId) {
+        del = del.eq("user_id", input.userId);
+      }
+      if (input.plannedLineId) {
+        del = del.eq("planned_line_id", input.plannedLineId);
+      }
+      const { error } = await del;
+      if (error) {
+        throw new BadRequestException(`Rimozione nota cella: ${error.message}`);
+      }
+      return null;
+    }
+    const id = randomUUID();
+    const dto: PersonnelBudgetCellNoteDto = {
+      id,
+      companyId: cid,
+      year: input.year,
+      month: input.month,
+      userId: input.userId,
+      plannedLineId: input.plannedLineId,
+      fieldKey,
+      note,
+      authorUserId,
+      authorName,
+      updatedAt: new Date().toISOString()
+    };
+    if (!this.useDb) {
+      this.personnelBudgetCellNotesMem.set(memKey, dto);
+      return dto;
+    }
+    const existing = (await this.listPersonnelBudgetCellNotes(cid, input.year, input.month ?? undefined)).find(
+      (n) =>
+        n.fieldKey === fieldKey &&
+        n.userId === input.userId &&
+        n.plannedLineId === input.plannedLineId
+    );
+    const payload = {
+      company_id: cid,
+      year: input.year,
+      month: input.month,
+      user_id: input.userId,
+      planned_line_id: input.plannedLineId,
+      field_key: fieldKey,
+      note,
+      author_user_id: authorUserId,
+      author_name: authorName,
+      updated_at: dto.updatedAt
+    };
+    if (existing) {
+      const { data, error } = await this.supabase!
+        .from("personnel_budget_cell_notes")
+        .update(payload)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (error) {
+        throw new BadRequestException(`Salvataggio nota cella: ${error.message}`);
+      }
+      const row = data as Record<string, unknown>;
+      return { ...dto, id: String(row.id ?? existing.id) };
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_cell_notes")
+      .insert({ ...payload, id })
+      .select("*")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio nota cella: ${error.message}`);
+    }
+    const row = data as Record<string, unknown>;
+    return { ...dto, id: String(row.id ?? id) };
+  }
+
+  async getPersonnelBudgetYearMonthly(
+    companyId: string,
+    year: number
+  ): Promise<PersonnelBudgetYearMonthlyResult> {
+    const cid = companyId.trim();
+    const months: PersonnelBudgetYearMonthlyResult["months"] = [];
+    for (let month = 1; month <= 12; month++) {
+      const snap = await this.getPersonnelBudgetSnapshot(year, month);
+      const forecast = await this.getPersonnelBudgetForecastSnapshot(cid, year, month);
+      const fcByUser = new Map<string, (typeof forecast.departments)[0]["rows"][0]>();
+      for (const d of forecast.departments) {
+        for (const r of d.rows) {
+          fcByUser.set(r.userId, r);
+        }
+      }
+      const departments: PersonnelBudgetYearMonthlyDepartment[] = snap.departments.map((d) => ({
+        costCenterId: d.costCenterId,
+        costCenterName: d.costCenterName,
+        sortOrder: d.sortOrder,
+        plannedExtraLines: d.plannedExtraLines,
+        rows: d.rows.map((r) => {
+          const fr = fcByUser.get(r.userId);
+          return {
+            ...r,
+            forecast: fr?.forecast ?? {}
+          };
+        })
+      }));
+      months.push({ month, departments });
+    }
+    return { year, months };
   }
 
   async getPersonnelBudgetYearStatus(companyId: string, year: number): Promise<PersonnelBudgetYearStatusDto> {
@@ -10349,6 +10787,7 @@ export class HrDataStore {
     const users = (await this.listUsers()).filter((u) => (u.companyId?.trim() || "") === cid);
     const centers = await this.listCostCenters();
     const ccById = new Map(centers.map((c) => [c.id, c]));
+    const assumptions = await this.getPersonnelBudgetAssumptions(cid, year);
     let monthsPatched = 0;
     for (let month = 1; month <= 12; month++) {
       const cells: Array<{
@@ -10364,7 +10803,10 @@ export class HrDataStore {
         const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
         const monthlyRal = Math.round(((base * pim) / 12) * 100) / 100;
         const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-        const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+        const ratesIt = this.mergeEmployerRatesWithAssumptions(
+          this.italianEmployerRatesForUser(u, ccRow),
+          assumptions
+        );
         const buckets = employerBudgetBucketsFromGrossIt(monthlyRal, {
           employerInpsRate: ratesIt.employerInpsRate,
           inailRate: ratesIt.inailRate,

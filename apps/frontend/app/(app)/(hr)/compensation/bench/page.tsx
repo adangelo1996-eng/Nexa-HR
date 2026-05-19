@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, MapPin, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NexaCompensationRangeChart } from "@/components/nexa-charts";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Input } from "@/components/ui/input";
 import {
@@ -197,19 +198,22 @@ export default function CompensationBenchPage(): JSX.Element {
           ) : (
             <>
               <p className="mt-2 text-xs text-[var(--prom-muted)]">Ruolo: {result.roleResolved}</p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)]/60 p-4 text-center">
-                  <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Min</p>
-                  <p className="mt-2 text-xl font-bold tabular-nums text-[var(--prom-text)]">{fmtEur(result.ralLowEur)}</p>
-                </div>
-                <div className="rounded-xl border-2 border-[#002D72]/35 bg-[color-mix(in_srgb,#002D72_8%,transparent)] p-4 text-center">
-                  <p className="text-[10px] font-semibold uppercase text-[#002D72] dark:text-sky-300">Mediana</p>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#002D72] dark:text-sky-200">{fmtEur(result.ralMedianEur)}</p>
-                </div>
-                <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)]/60 p-4 text-center">
-                  <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Max</p>
-                  <p className="mt-2 text-xl font-bold tabular-nums text-[var(--prom-text)]">{fmtEur(result.ralHighEur)}</p>
-                </div>
+              <NexaCompensationRangeChart
+                className="mt-5"
+                low={result.ralLowEur}
+                median={result.ralMedianEur}
+                high={result.ralHighEur}
+              />
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <p className="rounded-lg border border-[var(--prom-line)] px-3 py-2 text-center text-xs text-[var(--prom-muted)]">
+                  Min <span className="block text-base font-semibold text-[var(--prom-text)]">{fmtEur(result.ralLowEur)}</span>
+                </p>
+                <p className="rounded-lg border border-[#002D72]/35 px-3 py-2 text-center text-xs text-[#002D72] dark:text-sky-300">
+                  Mediana <span className="block text-base font-semibold">{fmtEur(result.ralMedianEur)}</span>
+                </p>
+                <p className="rounded-lg border border-[var(--prom-line)] px-3 py-2 text-center text-xs text-[var(--prom-muted)]">
+                  Max <span className="block text-base font-semibold text-[var(--prom-text)]">{fmtEur(result.ralHighEur)}</span>
+                </p>
               </div>
               <p className="mt-5 text-sm leading-relaxed text-[var(--prom-muted)]">{result.notesIt}</p>
               <p className="mt-2 text-[10px] text-[var(--prom-muted)]">

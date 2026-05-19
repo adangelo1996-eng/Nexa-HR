@@ -22,6 +22,7 @@ import {
   type RecruitCandidateStageStateDto,
   type RecruitPipelineStageDto
 } from "@/lib/api";
+import { NexaRecruitingFunnelChart } from "@/components/nexa-charts";
 import { ScreeningScoreBadge } from "@/components/recruiting/screening-score-badge";
 import { createNewContract } from "@/lib/contracts";
 
@@ -101,6 +102,15 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     for (const s of stages) m.set(s.id, s);
     return m;
   }, [stages]);
+
+  const funnelStages = useMemo(
+    () =>
+      stages.map((s) => ({
+        name: s.name,
+        count: (itemsByStage.get(s.id) ?? []).length
+      })),
+    [stages, itemsByStage]
+  );
 
   async function onMove(stateId: string, nextStageId: string): Promise<void> {
     if (!token) return;
@@ -219,6 +229,8 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
       {loading ? (
         <p className="text-sm text-synapse-muted">Caricamento…</p>
       ) : (
+        <>
+          <NexaRecruitingFunnelChart stages={funnelStages} />
         <div className="grid gap-3 lg:grid-cols-4">
           {stages.map((s) => {
             const stageItems = itemsByStage.get(s.id) ?? [];
@@ -347,6 +359,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
             );
           })}
         </div>
+        </>
       )}
     </div>
   );

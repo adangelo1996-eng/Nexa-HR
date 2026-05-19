@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NexaBudgetCategoryChart } from "@/components/nexa-charts";
 import { Button } from "@/components/ui/button";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
@@ -230,6 +231,16 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
       {err ? <p className="text-sm text-rose-600">{err}</p> : null}
 
       {totalsByCat ? (
+        <>
+          <NexaBudgetCategoryChart
+            className="mb-4"
+            rows={totalsByCat.map((row) => ({
+              label: row.label,
+              actual: row.actual,
+              budget: row.budget,
+              forecast: row.forecast
+            }))}
+          />
         <div className="overflow-x-auto rounded-lg border border-[var(--prom-line)]">
           <table className="min-w-[640px] w-full border-collapse">
             <thead>
@@ -260,6 +271,7 @@ export default function PersonnelBudgetAnalysisPage(): React.JSX.Element | null 
             </tbody>
           </table>
         </div>
+        </>
       ) : null}
 
       {data ? (

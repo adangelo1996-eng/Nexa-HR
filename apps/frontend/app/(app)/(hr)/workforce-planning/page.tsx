@@ -27,6 +27,7 @@ import {
   HebbAiGlassTile,
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
+import { NexaMonthlyCostChart } from "@/components/nexa-charts";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 type CockpitPayload = Awaited<ReturnType<typeof fetchWorkforceCockpit>>;
@@ -176,7 +177,19 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     void loadPreset();
   }, [scenario, loadPreset]);
 
-  const max = Math.max(1, ...(data?.series.map((s) => s.costEur) ?? [1]));
+  const costChartSeries = useMemo(() => {
+    if (!data?.series.length) {
+      return [];
+    }
+    const compareByMonth = compareLive
+      ? new Map(compareLive.series.map((s) => [s.month, s.costEur]))
+      : null;
+    return data.series.map((s) => ({
+      month: s.month,
+      costEur: s.costEur,
+      compareEur: compareByMonth?.get(s.month)
+    }));
+  }, [data, compareLive]);
 
   const compareRows = useMemo(() => {
     if (!data || !compareLive) return [];
@@ -630,21 +643,12 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
                 </HebbAiGlassTile>
               </div>
 
-              <div>
-                <h3 className="text-sm font-semibold tracking-wide text-[var(--prom-text)]">Costo mensile previsto (6 mesi)</h3>
-                <div className="mt-6 flex h-52 items-end gap-2 border-t border-[var(--prom-line)] pt-4">
-                  {data.series.map((s) => (
-                    <div key={s.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                      <div
-                        className="w-full max-w-[3rem] rounded-t-lg bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_55%,#002d72)] shadow-md transition hover:opacity-95"
-                        style={{ height: `${(s.costEur / max) * 168}px` }}
-                        title={`${s.costEur} EUR`}
-                      />
-                      <span className="truncate text-[10px] font-medium text-[var(--prom-muted)]">{s.month}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <NexaMonthlyCostChart
+                series={costChartSeries}
+                compareLabel={compareLive ? `Confronto (${compareLive.scenario})` : undefined}
+                title="Costo mensile previsto (6 mesi)"
+                className="!border-0 !bg-transparent !p-0 shadow-none"
+              />
             </HebbAiGlassPanel>
           ) : (
             <>
@@ -675,21 +679,10 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
                 </HebbAiGlassTile>
               </div>
 
-              <HebbAiGlassPanel>
-                <h2 className="text-sm font-semibold tracking-wide text-[var(--prom-text)]">Costo mensile previsto (6 mesi)</h2>
-                <div className="mt-6 flex h-52 items-end gap-2 border-t border-[var(--prom-line)] pt-4">
-                  {data.series.map((s) => (
-                    <div key={s.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                      <div
-                        className="w-full max-w-[3rem] rounded-t-lg bg-gradient-to-t from-[#002D72] to-[color-mix(in_srgb,var(--prom-gold)_55%,#002d72)] shadow-md transition hover:opacity-95"
-                        style={{ height: `${(s.costEur / max) * 168}px` }}
-                        title={`${s.costEur} EUR`}
-                      />
-                      <span className="truncate text-[10px] font-medium text-[var(--prom-muted)]">{s.month}</span>
-                    </div>
-                  ))}
-                </div>
-              </HebbAiGlassPanel>
+              <NexaMonthlyCostChart
+                series={costChartSeries}
+                compareLabel={compareLive ? `Confronto (${compareLive.scenario})` : undefined}
+              />
             </>
           )}
 

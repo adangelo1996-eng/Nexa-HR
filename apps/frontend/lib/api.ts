@@ -4845,6 +4845,52 @@ export interface PersonnelBudgetSnapshot {
   departments: PersonnelBudgetDepartment[];
 }
 
+export interface PersonnelBudgetAssumptionsDto {
+  companyId: string;
+  year: number;
+  employerInpsPercent: number | null;
+  inailPermille: number | null;
+  tfrDivisor: number | null;
+  welfarePercent: number;
+  bonusProvisionPercent: number;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+}
+
+export interface PersonnelBudgetCellNoteDto {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number | null;
+  userId: string | null;
+  plannedLineId: string | null;
+  fieldKey: string;
+  note: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  updatedAt: string;
+}
+
+export interface PersonnelBudgetYearMonthlyRow extends PersonnelBudgetRow {
+  forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+}
+
+export interface PersonnelBudgetYearMonthlyDepartment {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetYearMonthlyRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
+}
+
+export interface PersonnelBudgetYearMonthlyResult {
+  year: number;
+  months: Array<{
+    month: number;
+    departments: PersonnelBudgetYearMonthlyDepartment[];
+  }>;
+}
+
 export async function fetchPersonnelBudget(
   token: string,
   year?: number,
@@ -4944,6 +4990,88 @@ export async function deletePersonnelBudgetPlannedExtraLine(token: string, lineI
     { method: "POST", headers: getAuthHeaders(token) }
   );
   if (!response.ok) await parseError(response);
+}
+
+export async function fetchPersonnelBudgetYearMonthly(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetYearMonthlyResult> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/year-monthly${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetYearMonthlyResult>;
+}
+
+export async function fetchPersonnelBudgetAssumptions(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetAssumptionsDto> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/assumptions${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAssumptionsDto>;
+}
+
+export async function patchPersonnelBudgetAssumptions(
+  token: string,
+  payload: {
+    year: number;
+    employerInpsPercent?: number | null;
+    inailPermille?: number | null;
+    tfrDivisor?: number | null;
+    welfarePercent?: number | null;
+    bonusProvisionPercent?: number | null;
+  }
+): Promise<PersonnelBudgetAssumptionsDto> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/assumptions"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAssumptionsDto>;
+}
+
+export async function fetchPersonnelBudgetCellNotes(
+  token: string,
+  year: number,
+  month?: number
+): Promise<PersonnelBudgetCellNoteDto[]> {
+  const q = new URLSearchParams({ year: String(year) });
+  if (month != null) q.set("month", String(month));
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/cell-notes?${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetCellNoteDto[]>;
+}
+
+export async function patchPersonnelBudgetCellNote(
+  token: string,
+  payload: {
+    year: number;
+    month?: number | null;
+    userId?: string | null;
+    plannedLineId?: string | null;
+    fieldKey: string;
+    note: string;
+  }
+): Promise<PersonnelBudgetCellNoteDto | null> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/cell-notes"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetCellNoteDto | null>;
 }
 
 export type PersonnelBudgetYearStatusKind = "draft" | "approved";
