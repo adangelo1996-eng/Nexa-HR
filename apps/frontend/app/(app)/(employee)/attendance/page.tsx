@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FileSpreadsheet } from "lucide-react";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
@@ -76,7 +76,7 @@ function workedSecondsFromSummary(row: WorkdaySummary): number {
   return Math.max(0, row.minutesWorked * 60);
 }
 
-export default function AttendancePage(): React.JSX.Element {
+function AttendancePageContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawView = searchParams.get("view");
@@ -1203,5 +1203,17 @@ export default function AttendancePage(): React.JSX.Element {
       </>
       ) : null}
     </main>
+  );
+}
+
+export default function AttendancePage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <main className="p-4 text-sm text-[var(--prom-muted)]">Caricamento presenze…</main>
+      }
+    >
+      <AttendancePageContent />
+    </Suspense>
   );
 }

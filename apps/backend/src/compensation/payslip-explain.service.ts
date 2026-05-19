@@ -58,6 +58,10 @@ export class PayslipExplainService {
 
     const sessionId = (await this.gateway.beginSession(companyId, auth.userId)).sessionId;
     let refineApplied = false;
+    const lineSummary = (payslip.lines || [])
+      .slice(0, 40)
+      .map((l) => `${l.code}: ${l.description} = ${l.amount}`)
+      .join("; ");
     const facts = {
       period: payslip.period,
       grossSalary: payslip.grossSalary,
@@ -83,11 +87,6 @@ export class PayslipExplainService {
       "3) Analisi dettagliata delle righe parse fornite in facts.lines (codice, descrizione, importo) senza inventare voci. " +
       "Collega residenza/domicilio fiscale alle addizionali solo se plausibile; altrimenti invita a verificare in CUD. " +
       "Tono rassicurante, non consulenza legale.";
-
-    const lineSummary = (payslip.lines || [])
-      .slice(0, 40)
-      .map((l) => `${l.code}: ${l.description} = ${l.amount}`)
-      .join("; ");
 
     const wrapped = { envelope: { seed, facts } };
     let envelope: Record<string, unknown> | null = null;

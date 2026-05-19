@@ -2,8 +2,6 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import type { Route } from "next";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlayCircle } from "lucide-react";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
