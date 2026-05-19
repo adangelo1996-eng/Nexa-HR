@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import type { PermissionDefinition } from "@/lib/api";
-import { PORTAL_CATEGORY_ORDER, PORTAL_COLUMN_SUBGROUPS } from "@/lib/nexa-portal-column-layout";
+import { PORTAL_COLUMN_SUBGROUPS } from "@/lib/nexa-portal-column-layout";
+import { PORTAL_CATEGORY_ORDER } from "@/lib/portal-mappa";
 
 /** Collegamento route portale → resourceKey permesso Nexa (catalogo). */
 const HREF_TO_RESOURCE_KEY: Partial<Record<string, string>> = {
