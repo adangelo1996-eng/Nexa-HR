@@ -47,8 +47,7 @@ export function portalCategoryGlassColumnHeaderClass(category: string, density: 
     "Ogni giorno": `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
     "Assumere e far entrare": `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
     "Sviluppare e pianificare": `border-indigo-500/70 bg-gradient-to-br from-indigo-400/50 via-indigo-600/32 to-indigo-950/50 text-indigo-950 dark:border-indigo-400/55 dark:from-indigo-400/38 dark:via-indigo-600/24 dark:to-indigo-950/45 dark:text-indigo-50`,
-    "Analisi e budget": `border-sky-500/70 bg-gradient-to-br from-sky-400/50 via-sky-600/30 to-sky-950/50 text-sky-950 dark:border-sky-400/55 dark:from-sky-400/38 dark:via-sky-600/22 dark:to-sky-950/45 dark:text-sky-50`,
-    Amministrazione: `border-orange-500/70 bg-gradient-to-br from-orange-400/48 via-orange-600/28 to-orange-950/50 text-orange-950 dark:border-orange-400/55 dark:from-orange-400/36 dark:via-orange-600/22 dark:to-orange-950/45 dark:text-orange-50`
+    "Analisi e budget": `border-sky-500/70 bg-gradient-to-br from-sky-400/50 via-sky-600/30 to-sky-950/50 text-sky-950 dark:border-sky-400/55 dark:from-sky-400/38 dark:via-sky-600/22 dark:to-sky-950/45 dark:text-sky-50`
   };
   const tint = tints[category] ?? `border-slate-400/60 bg-gradient-to-br from-slate-200/50 to-slate-800/40 text-slate-900 dark:border-white/25 dark:from-white/14 dark:to-slate-900/45 dark:text-sky-50`;
   return `rounded-xl border-2 ${sizing} ${tint} ${GLASS_RING}`;
@@ -91,8 +90,7 @@ export function portalCategoryTileTopAccentClass(category: string): string {
     "Ogni giorno": "border-t-2 border-t-cyan-400/85",
     "Assumere e far entrare": "border-t-2 border-t-amber-400/85",
     "Sviluppare e pianificare": "border-t-2 border-t-indigo-400/85",
-    "Analisi e budget": "border-t-2 border-t-sky-400/85",
-    Amministrazione: "border-t-2 border-t-orange-400/85"
+    "Analisi e budget": "border-t-2 border-t-sky-400/85"
   };
   return map[category] ?? "border-t-2 border-t-white/25";
 }

@@ -32,6 +32,10 @@ Se un rischio non è correggibile subito, **issue o nota tecnica** con severity 
 - Non dichiarare il blocco «completato in sicurezza» senza aver almeno eseguito audit dipendenze e un passaggio mirato su auth/input sul codice toccato.
 - Per modifiche solo documentazione/isolate, ridurre scope ma mantenere audit dipendenze se è passato molto tempo dall’ultimo run nel branch.
 
+## Deploy Render
+
+Prima di push su `main`: `pnpm render:verify-build` (stessi step di compile di `render.yaml`, senza migrazioni DB).
+
 ## Operatività: accessi esterni (Render / Supabase)
 
 Regola di progetto (sempre attiva in `.cursor/rules/nexa-hr-mcp-render-supabase.mdc`):
