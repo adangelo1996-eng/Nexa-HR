@@ -27,10 +27,13 @@ import {
   downloadPersonnelBudgetActualExport,
   fetchPersonnelBudget,
   fetchCurrentUser,
+  deletePersonnelBudgetPlannedExtraLine,
   patchPersonnelBudgetCells,
   patchPersonnelBudgetCostCenterOrder,
+  upsertPersonnelBudgetPlannedExtraLine,
   type PersonnelBudgetDepartment,
   type PersonnelBudgetMoney,
+  type PersonnelBudgetPlannedExtraLine,
   type PersonnelBudgetRow,
   type PersonnelBudgetSnapshot
 } from "@/lib/api";
@@ -155,6 +158,17 @@ function mergedBudgetForRow(row: PersonnelBudgetRow, dr: BudgetDraft): Partial<P
   };
 }
 
+function addPlannedLineToTotals(t: BudgetColTotals, line: PersonnelBudgetPlannedExtraLine): void {
+  const b = line.budget;
+  t.bRal += Number(b.ral ?? 0);
+  t.bOvertime += Number(b.overtime ?? 0);
+  t.bTravel += Number(b.travel ?? 0);
+  t.bInps += Number(b.inps ?? 0);
+  t.bInail += Number(b.inail ?? 0);
+  t.bTfr += Number(b.tfr ?? 0);
+  t.bCompany += budgetRowTotal(b);
+}
+
 function computeDeptColTotals(dept: PersonnelBudgetDepartment, draftByUser: Record<string, BudgetDraft>): BudgetColTotals {
   const t = emptyColTotals();
   for (const row of dept.rows) {
@@ -175,6 +189,9 @@ function computeDeptColTotals(dept: PersonnelBudgetDepartment, draftByUser: Reco
     t.bCompany += budgetRowTotal(merged);
     t.cCompany += row.actual.totalCompanyCost;
   }
+  for (const line of dept.plannedExtraLines ?? []) {
+    addPlannedLineToTotals(t, line);
+  }
   return t;
 }
 
@@ -186,7 +203,10 @@ function SortableDeptSection({
   colTotals,
   updateDraft,
   th,
-  td
+  td,
+  year,
+  month,
+  onRefresh
 }: {
   dept: PersonnelBudgetDepartment;
   expanded: boolean;
@@ -196,7 +216,14 @@ function SortableDeptSection({
   updateDraft: (userId: string, field: keyof BudgetDraft, value: string) => void;
   th: string;
   td: string;
+  year: number;
+  month: number;
+  onRefresh: () => Promise<void>;
 }): React.JSX.Element {
+  const [addingPlanned, setAddingPlanned] = useState(false);
+  const [plannedLabel, setPlannedLabel] = useState("");
+  const [plannedAmount, setPlannedAmount] = useState("");
+  const [plannedBusy, setPlannedBusy] = useState(false);
   const id = deptSortId(dept);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -240,7 +267,66 @@ function SortableDeptSection({
             </span>
           ) : null}
         </button>
+        {expanded ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAddingPlanned((v) => !v)}
+          >
+            {addingPlanned ? "Annulla" : "Aggiungi voce pianificata"}
+          </Button>
+        ) : null}
       </div>
+      {expanded && addingPlanned ? (
+        <form
+          className="mx-3 mb-2 flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-[var(--prom-line)] bg-[var(--prom-surface)]/50 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const token = getToken();
+            const amount = parsePersonnelBudgetMoneyInput(plannedAmount);
+            if (!token || !plannedLabel.trim() || amount == null) return;
+            setPlannedBusy(true);
+            void upsertPersonnelBudgetPlannedExtraLine(token, {
+              year,
+              month,
+              costCenterId: dept.costCenterId,
+              label: plannedLabel.trim(),
+              budgetRal: amount
+            })
+              .then(() => {
+                setPlannedLabel("");
+                setPlannedAmount("");
+                setAddingPlanned(false);
+                return onRefresh();
+              })
+              .finally(() => setPlannedBusy(false));
+          }}
+        >
+          <label className="text-xs text-[var(--prom-muted)]">
+            Etichetta
+            <input
+              className="mt-1 block w-48 rounded border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm"
+              value={plannedLabel}
+              onChange={(e) => setPlannedLabel(e.target.value)}
+              required
+            />
+          </label>
+          <label className="text-xs text-[var(--prom-muted)]">
+            Budget (€, su RAL)
+            <input
+              className="mt-1 block w-32 rounded border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm tabular-nums"
+              value={plannedAmount}
+              onChange={(e) => setPlannedAmount(e.target.value)}
+              inputMode="decimal"
+              required
+            />
+          </label>
+          <Button type="submit" size="sm" disabled={plannedBusy}>
+            {plannedBusy ? "Salvo…" : "Aggiungi riga"}
+          </Button>
+        </form>
+      ) : null}
       {expanded ? (
         <div className="overflow-x-auto p-3">
           <table id={`dept-table-${id}`} className="min-w-[1680px] w-full border-collapse text-sm">
@@ -466,7 +552,39 @@ function SortableDeptSection({
                   </tr>
                 );
               })}
-              {dept.rows.length > 0 ? (
+              {(dept.plannedExtraLines ?? []).map((line) => {
+                const bRal = Number(line.budget.ral ?? 0);
+                const bTot = budgetRowTotal(line.budget);
+                return (
+                  <tr key={line.id} className="bg-sky-500/5 italic">
+                    <td className={td}>
+                      <span className="font-medium text-[var(--prom-text)]">{line.label}</span>
+                      <span className="ml-2 text-[10px] not-italic text-[var(--prom-muted)]">(pianificato)</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="ml-2 h-6 px-1 text-[10px]"
+                        onClick={() => {
+                          const token = getToken();
+                          if (!token) return;
+                          void deletePersonnelBudgetPlannedExtraLine(token, line.id).then(() => onRefresh());
+                        }}
+                      >
+                        Rimuovi
+                      </Button>
+                    </td>
+                    <td className={`${td} text-[var(--prom-muted)] tabular-nums`}>—</td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bRal)}</td>
+                    <td className={`${td} tabular-nums`}>{formatPersonnelBudgetAmount(bRal)}</td>
+                    <td className={`${td} text-xs tabular-nums`}>—</td>
+                    <td colSpan={20} className={`${td} text-xs text-[var(--prom-muted)]`}>
+                      Tot. budget voce: {formatPersonnelBudgetAmount(bTot)}
+                    </td>
+                  </tr>
+                );
+              })}
+              {dept.rows.length > 0 || (dept.plannedExtraLines?.length ?? 0) > 0 ? (
                 <tr className="bg-[color-mix(in_srgb,var(--prom-gold)_8%,transparent)] font-medium">
                   <td className={td}>Totale centro di costo</td>
                   <td className={`${td} tabular-nums text-[var(--prom-muted)]`}>
@@ -724,7 +842,6 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -996,9 +1113,6 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
           <Button type="button" onClick={() => void saveBudgets()} disabled={saving || !snap}>
             {saving ? "Salvataggio…" : "Salva budget"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => setFullscreen((v) => !v)}>
-            {fullscreen ? "Esci schermo intero" : "Schermo intero"}
-          </Button>
         </div>
       </div>
 
@@ -1014,13 +1128,6 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
         </p>
       ) : null}
 
-      <div
-        className={
-          fullscreen
-            ? "fixed inset-0 z-50 overflow-auto bg-[var(--prom-bg)] p-4 md:p-6"
-            : undefined
-        }
-      >
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void onDragEnd(e)}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {departments.map((dept) => {
@@ -1036,13 +1143,15 @@ export default function PersonnelBudgetPage(): React.JSX.Element | null {
                 updateDraft={updateDraft}
                 th={th}
                 td={td}
+                year={year}
+                month={month}
+                onRefresh={load}
               />
             );
           })}
         </SortableContext>
         {departments.length > 0 ? <GrandTotalTable totals={pageTotals} th={th} td={td} /> : null}
       </DndContext>
-      </div>
 
       <p className="text-xs text-[var(--prom-muted)]">
         ** Totale consuntivo: lordo mese + contributi datore stimati + accantonamento TFR (schema IT da anagrafica:

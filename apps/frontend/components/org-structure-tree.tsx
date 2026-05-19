@@ -2,16 +2,24 @@
 
 import type { OrgStructureTreeNode } from "@/lib/api";
 
+export type OrgPersonClickContext = {
+  costCenterId?: string;
+  costCenterName?: string;
+  teamName?: string;
+};
+
 function PersonRow({
   node,
   leadUserId,
   depth,
-  onPersonClick
+  onPersonClick,
+  clickContext
 }: {
   node: OrgStructureTreeNode;
   leadUserId?: string | null;
   depth: number;
-  onPersonClick?: (node: OrgStructureTreeNode) => void;
+  onPersonClick?: (node: OrgStructureTreeNode, context?: OrgPersonClickContext) => void;
+  clickContext?: OrgPersonClickContext;
 }): React.JSX.Element {
   const isLead = Boolean(leadUserId && node.id === leadUserId);
   const boxClass = [
@@ -39,7 +47,7 @@ function PersonRow({
   return (
     <div className="space-y-1">
       {onPersonClick ? (
-        <button type="button" className={boxClass} onClick={() => onPersonClick(node)}>
+        <button type="button" className={boxClass} onClick={() => onPersonClick(node, clickContext)}>
           {content}
         </button>
       ) : (
@@ -51,7 +59,13 @@ function PersonRow({
         <ul className="ml-2 space-y-1 border-l border-[var(--prom-line)] pl-2">
           {node.reports.map((r) => (
             <li key={r.id}>
-              <PersonRow node={r} leadUserId={leadUserId} depth={depth + 1} onPersonClick={onPersonClick} />
+              <PersonRow
+                node={r}
+                leadUserId={leadUserId}
+                depth={depth + 1}
+                onPersonClick={onPersonClick}
+                clickContext={clickContext}
+              />
             </li>
           ))}
         </ul>
@@ -88,11 +102,13 @@ function PersonMetaLine(props: {
 export function OrgStructureTeamTree({
   tree,
   leadUserId,
-  onPersonClick
+  onPersonClick,
+  clickContext
 }: {
   tree: OrgStructureTreeNode[];
   leadUserId?: string | null;
-  onPersonClick?: (node: OrgStructureTreeNode) => void;
+  onPersonClick?: (node: OrgStructureTreeNode, context?: OrgPersonClickContext) => void;
+  clickContext?: OrgPersonClickContext;
 }): React.JSX.Element {
   if (tree.length === 0) {
     return <p className="text-[11px] italic text-[var(--prom-muted)]">Nessun membro in questo team.</p>;
@@ -100,7 +116,14 @@ export function OrgStructureTeamTree({
   return (
     <div className="space-y-2">
       {tree.map((root) => (
-        <PersonRow key={root.id} node={root} leadUserId={leadUserId} depth={0} onPersonClick={onPersonClick} />
+        <PersonRow
+          key={root.id}
+          node={root}
+          leadUserId={leadUserId}
+          depth={0}
+          onPersonClick={onPersonClick}
+          clickContext={clickContext}
+        />
       ))}
     </div>
   );

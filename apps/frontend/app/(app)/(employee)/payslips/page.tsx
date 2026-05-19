@@ -23,9 +23,54 @@ function isAddizionaleLine(line: { code: string; description: string }): boolean
 
 function signalClass(signal: string): string {
   const s = signal.toLowerCase();
-  if (s === "verify") return "text-amber-700 dark:text-amber-200";
-  if (s === "ok") return "text-emerald-700 dark:text-emerald-300";
-  return "text-sky-800 dark:text-sky-200/90";
+  if (s === "verify") return "border-amber-400/40 bg-amber-500/10 text-amber-900 dark:text-amber-100";
+  if (s === "ok") return "border-emerald-400/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
+  return "border-sky-400/35 bg-sky-500/10 text-sky-900 dark:text-sky-100";
+}
+
+function bulletsFromEnvelope(env: NonNullable<PayslipExplainResult["envelope"]>): string[] {
+  const out: string[] = [];
+  if (env.keyPoints?.length) {
+    out.push(...env.keyPoints);
+  } else if (env.plainSummary) {
+    out.push(env.plainSummary);
+  }
+  return out.slice(0, 6);
+}
+
+function ExplainBulletSection({
+  title,
+  bullets,
+  fallback
+}: {
+  title: string;
+  bullets?: string[];
+  fallback?: string;
+}): React.JSX.Element | null {
+  const items =
+    bullets && bullets.length > 0
+      ? bullets
+      : fallback
+        ? fallback
+            .split(/\n+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 6)
+        : [];
+  if (items.length === 0) return null;
+  return (
+    <section className="rounded-xl border border-[var(--prom-line)] bg-[var(--card-bg)]/90 p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm leading-snug text-[var(--prom-text)]">
+        {items.map((b) => (
+          <li key={b} className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#002D72] dark:bg-sky-400" aria-hidden />
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export default function PayslipsPage(): React.JSX.Element {
@@ -35,15 +80,14 @@ export default function PayslipsPage(): React.JSX.Element {
   const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Payslip | null>(null);
+  const [showLines, setShowLines] = useState(false);
   const [explainBusy, setExplainBusy] = useState(false);
   const [explainErr, setExplainErr] = useState<string | null>(null);
   const [explain, setExplain] = useState<PayslipExplainResult | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const token = getToken();
-    if (!token) {
-      return;
-    }
+    if (!token) return;
     setLoading(true);
     try {
       const me = await fetchCurrentUser(token).catch(() => getSessionUser() as SessionUser);
@@ -62,12 +106,8 @@ export default function PayslipsPage(): React.JSX.Element {
   const filtered = useMemo(() => {
     return items.filter((p) => {
       const [y, m] = p.period.split("-");
-      if (year && y !== year) {
-        return false;
-      }
-      if (month && m !== month.padStart(2, "0") && m !== month) {
-        return false;
-      }
+      if (year && y !== year) return false;
+      if (month && m !== month.padStart(2, "0") && m !== month) return false;
       return true;
     });
   }, [items, year, month]);
@@ -76,14 +116,13 @@ export default function PayslipsPage(): React.JSX.Element {
     if (selected && !filtered.some((p) => p.id === selected.id)) {
       setSelected(null);
       setExplain(null);
+      setShowLines(false);
     }
   }, [filtered, selected]);
 
   async function onDownload(p: Payslip): Promise<void> {
     const token = getToken();
-    if (!token || !user) {
-      return;
-    }
+    if (!token || !user) return;
     await downloadPayslipPdf(token, p.userId, p.period);
     if (p.isNew) {
       await markPayslipReadApi(token, p.id);
@@ -94,10 +133,11 @@ export default function PayslipsPage(): React.JSX.Element {
   async function onExplain(p: Payslip): Promise<void> {
     const token = getToken();
     if (!token) return;
+    setSelected(p);
+    setShowLines(false);
     setExplainBusy(true);
     setExplainErr(null);
     setExplain(null);
-    setSelected(p);
     try {
       const r = await postPayslipExplain(token, p.id);
       setExplain(r);
@@ -116,63 +156,31 @@ export default function PayslipsPage(): React.JSX.Element {
     return [...ys].sort((a, b) => b.localeCompare(a));
   }, [items]);
 
-  const residenceBlock = useMemo(() => {
-    if (!user) return null;
-    const com = user.taxMunicipalityIt?.trim();
-    const reg = user.taxRegion?.trim();
-    const dom = user.taxDomicileMunicipalityIt?.trim();
-    const same = user.taxDomicileSameAsResidence !== false;
-    return (
-      <ul className="list-inside list-disc text-sm text-[var(--prom-muted)]">
-        <li>
-          <span className="text-[var(--prom-text)]">Comune/area fiscale (stipendio): </span>
-          {[com, reg].filter(Boolean).join(" · ") || "— (completa in Profilo o chiedi a HR)"}
-        </li>
-        <li>
-          <span className="text-[var(--prom-text)]">Domicilio fiscale: </span>
-          {same ? "Allineato alla residenza, come da profilo" : dom || "—"}
-        </li>
-        {user.fiscalCode ? (
-          <li>
-            <span className="text-[var(--prom-text)]">Codice fiscale: </span>presente in anagrafica
-          </li>
-        ) : null}
-        {user.ccnlCode || user.ccnlLevel ? (
-          <li>
-            <span className="text-[var(--prom-text)]">CCNL / livello: </span>
-            {[user.ccnlCode, user.ccnlLevel].filter(Boolean).join(" · ")}
-          </li>
-        ) : null}
-      </ul>
-    );
-  }, [user]);
+  const selectedLines = selected?.lines ?? [];
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--prom-muted)]">
-            Ultimi 12 mesi. Vedi solo i cedolini pubblicati per te. La spiegazione guidata analizza trattenute, lettura
-            del documento e righe parse — non è parere fiscale.
+    <div className="mx-auto max-w-5xl space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-[var(--prom-line)] bg-gradient-to-br from-[color-mix(in_srgb,#002D72_8%,transparent)] to-[var(--prom-surface)]/60 p-5 shadow-sm">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#002D72] dark:text-sky-300">
+            Retribuzione
+          </p>
+          <h1 className="mt-1 font-synapse text-2xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
+          <p className="mt-2 max-w-xl text-sm text-[var(--prom-muted)]">
+            Solo i tuoi cedolini pubblicati. L&apos;analisi AI commenta le voci del periodo selezionato — non è parere
+            fiscale.
           </p>
         </div>
         <NexaPageHelpButton pageKey="payslips" />
       </header>
 
-      <div className="rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)]/80 p-4">
-        <h2 className="text-sm font-semibold text-[var(--prom-text)]">Dati fiscali da anagrafica (residenza / CCNL)</h2>
-        <p className="mt-1 text-xs text-[var(--prom-muted)]">Usati per contestualizzare addizionali e trattenute. Aggiornali in Impostazioni se HR lo consente.</p>
-        <div className="mt-2">{residenceBlock}</div>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)]/70 p-4">
         <label className="text-sm text-[var(--prom-muted)]">
           Anno
           <select
             value={year}
             onChange={(e) => setYear(e.target.value)}
-            className="ml-2 rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-1 text-[var(--prom-text)]"
+            className="ml-2 rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-1.5 text-[var(--prom-text)]"
           >
             <option value="">Tutti</option>
             {years.map((y) => (
@@ -187,7 +195,7 @@ export default function PayslipsPage(): React.JSX.Element {
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="ml-2 rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-1 text-[var(--prom-text)]"
+            className="ml-2 rounded-lg border border-[var(--prom-line-strong)] bg-transparent px-2 py-1.5 text-[var(--prom-text)]"
           >
             <option value="">Tutti</option>
             {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((m) => (
@@ -201,193 +209,171 @@ export default function PayslipsPage(): React.JSX.Element {
 
       {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
-      <ul className="space-y-2">
-        {filtered.length === 0 ? (
-          <li className="text-sm text-[var(--prom-muted)]">Nessun cedolino.</li>
-        ) : (
-          filtered.map((p) => {
-            const lines = p.lines ?? [];
-            return (
-              <li
-                key={p.id}
-                className="rounded-lg border border-[var(--prom-line)] px-4 py-3"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <span className="font-medium text-[var(--prom-text)]">{p.period}</span>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Periodi</h2>
+          {filtered.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[var(--prom-line)] p-6 text-sm text-[var(--prom-muted)]">
+              Nessun cedolino per i filtri scelti.
+            </p>
+          ) : (
+            filtered.map((p) => {
+              const active = selected?.id === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setSelected(p);
+                    setExplain(null);
+                    setExplainErr(null);
+                    setShowLines(false);
+                  }}
+                  className={[
+                    "w-full rounded-xl border px-4 py-3 text-left transition",
+                    active
+                      ? "border-[#002D72]/50 bg-[color-mix(in_srgb,#002D72_10%,transparent)] ring-1 ring-[#002D72]/25"
+                      : "border-[var(--prom-line)] bg-[var(--card-bg)] hover:border-[color-mix(in_srgb,#002D72_30%,var(--prom-line))]"
+                  ].join(" ")}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-[var(--prom-text)]">{p.period}</span>
                     {p.isNew ? (
-                      <span className="ml-2 rounded bg-rose-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+                      <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
                         Nuovo
                       </span>
                     ) : null}
-                    <p className="text-xs text-[var(--prom-muted)]">
-                      Netto: {payslipCurrency} {p.netSalary?.toFixed?.(2) ?? p.netSalary}
-                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void onDownload(p)}
-                      className="gap-2"
-                    >
-                      <FileDown className="h-4 w-4" />
-                      PDF
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => {
-                        setSelected(p);
-                        setExplain(null);
-                        setExplainErr(null);
-                      }}
-                    >
-                      Dettaglio righe
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="gap-2 border border-[#002D72]/40"
-                      onClick={() => void onExplain(p)}
-                      disabled={explainBusy}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      {explainBusy && selected?.id === p.id ? "…" : "Spiegazione semplice (AI)"}
-                    </Button>
-                  </div>
+                  <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                    Netto {payslipCurrency} {p.netSalary?.toFixed?.(2) ?? p.netSalary}
+                    {(p.lines?.length ?? 0) > 0 ? ` · ${p.lines!.length} righe` : ""}
+                  </p>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="min-h-[280px] rounded-2xl border border-[var(--prom-line)] bg-[var(--card-bg)] p-4 shadow-sm">
+          {!selected ? (
+            <p className="py-12 text-center text-sm text-[var(--prom-muted)]">
+              Seleziona un periodo per vedere dettaglio, righe e analisi.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--prom-line)] pb-4">
+                <div>
+                  <p className="text-lg font-semibold text-[var(--prom-text)]">{selected.period}</p>
+                  <p className="text-sm text-[var(--prom-muted)]">
+                    Lordo {payslipCurrency} {selected.grossSalary?.toFixed?.(2) ?? "—"} · Netto{" "}
+                    {payslipCurrency} {selected.netSalary?.toFixed?.(2) ?? "—"}
+                  </p>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="secondary" className="gap-2" onClick={() => void onDownload(selected)}>
+                    <FileDown className="h-4 w-4" />
+                    PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowLines((v) => !v)}
+                  >
+                    {showLines ? "Nascondi righe" : "Vedi righe"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-2 border border-[#002D72]/40 bg-[#002D72] text-white hover:bg-[#003d96]"
+                    onClick={() => void onExplain(selected)}
+                    disabled={explainBusy}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {explainBusy ? "Analisi…" : "Analizza il mio cedolino"}
+                  </Button>
+                </div>
+              </div>
 
-                {selected?.id === p.id ? (
-                  <div className="mt-4 space-y-3 border-t border-[var(--prom-line)] pt-3 text-sm">
-                    <p className="text-xs font-medium uppercase text-[var(--prom-muted)]">Righe cedolino</p>
-                    {lines.length === 0 ? (
-                      <p className="text-xs text-[var(--prom-muted)]">Nessuna riga in elenco (solo totali). Apri il PDF per il dettaglio.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[28rem] text-left text-xs">
-                          <thead>
-                            <tr className="text-[var(--prom-muted)]">
-                              <th className="py-1 pr-2">Codice</th>
-                              <th className="py-1 pr-2">Descrizione</th>
-                              <th className="py-1 text-right">Importo</th>
-                              <th className="py-1 pl-2">Addizionali / IRPEF</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {lines.map((line) => {
-                              const add = isAddizionaleLine(line);
-                              return (
-                                <tr key={`${p.id}-${line.code}-${line.description}`} className={add ? "bg-amber-500/10" : ""}>
-                                  <td className="py-1 pr-2 font-mono text-[10px] text-[var(--prom-text)]">{line.code}</td>
-                                  <td className="py-1 pr-2 text-[var(--prom-text)]">{line.description}</td>
-                                  <td className="py-1 text-right text-[var(--prom-text)]">{line.amount?.toFixed?.(2) ?? line.amount}</td>
-                                  <td className="py-1 pl-2 text-[var(--prom-muted)]">{add ? "Sì (verifica in CUD)" : "—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+              {showLines ? (
+                <div className="max-h-48 overflow-auto rounded-lg border border-[var(--prom-line)]">
+                  {selectedLines.length === 0 ? (
+                    <p className="p-3 text-xs text-[var(--prom-muted)]">Nessuna riga strutturata — apri il PDF.</p>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-[var(--prom-surface)] text-[var(--prom-muted)]">
+                        <tr>
+                          <th className="px-2 py-1">Cod.</th>
+                          <th className="px-2 py-1">Voce</th>
+                          <th className="px-2 py-1 text-right">€</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedLines.map((line) => (
+                          <tr
+                            key={`${line.code}-${line.description}`}
+                            className={isAddizionaleLine(line) ? "bg-amber-500/10" : ""}
+                          >
+                            <td className="px-2 py-1 font-mono">{line.code}</td>
+                            <td className="px-2 py-1">{line.description}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">{line.amount?.toFixed?.(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ) : null}
 
-                    {explainErr && selected.id === p.id ? (
-                      <p className="text-sm text-rose-600">{explainErr}</p>
-                    ) : null}
+              {explainErr ? <p className="text-sm text-rose-600">{explainErr}</p> : null}
 
-                    {explain && selected.id === p.id && explain.envelope ? (
-                      <div className="space-y-4 rounded-xl border border-[#002D72]/25 bg-gradient-to-b from-[color-mix(in_srgb,#002D72_6%,transparent)] to-transparent p-4 text-sm text-[var(--prom-text)]">
-                        {explain.envelope.plainSummary ? (
-                          <section>
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
-                              Sintesi
-                            </h3>
-                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.plainSummary}</p>
-                          </section>
-                        ) : null}
-                        {explain.envelope.withholdingsExplanation ? (
-                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
-                              Perché queste trattenute
-                            </h3>
-                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.withholdingsExplanation}</p>
-                          </section>
-                        ) : null}
-                        {explain.envelope.howToReadPayslip ? (
-                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
-                              Come leggere il cedolino
-                            </h3>
-                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.howToReadPayslip}</p>
-                          </section>
-                        ) : null}
-                        {explain.envelope.parsedPayslipAnalysis ? (
-                          <section className="rounded-lg border border-[var(--prom-line)] bg-[var(--card-bg)]/80 p-3">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-300">
-                              Analisi righe parse
-                            </h3>
-                            <p className="mt-2 leading-relaxed whitespace-pre-wrap">{explain.envelope.parsedPayslipAnalysis}</p>
-                          </section>
-                        ) : null}
-                        {explain.residenceSummary ? (
-                          <p>
-                            <span className="font-medium text-[#002D72] dark:text-sky-300">Anagrafica / residenza: </span>
-                            {explain.residenceSummary}
-                          </p>
-                        ) : null}
-                        {explain.addizionaliFromLines.length > 0 ? (
-                          <div>
-                            <p className="font-medium text-[#002D72] dark:text-sky-300">Voci con possibili addizionali</p>
-                            <ul className="mt-1 list-inside list-disc text-[var(--prom-muted)]">
-                              {explain.addizionaliFromLines.map((x) => (
-                                <li key={x.code + x.description}>
-                                  {x.code} — {x.description}: {payslipCurrency} {x.amount.toFixed(2)}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                        {explain.envelope.residenceDomicileNote ? (
-                          <p className="text-[var(--prom-muted)]">
-                            <span className="font-medium text-[var(--prom-text)]">Residenza e domicilio: </span>
-                            {explain.envelope.residenceDomicileNote}
-                          </p>
-                        ) : null}
-                        {explain.envelope.addizionaliNote ? (
-                          <p className="text-[var(--prom-muted)]">
-                            <span className="font-medium text-[var(--prom-text)]">Addizionali: </span>
-                            {explain.envelope.addizionaliNote}
-                          </p>
-                        ) : null}
-                        {explain.envelope.lineHighlights && explain.envelope.lineHighlights.length > 0 ? (
-                          <ul className="space-y-1.5">
-                            {explain.envelope.lineHighlights.map((h) => (
-                              <li
-                                key={h.lineRef + h.comment}
-                                className={`rounded border border-[var(--prom-line)] px-2 py-1.5 text-xs ${signalClass(h.signal)}`}
-                              >
-                                <span className="font-medium uppercase">{h.signal}</span> · {h.lineRef}: {h.comment}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        {explain.envelope.closingTip ? <p className="text-xs text-[var(--prom-muted)]">{explain.envelope.closingTip}</p> : null}
-                        <p className="text-[10px] text-[var(--prom-muted)]">
-                          LLM: {explain.llm.active ? "attivo" : "disattivo"} · output strutturato: {explain.llm.refineApplied ? "sì" : "no"}.{" "}
-                          Non sostituisce consulenza fiscale o busta paga ufficiale.
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })
-        )}
-      </ul>
+              {explain?.envelope ? (
+                <div className="space-y-3">
+                  <ExplainBulletSection
+                    title="In sintesi (solo il tuo cedolino)"
+                    bullets={bulletsFromEnvelope(explain.envelope)}
+                  />
+                  <ExplainBulletSection
+                    title="Trattenute"
+                    bullets={explain.envelope.withholdingsBullets}
+                    fallback={explain.envelope.withholdingsExplanation}
+                  />
+                  <ExplainBulletSection
+                    title="Come leggerlo"
+                    bullets={explain.envelope.howToReadBullets}
+                    fallback={explain.envelope.howToReadPayslip}
+                  />
+                  <ExplainBulletSection
+                    title="Voci del periodo"
+                    bullets={explain.envelope.parsedLineBullets}
+                    fallback={explain.envelope.parsedPayslipAnalysis}
+                  />
+                  {explain.envelope.lineHighlights && explain.envelope.lineHighlights.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {explain.envelope.lineHighlights.slice(0, 6).map((h) => (
+                        <li
+                          key={h.lineRef + h.comment}
+                          className={`rounded-lg border px-2.5 py-2 text-xs ${signalClass(h.signal)}`}
+                        >
+                          <span className="font-semibold uppercase">{h.signal}</span> · {h.lineRef}: {h.comment}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {explain.envelope.closingTip ? (
+                    <p className="text-xs text-[var(--prom-muted)]">{explain.envelope.closingTip}</p>
+                  ) : null}
+                  <p className="text-[10px] text-[var(--prom-muted)]">
+                    Analisi sul periodo {explain.period}. Non sostituisce busta paga ufficiale o consulenza fiscale.
+                  </p>
+                </div>
+              ) : explainBusy ? (
+                <p className="text-sm text-[var(--prom-muted)]">Preparo i punti chiave sul tuo cedolino…</p>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

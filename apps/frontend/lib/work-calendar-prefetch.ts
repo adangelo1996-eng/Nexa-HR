@@ -8,7 +8,6 @@ import {
   fetchHrWorkCalendar,
   fetchLeaveBalance,
   fetchMeTeamWorkCalendar,
-  fetchUserCalendar,
   fetchUsers,
   type CalendarEventDto,
   type LeaveBalance,
@@ -32,8 +31,7 @@ export type WorkCalendarWarmPayload = {
   groupedRows: null;
   allUsersForSelect: User[];
   events: CalendarEventDto[];
-  myAnalyticsEvents: CalendarEventDto[];
-  analyticsLeaveBalance: LeaveBalance | null;
+  leaveBalance: LeaveBalance | null;
   costCenterLabelById: Record<string, string>;
   teamLabelById: Record<string, string>;
 };
@@ -104,16 +102,13 @@ export function prefetchWorkCalendarInBackground(token: string): void {
       const y = now.getFullYear();
       const m = now.getMonth() + 1;
       const { from, to } = monthRange(y, m);
-      const yearFrom = `${y}-01-01`;
+      const leaveBalanceP = fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null);
 
       if (me.role === "superuser") {
-        const [ev, usersList, [myEv, leaveBal]] = await Promise.all([
+        const [ev, usersList, leaveBal] = await Promise.all([
           fetchHrWorkCalendar(token, { from, to }).catch(() => [] as CalendarEventDto[]),
           fetchUsers(token).catch(() => [] as User[]),
-          Promise.all([
-            fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
-            fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null)
-          ])
+          leaveBalanceP
         ]);
         const rows = filterManagerRows(me, usersList);
         setWarm({
@@ -126,23 +121,17 @@ export function prefetchWorkCalendarInBackground(token: string): void {
           groupedRows: null,
           allUsersForSelect: usersList,
           events: ev,
-          myAnalyticsEvents: myEv,
-          analyticsLeaveBalance: leaveBal,
+          leaveBalance: leaveBal,
           costCenterLabelById: {},
           teamLabelById: {}
         });
         return;
       }
 
-      const analyticsP = Promise.all([
-        fetchUserCalendar(token, yearFrom, to).catch(() => [] as CalendarEventDto[]),
-        fetchLeaveBalance(token, y).catch(() => null as LeaveBalance | null)
-      ]);
-
       if (!sessionCanSeeApprovalsAndHrExtras(me)) {
-        const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
+        const [{ users: rows, events: ev }, leaveBal] = await Promise.all([
           fetchMeTeamWorkCalendar(token, from, to),
-          analyticsP
+          leaveBalanceP
         ]);
         setWarm({
           userId: me.id,
@@ -154,8 +143,7 @@ export function prefetchWorkCalendarInBackground(token: string): void {
           groupedRows: null,
           allUsersForSelect: [],
           events: ev,
-          myAnalyticsEvents: myEv,
-          analyticsLeaveBalance: leaveBal,
+          leaveBalance: leaveBal,
           costCenterLabelById: {},
           teamLabelById: {}
         });
@@ -164,7 +152,7 @@ export function prefetchWorkCalendarInBackground(token: string): void {
 
       const usersList = await fetchUsers(token);
       const rows = filterManagerRows(me, usersList);
-      const [ev, [myEv, leaveBal]] = await Promise.all([fetchHrWorkCalendar(token, { from, to }), analyticsP]);
+      const [ev, leaveBal] = await Promise.all([fetchHrWorkCalendar(token, { from, to }), leaveBalanceP]);
       setWarm({
         userId: me.id,
         year: y,
@@ -175,8 +163,7 @@ export function prefetchWorkCalendarInBackground(token: string): void {
         groupedRows: null,
         allUsersForSelect: usersList,
         events: ev,
-        myAnalyticsEvents: myEv,
-        analyticsLeaveBalance: leaveBal,
+        leaveBalance: leaveBal,
         costCenterLabelById: {},
         teamLabelById: {}
       });

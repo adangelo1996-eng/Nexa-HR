@@ -216,19 +216,15 @@ function systemPromptForSchema(schemaVersion: string): string {
     case "ai_payslip_explain_v1":
       return (
         base +
-        " Schema: {\"envelope\":{\"plainSummary\":\"stringa\",\"withholdingsExplanation\":\"stringa (4-8 frasi: perché IRPEF, INPS, addizionali e altre trattenute)\"," +
-        "\"howToReadPayslip\":\"stringa (3-6 frasi: guida pratica alla lettura del cedolino)\"," +
-        "\"parsedPayslipAnalysis\":\"stringa (analisi strutturata delle righe in facts.lines, raggruppate per competenze/trattenenti)\"," +
-        "\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
-        "\"lineHighlights\":[" +
-        "{\"lineRef\":\"stringa (codice o descrizione sintetica)\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}" +
-        "],\"closingTip\":\"stringa (max 2 frasi)\"}}. " +
-        "L'ingresso ha envelope.facts con period, importi lordo/netto, elenco linee (code, description, amount), parsedLinesDigest, itProfile (residenceLine, ccnl), disclaimer. " +
-        "plainSummary: sintesi generale 3-6 frasi. withholdingsExplanation: motivazioni delle trattenute senza inventare aliquote. " +
-        "howToReadPayslip: ordine di lettura consigliato per un dipendente. parsedPayslipAnalysis: commento sulle righe reali fornite. " +
-        "residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
-        "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 4-10 voci su righe interessanti; " +
-        "non inventare codici o importi non presenti in facts.lines."
+        " Schema: {\"envelope\":{\"plainSummary\":\"stringa (max 2 frasi)\",\"keyPoints\":[\"stringa\"]," +
+        "\"withholdingsBullets\":[\"stringa\"],\"howToReadBullets\":[\"stringa\"]," +
+        "\"parsedLineBullets\":[\"stringa\"],\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
+        "\"lineHighlights\":[{\"lineRef\":\"stringa\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}]," +
+        "\"closingTip\":\"stringa (max 1 frase)\"}}. " +
+        "L'ingresso ha envelope.facts con period, lordo/netto, facts.lines (SOLO questo cedolino). " +
+        "keyPoints: max 5 bullet brevi sulla situazione del mese. withholdingsBullets: max 5, ogni bullet cita importi da facts. " +
+        "howToReadBullets: max 4 passi pratici. parsedLineBullets: max 6 commenti su righe reali. " +
+        "lineHighlights: max 6. Non inventare codici/importi. Mantieni anche plainSummary compatto."
       );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";

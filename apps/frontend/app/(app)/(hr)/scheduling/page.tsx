@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HebbAiGlassPanel } from "@/components/hebb-ai-experience-shell";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
+import { NexaSelect } from "@/components/nexa-select";
 import { Button } from "@/components/ui/button";
 import { EmployeeLink } from "@/components/nexa-entity-links";
 import {
@@ -656,10 +657,10 @@ export default function SchedulingPage(): React.JSX.Element {
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-xs text-[var(--prom-muted)]">
                 Preset orario
-                <select
-                  className="mt-1 block rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
-                  onChange={(e) => {
-                    const v = e.target.value;
+                <NexaSelect
+                  className="mt-1 min-w-[14rem]"
+                  value={selectedPresetId ? `db:${selectedPresetId}` : presetKey}
+                  onChange={(v) => {
                     if (v.startsWith("db:")) {
                       setSelectedPresetId(v.slice(3));
                     } else {
@@ -667,18 +668,15 @@ export default function SchedulingPage(): React.JSX.Element {
                       setPresetKey(v as keyof typeof FALLBACK_PRESETS);
                     }
                   }}
-                  value={selectedPresetId ? `db:${selectedPresetId}` : presetKey}
-                >
-                  {shiftPresets.map((p) => (
-                    <option key={p.id} value={`db:${p.id}`}>
-                      {p.name}
-                      {p.isDefault ? " · default" : ""}
-                      {p.userId ? " · dip." : p.workTeamId ? " · team" : ""}
-                    </option>
-                  ))}
-                  <option value="morning">{FALLBACK_PRESETS.morning.label}</option>
-                  <option value="evening">{FALLBACK_PRESETS.evening.label}</option>
-                </select>
+                  options={[
+                    ...shiftPresets.map((p) => ({
+                      value: `db:${p.id}`,
+                      label: `${p.name}${p.isDefault ? " · default" : ""}${p.userId ? " · dip." : p.workTeamId ? " · team" : ""}`
+                    })),
+                    { value: "morning", label: FALLBACK_PRESETS.morning.label },
+                    { value: "evening", label: FALLBACK_PRESETS.evening.label }
+                  ]}
+                />
               </label>
               <div className="flex flex-wrap gap-1">
                 {dayMask.map((on, i) => (

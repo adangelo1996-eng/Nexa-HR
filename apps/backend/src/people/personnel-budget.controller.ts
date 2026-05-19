@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Patch,
+  Param,
   Post,
   Query,
   StreamableFile,
@@ -136,6 +137,53 @@ class PatchForecastCellsDto {
   @ValidateNested({ each: true })
   @Type(() => ForecastCellPatchDto)
   cells!: ForecastCellPatchDto[];
+}
+
+class PlannedExtraLineDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  @IsOptional()
+  @IsString()
+  costCenterId?: string | null;
+
+  @IsString()
+  label!: string;
+
+  @IsOptional()
+  @IsNumber()
+  budgetRal?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  budgetOvertime?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  budgetTravel?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  budgetInps?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  budgetInail?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  budgetTfr?: number | null;
 }
 
 class PatchAnalysisNoteDto {
@@ -420,6 +468,41 @@ export class PersonnelBudgetController {
     await this.assertNexaAdminPersonnelBudget(auth);
     const cid = await this.companyIdForAuth(auth);
     await this.store.upsertPersonnelForecastCells(cid, dto.year, dto.month, dto.cells);
+    return { ok: true };
+  }
+
+  @Post("planned-extra-lines")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async upsertPlannedExtraLine(
+    @CurrentAuth() auth: AuthContext,
+    @Body() dto: PlannedExtraLineDto
+  ): Promise<unknown> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    return this.store.upsertPersonnelBudgetPlannedExtraLine(cid, {
+      id: dto.id,
+      year: dto.year,
+      month: dto.month,
+      costCenterId: dto.costCenterId ?? null,
+      label: dto.label,
+      budgetRal: dto.budgetRal,
+      budgetOvertime: dto.budgetOvertime,
+      budgetTravel: dto.budgetTravel,
+      budgetInps: dto.budgetInps,
+      budgetInail: dto.budgetInail,
+      budgetTfr: dto.budgetTfr
+    });
+  }
+
+  @Post("planned-extra-lines/:id/delete")
+  @RequireNexaPermissions("nexa.personnel_budget:write")
+  async deletePlannedExtraLine(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") lineId: string
+  ): Promise<{ ok: true }> {
+    await this.assertNexaAdminPersonnelBudget(auth);
+    const cid = await this.companyIdForAuth(auth);
+    await this.store.deletePersonnelBudgetPlannedExtraLine(cid, lineId);
     return { ok: true };
   }
 }

@@ -29,33 +29,14 @@ import {
 } from "@/components/hebb-ai-experience-shell";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
-const WORKFORCE_SNAP_KEY = "nexa-hr-workforce-snapshots-v1";
-
 type CockpitPayload = Awaited<ReturnType<typeof fetchWorkforceCockpit>>;
 
-type WorkforceSnapshot = {
-  id: string;
-  label: string;
-  savedAt: string;
-  payload: CockpitPayload;
+export type WorkforceAssumptions = {
+  ralAnnualEur: number | null;
+  ccnlLevel: string;
+  hireMonth: string;
+  notes: string;
 };
-
-function readSnapshots(): WorkforceSnapshot[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(WORKFORCE_SNAP_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as WorkforceSnapshot[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeSnapshots(rows: WorkforceSnapshot[]): void {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(WORKFORCE_SNAP_KEY, JSON.stringify(rows.slice(0, 12)));
-}
 
 export default function WorkforcePlanningPage(): React.JSX.Element {
   const [scenario, setScenario] = useState<WorkforceCockpitScenario>("base");
@@ -79,8 +60,11 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
   const prevScenarioRef = useRef<WorkforceCockpitScenario>(scenario);
 
   const [compareLive, setCompareLive] = useState<CockpitPayload | null>(null);
-  const [snapshots, setSnapshots] = useState<WorkforceSnapshot[]>([]);
   const [compareBusy, setCompareBusy] = useState(false);
+  const [assumptionRal, setAssumptionRal] = useState("");
+  const [assumptionLevel, setAssumptionLevel] = useState("");
+  const [assumptionHireMonth, setAssumptionHireMonth] = useState("");
+  const [showAssumptions, setShowAssumptions] = useState(false);
   const [dbScenarios, setDbScenarios] = useState<WorkforcePlanningScenarioDto[]>([]);
   const [scenarioName, setScenarioName] = useState("");
   const [scenarioNotes, setScenarioNotes] = useState("");
@@ -91,10 +75,6 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     () => `${customFte}|${customFlat}|${customScale}`,
     [customFte, customFlat, customScale]
   );
-
-  useEffect(() => {
-    setSnapshots(readSnapshots());
-  }, []);
 
   const loadDbScenarios = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -111,26 +91,16 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     void loadDbScenarios();
   }, [loadDbScenarios]);
 
-  const saveSnapshot = (): void => {
-    if (!data) return;
-    const label =
-      scenario === "custom"
-        ? `Custom FTE ${customFte} · €${customFlat} · ${customScale}%`
-        : scenario === "base"
-          ? "Scenario base"
-          : scenario === "growth"
-            ? "+2 FTE"
-            : "Costi flat";
-    const row: WorkforceSnapshot = {
-      id: `ws-${Date.now()}`,
-      label,
-      savedAt: new Date().toISOString(),
-      payload: data
-    };
-    const next = [row, ...readSnapshots()].slice(0, 12);
-    writeSnapshots(next);
-    setSnapshots(next);
-  };
+  const buildAssumptionsJson = (): Record<string, unknown> => ({
+    scenario,
+    customFte,
+    customFlat,
+    customScale,
+    ralAnnualEur: assumptionRal.trim() ? Number(assumptionRal) : null,
+    ccnlLevel: assumptionLevel.trim() || null,
+    hireMonth: assumptionHireMonth.trim() || null,
+    notes: scenarioNotes.trim() || null
+  });
 
   const loadCompareBase = async (): Promise<void> => {
     const t = getToken();
@@ -148,9 +118,11 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     }
   };
 
-  const applySnapshotCompare = (id: string): void => {
-    const row = snapshots.find((s) => s.id === id);
-    setCompareLive(row ? row.payload : null);
+  const applyDbScenarioCompare = (row: WorkforcePlanningScenarioDto): void => {
+    const payload = row.payloadJson as CockpitPayload | undefined;
+    if (payload?.series) {
+      setCompareLive(payload);
+    }
   };
 
   const loadPreset = useCallback(async (): Promise<void> => {
@@ -223,8 +195,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
       scenarioLabel: scenarioName.trim() || (scenario === "custom" ? "What-if" : scenario),
       savedAt: new Date().toLocaleString("it-IT"),
       assumptions: {
-        scenario,
-        notes: scenarioNotes.trim() || null,
+        ...buildAssumptionsJson(),
         custom: data.custom ?? null,
         compareWithBase: compareLive != null
       },
@@ -248,13 +219,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
     try {
       await saveWorkforcePlanningScenario(t, {
         name,
-        assumptionsJson: {
-          scenario,
-          customFte,
-          customFlat,
-          customScale,
-          notes: scenarioNotes.trim() || null
-        },
+        assumptionsJson: buildAssumptionsJson(),
         payloadJson: data as unknown as Record<string, unknown>,
         analysisText: narrative?.summary ?? null
       });
@@ -275,7 +240,22 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
       setNarrative(null);
     }
     setScenarioName(row.name);
-    setScenarioNotes(String((row.assumptionsJson as { notes?: string })?.notes ?? ""));
+    const a = row.assumptionsJson as {
+      notes?: string;
+      ralAnnualEur?: number | null;
+      ccnlLevel?: string | null;
+      hireMonth?: string | null;
+      customFte?: number;
+      customFlat?: number;
+      customScale?: number;
+    };
+    setScenarioNotes(String(a?.notes ?? ""));
+    setAssumptionRal(a?.ralAnnualEur != null ? String(a.ralAnnualEur) : "");
+    setAssumptionLevel(String(a?.ccnlLevel ?? ""));
+    setAssumptionHireMonth(String(a?.hireMonth ?? ""));
+    if (a?.customFte != null) setCustomFte(a.customFte);
+    if (a?.customFlat != null) setCustomFlat(a.customFlat);
+    if (a?.customScale != null) setCustomScale(a.customScale);
   };
 
   const runExportExcel = async (): Promise<void> => {
@@ -378,17 +358,12 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
           <div>
             <h2 className="text-sm font-semibold text-[var(--prom-text)]">Confronto scenari</h2>
             <p className="mt-1 text-xs text-[var(--prom-muted)]">
-              Carica lo scenario <strong className="text-[var(--prom-text)]">base</strong> in parallelo, oppure salva lo
-              scenario attuale in <strong className="text-[var(--prom-text)]">sessionStorage</strong> (solo questo browser)
-              per confronti successivi.
+              Confronta con lo scenario base live o con uno scenario salvato nel database.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" disabled={compareBusy} onClick={() => void loadCompareBase()}>
               {compareBusy ? "Carico…" : "Confronta con base (live)"}
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={!data} onClick={() => saveSnapshot()}>
-              Salva snapshot
             </Button>
             {compareLive ? (
               <Button type="button" size="sm" variant="ghost" onClick={() => setCompareLive(null)}>
@@ -397,28 +372,64 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
             ) : null}
           </div>
         </div>
-        {snapshots.length > 0 ? (
+        {dbScenarios.length > 0 ? (
           <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
-            Snapshot salvati
+            Scenario salvato per confronto
             <select
               className="max-w-md rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-2 py-1.5 text-sm text-[var(--prom-text)]"
               defaultValue=""
               onChange={(e) => {
                 const v = e.target.value;
                 e.target.value = "";
-                if (v) applySnapshotCompare(v);
+                const row = dbScenarios.find((s) => s.id === v);
+                if (row) applyDbScenarioCompare(row);
               }}
             >
-              <option value="">— applica come colonna confronto —</option>
-              {snapshots.map((s) => (
+              <option value="">— scegli scenario salvato —</option>
+              {dbScenarios.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {new Date(s.savedAt).toLocaleString("it-IT")} · {s.label}
+                  {s.name}
                 </option>
               ))}
             </select>
           </label>
         ) : (
-          <p className="text-xs text-[var(--prom-muted)]">Nessuno snapshot salvato in questa sessione.</p>
+          <p className="text-xs text-[var(--prom-muted)]">Salva uno scenario per riutilizzarlo nei confronti.</p>
+        )}
+      </HebbAiGlassPanel>
+
+      <HebbAiGlassPanel className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-[var(--prom-text)]">Assunzioni di scenario</h2>
+          <Button type="button" size="sm" variant="outline" onClick={() => setShowAssumptions((v) => !v)}>
+            {showAssumptions ? "Chiudi" : "Modifica assunzioni"}
+          </Button>
+        </div>
+        {showAssumptions ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              RAL annua di riferimento (€)
+              <Input value={assumptionRal} onChange={(e) => setAssumptionRal(e.target.value)} inputMode="decimal" placeholder="es. 42000" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              Livello CCNL
+              <Input value={assumptionLevel} onChange={(e) => setAssumptionLevel(e.target.value)} placeholder="es. 4" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)]">
+              Mese possibile assunzione
+              <Input type="month" value={assumptionHireMonth} onChange={(e) => setAssumptionHireMonth(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--prom-muted)] sm:col-span-2 lg:col-span-4">
+              Note / altri fattori
+              <Input value={scenarioNotes} onChange={(e) => setScenarioNotes(e.target.value)} placeholder="Turnover, bonus, part-time…" />
+            </label>
+          </div>
+        ) : (
+          <p className="text-xs text-[var(--prom-muted)]">
+            {assumptionRal || assumptionLevel || assumptionHireMonth
+              ? `RAL ${assumptionRal || "—"} · Livello ${assumptionLevel || "—"} · Assunzione ${assumptionHireMonth || "—"}`
+              : "Nessuna assunzione strutturata: apri «Modifica assunzioni» prima di salvare lo scenario."}
+          </p>
         )}
       </HebbAiGlassPanel>
 
@@ -705,7 +716,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
 
           <HebbAiGlassPanel>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-[var(--prom-text)]">Sintesi in linguaggio naturale</h2>
+              <h2 className="text-lg font-semibold text-[var(--prom-text)]">Analisi scenario</h2>
               <div className="flex flex-wrap items-center gap-3">
                 {llmAllowed ? (
                   <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--prom-muted)]">
@@ -719,7 +730,7 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
                   </label>
                 ) : null}
                 <Button type="button" size="sm" variant="outline" disabled={narrativeBusy} onClick={() => void runNarrative()}>
-                  {narrativeBusy ? "Generazione…" : "Genera sintesi"}
+                  {narrativeBusy ? "Generazione…" : "Genera analisi"}
                 </Button>
               </div>
             </div>

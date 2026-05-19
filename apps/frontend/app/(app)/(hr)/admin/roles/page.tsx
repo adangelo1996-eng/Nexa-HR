@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AdminRolePermissionMatrix } from "@/components/admin-role-permission-matrix";
 import { GlassCard } from "@/components/glass-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +13,6 @@ import {
   fetchPermissionCatalog,
   updateAdminRole,
   type PermissionCatalogResponse,
-  type PermissionDefinition,
   type Role
 } from "@/lib/api";
 import {
@@ -24,66 +24,8 @@ import {
 import { inputOptionalClass, inputRequiredClass } from "@/lib/form-field-styles";
 import { expandRolePermissions } from "@/lib/permission-legacy";
 
-const CATEGORY_LABEL: Record<keyof PermissionCatalogResponse, string> = {
-  nexa_hr: "Nexa HR",
-  plasticity: "Plasticity",
-  soma: "SOMA",
-  hub: "Synapse Central Hub"
-};
-
-/** Note operative sotto risorse sensibili del catalogo (Centro AI, ecc.). */
-const RESOURCE_FOOTNOTE: Partial<Record<string, string>> = {
-  ai_assistant_scope_managed:
-    "Abilita in Centro AI la scelta di una persona tra i riporti o un team di cui sei responsabile: i dati aggregati restano vincolati a quei soggetti.",
-  ai_assistant_scope_org:
-    "Abilita in Centro AI ricerca anagrafica e ambito su tutta l’organizzazione (persona, team, centro di costo): tipicamente HR o amministrazione."
-};
-
-function allCatalogIds(catalog: PermissionCatalogResponse): string[] {
-  return [
-    ...catalog.nexa_hr,
-    ...catalog.plasticity,
-    ...catalog.soma,
-    ...catalog.hub
-  ].map((p) => p.id);
-}
-
-function groupByResource(defs: PermissionDefinition[]): Array<{
-  resourceKey: string;
-  labelIt: string;
-  read?: PermissionDefinition;
-  write?: PermissionDefinition;
-}> {
-  const map = new Map<string, PermissionDefinition[]>();
-  for (const d of defs) {
-    const list = map.get(d.resourceKey) ?? [];
-    list.push(d);
-    map.set(d.resourceKey, list);
-  }
-  return Array.from(map.entries()).map(([resourceKey, arr]) => {
-    const read = arr.find((x) => x.suffix === "read");
-    const write = arr.find((x) => x.suffix === "write");
-    return {
-      resourceKey,
-      labelIt: read?.labelIt ?? write?.labelIt ?? resourceKey,
-      read,
-      write
-    };
-  });
-}
-
-function hasReadEffective(set: Set<string>, readId: string | undefined, writeId: string | undefined): boolean {
-  if (writeId && set.has(writeId)) {
-    return true;
-  }
-  if (readId && set.has(readId)) {
-    return true;
-  }
-  return false;
-}
-
-function hasWrite(set: Set<string>, writeId: string | undefined): boolean {
-  return Boolean(writeId && set.has(writeId));
+function allNexaCatalogIds(catalog: PermissionCatalogResponse): string[] {
+  return catalog.nexa_hr.map((p) => p.id);
 }
 
 export default function AdminRolesPage(): React.JSX.Element {
@@ -98,10 +40,11 @@ export default function AdminRolesPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creatingRole, setCreatingRole] = useState(false);
 
   const selectedRole = roles.find((item) => item.id === selectedRoleId) ?? null;
 
-  const allIds = useMemo(() => (catalog ? allCatalogIds(catalog) : []), [catalog]);
+  const allIds = useMemo(() => (catalog ? allNexaCatalogIds(catalog) : []), [catalog]);
 
   const syncDraftFromRole = useCallback(
     (role: Role | null) => {
@@ -166,8 +109,10 @@ export default function AdminRolesPage(): React.JSX.Element {
   }, [router]);
 
   useEffect(() => {
-    syncDraftFromRole(selectedRole);
-  }, [selectedRole, syncDraftFromRole]);
+    if (!creatingRole) {
+      syncDraftFromRole(selectedRole);
+    }
+  }, [selectedRole, syncDraftFromRole, creatingRole]);
 
   async function refreshRoles(): Promise<void> {
     if (!token) return;
@@ -176,54 +121,6 @@ export default function AdminRolesPage(): React.JSX.Element {
     if (!selectedRoleId && list[0]) {
       setSelectedRoleId(list[0].id);
     }
-  }
-
-  function toggleRead(resourceKey: string, readId: string | undefined, writeId: string | undefined, checked: boolean): void {
-    setDraftPermissions((prev) => {
-      const next = new Set(prev);
-      if (!checked) {
-        if (readId) {
-          next.delete(readId);
-        }
-        if (writeId) {
-          next.delete(writeId);
-        }
-        return next;
-      }
-      if (writeId && next.has(writeId)) {
-        return next;
-      }
-      if (readId) {
-        next.add(readId);
-      }
-      return next;
-    });
-  }
-
-  function setWriteChecked(
-    readId: string | undefined,
-    writeId: string | undefined,
-    checked: boolean,
-    readChecked: boolean
-  ): void {
-    setDraftPermissions((prev) => {
-      const next = new Set(prev);
-      if (!writeId) {
-        return next;
-      }
-      if (checked) {
-        next.add(writeId);
-        if (readId) {
-          next.delete(readId);
-        }
-      } else {
-        next.delete(writeId);
-        if (readId && readChecked) {
-          next.add(readId);
-        }
-      }
-      return next;
-    });
   }
 
   async function onCreate(): Promise<void> {
@@ -239,6 +136,7 @@ export default function AdminRolesPage(): React.JSX.Element {
       setNewName("");
       setNewDescription("");
       setDraftPermissions(new Set());
+      setCreatingRole(false);
       await refreshRoles();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore creazione ruolo");
@@ -272,36 +170,13 @@ export default function AdminRolesPage(): React.JSX.Element {
     try {
       await deleteAdminRole(token, selectedRole.id);
       setSelectedRoleId("");
+      setCreatingRole(false);
       await refreshRoles();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Errore eliminazione ruolo");
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function selectAllInCategory(cat: keyof PermissionCatalogResponse): void {
-    if (!catalog) return;
-    const defs = catalog[cat];
-    setDraftPermissions((prev) => {
-      const next = new Set(prev);
-      for (const p of defs) {
-        next.add(p.id);
-      }
-      return next;
-    });
-  }
-
-  function clearCategory(cat: keyof PermissionCatalogResponse): void {
-    if (!catalog) return;
-    const defs = catalog[cat];
-    setDraftPermissions((prev) => {
-      const next = new Set(prev);
-      for (const p of defs) {
-        next.delete(p.id);
-      }
-      return next;
-    });
   }
 
   if (loading) {
@@ -351,26 +226,52 @@ export default function AdminRolesPage(): React.JSX.Element {
     );
   }
 
+  const permissionMatrix = (
+    <AdminRolePermissionMatrix
+      nexaDefs={catalog.nexa_hr}
+      draftPermissions={draftPermissions}
+      onChange={setDraftPermissions}
+    />
+  );
+
   return (
     <div className="space-y-5">
       <header>
         <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Gestione ruoli</h1>
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-          Categorie e permessi con etichette chiare: Può consultare / Può modificare.
+          Solo sezioni Nexa HR, allineate alla Mappa del portale: macro-sezione, sottosezione e permessi per pagina.
         </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <GlassCard title="Ruoli disponibili" description="Seleziona un ruolo per modificarlo.">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mb-3 w-full"
+            onClick={() => {
+              setCreatingRole(true);
+              setSelectedRoleId("");
+              setNewName("");
+              setNewDescription("");
+              setDraftPermissions(new Set());
+            }}
+          >
+            + Nuovo ruolo
+          </Button>
           <div className="space-y-2 text-xs">
             {roles.map((role) => (
               <button
                 key={role.id}
                 type="button"
-                onClick={() => setSelectedRoleId(role.id)}
+                onClick={() => {
+                  setCreatingRole(false);
+                  setSelectedRoleId(role.id);
+                }}
                 className={[
                   "w-full rounded-lg px-3 py-2 text-left",
-                  selectedRoleId === role.id
+                  !creatingRole && selectedRoleId === role.id
                     ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-slate-50"
                     : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:bg-slate-800/40"
                 ].join(" ")}
@@ -383,10 +284,10 @@ export default function AdminRolesPage(): React.JSX.Element {
         </GlassCard>
 
         <GlassCard
-          title={selectedRole ? "Dettaglio ruolo" : "Nuovo ruolo"}
-          description="Spunta le risorse consentite. Può modificare include le azioni di scrittura."
+          title={creatingRole ? "Nuovo ruolo" : selectedRole ? "Dettaglio ruolo" : "Permessi ruolo"}
+          description="Visibilità nel portale Nexa HR e livello di modifica per ogni area."
         >
-          {selectedRole ? (
+          {selectedRole && !creatingRole ? (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs">
@@ -421,86 +322,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 </label>
               </div>
 
-              {(Object.keys(CATEGORY_LABEL) as Array<keyof PermissionCatalogResponse>).map((catKey) => {
-                const defs = catalog[catKey];
-                const groups = groupByResource(defs);
-                return (
-                  <details
-                    key={catKey}
-                    open
-                    className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_82%,transparent)] shadow-sm dark:border-slate-700 dark:bg-slate-900/30"
-                  >
-                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {CATEGORY_LABEL[catKey]}
-                    </summary>
-                    <div className="flex flex-wrap gap-2 border-t border-[var(--prom-line)] px-3 py-2 dark:border-slate-700">
-                      <button
-                        type="button"
-                        className="text-[11px] font-medium text-amber-700 underline dark:text-synapse-gold"
-                        onClick={() => selectAllInCategory(catKey)}
-                      >
-                        Seleziona tutto
-                      </button>
-                      <button
-                        type="button"
-                        className="text-[11px] text-slate-600 underline dark:text-slate-400"
-                        onClick={() => clearCategory(catKey)}
-                      >
-                        Nessuno
-                      </button>
-                    </div>
-                    <div className="space-y-3 px-3 pb-3">
-                      {groups.map((g) => {
-                        const readId = g.read?.id;
-                        const writeId = g.write?.id;
-                        const readOn = hasReadEffective(draftPermissions, readId, writeId);
-                        const writeOn = hasWrite(draftPermissions, writeId);
-                        return (
-                          <div
-                            key={`${catKey}-${g.resourceKey}`}
-                            className="rounded-lg border border-slate-200/90 bg-white/85 p-3 shadow-sm dark:border-slate-600 dark:bg-slate-950/50"
-                          >
-                            <p className="text-xs font-medium text-slate-900 dark:text-slate-100">{g.labelIt}</p>
-                            <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
-                              {writeOn || g.write?.descriptionWriteIt
-                                ? g.write?.descriptionWriteIt
-                                : g.read?.descriptionReadIt}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-800 dark:text-slate-200">
-                              <label className="flex cursor-pointer items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
-                                  data-perm-read={g.resourceKey}
-                                  checked={readOn}
-                                  onChange={(e) => toggleRead(g.resourceKey, readId, writeId, e.target.checked)}
-                                />
-                                <span>Può consultare</span>
-                              </label>
-                              <label className="flex cursor-pointer items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
-                                  checked={writeOn}
-                                  onChange={(e) =>
-                                    setWriteChecked(readId, writeId, e.target.checked, readOn)
-                                  }
-                                />
-                                <span>Può modificare</span>
-                              </label>
-                            </div>
-                            {RESOURCE_FOOTNOTE[g.resourceKey] ? (
-                              <p className="mt-2 border-t border-slate-200/80 pt-2 text-[10px] leading-snug text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                                {RESOURCE_FOOTNOTE[g.resourceKey]}
-                              </p>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </details>
-                );
-              })}
+              {permissionMatrix}
 
               <div className="flex gap-2">
                 <Button onClick={() => void onUpdate()} disabled={submitting}>
@@ -515,7 +337,7 @@ export default function AdminRolesPage(): React.JSX.Element {
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : creatingRole ? (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs">
@@ -536,92 +358,22 @@ export default function AdminRolesPage(): React.JSX.Element {
                 </label>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                Per un nuovo ruolo, seleziona i permessi nelle categorie qui sotto prima di creare.
+                Definisci quali macro-sezioni e pagine del portale sono visibili, poi salva il nuovo ruolo.
               </p>
-              {(Object.keys(CATEGORY_LABEL) as Array<keyof PermissionCatalogResponse>).map((catKey) => {
-                const defs = catalog[catKey];
-                const groups = groupByResource(defs);
-                return (
-                  <details
-                    key={`new-${catKey}`}
-                    open
-                    className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_82%,transparent)] shadow-sm dark:border-slate-700 dark:bg-slate-900/30"
-                  >
-                    <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {CATEGORY_LABEL[catKey]}
-                    </summary>
-                    <div className="flex flex-wrap gap-2 border-t border-[var(--prom-line)] px-3 py-2 dark:border-slate-700">
-                      <button
-                        type="button"
-                        className="text-[11px] font-medium text-amber-700 underline dark:text-synapse-gold"
-                        onClick={() => selectAllInCategory(catKey)}
-                      >
-                        Seleziona tutto
-                      </button>
-                      <button
-                        type="button"
-                        className="text-[11px] text-slate-600 underline dark:text-slate-400"
-                        onClick={() => clearCategory(catKey)}
-                      >
-                        Nessuno
-                      </button>
-                    </div>
-                    <div className="space-y-3 px-3 pb-3">
-                      {groups.map((g) => {
-                        const readId = g.read?.id;
-                        const writeId = g.write?.id;
-                        const readOn = hasReadEffective(draftPermissions, readId, writeId);
-                        const writeOn = hasWrite(draftPermissions, writeId);
-                        return (
-                          <div
-                            key={`new-${catKey}-${g.resourceKey}`}
-                            className="rounded-lg border border-slate-200/90 bg-white/85 p-3 shadow-sm dark:border-slate-600 dark:bg-slate-950/50"
-                          >
-                            <p className="text-xs font-medium text-slate-900 dark:text-slate-100">{g.labelIt}</p>
-                            <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-400">
-                              {writeOn || g.write?.descriptionWriteIt
-                                ? g.write?.descriptionWriteIt
-                                : g.read?.descriptionReadIt}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-800 dark:text-slate-200">
-                              <label className="flex cursor-pointer items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
-                                  data-perm-read={g.resourceKey}
-                                  checked={readOn}
-                                  onChange={(e) => toggleRead(g.resourceKey, readId, writeId, e.target.checked)}
-                                />
-                                <span>Può consultare</span>
-                              </label>
-                              <label className="flex cursor-pointer items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-slate-400 text-amber-600 focus:ring-amber-500/40"
-                                  checked={writeOn}
-                                  onChange={(e) =>
-                                    setWriteChecked(readId, writeId, e.target.checked, readOn)
-                                  }
-                                />
-                                <span>Può modificare</span>
-                              </label>
-                            </div>
-                            {RESOURCE_FOOTNOTE[g.resourceKey] ? (
-                              <p className="mt-2 border-t border-slate-200/80 pt-2 text-[10px] leading-snug text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                                {RESOURCE_FOOTNOTE[g.resourceKey]}
-                              </p>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </details>
-                );
-              })}
-              <Button onClick={() => void onCreate()} disabled={submitting}>
-                {submitting ? "Creazione..." : "Crea ruolo"}
-              </Button>
+              {permissionMatrix}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => void onCreate()} disabled={submitting || !newName.trim()}>
+                  {submitting ? "Creazione..." : "Crea ruolo"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setCreatingRole(false)} disabled={submitting}>
+                  Annulla
+                </Button>
+              </div>
             </div>
+          ) : (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Seleziona un ruolo dall&apos;elenco oppure premi «Nuovo ruolo» per crearne uno.
+            </p>
           )}
           {error ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
         </GlassCard>

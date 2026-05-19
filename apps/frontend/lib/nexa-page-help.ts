@@ -75,7 +75,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   payslips: {
     title: "Cedolini",
-    summary: "Consulta i cedolini pubblicati e usa la spiegazione guidata sulle voci.",
+    summary: "I tuoi cedolini: apri il periodo e usa «Analizza» per punti chiave sulle voci del mese.",
     howToUse: [
       "Seleziona il mese e apri il dettaglio.",
       "Leggi la sezione «Perché queste trattenute» per capire IRPEF, INPS e altre voci.",
@@ -156,7 +156,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "workforce-planning": {
     title: "Workforce planning",
-    summary: "Scenari what-if con salvataggio, export Excel/PDF e sintesi AI.",
+    summary: "Scenari salvati su database, assunzioni (RAL, livello, assunzione) e «Genera analisi».",
     howToUse: [
       "Parti dallo scenario base, poi duplica per varianti.",
       "Salva lo scenario con nome e note sulle assunzioni.",
@@ -174,7 +174,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "hr-formazione": {
     title: "Formazione HR",
-    summary: "Catalogo corsi, assegnazione batch e scadenze obbligatorie.",
+    summary: "Catalogo, assegnazioni e monitoraggio per dipendente con promemoria gentile.",
     howToUse: [
       "Seleziona un corso dal catalogo (contenuto reale con moduli).",
       "Assegna a tutti o a dipendenti selezionati con data obbligo.",
@@ -192,9 +192,9 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "personnel-budget": {
     title: "Budget personale",
-    summary: "Griglia annuale editabile, subtotali CDC/team e pagina assunzioni.",
+    summary: "Budget mensile per CDC con righe pianificate extra incluse nei totali.",
     howToUse: [
-      "Attiva modalità schermo intero per editare ogni cella.",
+      "Espandi un centro di costo per editare le celle budget.",
       "Definisci assunzioni/uscite per mese nelle assunzioni.",
       "Apri Analisi per confronto actual/budget/forecast."
     ]
@@ -223,9 +223,9 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "compensation-bench": {
     title: "Benchmark retribuzione",
-    summary: "Stima fascia RAL di mercato per ruolo, località e anzianità (Italia).",
+    summary: "Configura ruolo e area, poi calcola fascia min/mediana/max RAL.",
     howToUse: [
-      "Scegli origine ruolo: manuale, organico o posizione recruiting.",
+      "Apri «Configura», poi «Calcola benchmark RAL».",
       "Compila località e opzionalmente CCNL di riferimento.",
       "Confronta l’esito con policy interne prima di offerte."
     ]
@@ -250,11 +250,11 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "mappa-portale": {
     title: "Mappa del portale",
-    summary: "Percorso lineare per fase: trova la pagina giusta senza training.",
+    summary: "Panoramica per sezione: trovi subito la funzione giusta.",
     howToUse: [
-      "Scorri le sezioni dall’alto verso il basso.",
-      "Ogni tessera apre la funzione corrispondente.",
-      "I dipendenti vedono solo le aree del proprio profilo."
+      "Apri la sezione che ti interessa.",
+      "Scegli la tessera della funzione.",
+      "Il menu laterale usa le stesse sezioni."
     ]
   }
 };

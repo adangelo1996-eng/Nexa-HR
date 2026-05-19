@@ -137,4 +137,18 @@ export class TrainingController {
       status: dto.status
     });
   }
+
+  @Post("assignments/:assignmentId/reminder")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async sendReminder(
+    @CurrentAuth() auth: AuthContext,
+    @Param("assignmentId") assignmentId: string
+  ): Promise<{ ok: true }> {
+    const companyId = auth.tenantId ?? "comp-1";
+    return this.svc.sendAssignmentReminder({
+      companyId,
+      assignmentId,
+      requestedByUserId: auth.userId
+    });
+  }
 }

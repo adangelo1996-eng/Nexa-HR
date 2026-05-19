@@ -962,6 +962,10 @@ export interface PayslipExplainResult {
   addizionaliFromLines: Array<{ code: string; description: string; amount: number }>;
   envelope: {
     plainSummary?: string;
+    keyPoints?: string[];
+    withholdingsBullets?: string[];
+    howToReadBullets?: string[];
+    parsedLineBullets?: string[];
     withholdingsExplanation?: string;
     howToReadPayslip?: string;
     parsedPayslipAnalysis?: string;
@@ -3029,6 +3033,18 @@ export async function patchTrainingAssignmentStatus(
   return response.json() as Promise<TrainingAssignmentDto>;
 }
 
+export async function postTrainingAssignmentReminder(
+  token: string,
+  assignmentId: string
+): Promise<{ ok: true }> {
+  const response = await fetch(
+    buildApiUrl(`/training/assignments/${encodeURIComponent(assignmentId)}/reminder`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true }>;
+}
+
 export type HrRecapSummaryDto = {
   totalEmployed: number;
   active: number;
@@ -4554,11 +4570,18 @@ export interface PersonnelBudgetRow {
   suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 }
 
+export interface PersonnelBudgetPlannedExtraLine {
+  id: string;
+  label: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+}
+
 export interface PersonnelBudgetDepartment {
   costCenterId: string | null;
   costCenterName: string;
   sortOrder: number;
   rows: PersonnelBudgetRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
 }
 
 export interface PersonnelBudgetSnapshot {
@@ -4633,6 +4656,39 @@ export async function patchPersonnelBudgetCells(
     headers: getAuthHeaders(token),
     body: JSON.stringify(payload)
   });
+  if (!response.ok) await parseError(response);
+}
+
+export async function upsertPersonnelBudgetPlannedExtraLine(
+  token: string,
+  payload: {
+    id?: string;
+    year: number;
+    month: number;
+    costCenterId?: string | null;
+    label: string;
+    budgetRal?: number | null;
+    budgetOvertime?: number | null;
+    budgetTravel?: number | null;
+    budgetInps?: number | null;
+    budgetInail?: number | null;
+    budgetTfr?: number | null;
+  }
+): Promise<PersonnelBudgetPlannedExtraLine> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/planned-extra-lines"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetPlannedExtraLine>;
+}
+
+export async function deletePersonnelBudgetPlannedExtraLine(token: string, lineId: string): Promise<void> {
+  const response = await fetch(
+    buildApiUrl(`/hr/personnel-budget/planned-extra-lines/${encodeURIComponent(lineId)}/delete`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
   if (!response.ok) await parseError(response);
 }
 

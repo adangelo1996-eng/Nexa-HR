@@ -17,12 +17,18 @@ export default function OrganigrammaPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<EmployeeDrawerSubject | null>(null);
 
-  const onPersonClick = (node: OrgStructureTreeNode): void => {
+  const onPersonClick = (
+    node: OrgStructureTreeNode,
+    context?: { costCenterId?: string; costCenterName?: string; teamName?: string }
+  ): void => {
     setDrawer({
       userId: node.id,
       fullName: node.fullName,
       email: node.email,
-      roleName: node.roleName ?? node.role
+      roleName: node.roleName ?? node.role,
+      costCenterId: context?.costCenterId,
+      costCenterName: context?.costCenterName,
+      teamName: context?.teamName
     });
   };
 
@@ -115,7 +121,12 @@ export default function OrganigrammaPage(): React.JSX.Element {
                       <h3 className="mb-2 border-b border-[var(--prom-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-text)]">
                         Team · {team.name}
                       </h3>
-                      <OrgStructureTeamTree tree={team.tree} leadUserId={team.leadUserId} onPersonClick={onPersonClick} />
+                      <OrgStructureTeamTree
+                        tree={team.tree}
+                        leadUserId={team.leadUserId}
+                        onPersonClick={onPersonClick}
+                        clickContext={{ costCenterId: cc.id, costCenterName: cc.name, teamName: team.name }}
+                      />
                     </div>
                   ))}
                 </div>
@@ -125,7 +136,12 @@ export default function OrganigrammaPage(): React.JSX.Element {
                     <h3 className="mb-2 text-xs font-semibold text-[var(--prom-muted)]">
                       Senza team di lavoro (stesso CDC)
                     </h3>
-                    <OrgStructureTeamTree tree={cc.unteamedTree} leadUserId={null} onPersonClick={onPersonClick} />
+                    <OrgStructureTeamTree
+                      tree={cc.unteamedTree}
+                      leadUserId={null}
+                      onPersonClick={onPersonClick}
+                      clickContext={{ costCenterId: cc.id, costCenterName: cc.name }}
+                    />
                   </div>
                 ) : null}
               </section>

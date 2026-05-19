@@ -447,4 +447,75 @@ export class TrainingService {
     const percentComplete = total > 0 ? Math.round((completed / total) * 100) : 0;
     return { total, completed, inProgress, overdue, percentComplete };
   }
+
+  async sendAssignmentReminder(input: {
+    companyId: string;
+    assignmentId: string;
+    requestedByUserId: string;
+  }): Promise<{ ok: true }> {
+    const sb = this.sb();
+    let assignment: TrainingAssignmentDto | null = null;
+    if (!sb) {
+      for (const list of this.memAssignments.values()) {
+        const hit = list.find((a) => a.id === input.assignmentId);
+        if (hit) {
+          assignment = hit;
+          break;
+        }
+      }
+    } else {
+      const { data, error } = await sb
+        .from("training_assignments")
+        .select("*, training_courses (*)")
+        .eq("id", input.assignmentId)
+        .eq("company_id", input.companyId)
+        .maybeSingle();
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      if (data) {
+        const raw = data as Record<string, unknown>;
+        const nested = raw.training_courses as Record<string, unknown> | null;
+        assignment = this.mapAssignment(raw, nested ? this.mapCourse(nested) : undefined);
+      }
+    }
+    if (!assignment) {
+      throw new NotFoundException("Assegnazione non trovata");
+    }
+    if (assignment.status === "completed") {
+      throw new NotFoundException("Corso già completato");
+    }
+    const courseTitle = assignment.course?.title ?? "corso assegnato";
+    const dueLabel = assignment.dueDate;
+    const title = "Promemoria formazione";
+    const body = `Ti ricordiamo di completare «${courseTitle}» entro il ${dueLabel}. Apri Formazione dal menu Percorso.`;
+    const notificationId = `n-tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const row = {
+      id: notificationId,
+      userId: assignment.userId,
+      title,
+      body,
+      read: false,
+      kind: "training_reminder",
+      createdAt: new Date().toISOString(),
+      actionPath: "/percorso/formazione"
+    };
+    if (!sb) {
+      return { ok: true };
+    }
+    const { error: insErr } = await sb.from("user_notifications").insert({
+      id: row.id,
+      userId: row.userId,
+      title: row.title,
+      body: row.body,
+      read: row.read,
+      kind: row.kind,
+      createdAt: row.createdAt,
+      actionPath: row.actionPath
+    });
+    if (insErr) {
+      throw new InternalServerErrorException(insErr.message);
+    }
+    return { ok: true };
+  }
 }

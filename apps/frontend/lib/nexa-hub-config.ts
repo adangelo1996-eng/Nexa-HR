@@ -1,9 +1,36 @@
 import type { Route } from "next";
 import type { LucideIcon } from "lucide-react";
+import {
+  BarChart2,
+  Building2,
+  Calendar,
+  CalendarDays,
+  ClipboardList,
+  Clock3,
+  DoorOpen,
+  FileText,
+  GraduationCap,
+  KeyRound,
+  Laptop,
+  LayoutDashboard,
+  PenLine,
+  PieChart,
+  Receipt,
+  Route as RouteIcon,
+  Settings,
+  Sparkles,
+  UserCog,
+  UserPlus,
+  UserRoundSearch,
+  Users,
+  Wallet2,
+  Workflow
+} from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
 import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
-import { buildHrNavPillars, type HrNavItem } from "@/lib/nexa-hr-nav";
-import { employeeSectionIdForHubSlug, hubPathForSlug } from "@/lib/nexa-hub-paths";
+import { employeeSectionIdForHubSlug } from "@/lib/nexa-hub-paths";
+import { buildHrLinearPortalSteps } from "@/lib/portal-mappa-linear";
+import type { PortalTile } from "@/lib/portal-mappa";
 
 export type HubTile = {
   href: Route;
@@ -32,29 +59,42 @@ export type HubSectionDef = {
   portalCategory?: string;
 };
 
+/** Hub HR allineati ai passi della mappa portale. */
 export const HR_HUB_SECTIONS: HubSectionDef[] = [
   {
-    slug: "persone",
-    title: "Persone",
-    subtitle: "Selezione, organigramma, formazione e uscita.",
+    slug: "daily",
+    title: "Ogni giorno",
+    subtitle: "Timbrature, richieste e documenti personali.",
+    portalCategory: "Quotidiano"
+  },
+  {
+    slug: "people",
+    title: "Persone e organizzazione",
+    subtitle: "Struttura, turni, remoto e vista manager.",
     portalCategory: "Persone"
   },
   {
-    slug: "operazioni",
-    title: "Operazioni",
-    subtitle: "Presenze, turni, approvazioni e payroll.",
-    portalCategory: "Operazioni"
+    slug: "hire",
+    title: "Assumere e far entrare",
+    subtitle: "Selezione, onboarding assunzioni e contratti.",
+    portalCategory: "Selezione"
   },
   {
-    slug: "analisi",
-    title: "Analisi HR",
-    subtitle: "Dashboard, analytics e recap operativo.",
+    slug: "grow",
+    title: "Sviluppare e pianificare",
+    subtitle: "Formazione, workforce planning e benchmark.",
+    portalCategory: "Sviluppo"
+  },
+  {
+    slug: "insight",
+    title: "Analisi e budget",
+    subtitle: "Analytics, retention, competenze e budget personale.",
     portalCategory: "Analytics"
   },
   {
-    slug: "amministrazione",
+    slug: "admin",
     title: "Amministrazione",
-    subtitle: "Policy, contratti e console utenti.",
+    subtitle: "Payroll, policy, export e console utenti.",
     portalCategory: "Amministrazione"
   }
 ];
@@ -65,17 +105,57 @@ export const EMPLOYEE_HUB_SECTIONS: HubSectionDef[] = [
   { slug: "documenti", title: "Documenti", subtitle: "Cedolini e impostazioni profilo." }
 ];
 
+const HREF_ICON: Record<string, LucideIcon> = {
+  "/": LayoutDashboard,
+  "/attendance": Clock3,
+  "/work-calendar": Calendar,
+  "/sale-riunioni": DoorOpen,
+  "/workflow": Workflow,
+  "/expenses": Receipt,
+  "/payslips": FileText,
+  "/settings": Settings,
+  "/org-chart": Users,
+  "/organigramma": Building2,
+  "/workforce-planning": BarChart2,
+  "/scheduling": CalendarDays,
+  "/smartworking": Laptop,
+  "/manager-copilot": ClipboardList,
+  "/workflow/approvals": ClipboardList,
+  "/reports": PieChart,
+  "/hr-center/recap": ClipboardList,
+  "/analytics": BarChart2,
+  "/analytics/retention": BarChart2,
+  "/analytics/competenze": BarChart2,
+  "/recruiting": UserRoundSearch,
+  "/recruiting/onboarding": UserPlus,
+  "/contracts": PenLine,
+  "/corporate-policies": FileText,
+  "/tools/third-party-licenses": KeyRound,
+  "/compensation/bench": BarChart2,
+  "/personnel-budget": Wallet2,
+  "/hr-recap": ClipboardList,
+  "/expenses/org": Receipt,
+  "/payroll-hebb": Sparkles,
+  "/admin": UserCog,
+  "/admin/data-export": FileText,
+  "/admin/cost-centers": Building2,
+  "/hr/formazione": GraduationCap,
+  "/il-mio-team": Users,
+  "/percorso": RouteIcon
+};
+
 const ALL_HUB_SLUGS = new Set([
   ...HR_HUB_SECTIONS.map((s) => s.slug),
   ...EMPLOYEE_HUB_SECTIONS.map((s) => s.slug)
 ]);
 
-function navItemToHubTile(item: HrNavItem): HubTile {
+function portalTileToHubTile(tile: PortalTile): HubTile {
+  const key = String(tile.href);
   return {
-    href: item.href,
-    label: item.label,
-    blurb: "",
-    icon: item.icon
+    href: tile.href,
+    label: tile.title,
+    blurb: tile.blurb,
+    icon: HREF_ICON[key] ?? FileText
   };
 }
 
@@ -89,18 +169,15 @@ export function buildHrHubPageModel(
   hideSensitiveHr: boolean
 ): HubPageModel | null {
   const meta = HR_HUB_SECTIONS.find((s) => s.slug === slug);
-  const pillar = buildHrNavPillars(user, hideSensitiveHr).find((p) => p.hubSlug === slug);
-  if (!meta || !pillar) {
+  const step = buildHrLinearPortalSteps(user, hideSensitiveHr).find((s) => s.id === slug);
+  if (!meta || !step) {
     return null;
   }
   return {
     title: meta.title,
     subtitle: meta.subtitle,
     portalCategory: meta.portalCategory,
-    groups: pillar.subgroups.map((sg) => ({
-      title: sg.title,
-      items: sg.items.map(navItemToHubTile)
-    }))
+    tiles: step.tiles.map(portalTileToHubTile)
   };
 }
 
@@ -135,8 +212,7 @@ export function buildHrHubTiles(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): HubTile[] {
-  const model = buildHrHubPageModel(slug, user, hideSensitiveHr);
-  return model?.groups?.flatMap((g) => g.items) ?? [];
+  return buildHrHubPageModel(slug, user, hideSensitiveHr)?.tiles ?? [];
 }
 
 export function buildEmployeeHubTiles(
@@ -151,5 +227,3 @@ export function resolveHubSection(slug: string, mode: "hr" | "employee"): HubSec
   const list = mode === "hr" ? HR_HUB_SECTIONS : EMPLOYEE_HUB_SECTIONS;
   return list.find((s) => s.slug === slug);
 }
-
-export { hubPathForSlug };

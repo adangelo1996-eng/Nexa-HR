@@ -185,6 +185,6 @@ export const HR_NAV_DASHBOARD: HrNavItem = {
 
 export const HR_NAV_PORTAL_MAP: HrNavItem = {
   href: "/mappa-portale" as Route,
-  label: "Mappa portale",
+  label: "Mappa del portale",
   icon: LayoutDashboard
 };

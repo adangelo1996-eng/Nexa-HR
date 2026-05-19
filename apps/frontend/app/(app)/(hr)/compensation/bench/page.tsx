@@ -2,8 +2,8 @@
 
 import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { BarChart3, MapPin, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { GlassCard } from "@/components/glass-card";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,6 +30,7 @@ export default function CompensationBenchPage(): JSX.Element {
   const [roleTitleManual, setRoleTitleManual] = useState("");
   const [location, setLocation] = useState("Milano");
   const [seniorityYears, setSeniorityYears] = useState(5);
+  const [showParams, setShowParams] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<Awaited<ReturnType<typeof postCompensationBenchEstimate>> | null>(null);
@@ -71,143 +72,153 @@ export default function CompensationBenchPage(): JSX.Element {
   }, [ccnlCode, location, orgRoleId, recruitPositionId, roleSource, roleTitleManual, seniorityYears]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-[var(--prom-line)] bg-gradient-to-br from-[color-mix(in_srgb,#002D72_10%,transparent)] to-[var(--prom-surface)]/50 p-5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#002D72] dark:text-sky-300">
+            Compensation
+          </p>
+          <h1 className="mt-1 font-synapse text-2xl font-semibold text-[var(--prom-text)]">Benchmark retribuzione</h1>
+          <p className="mt-2 max-w-2xl text-sm text-[var(--prom-muted)]">
+            Stima fascia RAL di mercato (Italia) per ruolo, area e anzianità. Output indicativo — non sostituisce policy HR o
+            consulenza retributiva.
+          </p>
+        </div>
         <NexaPageHelpButton pageKey="compensation-bench" />
-      </div>
-      <p className="max-w-3xl text-sm text-[var(--prom-muted)]">
-        Stima RAL annua lorda di mercato (Italia) in base a ruolo, CCNL (opz.), località e anzianità. Output strutturato
-        con LLM se abilitato; altrimenti fascia euristica. Non sostituisce consulenza retributiva né policy interne.
-      </p>
+      </header>
 
-      <GlassCard title="Parametri" description="Scegli l’origine del titolo di ruolo e compila i campi.">
-        <div className="mt-4 space-y-4">
-          <label className="block text-xs text-[var(--prom-muted)]">
-            Ruolo da
-            <select
-              className="mt-1 w-full max-w-md rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
-              value={roleSource}
-              onChange={(e) => setRoleSource(e.target.value as typeof roleSource)}
-            >
-              <option value="manual">Titolo inserito manualmente</option>
-              <option value="org">Ruolo organizzativo del mio profilo</option>
-              <option value="org_select">Ruolo da organico (scegli da elenco)</option>
-              <option value="recruit">Posizione aperta (recruiting)</option>
-            </select>
-          </label>
-          {roleSource === "org_select" ? (
-            <label className="block text-xs text-[var(--prom-muted)]">
-              Ruolo organico aziendale
-              <select
-                className="mt-1 w-full max-w-md rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
-                value={orgRoleId}
-                onChange={(e) => setOrgRoleId(e.target.value)}
-              >
-                <option value="">Seleziona…</option>
-                {orgRoles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              {orgRoles.length === 0 ? (
-                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-200/90">Elenco ruoli non disponibile (verifica permessi).</p>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <section className="rounded-2xl border border-[var(--prom-line)] bg-[var(--card-bg)] p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--prom-text)]">
+              <UserRound className="h-4 w-4 text-[#002D72] dark:text-sky-400" />
+              Parametri
+            </h2>
+            <Button type="button" size="sm" variant="outline" onClick={() => setShowParams((v) => !v)}>
+              {showParams ? "Chiudi" : "Configura"}
+            </Button>
+          </div>
+          {!showParams ? (
+            <p className="mt-3 text-xs text-[var(--prom-muted)]">
+              Apri «Configura» per scegliere ruolo, località e anzianità prima del calcolo.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <label className="block text-xs text-[var(--prom-muted)]">
+                Ruolo da
+                <select
+                  className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
+                  value={roleSource}
+                  onChange={(e) => setRoleSource(e.target.value as typeof roleSource)}
+                >
+                  <option value="manual">Titolo manuale</option>
+                  <option value="org">Ruolo del mio profilo</option>
+                  <option value="org_select">Ruolo da organico</option>
+                  <option value="recruit">Posizione recruiting</option>
+                </select>
+              </label>
+              {roleSource === "org_select" ? (
+                <label className="block text-xs text-[var(--prom-muted)]">
+                  Ruolo organico
+                  <select
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
+                    value={orgRoleId}
+                    onChange={(e) => setOrgRoleId(e.target.value)}
+                  >
+                    <option value="">Seleziona…</option>
+                    {orgRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ) : null}
-            </label>
-          ) : null}
-          {roleSource === "recruit" ? (
-            <label className="block text-xs text-[var(--prom-muted)]">
-              Posizione aperta
-              <select
-                className="mt-1 w-full max-w-md rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
-                value={recruitPositionId}
-                onChange={(e) => setRecruitPositionId(e.target.value)}
-              >
-                <option value="">Seleziona…</option>
-                {positions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
-              {positions.length === 0 ? (
-                <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-200/90">
-                  Nessuna posizione aperta caricata (servono permessi recruiting o nessuna posizione).
+              {roleSource === "recruit" ? (
+                <label className="block text-xs text-[var(--prom-muted)]">
+                  Posizione aperta
+                  <select
+                    className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-2 py-2 text-sm"
+                    value={recruitPositionId}
+                    onChange={(e) => setRecruitPositionId(e.target.value)}
+                  >
+                    <option value="">Seleziona…</option>
+                    {positions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {roleSource === "manual" ? (
+                <label className="block text-xs text-[var(--prom-muted)]">
+                  Titolo ruolo
+                  <Input className="mt-1" value={roleTitleManual} onChange={(e) => setRoleTitleManual(e.target.value)} placeholder="es. HR Business Partner" />
+                </label>
+              ) : null}
+              {roleSource === "org" ? (
+                <p className="text-xs text-[var(--prom-muted)]">
+                  Usa il ruolo organizzativo del profilo
+                  {viewer?.roleId ? "." : " — se manca, usa manuale o recruiting."}
                 </p>
               ) : null}
-            </label>
-          ) : null}
-          {roleSource === "manual" ? (
-            <label className="block text-xs text-[var(--prom-muted)]">
-              Titolo ruolo
-              <Input
-                className="mt-1 max-w-md"
-                value={roleTitleManual}
-                onChange={(e) => setRoleTitleManual(e.target.value)}
-                placeholder="es. Software engineer"
-              />
-            </label>
-          ) : null}
-          {roleSource === "org" ? (
-            <p className="text-xs text-[var(--prom-muted)]">
-              Verrà usato il ruolo organizzativo associato al tuo utente
-              {viewer?.roleId ? " (da anagrafica)." : " — se manca, usa manuale o recruiting."}
-            </p>
-          ) : null}
-          <label className="block text-xs text-[var(--prom-muted)]">
-            Località (comune, provincia o area)
-            <Input className="mt-1 max-w-md" value={location} onChange={(e) => setLocation(e.target.value)} />
-          </label>
-          <label className="block text-xs text-[var(--prom-muted)]">
-            Riferimento CCNL (opz., es. Commercio, Metalmeccanico — allinea il language model al contesto)
-            <Input
-              className="mt-1 max-w-md"
-              value={ccnlCode}
-              onChange={(e) => setCcnlCode(e.target.value)}
-              placeholder="es. Commercio · Confcommercio"
-            />
-          </label>
-          <label className="block text-xs text-[var(--prom-muted)]">
-            Anzianità (anni)
-            <Input
-              type="number"
-              min={0}
-              max={45}
-              className="mt-1 max-w-xs"
-              value={seniorityYears}
-              onChange={(e) => setSeniorityYears(Number(e.target.value))}
-            />
-          </label>
-          <Button type="button" disabled={busy} onClick={() => void run()}>
-            {busy ? "Calcolo…" : "Calcola benchmark RAL"}
-          </Button>
-          {err ? <p className="text-sm text-rose-600">{err}</p> : null}
-        </div>
-      </GlassCard>
+              <label className="flex items-center gap-2 text-xs text-[var(--prom-muted)]">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                Località
+                <Input className="mt-0 flex-1" value={location} onChange={(e) => setLocation(e.target.value)} />
+              </label>
+              <label className="block text-xs text-[var(--prom-muted)]">
+                CCNL (opz.)
+                <Input className="mt-1" value={ccnlCode} onChange={(e) => setCcnlCode(e.target.value)} placeholder="Commercio, Metalmeccanico…" />
+              </label>
+              <label className="block text-xs text-[var(--prom-muted)]">
+                Anzianità (anni)
+                <Input type="number" min={0} max={45} className="mt-1 max-w-[8rem]" value={seniorityYears} onChange={(e) => setSeniorityYears(Number(e.target.value))} />
+              </label>
+              <Button type="button" disabled={busy} className="w-full gap-2" onClick={() => void run()}>
+                <BarChart3 className="h-4 w-4" />
+                {busy ? "Calcolo…" : "Calcola benchmark RAL"}
+              </Button>
+              {err ? <p className="text-sm text-rose-600">{err}</p> : null}
+            </div>
+          )}
+        </section>
 
-      {result ? (
-        <GlassCard title="Esito" description={`Ruolo considerato: ${result.roleResolved}`}>
-          <dl className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-[var(--prom-line)] p-3">
-              <dt className="text-xs uppercase text-[var(--prom-muted)]">Min</dt>
-              <dd className="text-lg font-semibold text-[var(--prom-text)]">{fmtEur(result.ralLowEur)}</dd>
-            </div>
-            <div className="rounded-xl border border-[var(--prom-line)] p-3">
-              <dt className="text-xs uppercase text-[var(--prom-muted)]">Mediana</dt>
-              <dd className="text-lg font-semibold text-[#002D72] dark:text-sky-200">{fmtEur(result.ralMedianEur)}</dd>
-            </div>
-            <div className="rounded-xl border border-[var(--prom-line)] p-3">
-              <dt className="text-xs uppercase text-[var(--prom-muted)]">Max</dt>
-              <dd className="text-lg font-semibold text-[var(--prom-text)]">{fmtEur(result.ralHighEur)}</dd>
-            </div>
-          </dl>
-          <p className="mt-4 text-sm leading-relaxed text-[var(--prom-muted)]">{result.notesIt}</p>
-          <p className="mt-2 text-xs text-[var(--prom-muted)]">
-            LLM: {result.llm.active ? "attivo" : "non attivo"} · raffinamento: {result.llm.refineApplied ? "sì" : "no"}.
-          </p>
-        </GlassCard>
-      ) : null}
+        <section className="rounded-2xl border border-[var(--prom-line)] bg-[var(--card-bg)] p-5 shadow-sm">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--prom-text)]">
+            <Sparkles className="h-4 w-4 text-[#002D72] dark:text-sky-400" />
+            Esito benchmark
+          </h2>
+          {!result ? (
+            <p className="mt-6 text-sm text-[var(--prom-muted)]">
+              Configura i parametri e avvia il calcolo per vedere minimo, mediana e massimo RAL.
+            </p>
+          ) : (
+            <>
+              <p className="mt-2 text-xs text-[var(--prom-muted)]">Ruolo: {result.roleResolved}</p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)]/60 p-4 text-center">
+                  <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Min</p>
+                  <p className="mt-2 text-xl font-bold tabular-nums text-[var(--prom-text)]">{fmtEur(result.ralLowEur)}</p>
+                </div>
+                <div className="rounded-xl border-2 border-[#002D72]/35 bg-[color-mix(in_srgb,#002D72_8%,transparent)] p-4 text-center">
+                  <p className="text-[10px] font-semibold uppercase text-[#002D72] dark:text-sky-300">Mediana</p>
+                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#002D72] dark:text-sky-200">{fmtEur(result.ralMedianEur)}</p>
+                </div>
+                <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface)]/60 p-4 text-center">
+                  <p className="text-[10px] font-semibold uppercase text-[var(--prom-muted)]">Max</p>
+                  <p className="mt-2 text-xl font-bold tabular-nums text-[var(--prom-text)]">{fmtEur(result.ralHighEur)}</p>
+                </div>
+              </div>
+              <p className="mt-5 text-sm leading-relaxed text-[var(--prom-muted)]">{result.notesIt}</p>
+              <p className="mt-2 text-[10px] text-[var(--prom-muted)]">
+                LLM {result.llm.active ? "attivo" : "non attivo"} · raffinamento {result.llm.refineApplied ? "sì" : "no"}.
+              </p>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

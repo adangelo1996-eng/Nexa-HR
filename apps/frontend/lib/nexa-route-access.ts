@@ -54,7 +54,34 @@ const PLAIN_EMPLOYEE_EXACT_ROUTES = new Set([
   "/sale-riunioni"
 ]);
 
+/** Prefissi HR sempre negati ai dipendenti plain (difesa in profondità lato UI). */
+const PLAIN_EMPLOYEE_BLOCKED_PREFIXES = [
+  "/recruiting",
+  "/hr/",
+  "/admin",
+  "/contracts",
+  "/corporate-policies",
+  "/workforce-planning",
+  "/personnel-budget",
+  "/analytics",
+  "/lifecycle",
+  "/org-chart",
+  "/organigramma",
+  "/payroll-hebb",
+  "/employee",
+  "/reports",
+  "/hr-center",
+  "/ai-hub",
+  "/forecast",
+  "/compensation",
+  "/tools/",
+  "/hr-recap"
+] as const;
+
 function plainEmployeeMayAccessRoute(r: string): boolean {
+  if (PLAIN_EMPLOYEE_BLOCKED_PREFIXES.some((prefix) => r.startsWith(prefix))) {
+    return false;
+  }
   if (PLAIN_EMPLOYEE_EXACT_ROUTES.has(r)) {
     return true;
   }
@@ -63,7 +90,7 @@ function plainEmployeeMayAccessRoute(r: string): boolean {
     return slug === "home" || slug === "io" || slug === "documenti";
   }
   if (r.startsWith("/percorso/")) {
-    return true;
+    return r === "/percorso/formazione" || r.startsWith("/percorso/formazione/");
   }
   return false;
 }
@@ -82,8 +109,13 @@ export function canAccessNexaPortalRoute(
 
   const r = normalizePath(href);
 
-  if (sessionIsPlainEmployee(user) && !hide && !plainEmployeeMayAccessRoute(r)) {
-    return false;
+  if (sessionIsPlainEmployee(user) && !hide) {
+    if (r === "/manager-copilot" || r.startsWith("/manager-copilot/")) {
+      return sessionCanAccessManagerPanel(user);
+    }
+    if (!plainEmployeeMayAccessRoute(r)) {
+      return false;
+    }
   }
 
   /**

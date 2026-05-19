@@ -157,11 +157,19 @@ export type PersonnelBudgetRow = {
   suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 };
 
+export type PersonnelBudgetPlannedExtraLine = {
+  id: string;
+  label: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+};
+
 export type PersonnelBudgetDepartment = {
   costCenterId: string | null;
   costCenterName: string;
   sortOrder: number;
   rows: PersonnelBudgetRow[];
+  /** Voci pianificate aggiuntive (non legate a dipendente). */
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
 };
 
 export type PersonnelBudgetSnapshot = {
@@ -689,6 +697,11 @@ export class HrDataStore {
     }
   >();
   private readonly personnelBudgetAnalysisNotesMem = new Map<string, PersonnelBudgetAnalysisNoteDto>();
+  /** key companyId|year|month|lineId */
+  private readonly personnelBudgetPlannedExtraMem = new Map<
+    string,
+    PersonnelBudgetPlannedExtraLine & { costCenterId: string | null }
+  >();
   /** Dev senza DB: ultimi run turnover per companyId. */
   private readonly turnoverSignalRunsMem = new Map<
     string,
@@ -4836,10 +4849,17 @@ export class HrDataStore {
       });
     }
     const all: CalendarEvent[] = [...holidayEvents];
-    for (const uid of userIds) {
-      const chunk = await this.buildCalendarEventsForUser(uid, from, to, true);
-      for (const ev of chunk) {
-        all.push({ ...ev, userId: uid });
+    const CALENDAR_USER_CHUNK = 12;
+    for (let i = 0; i < userIds.length; i += CALENDAR_USER_CHUNK) {
+      const slice = userIds.slice(i, i + CALENDAR_USER_CHUNK);
+      const chunks = await Promise.all(
+        slice.map((uid) => this.buildCalendarEventsForUser(uid, from, to, true))
+      );
+      for (let j = 0; j < slice.length; j++) {
+        const uid = slice[j]!;
+        for (const ev of chunks[j]!) {
+          all.push({ ...ev, userId: uid });
+        }
       }
     }
     all.sort((a, b) => a.start.localeCompare(b.start));
@@ -5130,14 +5150,14 @@ export class HrDataStore {
       });
     }
     const summaries = await this.listWorkdaySummariesInRange(userId, from, to);
-    const summarySwDays = new Set(
-      summaries.filter((ws) => ws.mode === "smartworking").map((ws) => ws.date)
-    );
-    const officeDaysFromSummary = new Set(
-      summaries.filter((ws) => ws.mode === "office").map((ws) => ws.date)
-    );
     const swRequests = await this.listMySmartworking(userId);
-    const pendingSwDays = new Set(swRequests.filter((r) => r.status === "pending").map((r) => r.day));
+    const swRequestCoveredDays = new Set<string>();
+    for (const r of swRequests) {
+      if (r.status === "rejected") continue;
+      for (const d of this.enumerateCalendarDaysInclusive(r.day, this.smartworkingRequestEndDay(r))) {
+        swRequestCoveredDays.add(d);
+      }
+    }
     for (const r of swRequests) {
       const swStart = r.day.slice(0, 10);
       const swEnd = this.smartworkingRequestEndDay(r);
@@ -5157,8 +5177,6 @@ export class HrDataStore {
         });
         continue;
       }
-      if (r.status === "approved" && summarySwDays.has(swStart)) continue;
-      if (r.status === "approved" && officeDaysFromSummary.has(swStart)) continue;
       const pending = r.status === "pending";
       const rangeLabel =
         swEnd !== swStart ? ` (${swStart} → ${swEnd})` : "";
@@ -5179,7 +5197,7 @@ export class HrDataStore {
     }
     for (const ws of summaries) {
       if (ws.mode !== "smartworking") continue;
-      if (pendingSwDays.has(ws.date)) continue;
+      if (swRequestCoveredDays.has(ws.date)) continue;
       if (!this.inCalendarRange(ws.date, from, to)) continue;
       events.push({
         id: `cal-sw-${userId}-${ws.date}`,
@@ -6475,7 +6493,7 @@ export class HrDataStore {
     }
     const now = new Date().toISOString();
     const row: HrShiftPresetRow = {
-      id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: randomUUID(),
       companyId: me.companyId,
       name,
       startTime: this.normalizeShiftPresetTime(input.startTime),
@@ -6489,7 +6507,6 @@ export class HrDataStore {
     };
     if (this.useDb) {
       const { error } = await this.supabase!.from("hr_shift_presets").insert({
-        id: row.id,
         company_id: row.companyId,
         name: row.name,
         start_time: row.startTime,
@@ -9610,15 +9627,185 @@ export class HrDataStore {
       return na.localeCompare(nb);
     });
 
+    const companyId =
+      users.find((u) => u.companyId?.trim())?.companyId?.trim() ?? "comp-1";
+    const plannedByCc = await this.fetchPersonnelBudgetPlannedExtraGrouped(companyId, year, month);
+
     const departments: PersonnelBudgetDepartment[] = sortedDeptKeys.map((ccId) => ({
       costCenterId: ccId,
       costCenterName:
         ccId != null ? ccById.get(ccId)?.name ?? ccId : "— senza centro di costo —",
       sortOrder: ccId != null ? orderIdx.get(ccId) ?? 1_000_000 : 999_999,
-      rows: (deptMap.get(ccId) ?? []).sort((r1, r2) => r1.fullName.localeCompare(r2.fullName))
+      rows: (deptMap.get(ccId) ?? []).sort((r1, r2) => r1.fullName.localeCompare(r2.fullName)),
+      plannedExtraLines: plannedByCc.get(ccId ?? "__none__") ?? []
     }));
 
     return { year, month, period, departments };
+  }
+
+  private pbPlannedExtraMemKey(
+    companyId: string,
+    year: number,
+    month: number,
+    lineId: string
+  ): string {
+    return `${companyId}|${year}|${month}|${lineId}`;
+  }
+
+  private mapPlannedExtraRow(raw: Record<string, unknown>): PersonnelBudgetPlannedExtraLine & {
+    costCenterId: string | null;
+  } {
+    const budgetPartial: Partial<PersonnelBudgetMoney> = {
+      ral: raw.budget_ral != null ? Number(raw.budget_ral) : 0,
+      overtime: raw.budget_overtime != null ? Number(raw.budget_overtime) : 0,
+      travel: raw.budget_travel != null ? Number(raw.budget_travel) : 0,
+      inps: raw.budget_inps != null ? Number(raw.budget_inps) : 0,
+      inail: raw.budget_inail != null ? Number(raw.budget_inail) : 0,
+      tfr: raw.budget_tfr != null ? Number(raw.budget_tfr) : 0
+    };
+    return {
+      id: String(raw.id),
+      label: String(raw.label ?? "Voce pianificata"),
+      costCenterId: raw.cost_center_id != null ? String(raw.cost_center_id) : null,
+      budget: {
+        ...budgetPartial,
+        totalCompanyCost: this.budgetTotal(budgetPartial)
+      }
+    };
+  }
+
+  private async fetchPersonnelBudgetPlannedExtraGrouped(
+    companyId: string,
+    year: number,
+    month: number
+  ): Promise<Map<string, PersonnelBudgetPlannedExtraLine[]>> {
+    const grouped = new Map<string, PersonnelBudgetPlannedExtraLine[]>();
+    const push = (ccKey: string, line: PersonnelBudgetPlannedExtraLine): void => {
+      const list = grouped.get(ccKey) ?? [];
+      list.push(line);
+      grouped.set(ccKey, list);
+    };
+    if (!this.useDb) {
+      for (const [key, row] of this.personnelBudgetPlannedExtraMem) {
+        if (!key.startsWith(`${companyId}|${year}|${month}|`)) {
+          continue;
+        }
+        const ccKey = row.costCenterId ?? "__none__";
+        push(ccKey, { id: row.id, label: row.label, budget: row.budget });
+      }
+      return grouped;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_planned_extra_lines")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("year", year)
+      .eq("month", month)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      throw new BadRequestException(`Lettura righe pianificate extra fallita: ${error.message}`);
+    }
+    for (const raw of data ?? []) {
+      const mapped = this.mapPlannedExtraRow(raw as Record<string, unknown>);
+      push(mapped.costCenterId ?? "__none__", {
+        id: mapped.id,
+        label: mapped.label,
+        budget: mapped.budget
+      });
+    }
+    return grouped;
+  }
+
+  async upsertPersonnelBudgetPlannedExtraLine(
+    companyId: string,
+    input: {
+      id?: string;
+      year: number;
+      month: number;
+      costCenterId: string | null;
+      label: string;
+      budgetRal?: number | null;
+      budgetOvertime?: number | null;
+      budgetTravel?: number | null;
+      budgetInps?: number | null;
+      budgetInail?: number | null;
+      budgetTfr?: number | null;
+    }
+  ): Promise<PersonnelBudgetPlannedExtraLine> {
+    const label = input.label.trim();
+    if (!label) {
+      throw new BadRequestException("Etichetta obbligatoria");
+    }
+    const id = input.id?.trim() || `pbpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const row = {
+      budgetRal: input.budgetRal ?? 0,
+      budgetOvertime: input.budgetOvertime ?? 0,
+      budgetTravel: input.budgetTravel ?? 0,
+      budgetInps: input.budgetInps ?? 0,
+      budgetInail: input.budgetInail ?? 0,
+      budgetTfr: input.budgetTfr ?? 0
+    };
+    const budgetPartial: Partial<PersonnelBudgetMoney> = {
+      ral: row.budgetRal,
+      overtime: row.budgetOvertime,
+      travel: row.budgetTravel,
+      inps: row.budgetInps,
+      inail: row.budgetInail,
+      tfr: row.budgetTfr
+    };
+    const dto: PersonnelBudgetPlannedExtraLine = {
+      id,
+      label,
+      budget: { ...budgetPartial, totalCompanyCost: this.budgetTotal(budgetPartial) }
+    };
+    if (!this.useDb) {
+      this.personnelBudgetPlannedExtraMem.set(this.pbPlannedExtraMemKey(companyId, input.year, input.month, id), {
+        ...dto,
+        costCenterId: input.costCenterId
+      });
+      return dto;
+    }
+    const { error } = await this.supabase!.from("personnel_budget_planned_extra_lines").upsert(
+      {
+        id,
+        company_id: companyId,
+        year: input.year,
+        month: input.month,
+        cost_center_id: input.costCenterId,
+        label,
+        budget_ral: row.budgetRal,
+        budget_overtime: row.budgetOvertime,
+        budget_travel: row.budgetTravel,
+        budget_inps: row.budgetInps,
+        budget_inail: row.budgetInail,
+        budget_tfr: row.budgetTfr,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+    if (error) {
+      throw new BadRequestException(`Salvataggio riga pianificata fallito: ${error.message}`);
+    }
+    return dto;
+  }
+
+  async deletePersonnelBudgetPlannedExtraLine(companyId: string, lineId: string): Promise<void> {
+    if (!this.useDb) {
+      for (const key of [...this.personnelBudgetPlannedExtraMem.keys()]) {
+        if (key.endsWith(`|${lineId}`) && key.startsWith(`${companyId}|`)) {
+          this.personnelBudgetPlannedExtraMem.delete(key);
+        }
+      }
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("personnel_budget_planned_extra_lines")
+      .delete()
+      .eq("company_id", companyId)
+      .eq("id", lineId);
+    if (error) {
+      throw new BadRequestException(`Eliminazione riga pianificata fallita: ${error.message}`);
+    }
   }
 
   async getPersonnelBudgetYearStatus(companyId: string, year: number): Promise<PersonnelBudgetYearStatusDto> {

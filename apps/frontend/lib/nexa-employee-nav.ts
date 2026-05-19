@@ -50,8 +50,8 @@ const ALL_SECTIONS: Omit<EmployeeNavSection, "hubHref">[] = [
       { href: "/work-calendar", label: "Calendario lavoro", icon: Calendar },
       { href: "/sale-riunioni" as Route, label: "Sale riunioni", icon: DoorOpen },
       { href: "/il-mio-team" as Route, label: "Manager e colleghi", icon: Users },
-      { href: "/percorso" as Route, label: "Onboarding e uscita", icon: RouteIcon },
-      { href: "/percorso/formazione" as Route, label: "Formazione", icon: FileText }
+      { href: "/percorso" as Route, label: "Il mio percorso", icon: RouteIcon },
+      { href: "/percorso/formazione" as Route, label: "Formazione personale", icon: FileText }
     ]
   },
   {

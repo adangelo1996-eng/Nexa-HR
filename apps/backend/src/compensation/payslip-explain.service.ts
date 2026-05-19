@@ -81,11 +81,11 @@ export class PayslipExplainService {
         "Spiegazione semplice a scopo informativo: non è consulenza fiscale. Per dettagli ufficiali usare modelli, CUD e commercialista."
     };
     const seed =
-      "Spiega in italiano chiaro e completo il cedolino del periodo indicato. " +
-      "1) Perché ci sono queste trattenute (IRPEF, INPS, addizionali, altre voci) in relazione a lordo/netto. " +
-      "2) Come leggere il cedolino: cosa guardare per primi, differenza competenze/trattenute, netto in busta. " +
-      "3) Analisi dettagliata delle righe parse fornite in facts.lines (codice, descrizione, importo) senza inventare voci. " +
-      "Collega residenza/domicilio fiscale alle addizionali solo se plausibile; altrimenti invita a verificare in CUD. " +
+      "Analizza SOLO il cedolino del dipendente in facts (periodo, lordo, netto, righe in facts.lines). " +
+      "Non confrontare con altri dipendenti o medie aziendali. Non inventare voci o importi. " +
+      "Output breve: bullet point chiari (max 5-6 per sezione), numeri presi solo da facts. " +
+      "Focus: trattenute spiegate con gli importi reali del periodo; lettura pratica del documento; " +
+      "commento sulle righe parse più rilevanti. Residenza/addizionali solo se plausibile dai dati, altrimenti invita a verificare in CUD. " +
       "Tono rassicurante, non consulenza legale.";
 
     const wrapped = { envelope: { seed, facts } };

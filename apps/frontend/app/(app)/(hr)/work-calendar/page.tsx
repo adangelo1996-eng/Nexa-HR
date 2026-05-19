@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
+import { NexaSelect } from "@/components/nexa-select";
 import { Button } from "@/components/ui/button";
 import {
   cancelPendingLeavePlan,
@@ -25,7 +26,6 @@ import {
   fetchMeetingRoomBookingEvents,
   fetchMeetingRooms,
   fetchMeTeamWorkCalendar,
-  fetchUserCalendar,
   fetchUsers,
   reportSickness,
   setAttendanceWorkMode,
@@ -40,6 +40,7 @@ import {
 } from "@/lib/api";
 import { calendarEventAbbrev } from "@/lib/calendar-event-labels";
 import { aggregateWorkCalendarStats, formatItalianDateLong } from "@/lib/work-calendar-analytics";
+import { buildWorkCalendarCellIndex, eventsForCellFromIndex } from "@/lib/work-calendar-cell-index";
 import { monthRange } from "@/lib/work-calendar-ranges";
 import { takeWorkCalendarWarmPayload } from "@/lib/work-calendar-prefetch";
 import {
@@ -47,8 +48,7 @@ import {
   getToken,
   sessionCanSeeApprovalsAndHrExtras,
   shouldClearSessionOnUnauthorizedApiError,
-  type SessionUser,
-  type UserRole
+  type SessionUser
 } from "@/lib/auth-session";
 
 type RowUser = { id: string; fullName: string };
@@ -60,10 +60,6 @@ type AdminTableRow =
   | { kind: "person"; row: RowUser }
   | { kind: "rooms"; label: string }
   | { kind: "room"; row: RoomRow };
-
-function readMultiSelectValues(e: ChangeEvent<HTMLSelectElement>): string[] {
-  return Array.from(e.target.selectedOptions, (opt) => opt.value);
-}
 
 /** Pulsanti / righe azione trasferta: niente blu/cyan, allineato a --prom-* */
 const TRAVEL_ACTION_ROW_CLASS =
@@ -165,9 +161,11 @@ function patchSmartworkingRequestInCalendar(
   userId: string,
   requestId: string,
   newDay: string,
+  newEndDay: string,
   note: string | null
 ): CalendarEventDto[] {
-  const d = newDay.slice(0, 10);
+  const start = newDay.slice(0, 10);
+  const end = newEndDay.slice(0, 10);
   const noteTrim = note?.trim() || null;
   return events.map((ev) => {
     if (ev.kind !== "smartworking" || ev.userId !== userId) return ev;
@@ -175,7 +173,7 @@ function patchSmartworkingRequestInCalendar(
     const meta: Record<string, unknown> = { ...ev.meta, swRequestId: requestId, status: "pending" };
     if (noteTrim) meta.note = noteTrim;
     else delete meta.note;
-    return { ...ev, start: d, end: d, meta };
+    return { ...ev, start, end, meta };
   });
 }
 
@@ -580,15 +578,6 @@ function hasActiveNonRejectedTravel(cellEvents: CalendarEventDto[]): boolean {
 
 const WEEKDAY_SHORT = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 
-function AnalyticsStatRow({ label, value }: { label: string; value: number }): React.JSX.Element {
-  return (
-    <div className="flex justify-between gap-4 border-b border-[var(--prom-line)] py-2 text-sm last:border-0">
-      <dt className="text-[var(--prom-muted)]">{label}</dt>
-      <dd className="tabular-nums font-medium text-[var(--prom-text)]">{value}</dd>
-    </div>
-  );
-}
-
 export default function WorkCalendarPage(): React.JSX.Element {
   const router = useRouter();
   const now = new Date();
@@ -599,8 +588,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [groupedRows, setGroupedRows] = useState<AdminTableRow[] | null>(null);
   const [allUsersForSelect, setAllUsersForSelect] = useState<User[]>([]);
   const [events, setEvents] = useState<CalendarEventDto[]>([]);
-  const [myAnalyticsEvents, setMyAnalyticsEvents] = useState<CalendarEventDto[]>([]);
-  const [analyticsLeaveBalance, setAnalyticsLeaveBalance] = useState<LeaveBalance | null>(null);
+  const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<string>("");
@@ -625,15 +613,8 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const [editingTravelRequestId, setEditingTravelRequestId] = useState<string | null>(null);
   const [editingSwRequestId, setEditingSwRequestId] = useState<string | null>(null);
   const [chipEditIsApproved, setChipEditIsApproved] = useState(false);
-  const [hrYtdAnalyticsEvents, setHrYtdAnalyticsEvents] = useState<CalendarEventDto[]>([]);
-  const [hrYtdAnalyticsLoading, setHrYtdAnalyticsLoading] = useState(false);
   const [costCenterLabelById, setCostCenterLabelById] = useState<Record<string, string>>({});
   const [teamLabelById, setTeamLabelById] = useState<Record<string, string>>({});
-  const [analyticsFilterCc, setAnalyticsFilterCc] = useState<string[]>([]);
-  const [analyticsFilterTeam, setAnalyticsFilterTeam] = useState<string[]>([]);
-  const [analyticsFilterUserIds, setAnalyticsFilterUserIds] = useState<string[]>([]);
-  const [analyticsFilterRoles, setAnalyticsFilterRoles] = useState<UserRole[]>([]);
-  const [analyticsFilterManagerIds, setAnalyticsFilterManagerIds] = useState<string[]>([]);
   const [rooms, setRooms] = useState<MeetingRoomDto[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [roomModal, setRoomModal] = useState<{ day: string; row: RoomRow } | null>(null);
@@ -669,8 +650,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         setGroupedRows(warm.groupedRows);
         setAllUsersForSelect(warm.allUsersForSelect);
         setEvents(warm.events);
-        setMyAnalyticsEvents(warm.myAnalyticsEvents);
-        setAnalyticsLeaveBalance(warm.analyticsLeaveBalance);
+        setLeaveBalance(warm.leaveBalance);
         setCostCenterLabelById(warm.costCenterLabelById);
         setTeamLabelById(warm.teamLabelById);
         setLoading(false);
@@ -679,11 +659,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       }
       setMe(current);
       const { from, to } = monthRange(year, month);
-      const yearFrom = `${year}-01-01`;
-      const analyticsP = Promise.all([
-        fetchUserCalendar(t, yearFrom, to).catch(() => [] as CalendarEventDto[]),
-        fetchLeaveBalance(t, year).catch(() => null as LeaveBalance | null)
-      ]);
+      const leaveBalanceP = fetchLeaveBalance(t, year).catch(() => null as LeaveBalance | null);
 
       const roomsP = (async () => {
         setRoomsLoading(true);
@@ -697,9 +673,9 @@ export default function WorkCalendarPage(): React.JSX.Element {
       })();
 
       if (!sessionCanSeeApprovalsAndHrExtras(current)) {
-        const [{ users: rows, events: ev }, [myEv, leaveBal]] = await Promise.all([
+        const [{ users: rows, events: ev }, leaveBal] = await Promise.all([
           fetchMeTeamWorkCalendar(t, from, to),
-          analyticsP
+          leaveBalanceP
         ]);
         const roomsList = await roomsP;
         setRooms(roomsList);
@@ -708,8 +684,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
         setGroupedRows(null);
         setAllUsersForSelect([]);
         setEvents([...ev, ...roomEvents]);
-        setMyAnalyticsEvents(myEv);
-        setAnalyticsLeaveBalance(leaveBal);
+        setLeaveBalance(leaveBal);
       } else {
         const usersList = await fetchUsers(t);
         setAllUsersForSelect(usersList);
@@ -803,16 +778,15 @@ export default function WorkCalendarPage(): React.JSX.Element {
         setGroupedRows(layout);
         setRowUsers(rows);
         const ids = fid ? [fid] : undefined;
-        const [ev, [myEv, leaveBal], roomsList, roomEvents] = await Promise.all([
+        const [ev, leaveBal, roomsList, roomEvents] = await Promise.all([
           fetchHrWorkCalendar(t, { from, to, userIds: ids }),
-          analyticsP,
+          leaveBalanceP,
           roomsP,
           fetchMeetingRoomBookingEvents(t, from, to).catch(() => [] as CalendarEventDto[])
         ]);
         setRooms(roomsList);
         setEvents([...ev, ...roomEvents]);
-        setMyAnalyticsEvents(myEv);
-        setAnalyticsLeaveBalance(leaveBal);
+        setLeaveBalance(leaveBal);
       }
     } catch (e) {
       if (shouldClearSessionOnUnauthorizedApiError(e)) {
@@ -829,38 +803,6 @@ export default function WorkCalendarPage(): React.JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const t = getToken();
-    if (!t || !me || !sessionCanSeeApprovalsAndHrExtras(me)) {
-      setHrYtdAnalyticsEvents([]);
-      setHrYtdAnalyticsLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setHrYtdAnalyticsLoading(true);
-    const { to } = monthRange(year, month);
-    const from = `${year}-01-01`;
-    void fetchHrWorkCalendar(t, { from, to })
-      .then((ev) => {
-        if (!cancelled) {
-          setHrYtdAnalyticsEvents(ev);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setHrYtdAnalyticsEvents([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setHrYtdAnalyticsLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [me, year, month]);
 
   const days = useMemo(() => {
     const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -927,182 +869,23 @@ export default function WorkCalendarPage(): React.JSX.Element {
   );
 
   const monthBounds = useMemo(() => monthRange(year, month), [year, month]);
-  const yearStart = `${year}-01-01`;
-  const statsMese = useMemo(
-    () => aggregateWorkCalendarStats(myAnalyticsEvents, monthBounds.from, monthBounds.to),
-    [myAnalyticsEvents, monthBounds.from, monthBounds.to]
-  );
-  const statsYtd = useMemo(
-    () => aggregateWorkCalendarStats(myAnalyticsEvents, yearStart, monthBounds.to),
-    [myAnalyticsEvents, yearStart, monthBounds.to]
+  const dayIsos = useMemo(() => days.map((d) => d.iso), [days]);
+
+  const eventsCellIndex = useMemo(
+    () => buildWorkCalendarCellIndex(events, dayIsos),
+    [events, dayIsos]
   );
 
-  const baseUsersForAnalytics = useMemo(() => {
-    const allowed = new Set(rowUsers.map((r) => r.id));
-    return allUsersForSelect.filter((u) => allowed.has(u.id));
-  }, [allUsersForSelect, rowUsers]);
+  const myMonthStats = useMemo(() => {
+    if (!me) return null;
+    const mine = events.filter((ev) => ev.userId === me.id);
+    return aggregateWorkCalendarStats(mine, monthBounds.from, monthBounds.to);
+  }, [events, me, monthBounds.from, monthBounds.to]);
 
-  const analyticsHasAnyDimensionFilter = useMemo(
-    () =>
-      analyticsFilterCc.length > 0 ||
-      analyticsFilterTeam.length > 0 ||
-      analyticsFilterUserIds.length > 0 ||
-      analyticsFilterRoles.length > 0 ||
-      analyticsFilterManagerIds.length > 0,
-    [
-      analyticsFilterCc,
-      analyticsFilterTeam,
-      analyticsFilterUserIds,
-      analyticsFilterRoles,
-      analyticsFilterManagerIds
-    ]
+  const getCellEvents = useCallback(
+    (userId: string, dayIso: string) => eventsForCellFromIndex(eventsCellIndex, userId, dayIso),
+    [eventsCellIndex]
   );
-
-  const analyticsFilteredUserIds = useMemo(() => {
-    return baseUsersForAnalytics
-      .filter((u) => {
-        if (!analyticsHasAnyDimensionFilter) {
-          return true;
-        }
-        if (analyticsFilterCc.length) {
-          const cc = u.costCenterId?.trim() || "__none__";
-          if (!analyticsFilterCc.includes(cc)) {
-            return false;
-          }
-        }
-        if (analyticsFilterTeam.length) {
-          const tid = u.teamId?.trim() || "__none__";
-          if (!analyticsFilterTeam.includes(tid)) {
-            return false;
-          }
-        }
-        if (analyticsFilterUserIds.length && !analyticsFilterUserIds.includes(u.id)) {
-          return false;
-        }
-        if (analyticsFilterRoles.length && !analyticsFilterRoles.includes(u.role)) {
-          return false;
-        }
-        if (analyticsFilterManagerIds.length) {
-          const mid = u.managerId?.trim() || "__none__";
-          if (!analyticsFilterManagerIds.includes(mid)) {
-            return false;
-          }
-        }
-        return true;
-      })
-      .map((u) => u.id);
-  }, [
-    baseUsersForAnalytics,
-    analyticsHasAnyDimensionFilter,
-    analyticsFilterCc,
-    analyticsFilterTeam,
-    analyticsFilterUserIds,
-    analyticsFilterRoles,
-    analyticsFilterManagerIds
-  ]);
-
-  const analyticsCcSelectOptions = useMemo(() => {
-    const ids = new Set(baseUsersForAnalytics.map((u) => u.costCenterId?.trim() || "__none__"));
-    return [...ids]
-      .map((id) => ({
-        id,
-        label: costCenterLabelById[id] ?? (id === "__none__" ? "Senza centro di costo" : id)
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, "it"));
-  }, [baseUsersForAnalytics, costCenterLabelById]);
-
-  const analyticsTeamSelectOptions = useMemo(() => {
-    const ids = new Set(baseUsersForAnalytics.map((u) => u.teamId?.trim() || "__none__"));
-    return [...ids]
-      .map((id) => ({
-        id,
-        label: teamLabelById[id] ?? (id === "__none__" ? "Senza team" : `Team ${id}`)
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, "it"));
-  }, [baseUsersForAnalytics, teamLabelById]);
-
-  const analyticsManagerSelectOptions = useMemo(() => {
-    const ids = new Set<string>();
-    for (const u of baseUsersForAnalytics) {
-      ids.add(u.managerId?.trim() || "__none__");
-    }
-    return [...ids]
-      .map((id) => ({
-        id,
-        label:
-          id === "__none__"
-            ? "Senza responsabile"
-            : allUsersForSelect.find((x) => x.id === id)?.fullName ?? id
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, "it"));
-  }, [baseUsersForAnalytics, allUsersForSelect]);
-
-  const analyticsRoleSelectOptions = useMemo(() => {
-    return [...new Set(baseUsersForAnalytics.map((u) => u.role))].sort();
-  }, [baseUsersForAnalytics]);
-
-  const hrAnalyticsEventsFiltered = useMemo(() => {
-    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
-      return [];
-    }
-    if (analyticsFilteredUserIds.length === 0) {
-      return [];
-    }
-    const allowed = new Set(analyticsFilteredUserIds);
-    return hrYtdAnalyticsEvents.filter(
-      (ev) => ev.kind === "holiday" || (ev.userId && allowed.has(ev.userId))
-    );
-  }, [me, hrYtdAnalyticsEvents, analyticsFilteredUserIds]);
-
-  const analyticsAggregateSampleExplanation = useMemo(() => {
-    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
-      return "";
-    }
-    if (!analyticsHasAnyDimensionFilter) {
-      return "Nessun filtro attivo: il campione aggregato include tutti i dipendenti presenti nel dataset HR caricato (dal 1° gennaio alla fine del mese selezionato).";
-    }
-    const parts: string[] = [];
-    if (analyticsFilterCc.length > 0) {
-      parts.push(`${analyticsFilterCc.length} centro/i di costo`);
-    }
-    if (analyticsFilterTeam.length > 0) {
-      parts.push(`${analyticsFilterTeam.length} team`);
-    }
-    if (analyticsFilterUserIds.length > 0) {
-      parts.push(`${analyticsFilterUserIds.length} dipendente/i per nome`);
-    }
-    if (analyticsFilterRoles.length > 0) {
-      parts.push(`${analyticsFilterRoles.length} ruolo/i Nexa`);
-    }
-    if (analyticsFilterManagerIds.length > 0) {
-      parts.push(`${analyticsFilterManagerIds.length} responsabile/i`);
-    }
-    return `Filtri attivi: ${parts.join(", ")}. I criteri tra colonne diverse si combinano in AND (una persona deve soddisfarli tutti).`;
-  }, [
-    me,
-    analyticsHasAnyDimensionFilter,
-    analyticsFilterCc.length,
-    analyticsFilterTeam.length,
-    analyticsFilterUserIds.length,
-    analyticsFilterRoles.length,
-    analyticsFilterManagerIds.length
-  ]);
-
-  const statsAggMese = useMemo(() => {
-    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
-      return null;
-    }
-    return aggregateWorkCalendarStats(hrAnalyticsEventsFiltered, monthBounds.from, monthBounds.to);
-  }, [me, hrAnalyticsEventsFiltered, monthBounds.from, monthBounds.to]);
-
-  const statsAggYtd = useMemo(() => {
-    if (!me || !sessionCanSeeApprovalsAndHrExtras(me)) {
-      return null;
-    }
-    return aggregateWorkCalendarStats(hrAnalyticsEventsFiltered, yearStart, monthBounds.to);
-  }, [me, hrAnalyticsEventsFiltered, yearStart, monthBounds.to]);
-
-  const ytdEndLabel = useMemo(() => formatItalianDateLong(monthBounds.to), [monthBounds.to]);
 
   const modalHeaderDayIso = useMemo(() => {
     if (!modal) return "";
@@ -1120,6 +903,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
     setSwOptimistic(null);
     setTravelOptimistic(null);
     setSwPendingDay(day.slice(0, 10));
+    setSwPendingEndDay(day.slice(0, 10));
     setTravelPendingDay(day.slice(0, 10));
     setTravelNote("");
     setLeaveStart(day);
@@ -1185,6 +969,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       setEditingSicknessId(null);
       setEditingSwRequestId(typeof ev.meta?.swRequestId === "string" ? ev.meta.swRequestId : null);
       setSwPendingDay(ev.start.slice(0, 10));
+      setSwPendingEndDay((ev.end ?? ev.start).slice(0, 10));
       setSwNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
       return;
     }
@@ -1255,7 +1040,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
   const canHrEditOtherCalendarRow = Boolean(
     modal && me && modal.row.id !== me.id && sessionCanSeeApprovalsAndHrExtras(me)
   );
-  const cellEventsModal = modal ? eventsForCell(events, modal.row.id, modal.day) : [];
+  const cellEventsModal = modal ? getCellEvents(modal.row.id, modal.day) : [];
   const menuDayHasLeave = hasActiveNonRejectedLeave(cellEventsModal);
   const menuDayHasSickness = hasActiveNonRejectedSickness(cellEventsModal);
   const menuDayHasSw = hasActiveNonRejectedSmartworking(cellEventsModal);
@@ -1269,7 +1054,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       return { on: false } as SwDayState;
     }
     const dayIso = (swPendingDay || modal.day).slice(0, 10);
-    return deriveSwDayState(eventsForCell(events, modal.row.id, dayIso));
+    return deriveSwDayState(getCellEvents(modal.row.id, dayIso));
   }, [events, modal, swPendingDay]);
   const swDisplayOn = swOptimistic !== null ? swOptimistic : serverSwForm.on;
 
@@ -1298,7 +1083,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
       return { on: false } as TrDayState;
     }
     const dayIso = (travelPendingDay || modal.day).slice(0, 10);
-    return deriveTravelDayState(eventsForCell(events, modal.row.id, dayIso));
+    return deriveTravelDayState(getCellEvents(modal.row.id, dayIso));
   }, [events, modal, travelPendingDay]);
   const trDisplayOn = travelOptimistic !== null ? travelOptimistic : serverTravelForm.on;
   const pendingTravelInModal = serverTravelCell.status === "pending" && Boolean(serverTravelCell.requestId);
@@ -1547,17 +1332,22 @@ export default function WorkCalendarPage(): React.JSX.Element {
     const prevNoteRaw = typeof swEv?.meta?.note === "string" ? swEv.meta.note : "";
     const prevNote = prevNoteRaw.trim() || null;
     const nextDay = (swPendingDay || modal.day).slice(0, 10);
-    if (nextDay === prevDay.slice(0, 10) && nextNote === prevNote) {
+    const nextEndDay = (swPendingEndDay || swPendingDay || modal.day).slice(0, 10);
+    const prevEnd = (swEv?.end ?? swEv?.start ?? nextDay).slice(0, 10);
+    if (nextDay === prevDay.slice(0, 10) && nextEndDay === prevEnd && nextNote === prevNote) {
       return;
     }
     setError(null);
     setSubmitting("sw-save");
     try {
       flushSync(() => {
-        setEvents((prev) => patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+        setEvents((prev) =>
+          patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextEndDay, nextNote)
+        );
       });
       await updateSmartworkingRequest(t, rid, {
         day: nextDay,
+        endDay: nextEndDay !== nextDay ? nextEndDay : undefined,
         note: nextNote ?? undefined
       });
       await load({ silent: true });
@@ -1580,15 +1370,19 @@ export default function WorkCalendarPage(): React.JSX.Element {
     }
     const nextNote = swNote.trim() || null;
     const nextDay = (swPendingDay || modal.day).slice(0, 10);
+    const nextEndDay = (swPendingEndDay || swPendingDay || modal.day).slice(0, 10);
     setError(null);
     setSubmitting("sw-save-approved");
     try {
       flushSync(() => {
-        setEvents((prev) => patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextNote));
+        setEvents((prev) =>
+          patchSmartworkingRequestInCalendar(prev, modal.row.id, rid, nextDay, nextEndDay, nextNote)
+        );
       });
       closeModal();
       await updateSmartworkingRequest(t, rid, {
         day: nextDay,
+        endDay: nextEndDay !== nextDay ? nextEndDay : undefined,
         note: nextNote ?? undefined
       });
       await load();
@@ -1861,18 +1655,16 @@ export default function WorkCalendarPage(): React.JSX.Element {
           {me && sessionCanSeeApprovalsAndHrExtras(me) ? (
             <label className="flex items-center gap-2 text-xs text-[var(--prom-muted)]">
               <span>Dipendente</span>
-              <select
+              <NexaSelect
+                aria-label="Filtra dipendente"
+                className="min-w-[12rem] max-w-[220px]"
                 value={userFilter}
-                onChange={(e) => setUserFilter(e.target.value)}
-                className="max-w-[200px] rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_85%,transparent)] px-2 py-1 text-[var(--prom-text)] backdrop-blur-sm"
-              >
-                <option value="">Tutto il team visibile</option>
-                {allUsersForSelect.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.fullName}
-                  </option>
-                ))}
-              </select>
+                onChange={setUserFilter}
+                options={[
+                  { value: "", label: "Tutto il team visibile" },
+                  ...allUsersForSelect.map((u) => ({ value: u.id, label: u.fullName }))
+                ]}
+              />
             </label>
           ) : null}
           <Button type="button" size="sm" variant="secondary" onClick={() => void load()}>
@@ -2010,7 +1802,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                     ) : null}
                   </td>
                   {days.map(({ iso, dow }) => {
-                    const list = eventsForCell(events, row.id, iso);
+                    const list = getCellEvents(row.id, iso);
                     const weekend = dow === 0 || dow === 6;
                     const showActions = canShowCalendarEventActions(me, row.id);
                     return (
@@ -2149,256 +1941,46 @@ export default function WorkCalendarPage(): React.JSX.Element {
         </table>
       </div>
 
-      <details
-        className="group mt-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-[var(--glass-shadow)]"
+      <section
+        className="mt-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-4 py-3 shadow-[var(--glass-shadow)]"
         style={{ boxShadow: "var(--glass-shadow)" }}
+        aria-label="Riepilogo ferie e ROL"
       >
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium text-[var(--prom-text)] [&::-webkit-details-marker]:hidden">
-          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)] transition-transform group-open:rotate-90" />
-          <span>
-            {me && sessionCanSeeApprovalsAndHrExtras(me) ? "Analytics HR" : "Analytics personale"}
-            <span className="ml-2 text-xs font-normal capitalize text-[var(--prom-muted)]">{monthLabel}</span>
-          </span>
-        </summary>
-        <div className="border-t border-[var(--prom-line)] px-4 pb-4 pt-3">
-          {me && sessionCanSeeApprovalsAndHrExtras(me) ? (
-            <div className="mb-8 space-y-4">
-              <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                  Aggregato (vista calendario)
-                </h3>
-                <p className="text-xs text-[var(--prom-muted)]">
-                  Conteggi giorni-persona sul campione scelto sotto, dal 1° gennaio {year} al {ytdEndLabel}. Le richieste
-                  rifiutate non contano. In ogni elenco: tenere premuto Ctrl (Windows) o Cmd (Mac) e cliccare le voci per
-                  selezioni multiple; deseleziona tutte le righe di un elenco per non applicare quel criterio.
-                </p>
-                <p className="mt-2 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_55%,transparent)] px-3 py-2 text-xs text-[var(--prom-text)]">
-                  {analyticsAggregateSampleExplanation}
-                </p>
-                {hrYtdAnalyticsLoading ? (
-                  <p className="mt-2 text-xs text-[var(--prom-muted)]">Caricamento dati aggregati…</p>
-                ) : null}
-              </div>
-              <fieldset className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_35%,transparent)] p-4">
-                <legend className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                  Campione per l&apos;aggregato — ogni lista è opzionale
-                </legend>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <label className="block text-[11px] text-[var(--prom-muted)]">
-                  Centro di costo
-                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
-                    Filtra per anagrafica CDC. Elenco vuoto = non restringere per centro di costo.
-                  </span>
-                  <select
-                    multiple
-                    size={5}
-                    value={analyticsFilterCc}
-                    onChange={(e) => setAnalyticsFilterCc(readMultiSelectValues(e))}
-                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
-                  >
-                    {analyticsCcSelectOptions.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-[11px] text-[var(--prom-muted)]">
-                  Team (work team)
-                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
-                    Filtra per team operativo. Elenco vuoto = non restringere per team.
-                  </span>
-                  <select
-                    multiple
-                    size={5}
-                    value={analyticsFilterTeam}
-                    onChange={(e) => setAnalyticsFilterTeam(readMultiSelectValues(e))}
-                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
-                  >
-                    {analyticsTeamSelectOptions.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-[11px] text-[var(--prom-muted)]">
-                  Dipendente (nome)
-                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
-                    Solo utenti già visibili nella vista calendario HR. Elenco vuoto = non restringere per persona.
-                  </span>
-                  <select
-                    multiple
-                    size={5}
-                    value={analyticsFilterUserIds}
-                    onChange={(e) => setAnalyticsFilterUserIds(readMultiSelectValues(e))}
-                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
-                  >
-                    {[...baseUsersForAnalytics]
-                      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"))
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.fullName}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label className="block text-[11px] text-[var(--prom-muted)]">
-                  Ruolo (Nexa)
-                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
-                    Filtra per ruolo applicativo. Elenco vuoto = non restringere per ruolo.
-                  </span>
-                  <select
-                    multiple
-                    size={3}
-                    value={analyticsFilterRoles}
-                    onChange={(e) => setAnalyticsFilterRoles(readMultiSelectValues(e) as UserRole[])}
-                    className="mt-1 min-h-[4rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
-                  >
-                    {analyticsRoleSelectOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-[11px] text-[var(--prom-muted)] sm:col-span-2 xl:col-span-1">
-                  Responsabile (manager diretto)
-                  <span className="mt-0.5 block text-[10px] font-normal leading-snug text-[var(--prom-muted)]">
-                    Filtra per manager assegnato in anagrafica. Elenco vuoto = non restringere per responsabile.
-                  </span>
-                  <select
-                    multiple
-                    size={5}
-                    value={analyticsFilterManagerIds}
-                    onChange={(e) => setAnalyticsFilterManagerIds(readMultiSelectValues(e))}
-                    className="mt-1 min-h-[5.5rem] w-full rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-1 py-1 text-[11px] text-[var(--prom-text)]"
-                  >
-                    {analyticsManagerSelectOptions.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                </div>
-              </fieldset>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  className="text-xs font-medium text-[var(--prom-text)] underline decoration-dotted underline-offset-2 hover:opacity-90"
-                  onClick={() => {
-                    setAnalyticsFilterCc([]);
-                    setAnalyticsFilterTeam([]);
-                    setAnalyticsFilterUserIds([]);
-                    setAnalyticsFilterRoles([]);
-                    setAnalyticsFilterManagerIds([]);
-                  }}
-                >
-                  Azzera tutti i filtri del campione
-                </button>
-                <span className="text-[11px] text-[var(--prom-muted)]">
-                  {analyticsFilteredUserIds.length} dipendenti nel campione dopo i criteri
-                  {analyticsHasAnyDimensionFilter ? " (filtri applicati)" : " (nessun filtro)"}
-                </span>
-              </div>
-              {baseUsersForAnalytics.length === 0 ? (
-                <p className="text-xs text-[var(--prom-muted)]">Nessun dipendente nella vista calendario.</p>
-              ) : analyticsFilteredUserIds.length === 0 && analyticsHasAnyDimensionFilter ? (
-                <p className="text-xs text-[var(--prom-muted)]">Nessun dipendente corrisponde ai filtri selezionati.</p>
-              ) : hrYtdAnalyticsLoading || !statsAggMese || !statsAggYtd ? null : (
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div>
-                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                      Mese selezionato (aggregato)
-                    </h4>
-                    <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
-                      <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggMese.giorniFerieAnnuali} />
-                      <AnalyticsStatRow label="ROL (giorni)" value={statsAggMese.giorniRol} />
-                      <AnalyticsStatRow label="Malattia (giorni)" value={statsAggMese.giorniMalattia} />
-                      <AnalyticsStatRow label="Remote working (giorni)" value={statsAggMese.giorniSmartWorking} />
-                      <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggMese.giorniTrasferta} />
-                      <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggMese.giorniFestivitaAziendali} />
-                      <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggMese.giorniConTurno} />
-                      <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsAggMese.richiesteInAttesa} />
-                    </dl>
-                  </div>
-                  <div>
-                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                      Dal 1° gennaio al {ytdEndLabel} (aggregato)
-                    </h4>
-                    <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
-                      <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsAggYtd.giorniFerieAnnuali} />
-                      <AnalyticsStatRow label="ROL (giorni)" value={statsAggYtd.giorniRol} />
-                      <AnalyticsStatRow label="Malattia (giorni)" value={statsAggYtd.giorniMalattia} />
-                      <AnalyticsStatRow label="Remote working (giorni)" value={statsAggYtd.giorniSmartWorking} />
-                      <AnalyticsStatRow label="Trasferte (giorni)" value={statsAggYtd.giorniTrasferta} />
-                      <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsAggYtd.giorniFestivitaAziendali} />
-                      <AnalyticsStatRow label="Turni (giorni con turno)" value={statsAggYtd.giorniConTurno} />
-                      <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsAggYtd.richiesteInAttesa} />
-                    </dl>
-                  </div>
-                </div>
-              )}
-              <div className="border-t border-[var(--prom-line)] pt-5">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                  Il tuo riepilogo personale
-                </h3>
-                <p className="mb-4 text-xs text-[var(--prom-muted)]">
-                  Stessi periodi del riquadro qui sotto, calcolati solo sul tuo utente collegato.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="mb-4 text-xs text-[var(--prom-muted)]">
-              Solo i tuoi dati: nessun filtro e nessun confronto con colleghi. Riepilogo giorni dal calendario per il
-              tuo utente — mese selezionato e cumulativo dal 1° gennaio alla fine del mese mostrato in testata. Le
-              richieste rifiutate non contano nei giorni.
+        <h2 className="text-sm font-semibold text-[var(--prom-text)]">
+          Ferie e ROL
+          <span className="ml-2 text-xs font-normal capitalize text-[var(--prom-muted)]">{monthLabel}</span>
+        </h2>
+        <p className="mt-1 text-xs text-[var(--prom-muted)]">
+          Saldo ferie dal profilo HR; giorni ROL e ferie del mese calcolati sul tuo calendario (richieste rifiutate escluse).
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Ferie residue</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+              {leaveBalance && leaveBalance.year === year ? leaveBalance.residualDays : "—"}
             </p>
-          )}
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                Mese selezionato
-              </h3>
-              <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
-                <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsMese.giorniFerieAnnuali} />
-                <AnalyticsStatRow label="ROL (giorni)" value={statsMese.giorniRol} />
-                <AnalyticsStatRow label="Malattia (giorni)" value={statsMese.giorniMalattia} />
-                <AnalyticsStatRow label="Remote working (giorni)" value={statsMese.giorniSmartWorking} />
-                <AnalyticsStatRow label="Trasferte (giorni)" value={statsMese.giorniTrasferta} />
-                <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsMese.giorniFestivitaAziendali} />
-                <AnalyticsStatRow label="Turni (giorni con turno)" value={statsMese.giorniConTurno} />
-                <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsMese.richiesteInAttesa} />
-              </dl>
-            </div>
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                Dal 1° gennaio al {ytdEndLabel}
-              </h3>
-              <dl className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3">
-                <AnalyticsStatRow label="Ferie annuali (giorni)" value={statsYtd.giorniFerieAnnuali} />
-                <AnalyticsStatRow label="ROL (giorni)" value={statsYtd.giorniRol} />
-                <AnalyticsStatRow label="Malattia (giorni)" value={statsYtd.giorniMalattia} />
-                <AnalyticsStatRow label="Remote working (giorni)" value={statsYtd.giorniSmartWorking} />
-                <AnalyticsStatRow label="Trasferte (giorni)" value={statsYtd.giorniTrasferta} />
-                <AnalyticsStatRow label="Festività aziendali (giorni)" value={statsYtd.giorniFestivitaAziendali} />
-                <AnalyticsStatRow label="Turni (giorni con turno)" value={statsYtd.giorniConTurno} />
-                <AnalyticsStatRow label="Richieste in attesa (nr.)" value={statsYtd.richiesteInAttesa} />
-              </dl>
-              {analyticsLeaveBalance && analyticsLeaveBalance.year === year ? (
-                <p className="mt-3 rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_50%,transparent)] px-3 py-2 text-xs text-[var(--prom-muted)]">
-                  Saldo ferie {year}:{" "}
-                  <span className="font-medium text-[var(--prom-text)]">{analyticsLeaveBalance.residualDays}</span>{" "}
-                  residui su{" "}
-                  <span className="font-medium text-[var(--prom-text)]">{analyticsLeaveBalance.allocatedDays}</span>{" "}
-                  assegnati ({analyticsLeaveBalance.usedDays} utilizzati).
-                </p>
-              ) : null}
-            </div>
+            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">
+              {leaveBalance && leaveBalance.year === year
+                ? `${leaveBalance.usedDays} usate su ${leaveBalance.allocatedDays} assegnate`
+                : "Saldo non disponibile"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Ferie nel mese</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+              {myMonthStats?.giorniFerieAnnuali ?? 0}
+            </p>
+            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">giorni approvati o in attesa</p>
+          </div>
+          <div className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_60%,transparent)] px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">ROL nel mese</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--prom-text)]">
+              {myMonthStats?.giorniRol ?? 0}
+            </p>
+            <p className="mt-0.5 text-[11px] text-[var(--prom-muted)]">giorni approvati o in attesa</p>
           </div>
         </div>
-      </details>
+      </section>
 
       {!loading && rowUsers.length === 0 ? (
         <p className="text-sm text-[var(--prom-muted)]">Nessun dipendente in questa vista.</p>
@@ -2489,6 +2071,7 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         type="button"
                         onClick={() => {
                           setSwPendingDay(modal.day.slice(0, 10));
+                          setSwPendingEndDay(modal.day.slice(0, 10));
                           setSwNote("");
                           setModalStep("smartworking");
                         }}
@@ -2622,9 +2205,11 @@ export default function WorkCalendarPage(): React.JSX.Element {
                           );
                           if (ev) {
                             setSwPendingDay(ev.start.slice(0, 10));
+                            setSwPendingEndDay((ev.end ?? ev.start).slice(0, 10));
                             setSwNote(typeof ev.meta?.note === "string" ? ev.meta.note : "");
                           } else {
                             setSwPendingDay(modal.day.slice(0, 10));
+                            setSwPendingEndDay(modal.day.slice(0, 10));
                             setSwNote("");
                           }
                           setModalStep("smartworking");
@@ -2755,16 +2340,17 @@ export default function WorkCalendarPage(): React.JSX.Element {
                         />
                       </label>
                     </div>
-                    <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--prom-muted)]">
+                    <label className="mt-2 block text-[11px] text-[var(--prom-muted)]">
                       Tipo
-                      <select
+                      <NexaSelect
+                        className="mt-1 max-w-[12rem]"
                         value={leaveKind}
-                        onChange={(e) => setLeaveKind(e.target.value === "rol" ? "rol" : "annual")}
-                        className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_80%,transparent)] px-2 py-1 text-[var(--prom-text)]"
-                      >
-                        <option value="annual">Ferie</option>
-                        <option value="rol">ROL</option>
-                      </select>
+                        onChange={(v) => setLeaveKind(v === "rol" ? "rol" : "annual")}
+                        options={[
+                          { value: "annual", label: "Ferie" },
+                          { value: "rol", label: "ROL" }
+                        ]}
+                      />
                     </label>
                     <Button
                       type="button"

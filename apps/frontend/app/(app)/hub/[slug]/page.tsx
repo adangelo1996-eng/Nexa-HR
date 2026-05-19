@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useTrackAsyncLoad } from "@/components/nexa-async-loading-provider";
 import { SectionHubPage } from "@/components/section-hub-page";
 import { fetchCurrentUser } from "@/lib/api";
 import {
@@ -28,18 +29,24 @@ export default function HubSectionPage(): React.JSX.Element {
   const slug = typeof params.slug === "string" ? params.slug : "";
   const [user, setUser] = useState<SessionUser | null>(null);
   const [employeeView, setEmployeeView] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setEmployeeView(sessionStorage.getItem(EMPLOYEE_VIEW_KEY) === "1");
     setUser(getSessionUser());
     const token = getToken();
     if (!token) {
+      setLoading(false);
       return;
     }
+    setLoading(true);
     void fetchCurrentUser(token)
       .then((u) => setUser(u))
-      .catch(() => setUser(getSessionUser()));
+      .catch(() => setUser(getSessionUser()))
+      .finally(() => setLoading(false));
   }, []);
+
+  useTrackAsyncLoad(loading && Boolean(getToken()), "load");
 
   const hideSensitiveHr = Boolean(employeeView && sessionCanNexaAdmin(user ?? undefined));
   const hrMode = sessionUsesHrReorganizedNav(user, hideSensitiveHr);
@@ -57,11 +64,20 @@ export default function HubSectionPage(): React.JSX.Element {
     notFound();
   }
 
-  if (!model) {
-    return <p className="text-sm text-[var(--prom-muted)]">Caricamento sezione…</p>;
-  }
-
   const hubList = hrMode ? HR_HUB_SECTIONS : EMPLOYEE_HUB_SECTIONS;
+
+  if (!model) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <p className="text-sm text-[var(--prom-muted)]">
+          Nessuna pagina disponibile in questa sezione per il tuo profilo.
+        </p>
+        <Link href="/mappa-portale" className="text-sm text-[var(--prom-muted)] underline-offset-2 hover:underline">
+          ← Mappa del portale
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -88,7 +104,7 @@ export default function HubSectionPage(): React.JSX.Element {
         tiles={model.tiles}
         groups={model.groups}
         backHref="/mappa-portale"
-        backLabel="← Mappa portale"
+        backLabel="← Mappa del portale"
       />
     </div>
   );

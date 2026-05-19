@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { useTrackAsyncLoad } from "@/components/nexa-async-loading-provider";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { fetchCurrentUser } from "@/lib/api";
 import {
@@ -19,61 +20,52 @@ import {
   buildHrLinearPortalSteps,
   type PortalLinearStep
 } from "@/lib/portal-mappa-linear";
+
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
 function TileCard(props: {
   href: Route;
   title: string;
   blurb: string;
-  stepIndex: number;
 }): React.JSX.Element {
-  const { href, title, blurb, stepIndex } = props;
+  const { href, title, blurb } = props;
   return (
     <Link
       href={href}
       scroll={false}
-      className="group flex items-start gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)]"
+      className="group flex h-full flex-col rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)]"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,#002D72_12%,transparent)] text-sm font-semibold text-[#002D72] dark:text-sky-200">
-        {stepIndex}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-[var(--prom-text)]">{title}</span>
-        {blurb ? <span className="mt-1 block text-xs leading-relaxed text-[var(--prom-muted)]">{blurb}</span> : null}
-      </span>
-      <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)] opacity-50 group-hover:opacity-100" />
+      <div className="flex items-start gap-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[var(--prom-text)]">{title}</span>
+          {blurb ? (
+            <span className="mt-1.5 block line-clamp-3 text-xs leading-relaxed text-[var(--prom-muted)]">{blurb}</span>
+          ) : null}
+        </span>
+        <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)] opacity-50 group-hover:opacity-100" />
+      </div>
     </Link>
   );
 }
 
-function LinearSection(props: { step: PortalLinearStep; index: number }): React.JSX.Element {
-  const n = props.index + 1;
+function GridSection(props: { step: PortalLinearStep }): React.JSX.Element {
   return (
-    <section className="relative pl-0 sm:pl-2">
-      <PortalSectionHeader step={props.step} index={n} />
-      <div className="mt-4 space-y-2 border-l-2 border-[color-mix(in_srgb,#002D72_22%,var(--prom-line))] pl-4 sm:pl-6">
+    <section className="space-y-4">
+      <PortalSectionHeader step={props.step} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {props.step.tiles.map((tile) => (
-          <TileCard
-            key={String(tile.href)}
-            href={tile.href}
-            title={tile.title}
-            blurb={tile.blurb}
-            stepIndex={n}
-          />
+          <TileCard key={String(tile.href)} href={tile.href} title={tile.title} blurb={tile.blurb} />
         ))}
       </div>
     </section>
   );
 }
 
-function PortalSectionHeader(props: { step: PortalLinearStep; index: number }): React.JSX.Element {
+function PortalSectionHeader(props: { step: PortalLinearStep }): React.JSX.Element {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#002D72] dark:text-sky-200">
-        Passo {props.index}
-      </span>
+    <div className="space-y-1">
       <h2 className="text-lg font-semibold text-[var(--prom-text)]">{props.step.title}</h2>
-      <p className="w-full text-sm text-[var(--prom-muted)] sm:w-auto sm:flex-1">{props.step.subtitle}</p>
+      <p className="max-w-2xl text-sm text-[var(--prom-muted)]">{props.step.subtitle}</p>
     </div>
   );
 }
@@ -81,16 +73,24 @@ function PortalSectionHeader(props: { step: PortalLinearStep; index: number }): 
 export default function MappaPortalePage(): React.JSX.Element {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [employeeView, setEmployeeView] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setEmployeeView(sessionStorage.getItem(EMPLOYEE_VIEW_KEY) === "1");
     setUser(getSessionUser());
     const t = getToken();
-    if (!t) return;
+    if (!t) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     void fetchCurrentUser(t)
       .then((u) => setUser(u))
-      .catch(() => setUser(getSessionUser()));
+      .catch(() => setUser(getSessionUser()))
+      .finally(() => setLoading(false));
   }, []);
+
+  useTrackAsyncLoad(loading && Boolean(getToken()), "load");
 
   const hideSensitiveHr = Boolean(employeeView && sessionCanNexaAdmin(user ?? undefined));
   const usesHrNav = sessionUsesHrReorganizedNav(user, hideSensitiveHr);
@@ -106,7 +106,7 @@ export default function MappaPortalePage(): React.JSX.Element {
 
   return (
     <div className="relative isolate min-h-[72vh] overflow-hidden rounded-[2rem] border border-[color-mix(in_srgb,#002D72_14%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-surface)_90%,var(--prom-bg))] px-5 py-10 sm:px-10">
-      <header className="relative z-[1] mx-auto max-w-3xl text-center">
+      <header className="relative z-[1] mx-auto max-w-5xl text-center">
         <div className="flex justify-center">
           <NexaPageHelpButton pageKey="mappa-portale" />
         </div>
@@ -118,15 +118,14 @@ export default function MappaPortalePage(): React.JSX.Element {
           Mappa del portale
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--prom-muted)]">
-          Percorso lineare dall&apos;alto verso il basso: ogni passo raggruppa le funzioni che ti servono in quella fase,
-          senza colonne da interpretare.
+          Sezioni e scorciatoie per il tuo profilo. Ogni blocco raggruppa le funzioni collegate.
         </p>
         <ProfileChips user={user} hideSensitiveHr={hideSensitiveHr} />
       </header>
 
-      <div className="relative z-[1] mx-auto mt-12 max-w-3xl space-y-14">
-        {steps.map((step, i) => (
-          <LinearSection key={step.id} step={step} index={i} />
+      <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-12">
+        {steps.map((step) => (
+          <GridSection key={step.id} step={step} />
         ))}
       </div>
     </div>

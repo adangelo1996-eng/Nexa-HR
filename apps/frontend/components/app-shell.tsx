@@ -39,6 +39,7 @@ import {
   type SessionUser
 } from "@/lib/auth-session";
 import { AppMainContentFrame } from "@/components/app-experience-frame";
+import { useTrackAsyncLoad } from "@/components/nexa-async-loading-provider";
 import { SessionIdleGuard } from "@/components/session-idle-guard";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { NexaGuidePanel } from "@/components/nexa-guide-panel";
@@ -46,8 +47,11 @@ import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
-import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
-import { buildHrNavPillars, type HrNavPillar } from "@/lib/nexa-hr-nav";
+import {
+  buildEmployeePortalMapNavSections,
+  buildHrPortalMapNavSections,
+  type PortalMapNavSection
+} from "@/lib/nexa-portal-map-nav";
 import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
@@ -66,7 +70,7 @@ type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
 const NAV_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
 const NAV_HR_RECAP: NavItem = { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList };
-const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa portale", icon: Home };
+const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa del portale", icon: Home };
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
   id: "profile",
@@ -198,13 +202,15 @@ function SidebarCollapsibleSection(props: {
           <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
             {section.subgroups.map((sg) => (
               <div key={`${section.id}-${sg.id}`}>
-                {pc ? (
-                  <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
-                ) : (
-                  <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                    {sg.title}
-                  </div>
-                )}
+                {sg.title ? (
+                  pc ? (
+                    <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
+                  ) : (
+                    <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                      {sg.title}
+                    </div>
+                  )
+                ) : null}
                 <div className="mt-0.5 space-y-0.5">
                   {sg.items.map((item) => (
                     <SidebarNavLink
@@ -231,6 +237,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const router = useRouter();
   const { theme, toggleTheme, mounted } = useTheme();
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [employeeView, setEmployeeViewState] = useState(false);
@@ -263,9 +270,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     setEmployeeViewState(getEmployeeViewOnly());
     const token = getToken();
     if (!token) {
+      setSessionLoading(false);
       return;
     }
     let cancelled = false;
+    setSessionLoading(true);
     void fetchCurrentUser(token)
       .then((fresh) => {
         if (!cancelled) {
@@ -274,11 +283,18 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       })
       .catch(() => {
         /* mantieni sessione da localStorage */
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSessionLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [pathname]);
+
+  useTrackAsyncLoad(sessionLoading && Boolean(getToken()), "load");
 
   useEffect(() => {
     function onDocClick(e: MouseEvent): void {
@@ -417,15 +433,38 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const usesEmployeeNav =
     hideSensitiveHrBecausePreview || sessionIsPlainEmployee(user ?? undefined);
 
-  const hrNavPillars = useMemo((): HrNavPillar[] => {
-    if (!usesHrNav) return [];
-    return buildHrNavPillars(user, hideSensitiveHrBecausePreview);
-  }, [user, hideSensitiveHrBecausePreview, usesHrNav]);
+  const portalMapNavSections = useMemo((): PortalMapNavSection[] => {
+    if (usesHrNav) {
+      return buildHrPortalMapNavSections(user, hideSensitiveHrBecausePreview);
+    }
+    if (usesEmployeeNav) {
+      return buildEmployeePortalMapNavSections(user, hideSensitiveHrBecausePreview);
+    }
+    return [];
+  }, [user, hideSensitiveHrBecausePreview, usesHrNav, usesEmployeeNav]);
 
-  const employeeNavHubs = useMemo(() => {
-    if (!usesEmployeeNav) return [];
-    return buildEmployeeNavSections(user, hideSensitiveHrBecausePreview);
-  }, [user, hideSensitiveHrBecausePreview, usesEmployeeNav]);
+  useEffect(() => {
+    if (portalMapNavSections.length === 0) {
+      return;
+    }
+    const normalized = pathname.replace(/\/$/, "") || "/";
+    for (const section of portalMapNavSections) {
+      const active = section.subgroups.some((sg) =>
+        sg.items.some((item) => pathActive(normalized, item.href, item.exact))
+      );
+      if (active) {
+        setOpenSections((prev) => {
+          if (prev[section.id]) {
+            return prev;
+          }
+          const next = { ...prev, [section.id]: true };
+          writeSidebarSectionPrefs(next);
+          return next;
+        });
+        break;
+      }
+    }
+  }, [pathname, portalMapNavSections]);
 
   const legacySixNavSections = useMemo(() => {
     if (usesHrNav || usesEmployeeNav) return [];
@@ -486,13 +525,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     }
   }, [pathname]);
 
-  function hubLinkActive(hubHref: Route, childHrefs: Route[]): boolean {
-    if (pathActive(pathname, hubHref)) {
-      return true;
-    }
-    return childHrefs.some((href) => pathActive(pathname, href));
-  }
-
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
@@ -513,6 +545,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       </Link>
       <SidebarNavLink
         item={NAV_DASHBOARD}
+        pathname={pathname}
+        onNavigate={closeMobile}
+        beforeNavigate={persistSidebarScrollPositions}
+      />
+      <SidebarNavLink
+        item={NAV_PORTAL_MAP}
         pathname={pathname}
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
@@ -539,39 +577,16 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ) : null}
-      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
+      {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
         <div className="my-2 border-t border-[var(--prom-line)]" />
       ) : null}
-      {hrNavPillars.map((pillar) => {
-        const childHrefs = pillar.subgroups.flatMap((sg) => sg.items.map((i) => i.href));
-        return (
-          <SidebarNavLink
-            key={pillar.id}
-            item={{
-              href: pillar.hubHref,
-              label: pillar.title,
-              icon: pillar.subgroups[0]?.items[0]?.icon ?? LayoutDashboard
-            }}
-            pathname={pathname}
-            isActive={hubLinkActive(pillar.hubHref, childHrefs)}
-            onNavigate={closeMobile}
-            beforeNavigate={persistSidebarScrollPositions}
-          />
-        );
-      })}
-      {employeeNavHubs.map((section) => (
-        <SidebarNavLink
+      {portalMapNavSections.map((section) => (
+        <SidebarCollapsibleSection
           key={section.id}
-          item={{
-            href: section.hubHref,
-            label: section.title,
-            icon: section.sectionIcon
-          }}
+          section={section}
           pathname={pathname}
-          isActive={hubLinkActive(
-            section.hubHref,
-            section.items.map((i) => i.href)
-          )}
+          open={Boolean(openSections[section.id])}
+          onOpenChange={onSectionOpenChange}
           onNavigate={closeMobile}
           beforeNavigate={persistSidebarScrollPositions}
         />
@@ -592,7 +607,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
-      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
+      {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
         <div className="my-2 border-t border-[var(--prom-line)]" />
       ) : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
@@ -610,8 +625,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   return (
     <div className="flex h-[100dvh] overflow-hidden">
       <SessionIdleGuard />
-      {!isPortalMap ? (
-        <aside
+      <aside
           ref={desktopAsideRef}
           onScroll={schedulePersistSidebarScroll}
           className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
@@ -619,9 +633,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         >
           {SidebarContent}
         </aside>
-      ) : null}
 
-      {!isPortalMap && mobileOpen ? (
+      {mobileOpen ? (
         <div
           className="fixed inset-0 z-50 flex md:hidden"
           role="dialog"
@@ -687,8 +700,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           }}
         >
           <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6">
-            {!isPortalMap ? (
-              <Button
+            <Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -698,9 +710,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
               >
                 <Menu className="h-5 w-5" />
               </Button>
-            ) : (
-              <span className="h-9 w-9 shrink-0 md:hidden" aria-hidden />
-            )}
             <Link
               href="/mappa-portale"
               scroll={false}

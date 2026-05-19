@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, CalendarClock, Users } from "lucide-react";
+import { Bell, BookOpen, CalendarClock, Users } from "lucide-react";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   fetchCompanyTrainingAssignments,
   fetchTrainingCourses,
   fetchUsers,
+  postTrainingAssignmentReminder,
   type TrainingAssignmentDto,
   type TrainingCourseDto,
   type User
@@ -31,6 +32,12 @@ function statusLabel(s: TrainingAssignmentDto["status"]): string {
   return "Da iniziare";
 }
 
+function assignmentProgressPercent(status: TrainingAssignmentDto["status"]): number {
+  if (status === "completed") return 100;
+  if (status === "in_progress") return 55;
+  return 8;
+}
+
 function formatDue(d: string): string {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
@@ -47,6 +54,7 @@ export default function HrFormazionePage(): React.JSX.Element | null {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [reminderBusyId, setReminderBusyId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [assignAll, setAssignAll] = useState(false);
@@ -146,6 +154,41 @@ export default function HrFormazionePage(): React.JSX.Element | null {
     const today = new Date().toISOString().slice(0, 10);
     return assignments.filter((a) => a.status !== "completed" && a.dueDate < today).length;
   }, [assignments]);
+
+  const assignmentsByEmployee = useMemo(() => {
+    const map = new Map<string, TrainingAssignmentDto[]>();
+    for (const a of assignments) {
+      const list = map.get(a.userId) ?? [];
+      list.push(a);
+      map.set(a.userId, list);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    return [...map.entries()]
+      .map(([userId, rows]) => {
+        const u = userById.get(userId);
+        const name = u?.fullName ?? u?.email ?? userId;
+        const sorted = [...rows].sort((x, y) => x.dueDate.localeCompare(y.dueDate));
+        const completed = sorted.filter((r) => r.status === "completed").length;
+        const overdue = sorted.filter((r) => r.status !== "completed" && r.dueDate < today).length;
+        return { userId, name, rows: sorted, completed, overdue, total: sorted.length };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "it"));
+  }, [assignments, userById]);
+
+  async function sendFriendlyReminder(assignmentId: string): Promise<void> {
+    const token = getToken();
+    if (!token || isSuperuser) return;
+    setReminderBusyId(assignmentId);
+    setError(null);
+    try {
+      await postTrainingAssignmentReminder(token, assignmentId);
+      setMsg("Promemoria inviato al dipendente (notifica in app).");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Promemoria non inviato");
+    } finally {
+      setReminderBusyId(null);
+    }
+  }
 
   return (
     <NexaHrAppPage
@@ -317,41 +360,91 @@ export default function HrFormazionePage(): React.JSX.Element | null {
       ) : null}
 
       {!loading && tab === "monitor" ? (
-        <section className="rounded-xl border border-[var(--prom-line)] p-4">
-          <h2 className="text-sm font-semibold text-[var(--prom-text)]">Assegnazioni aziendali</h2>
+        <section className="space-y-4">
+          <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--card-bg)] p-4">
+            <h2 className="text-sm font-semibold text-[var(--prom-text)]">Monitoraggio per dipendente</h2>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Avanzamento corsi, scadenze e promemoria gentile (notifica in app).
+            </p>
+          </div>
           {assignments.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--prom-muted)]">Nessuna assegnazione registrata.</p>
+            <p className="text-sm text-[var(--prom-muted)]">Nessuna assegnazione registrata.</p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--prom-line)] text-xs text-[var(--prom-muted)]">
-                    <th className="pb-2 pr-3 font-medium">Dipendente</th>
-                    <th className="pb-2 pr-3 font-medium">Corso</th>
-                    <th className="pb-2 pr-3 font-medium">Scadenza</th>
-                    <th className="pb-2 font-medium">Stato</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assignments.map((a) => {
-                    const u = userById.get(a.userId);
-                    const today = new Date().toISOString().slice(0, 10);
-                    const overdue = a.status !== "completed" && a.dueDate < today;
-                    return (
-                      <tr key={a.id} className="border-b border-[var(--prom-line)]/60">
-                        <td className="py-2 pr-3">{u?.fullName ?? u?.email ?? a.userId}</td>
-                        <td className="py-2 pr-3">{a.course?.title ?? "—"}</td>
-                        <td className={`py-2 pr-3 ${overdue ? "font-medium text-rose-700 dark:text-rose-300" : ""}`}>
-                          {formatDue(a.dueDate)}
-                          {overdue ? " · in ritardo" : ""}
-                        </td>
-                        <td className="py-2">{statusLabel(a.status)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="space-y-4">
+              {assignmentsByEmployee.map((group) => (
+                <li
+                  key={group.userId}
+                  className="rounded-xl border border-[var(--prom-line)] bg-[var(--card-bg)] shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--prom-line)] px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[var(--prom-text)]">{group.name}</p>
+                      <p className="text-xs text-[var(--prom-muted)]">
+                        {group.completed}/{group.total} completati
+                        {group.overdue > 0 ? (
+                          <span className="ml-2 font-medium text-rose-700 dark:text-rose-300">
+                            · {group.overdue} in ritardo
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div className="h-2 w-32 overflow-hidden rounded-full bg-[var(--prom-line)]">
+                      <div
+                        className="h-full rounded-full bg-[#002D72] transition-all dark:bg-sky-600"
+                        style={{
+                          width: `${group.total > 0 ? Math.round((group.completed / group.total) * 100) : 0}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <ul className="divide-y divide-[var(--prom-line)]/70">
+                    {group.rows.map((a) => {
+                      const today = new Date().toISOString().slice(0, 10);
+                      const overdue = a.status !== "completed" && a.dueDate < today;
+                      const pct = assignmentProgressPercent(a.status);
+                      return (
+                        <li
+                          key={a.id}
+                          className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-[var(--prom-text)]">{a.course?.title ?? "—"}</p>
+                            <p
+                              className={`mt-0.5 text-xs ${overdue ? "font-semibold text-rose-700 dark:text-rose-300" : "text-[var(--prom-muted)]"}`}
+                            >
+                              Scadenza {formatDue(a.dueDate)}
+                              {overdue ? " · Scaduto" : ""} · {statusLabel(a.status)}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--prom-line)]">
+                                <div
+                                  className={`h-full rounded-full ${overdue ? "bg-rose-600" : "bg-[#002D72] dark:bg-sky-600"}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] tabular-nums text-[var(--prom-muted)]">{pct}%</span>
+                            </div>
+                          </div>
+                          {a.status !== "completed" ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0 gap-1.5"
+                              disabled={reminderBusyId === a.id || isSuperuser}
+                              onClick={() => void sendFriendlyReminder(a.id)}
+                            >
+                              <Bell className="h-3.5 w-3.5" />
+                              {reminderBusyId === a.id ? "Invio…" : "Invia promemoria"}
+                            </Button>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       ) : null}
