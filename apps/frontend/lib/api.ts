@@ -78,6 +78,63 @@ export interface User {
   workTeamIdsWhereLead?: string[];
 }
 
+/** Bundle read-only per scheda CV `/employee/:id` (GET /users/:id/cv-profile). */
+export interface EmployeeCvProfileDto {
+  subject: {
+    fullName: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+    phone?: string | null;
+    address?: string | null;
+    birthDate?: string | null;
+    hireDate?: string | null;
+    contractType?: string | null;
+    weeklyContractHours?: number | null;
+    employmentState?: string;
+    contractEndDate?: string | null;
+    contractFixedTerm?: boolean;
+    partTimeModality?: string | null;
+    legalCategory?: string | null;
+    ccnlCode?: string | null;
+    ccnlLevel?: string | null;
+    vacationAllowanceDays?: number | null;
+    jurisdiction?: string;
+    taxRegion?: string | null;
+    taxMunicipalityIt?: string | null;
+    fiscalCode?: string | null;
+    maritalStatus?: string | null;
+    dependentsChildren?: number | null;
+    dependentSpouse?: boolean | null;
+    disabilityFlag?: boolean | null;
+    taxDomicileMunicipalityIt?: string | null;
+    taxDomicileSameAsResidence?: boolean | null;
+    iban?: string | null;
+    bankName?: string | null;
+    bicSwift?: string | null;
+    accountHolder?: string | null;
+    annualGrossSalary?: number | null;
+    baseSalaryMonthly?: number | null;
+    fixedSupplementMonthly?: number | null;
+    payMonthsPerYear?: number | null;
+    fringeBenefitYtdEuros?: number | null;
+    garnishmentMonthlyEstimate?: number | null;
+  };
+  roleName: string | null;
+  costCenter: { code: string; name: string } | null;
+  team: { name: string } | null;
+  manager: { id: string; fullName: string } | null;
+  skills: Array<{ code: string; name: string; level: number }>;
+  companyCcnl: string | null;
+  profilePhotoUrl: string | null;
+  flags: {
+    isSelf: boolean;
+    canViewEconomic: boolean;
+    canViewPayrollSensitive: boolean;
+    canEditInAdmin: boolean;
+  };
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -2459,6 +2516,17 @@ export async function fetchUserProfilePhotoUrl(token: string, userId: string): P
   return body.url;
 }
 
+export async function fetchEmployeeCvProfile(token: string, userId: string): Promise<EmployeeCvProfileDto> {
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}/cv-profile`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as EmployeeCvProfileDto;
+}
+
 export async function uploadUserProfilePhoto(token: string, userId: string, file: File): Promise<User> {
   const fd = new FormData();
   fd.append("file", file);
@@ -2532,6 +2600,8 @@ export async function uploadDocumentToVault(
   return response.json() as Promise<EmployeeDocumentDto>;
 }
 
+export type LinkedInSyncStatusDto = "not_linked" | "pending" | "synced" | "error";
+
 export interface RecruitPositionDto {
   id: string;
   company_id: string;
@@ -2541,6 +2611,21 @@ export interface RecruitPositionDto {
   created_at: string;
   job_code?: string;
   due_date?: string | null;
+  location?: string | null;
+  source?: "nexa" | "linkedin";
+  linkedin_job_id?: string | null;
+  linkedin_job_url?: string | null;
+  linkedin_sync_status?: LinkedInSyncStatusDto;
+  linkedin_last_synced_at?: string | null;
+  linkedin_sync_error?: string | null;
+}
+
+export interface LinkedInIntegrationStatusDto {
+  configured: boolean;
+  adapterMode: "stub" | "oauth";
+  autoPublishOnCreate: boolean;
+  organizationUrnSet: boolean;
+  webhookSecretSet: boolean;
 }
 
 export interface RecruitCandidateDto {
@@ -2554,6 +2639,26 @@ export interface RecruitCandidateDto {
   created_at: string;
   privacy_notice_version?: string | null;
   consent_recorded_at?: string | null;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: RecruitCvScreeningSummaryDto | null;
+  screened_at?: string | null;
+  screening_position_id?: string | null;
+}
+
+export interface RecruitCvScreeningSummaryDto {
+  matches?: string[];
+  mismatches?: string[];
+  summary?: string;
+}
+
+export interface RecruitCvScreenResultDto {
+  stateId: string;
+  candidateId: string;
+  positionId: string;
+  candidateCvScreeningScore: number;
+  screeningSummary: RecruitCvScreeningSummaryDto;
+  screenedAt: string;
+  llm: { active: boolean; refineApplied: boolean };
 }
 
 export interface RecruitCandidateDocumentDto {
@@ -2583,6 +2688,9 @@ export interface RecruitCandidateStageStateDto {
   current_stage_id: string;
   status: "in_progress" | "passed" | "failed";
   updated_at: string;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: RecruitCvScreeningSummaryDto | null;
+  screened_at?: string | null;
 }
 
 export async function fetchRecruitPositions(token: string): Promise<RecruitPositionDto[]> {
@@ -2594,7 +2702,13 @@ export async function fetchRecruitPositions(token: string): Promise<RecruitPosit
 
 export async function createRecruitPosition(
   token: string,
-  payload: { title: string; jobDescription: string; dueDate?: string | null }
+  payload: {
+    title: string;
+    jobDescription: string;
+    dueDate?: string | null;
+    location?: string | null;
+    publishToLinkedIn?: boolean;
+  }
 ): Promise<RecruitPositionDto> {
   const response = await fetch(buildApiUrl("/recruiting/positions"), {
     method: "POST",
@@ -2605,6 +2719,46 @@ export async function createRecruitPosition(
   return response.json() as Promise<RecruitPositionDto>;
 }
 
+export async function fetchRecruitPosition(token: string, positionId: string): Promise<RecruitPositionDto> {
+  const response = await fetch(buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function publishRecruitPositionToLinkedIn(
+  token: string,
+  positionId: string
+): Promise<RecruitPositionDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}/linkedin/publish`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function syncRecruitPositionLinkedIn(
+  token: string,
+  positionId: string
+): Promise<RecruitPositionDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}/linkedin/sync`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function fetchLinkedInIntegrationStatus(token: string): Promise<LinkedInIntegrationStatusDto> {
+  const response = await fetch(buildApiUrl("/recruiting/integrations/linkedin/status"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<LinkedInIntegrationStatusDto>;
+}
+
 export async function deleteRecruitPosition(token: string, id: string): Promise<void> {
   const response = await fetch(buildApiUrl(`/recruiting/positions/${encodeURIComponent(id)}`), {
     method: "DELETE",
@@ -2613,11 +2767,53 @@ export async function deleteRecruitPosition(token: string, id: string): Promise<
   if (!response.ok) await parseError(response);
 }
 
-export async function fetchRecruitCandidates(token: string): Promise<RecruitCandidateDto[]> {
-  const response = await fetch(buildApiUrl("/recruiting/candidates"), { headers: getAuthHeaders(token) });
+export async function fetchRecruitCandidates(
+  token: string,
+  options?: { minScore?: number; sortByScore?: "asc" | "desc" }
+): Promise<RecruitCandidateDto[]> {
+  const params = new URLSearchParams();
+  if (options?.minScore != null) params.set("minScore", String(options.minScore));
+  if (options?.sortByScore) params.set("sortByScore", options.sortByScore);
+  const qs = params.toString();
+  const response = await fetch(buildApiUrl(`/recruiting/candidates${qs ? `?${qs}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { items: RecruitCandidateDto[] };
   return body.items ?? [];
+}
+
+export async function screenRecruitCandidateCv(
+  token: string,
+  candidateId: string,
+  payload?: { positionId?: string; cvText?: string }
+): Promise<RecruitCvScreenResultDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}/screen-cv`),
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify(payload ?? {})
+    }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCvScreenResultDto>;
+}
+
+export async function screenRecruitCandidateCvBatch(
+  token: string,
+  payload: { positionId: string; candidateIds: string[] }
+): Promise<{ items: RecruitCvScreenResultDto[]; errors: Array<{ candidateId: string; message: string }> }> {
+  const response = await fetch(buildApiUrl("/recruiting/candidates/screen-cv-batch"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    items: RecruitCvScreenResultDto[];
+    errors: Array<{ candidateId: string; message: string }>;
+  }>;
 }
 
 export async function createRecruitCandidate(
@@ -2735,6 +2931,9 @@ export async function fetchRecruitCandidateDetail(
     current_stage_id: string;
     status: "in_progress" | "passed" | "failed";
     updated_at: string;
+    candidate_cv_screening_score?: number | null;
+    screening_summary?: RecruitCvScreeningSummaryDto | null;
+    screened_at?: string | null;
   }>;
 }> {
   const response = await fetch(buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}`), {
@@ -2750,6 +2949,9 @@ export async function fetchRecruitCandidateDetail(
       current_stage_id: string;
       status: "in_progress" | "passed" | "failed";
       updated_at: string;
+      candidate_cv_screening_score?: number | null;
+      screening_summary?: RecruitCvScreeningSummaryDto | null;
+      screened_at?: string | null;
     }>;
   }>;
 }
@@ -2852,6 +3054,58 @@ export async function fetchRecruitOnboardingBoard(token: string): Promise<{ item
     return fallback.json() as Promise<{ items: RecruitOnboardingRowDto[] }>;
   }
   return await parseError(primary);
+}
+
+export interface LinkedInIntegrationConfigDto {
+  provider: "linkedin";
+  configured: boolean;
+  adapterMode: "stub" | "oauth";
+  autoPublishOnCreate: boolean;
+  organizationUrnSet: boolean;
+  webhookSecretSet: boolean;
+  companyId: string;
+  webhookPath: string;
+  webhookUrl: string;
+  signatureHeaders: string[];
+  signatureFormat: string;
+  rateLimitPerMinute: number;
+  defaultCompanyId: string;
+  documentationPath: string;
+}
+
+export async function fetchLinkedInIntegrationConfig(
+  token: string,
+  publicApiBaseUrl?: string
+): Promise<LinkedInIntegrationConfigDto> {
+  const q = publicApiBaseUrl?.trim()
+    ? `?publicApiBaseUrl=${encodeURIComponent(publicApiBaseUrl.trim())}`
+    : "";
+  const response = await fetch(buildApiUrl(`/recruiting/integrations/linkedin/config${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<LinkedInIntegrationConfigDto>;
+}
+
+export async function testLinkedInCandidateIngest(
+  token: string,
+  payload: {
+    jobId: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    linkedinUrl?: string;
+    resumeUrl?: string;
+    externalId?: string;
+  }
+): Promise<{ ok: boolean; action: string; result: Record<string, unknown> }> {
+  const response = await fetch(buildApiUrl("/recruiting/integrations/linkedin/test-ingest"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: boolean; action: string; result: Record<string, unknown> }>;
 }
 
 export type HrOnboardingWizardStepDef = {

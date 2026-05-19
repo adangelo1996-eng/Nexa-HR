@@ -348,25 +348,26 @@ export default function OrgChartPage(): React.JSX.Element {
                   ) : null}
                 </div>
               ) : null}
-              {detailUser?.teamId ? (
-                <div className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-3 py-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">Team (id)</dt>
-                  <dd className="mt-0.5 font-mono text-xs text-[var(--prom-text)]">{detailUser.teamId}</dd>
-                </div>
-              ) : null}
             </dl>
 
+            <Link
+              href={`/employee/${encodeURIComponent(selected.id)}` as Route}
+              className="mt-6 inline-flex w-full items-center justify-center rounded-xl border border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] px-4 py-2.5 text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-gold)_20%,transparent)]"
+              onClick={() => setSelected(null)}
+            >
+              Vai al profilo
+            </Link>
             {user?.id === selected.id ? (
               <Link
                 href={"/settings" as Route}
-                className="mt-6 inline-flex items-center justify-center rounded-xl border border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] px-4 py-2.5 text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-gold)_20%,transparent)]"
+                className="mt-3 block text-center text-xs font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
+                onClick={() => setSelected(null)}
               >
-                Apri il mio profilo
+                Impostazioni account
               </Link>
             ) : (
-              <p className="mt-6 text-xs leading-relaxed text-[var(--prom-muted)]">
-                Dati anagrafici estesi (IBAN, indirizzo, retribuzione) restano nel modulo profilo, visibili solo a chi ne ha
-                diritto.
+              <p className="mt-4 text-xs leading-relaxed text-[var(--prom-muted)]">
+                Scheda in sola lettura. Dati retributivi e bancari solo per titolare o HR autorizzato.
               </p>
             )}
           </aside>

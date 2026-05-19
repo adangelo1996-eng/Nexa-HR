@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   StreamableFile,
   UploadedFile,
   UseGuards,
@@ -15,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { Transform } from "class-transformer";
 import {
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsIn,
@@ -27,6 +29,8 @@ import {
 import { memoryStorage } from "multer";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { LinkedInJobSyncService } from "./linkedin/linkedin-job-sync.service";
+import { RecruitCvScreenService } from "./recruit-cv-screen.service";
 import { RecruitingService } from "./recruiting.service";
 
 class CreatePositionDto {
@@ -40,6 +44,15 @@ class CreatePositionDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  location?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  publishToLinkedIn?: boolean;
 }
 
 class CreateCandidateDto {
@@ -98,10 +111,33 @@ class DecideDto {
   status!: "in_progress" | "passed" | "failed";
 }
 
+class ScreenCvDto {
+  @IsOptional()
+  @IsString()
+  positionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12000)
+  cvText?: string;
+}
+
+class ScreenCvBatchDto {
+  @IsString()
+  positionId!: string;
+
+  @IsString({ each: true })
+  candidateIds!: string[];
+}
+
 @Controller("recruiting")
 @UseGuards(NexaPermissionGuard)
 export class RecruitingController {
-  constructor(private readonly svc: RecruitingService) {}
+  constructor(
+    private readonly svc: RecruitingService,
+    private readonly linkedInSync: LinkedInJobSyncService,
+    private readonly cvScreen: RecruitCvScreenService
+  ) {}
 
   @Get("positions")
   @RequireNexaPermissions("nexa.recruiting:read")
@@ -114,13 +150,20 @@ export class RecruitingController {
   @Post("positions")
   @RequireNexaPermissions("nexa.recruiting:write")
   async createPosition(@CurrentAuth() auth: AuthContext, @Body() dto: CreatePositionDto): Promise<unknown> {
-    return this.svc.createPosition({
-      companyId: auth.tenantId ?? "comp-1",
+    const companyId = auth.tenantId ?? "comp-1";
+    const created = await this.svc.createPosition({
+      companyId,
       title: dto.title,
       jobDescription: dto.jobDescription,
       createdByUserId: auth.userId,
-      dueDate: dto.dueDate ?? null
+      dueDate: dto.dueDate ?? null,
+      location: dto.location?.trim() ? dto.location.trim() : null
     });
+    if (dto.publishToLinkedIn) {
+      return this.linkedInSync.publishPositionToLinkedIn(companyId, created.id);
+    }
+    void this.linkedInSync.maybeAutoPublishOnCreate(companyId, created.id);
+    return created;
   }
 
   @Delete("positions/:id")
@@ -132,8 +175,17 @@ export class RecruitingController {
 
   @Get("candidates")
   @RequireNexaPermissions("nexa.recruiting:read")
-  async listCandidates(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {
-    const items = await this.svc.listCandidates(auth.tenantId ?? "comp-1");
+  async listCandidates(
+    @CurrentAuth() auth: AuthContext,
+    @Query("minScore") minScoreRaw?: string,
+    @Query("sortByScore") sortByScore?: string
+  ): Promise<{ items: unknown[] }> {
+    const minScore =
+      minScoreRaw != null && minScoreRaw.trim() !== "" ? Number(minScoreRaw) : undefined;
+    const items = await this.svc.listCandidates(auth.tenantId ?? "comp-1", {
+      minScore: Number.isFinite(minScore) ? minScore : undefined,
+      sortByScore: sortByScore === "asc" || sortByScore === "desc" ? sortByScore : undefined
+    });
     return { items };
   }
 
@@ -229,6 +281,29 @@ export class RecruitingController {
   @RequireNexaPermissions("nexa.recruiting:write")
   async undoMove(@CurrentAuth() auth: AuthContext, @Param("stateId") stateId: string): Promise<unknown> {
     return this.svc.undoLastStageMove({ stateId, actorUserId: auth.userId });
+  }
+
+  @Post("candidates/screen-cv-batch")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async screenCvBatch(@CurrentAuth() auth: AuthContext, @Body() dto: ScreenCvBatchDto): Promise<unknown> {
+    return this.cvScreen.screenCandidateCvBatch(auth, {
+      positionId: dto.positionId,
+      candidateIds: dto.candidateIds ?? []
+    });
+  }
+
+  @Post("candidates/:id/screen-cv")
+  @RequireNexaPermissions("nexa.recruiting:write")
+  async screenCv(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Body() dto: ScreenCvDto
+  ): Promise<unknown> {
+    return this.cvScreen.screenCandidateCv(auth, {
+      candidateId: id,
+      positionId: dto.positionId,
+      cvText: dto.cvText
+    });
   }
 
   @Post("candidates/:candidateId/documents")

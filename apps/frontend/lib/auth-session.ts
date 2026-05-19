@@ -223,7 +223,12 @@ export function sessionCanOpenEmployeeRecapPage(
 export function sessionCanViewEmployeeProfile(
   viewer: Pick<
     SessionUser,
-    "id" | "role" | "canNexaAdmin" | "canAccessHrExtendedConsole" | "canAccessHrRecapDashboard"
+    | "id"
+    | "role"
+    | "canNexaAdmin"
+    | "canAccessHrExtendedConsole"
+    | "canAccessHrRecapDashboard"
+    | "isTeamResponsible"
   > | null | undefined,
   subject: { userId: string; managerId?: string | null }
 ): boolean {
@@ -241,6 +246,9 @@ export function sessionCanViewEmployeeProfile(
   }
   const mid = subject.managerId?.trim();
   if (mid && mid === viewer.id) {
+    return true;
+  }
+  if (viewer.isTeamResponsible === true) {
     return true;
   }
   return false;

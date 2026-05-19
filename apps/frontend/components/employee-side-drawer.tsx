@@ -207,26 +207,27 @@ function DrawerBody(props: {
         ) : null}
       </dl>
 
+      <Link
+        href={`/employee/${encodeURIComponent(subject.userId)}` as Route}
+        className="mt-6 inline-flex w-full"
+        onClick={onClose}
+      >
+        <Button type="button" className="w-full">
+          Vai al profilo
+        </Button>
+      </Link>
       {isSelf ? (
         <Link
           href={"/settings" as Route}
-          className="mt-6 inline-flex items-center justify-center rounded-xl border border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_12%,transparent)] px-4 py-2.5 text-sm font-medium text-[var(--prom-text)] transition hover:bg-[color-mix(in_srgb,var(--prom-gold)_20%,transparent)]"
+          className="mt-3 block text-center text-xs font-medium text-[var(--prom-gold)] underline-offset-2 hover:underline"
           onClick={onClose}
         >
-          Apri il mio profilo
+          Impostazioni account
         </Link>
       ) : (
-        <>
-          <Link href={`/employee/${encodeURIComponent(subject.userId)}` as Route} className="mt-6 inline-flex w-full" onClick={onClose}>
-            <Button type="button" className="w-full">
-              Apri scheda dipendente
-            </Button>
-          </Link>
-          <p className="mt-4 text-xs leading-relaxed text-[var(--prom-muted)]">
-            Dati anagrafici estesi (IBAN, indirizzo, retribuzione) restano nel modulo profilo, visibili solo a chi ne ha
-            diritto.
-          </p>
-        </>
+        <p className="mt-4 text-xs leading-relaxed text-[var(--prom-muted)]">
+          Scheda in sola lettura. Dati retributivi e bancari solo per titolare o HR autorizzato.
+        </p>
       )}
     </>
   );

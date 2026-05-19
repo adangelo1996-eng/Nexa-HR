@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Briefcase, ChevronDown, Users } from "lucide-react";
+import { Briefcase, ChevronDown, Link2, Users } from "lucide-react";
+import { LinkedInSyncBadge } from "@/components/recruiting/linkedin-sync-badge";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,8 @@ import {
   createRecruitPosition,
   deleteRecruitPosition,
   fetchRecruitPositions,
+  publishRecruitPositionToLinkedIn,
+  syncRecruitPositionLinkedIn,
   type RecruitPositionDto
 } from "@/lib/api";
 
@@ -27,6 +30,9 @@ export default function RecruitingHomePage(): React.JSX.Element {
   const [title, setTitle] = useState("");
   const [jd, setJd] = useState("");
   const [dueDate, setDueDate] = useState<string>("");
+  const [location, setLocation] = useState("");
+  const [publishToLinkedIn, setPublishToLinkedIn] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const canCreate = title.trim().length > 0 && jd.trim().length > 0;
 
   useEffect(() => {
@@ -53,12 +59,16 @@ export default function RecruitingHomePage(): React.JSX.Element {
       const created = await createRecruitPosition(token, {
         title: title.trim(),
         jobDescription: jd.trim(),
-        dueDate: dueDate.trim() ? dueDate.trim() : null
+        dueDate: dueDate.trim() ? dueDate.trim() : null,
+        location: location.trim() ? location.trim() : null,
+        publishToLinkedIn
       });
       setPositions((prev) => [created, ...prev]);
       setTitle("");
       setJd("");
       setDueDate("");
+      setLocation("");
+      setPublishToLinkedIn(false);
       setShowCreateForm(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore creazione posizione");
@@ -100,6 +110,18 @@ export default function RecruitingHomePage(): React.JSX.Element {
             <span className="block text-sm font-semibold text-synapse-text dark:text-white">Onboarding assunzioni</span>
             <span className="mt-1 block text-xs text-synapse-muted dark:text-[#b4c9dc]">
               Candidati in colonna onboarding: wizard HR e contratto.
+            </span>
+          </span>
+        </Link>
+        <Link
+          href="/recruiting/integrations"
+          className="flex items-start gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--prom-surface)] p-4 transition hover:border-[color-mix(in_srgb,#002D72_30%,var(--card-border))] sm:col-span-3"
+        >
+          <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[#002D72] dark:text-sky-200" aria-hidden />
+          <span>
+            <span className="block text-sm font-semibold text-synapse-text dark:text-white">Integrazioni LinkedIn</span>
+            <span className="mt-1 block text-xs text-synapse-muted dark:text-[#b4c9dc]">
+              Sync bidirezionale posizioni, webhook e variabili ambiente.
             </span>
           </span>
         </Link>
@@ -179,6 +201,24 @@ export default function RecruitingHomePage(): React.JSX.Element {
                   <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
                 </label>
                 <label className="space-y-1 text-sm">
+                  <span className="text-synapse-muted dark:text-[#b4c9dc]">Sede / località</span>
+                  <Input
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Es. Milano, Italia"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={publishToLinkedIn}
+                    onChange={(e) => setPublishToLinkedIn(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span className="text-synapse-muted dark:text-[#b4c9dc]">Pubblica su LinkedIn alla creazione</span>
+                </label>
+                <label className="space-y-1 text-sm">
                   <span className="text-synapse-muted dark:text-[#b4c9dc]">Job description *</span>
                   <textarea
                     name="jobDescription"
@@ -208,12 +248,19 @@ export default function RecruitingHomePage(): React.JSX.Element {
                   key={p.id}
                   className="flex flex-col gap-2 rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-synapse-text dark:text-white">{p.title}</p>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-synapse-text dark:text-white">{p.title}</p>
+                      <LinkedInSyncBadge position={p} />
+                    </div>
                     <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
                       Job ID: {p.job_code || "—"}
                       {p.due_date ? ` • scadenza ${String(p.due_date).slice(0, 10)}` : ""}
+                      {p.location ? ` • ${p.location}` : ""}
                     </p>
+                    {p.linkedin_sync_error ? (
+                      <p className="text-xs text-rose-600 dark:text-rose-300">{p.linkedin_sync_error}</p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link
@@ -223,6 +270,29 @@ export default function RecruitingHomePage(): React.JSX.Element {
                     >
                       Apri pipeline
                     </Link>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={!token || syncingId === p.id}
+                      onClick={() => {
+                        if (!token) return;
+                        setSyncingId(p.id);
+                        setError(null);
+                        const action =
+                          p.linkedin_sync_status === "synced"
+                            ? syncRecruitPositionLinkedIn(token, p.id)
+                            : publishRecruitPositionToLinkedIn(token, p.id);
+                        void action
+                          .then((updated) =>
+                            setPositions((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+                          )
+                          .catch((e) => setError(e instanceof Error ? e.message : "Errore sync LinkedIn"))
+                          .finally(() => setSyncingId(null));
+                      }}
+                    >
+                      {p.linkedin_sync_status === "synced" ? "Sincronizza ora" : "Pubblica su LinkedIn"}
+                    </Button>
                     <Button
                       type="button"
                       variant="secondary"

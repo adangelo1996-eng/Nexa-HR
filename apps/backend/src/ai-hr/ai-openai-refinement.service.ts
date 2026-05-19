@@ -65,6 +65,9 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
   if (schemaVersion === "ai_payslip_explain_v1") {
     return new Set();
   }
+  if (schemaVersion === "ai_recruit_cv_screen_v1") {
+    return new Set();
+  }
   return collectTokensFromJson(pseudonymizedInput);
 }
 
@@ -225,6 +228,16 @@ function systemPromptForSchema(schemaVersion: string): string {
         "keyPoints: max 5 bullet brevi sulla situazione del mese. withholdingsBullets: max 5, ogni bullet cita importi da facts. " +
         "howToReadBullets: max 4 passi pratici. parsedLineBullets: max 6 commenti su righe reali. " +
         "lineHighlights: max 6. Non inventare codici/importi. Mantieni anche plainSummary compatto."
+      );
+    case "ai_recruit_cv_screen_v1":
+      return (
+        base +
+        " Ruolo: recruiter HR senior. Valuta fit tra CV e posizione aperta. " +
+        " Schema: {\"envelope\":{\"score\":number,\"matches\":[\"stringa\"],\"mismatches\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
+        " L'ingresso ha envelope.facts: roleTitle, jobDescription, requiredSkills (array name/minLevel), cvExcerpt, disclaimer. " +
+        " score: intero 0-100 (100 = fit eccellente). matches: max 6 bullet concreti di allineamento; mismatches: max 6 gap/rischi; " +
+        " summary: 2-3 frasi operative per HR in italiano. Non inventare esperienze assenti dal CV; non citare dati sensibili non pertinenti; " +
+        " tono professionale, nessuna discriminazione; ricorda che è supporto decisionale umano."
       );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";

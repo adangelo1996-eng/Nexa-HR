@@ -56,6 +56,7 @@ const PILLAR_DEFS: Array<{
         title: "Selezione e onboarding",
         items: [
           { href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch },
+          { href: "/recruiting/integrations" as Route, label: "Integrazioni", icon: Workflow },
           { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus },
           { href: "/hr/formazione" as Route, label: "Formazione", icon: GraduationCap }
         ]

@@ -6,6 +6,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
+import { extractCvTextFromBuffer } from "./recruit-cv-text.util";
+
+export type RecruitPositionSource = "nexa" | "linkedin";
+export type LinkedInSyncStatus = "not_linked" | "pending" | "synced" | "error";
 
 export interface RecruitPositionRow {
   id: string;
@@ -16,7 +20,17 @@ export interface RecruitPositionRow {
   created_at: string;
   job_code: string;
   due_date: string | null;
+  location?: string | null;
+  source?: RecruitPositionSource;
+  linkedin_job_id?: string | null;
+  linkedin_job_url?: string | null;
+  linkedin_sync_status?: LinkedInSyncStatus;
+  linkedin_last_synced_at?: string | null;
+  linkedin_sync_error?: string | null;
 }
+
+const RECRUIT_POSITION_DB_COLS =
+  "id, company_id, title, job_description, status, created_at, job_code, due_date, location, source, linkedin_job_id, linkedin_job_url, linkedin_sync_status, linkedin_last_synced_at, linkedin_sync_error";
 
 export interface RecruitCandidateRow {
   id: string;
@@ -29,6 +43,15 @@ export interface RecruitCandidateRow {
   created_at: string;
   privacy_notice_version: string | null;
   consent_recorded_at: string | null;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: Record<string, unknown> | null;
+  screened_at?: string | null;
+  screening_position_id?: string | null;
+}
+
+export interface RecruitCandidateListOptions {
+  minScore?: number;
+  sortByScore?: "asc" | "desc";
 }
 
 export interface RecruitCandidateDocumentRow {
@@ -50,6 +73,9 @@ export interface RecruitCandidatePositionStateSummary {
   current_stage_id: string;
   status: "in_progress" | "passed" | "failed";
   updated_at: string;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: Record<string, unknown> | null;
+  screened_at?: string | null;
 }
 
 export interface RecruitPipelineStageRow {
@@ -67,7 +93,13 @@ export interface RecruitCandidateStageStateRow {
   current_stage_id: string;
   status: "in_progress" | "passed" | "failed";
   updated_at: string;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: Record<string, unknown> | null;
+  screened_at?: string | null;
 }
+
+const RECRUIT_STAGE_STATE_SCREENING_COLS =
+  "candidate_cv_screening_score, screening_summary, screened_at";
 
 const RECRUIT_DOC_MAX_BYTES = 15 * 1024 * 1024;
 const RECRUIT_ALLOWED_MIME = new Set([
@@ -132,31 +164,40 @@ export class RecruitingService {
     return this.mapCandidateRow(data as Record<string, unknown>);
   }
 
+  private mapPositionRow(r: Record<string, unknown>): RecruitPositionRow {
+    const rawStatus = String(r.status ?? "open").trim().toLowerCase();
+    const status: RecruitPositionRow["status"] = rawStatus === "closed" ? "closed" : "open";
+    return {
+      id: String(r.id),
+      company_id: r.company_id as string,
+      title: r.title as string,
+      job_description: r.job_description as string,
+      status,
+      created_at: this.toIso(r.created_at),
+      job_code: String(r.job_code ?? ""),
+      due_date: r.due_date != null ? String(r.due_date) : null,
+      location: (r.location as string | null) ?? null,
+      source: (r.source as RecruitPositionSource) ?? "nexa",
+      linkedin_job_id: (r.linkedin_job_id as string | null) ?? null,
+      linkedin_job_url: (r.linkedin_job_url as string | null) ?? null,
+      linkedin_sync_status: (r.linkedin_sync_status as LinkedInSyncStatus) ?? "not_linked",
+      linkedin_last_synced_at: r.linkedin_last_synced_at != null ? this.toIso(r.linkedin_last_synced_at) : null,
+      linkedin_sync_error: (r.linkedin_sync_error as string | null) ?? null
+    };
+  }
+
   async listPositions(companyId: string): Promise<RecruitPositionRow[]> {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_positions")
-      .select("id, company_id, title, job_description, status, created_at, job_code, due_date")
+      .select(RECRUIT_POSITION_DB_COLS)
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
       throw new InternalServerErrorException(`Recruiting list positions: ${error.message}`);
     }
-    return (data ?? []).map((r) => {
-      const rawStatus = String((r as { status?: string }).status ?? "open").trim().toLowerCase();
-      const status: RecruitPositionRow["status"] = rawStatus === "closed" ? "closed" : "open";
-      return {
-        id: String(r.id),
-        company_id: r.company_id as string,
-        title: r.title as string,
-        job_description: r.job_description as string,
-        status,
-        created_at: this.toIso(r.created_at),
-        job_code: String((r as { job_code?: string }).job_code ?? ""),
-        due_date: (r as { due_date?: string | null }).due_date != null ? String((r as { due_date?: string }).due_date) : null
-      };
-    });
+    return (data ?? []).map((r) => this.mapPositionRow(r as Record<string, unknown>));
   }
 
   private formatJobCode(year: number, n: number): string {
@@ -170,6 +211,7 @@ export class RecruitingService {
     jobDescription: string;
     createdByUserId: string;
     dueDate?: string | null;
+    location?: string | null;
   }): Promise<RecruitPositionRow> {
     const sb = this.sb();
     const year = new Date().getUTCFullYear();
@@ -190,23 +232,18 @@ export class RecruitingService {
         status: "open",
         created_by_user_id: input.createdByUserId,
         job_code: jobCode,
-        due_date: input.dueDate ?? null
+        due_date: input.dueDate ?? null,
+        location: input.location ?? null,
+        source: "nexa"
       })
-      .select("id, company_id, title, job_description, status, created_at, job_code, due_date")
+      .select(RECRUIT_POSITION_DB_COLS)
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(`Creazione posizione: ${error?.message ?? "nessun dato"}`);
     }
-    return {
-      id: String(data.id),
-      company_id: data.company_id as string,
-      title: data.title as string,
-      job_description: data.job_description as string,
-      status: data.status as RecruitPositionRow["status"],
-      created_at: this.toIso(data.created_at),
-      job_code: String((data as { job_code?: string }).job_code ?? ""),
-      due_date: (data as { due_date?: string | null }).due_date != null ? String((data as { due_date?: string }).due_date) : null
-    };
+    const row = this.mapPositionRow(data as Record<string, unknown>);
+    await this.ensureDefaultPipelineForPosition(row.id);
+    return row;
   }
 
   async deleteOpenPosition(companyId: string, positionId: string): Promise<void> {
@@ -306,7 +343,10 @@ export class RecruitingService {
     };
   }
 
-  async listCandidates(companyId: string): Promise<RecruitCandidateRow[]> {
+  async listCandidates(
+    companyId: string,
+    options: RecruitCandidateListOptions = {}
+  ): Promise<RecruitCandidateRow[]> {
     const sb = this.sb();
     const { data, error } = await sb
       .from("recruit_candidates")
@@ -317,7 +357,151 @@ export class RecruitingService {
     if (error) {
       throw new InternalServerErrorException(`Lista candidati: ${error.message}`);
     }
-    return (data ?? []).map((r) => this.mapCandidateRow(r as Record<string, unknown>));
+    const base = (data ?? []).map((r) => this.mapCandidateRow(r as Record<string, unknown>));
+    const enriched = await this.attachLatestScreeningToCandidates(companyId, base);
+    let filtered = enriched;
+    if (options.minScore != null && Number.isFinite(options.minScore)) {
+      filtered = filtered.filter(
+        (c) =>
+          c.candidate_cv_screening_score != null &&
+          c.candidate_cv_screening_score >= (options.minScore as number)
+      );
+    }
+    if (options.sortByScore) {
+      filtered = [...filtered].sort((a, b) => {
+        const sa = a.candidate_cv_screening_score ?? -1;
+        const sbScore = b.candidate_cv_screening_score ?? -1;
+        return options.sortByScore === "asc" ? sa - sbScore : sbScore - sa;
+      });
+    }
+    return filtered;
+  }
+
+  private async attachLatestScreeningToCandidates(
+    companyId: string,
+    candidates: RecruitCandidateRow[]
+  ): Promise<RecruitCandidateRow[]> {
+    if (candidates.length === 0) return candidates;
+    const ids = candidates.map((c) => c.id);
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidate_stage_state")
+      .select(
+        `candidate_id, position_id, ${RECRUIT_STAGE_STATE_SCREENING_COLS}, screened_at, recruit_positions ( company_id )`
+      )
+      .in("candidate_id", ids)
+      .not("screened_at", "is", null)
+      .order("screened_at", { ascending: false });
+    if (error) {
+      return candidates;
+    }
+    const best = new Map<
+      string,
+      {
+        score: number | null;
+        summary: Record<string, unknown> | null;
+        screenedAt: string | null;
+        positionId: string | null;
+      }
+    >();
+    for (const row of data ?? []) {
+      const pos = row.recruit_positions as { company_id?: string } | null;
+      if (pos?.company_id !== companyId) continue;
+      const cid = String(row.candidate_id);
+      if (best.has(cid)) continue;
+      best.set(cid, {
+        score:
+          row.candidate_cv_screening_score != null
+            ? Number(row.candidate_cv_screening_score)
+            : null,
+        summary: (row.screening_summary as Record<string, unknown> | null) ?? null,
+        screenedAt: row.screened_at != null ? this.toIso(row.screened_at) : null,
+        positionId: String(row.position_id)
+      });
+    }
+    return candidates.map((c) => {
+      const s = best.get(c.id);
+      if (!s) return c;
+      return {
+        ...c,
+        candidate_cv_screening_score: s.score,
+        screening_summary: s.summary,
+        screened_at: s.screenedAt,
+        screening_position_id: s.positionId
+      };
+    });
+  }
+
+  private mapStageStateRow(r: Record<string, unknown>): RecruitCandidateStageStateRow {
+    return {
+      id: String(r.id),
+      candidate_id: String(r.candidate_id),
+      position_id: String(r.position_id),
+      current_stage_id: String(r.current_stage_id),
+      status: r.status as RecruitCandidateStageStateRow["status"],
+      updated_at: this.toIso(r.updated_at),
+      candidate_cv_screening_score:
+        r.candidate_cv_screening_score != null ? Number(r.candidate_cv_screening_score) : null,
+      screening_summary: (r.screening_summary as Record<string, unknown> | null) ?? null,
+      screened_at: r.screened_at != null ? this.toIso(r.screened_at) : null
+    };
+  }
+
+  async assertPositionInCompany(positionId: string, companyId: string): Promise<RecruitPositionRow> {
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_positions")
+      .select("id, company_id, title, job_description, status, created_at, job_code, due_date")
+      .eq("id", positionId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException("Posizione non trovata per questa azienda");
+    }
+    const rawStatus = String((data as { status?: string }).status ?? "open").trim().toLowerCase();
+    const status: RecruitPositionRow["status"] = rawStatus === "closed" ? "closed" : "open";
+    return {
+      id: String(data.id),
+      company_id: String(data.company_id),
+      title: String(data.title),
+      job_description: String(data.job_description),
+      status,
+      created_at: this.toIso(data.created_at),
+      job_code: String((data as { job_code?: string }).job_code ?? ""),
+      due_date: (data as { due_date?: string | null }).due_date ?? null
+    };
+  }
+
+  async findCandidateByEmail(companyId: string, email: string): Promise<RecruitCandidateRow | null> {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    const sb = this.sb();
+    const { data, error } = await sb
+      .from("recruit_candidates")
+      .select(RECRUIT_CANDIDATE_DB_COLS)
+      .eq("company_id", companyId)
+      .ilike("email", normalized)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Lookup candidato email: ${error.message}`);
+    }
+    return data ? this.mapCandidateRow(data as Record<string, unknown>) : null;
+  }
+
+  async appendCandidateNotes(candidateId: string, extraNotes: string): Promise<void> {
+    const candidate = await this.getCandidate(candidateId);
+    const merged = [candidate.notes?.trim(), extraNotes.trim()].filter(Boolean).join("\n");
+    const sb = this.sb();
+    const { error } = await sb.from("recruit_candidates").update({ notes: merged }).eq("id", candidateId);
+    if (error) {
+      throw new InternalServerErrorException(`Aggiornamento note candidato: ${error.message}`);
+    }
   }
 
   async createCandidate(input: {
@@ -327,7 +511,7 @@ export class RecruitingService {
     email?: string | null;
     phone?: string | null;
     notes?: string;
-    createdByUserId: string;
+    createdByUserId?: string | null;
     privacyNoticeVersion?: string | null;
     consentRecordedAt?: string | null;
   }): Promise<RecruitCandidateRow> {
@@ -341,7 +525,7 @@ export class RecruitingService {
         email: input.email ?? null,
         phone: input.phone ?? null,
         notes: input.notes ?? "",
-        created_by_user_id: input.createdByUserId
+        created_by_user_id: input.createdByUserId ?? null
       })
       .select(RECRUIT_CANDIDATE_DB_COLS)
       .single();
@@ -372,7 +556,7 @@ export class RecruitingService {
     const { data, error } = await sb
       .from("recruit_candidate_stage_state")
       .select(
-        "id, position_id, current_stage_id, status, updated_at, recruit_positions ( title )"
+        `id, position_id, current_stage_id, status, updated_at, ${RECRUIT_STAGE_STATE_SCREENING_COLS}, recruit_positions ( title )`
       )
       .eq("candidate_id", candidateId)
       .order("updated_at", { ascending: false });
@@ -387,7 +571,13 @@ export class RecruitingService {
         position_title: pos?.title ?? "",
         current_stage_id: String(row.current_stage_id),
         status: row.status as RecruitCandidatePositionStateSummary["status"],
-        updated_at: this.toIso(row.updated_at)
+        updated_at: this.toIso(row.updated_at),
+        candidate_cv_screening_score:
+          row.candidate_cv_screening_score != null
+            ? Number(row.candidate_cv_screening_score)
+            : null,
+        screening_summary: (row.screening_summary as Record<string, unknown> | null) ?? null,
+        screened_at: row.screened_at != null ? this.toIso(row.screened_at) : null
       };
     });
   }
@@ -396,7 +586,7 @@ export class RecruitingService {
     companyId: string;
     candidateId: string;
     positionId: string;
-    actorUserId: string;
+    actorUserId?: string | null;
   }): Promise<RecruitCandidateStageStateRow> {
     const { stages } = await this.ensureDefaultPipelineForPosition(input.positionId);
     const firstStage = stages[0];
@@ -409,7 +599,7 @@ export class RecruitingService {
       position_id: input.positionId,
       current_stage_id: firstStage.id,
       status: "in_progress" as const,
-      updated_by_user_id: input.actorUserId
+      updated_by_user_id: input.actorUserId ?? null
     };
     const { data, error } = await sb
       .from("recruit_candidate_stage_state")
@@ -442,17 +632,24 @@ export class RecruitingService {
     const sb = this.sb();
     const { data: posRow, error: posErr } = await sb
       .from("recruit_positions")
-      .select("id, title")
+      .select(RECRUIT_POSITION_DB_COLS)
       .eq("id", positionId)
       .maybeSingle();
     if (posErr || !posRow) {
       throw posErr ? new InternalServerErrorException(posErr.message) : new NotFoundException("Posizione non trovata");
     }
-    const position = { id: String(posRow.id), title: posRow.title as string };
+    const mapped = this.mapPositionRow(posRow as Record<string, unknown>);
+    const position = {
+      id: mapped.id,
+      title: mapped.title,
+      linkedin_sync_status: mapped.linkedin_sync_status,
+      linkedin_job_url: mapped.linkedin_job_url,
+      source: mapped.source
+    };
     const { data: rows, error } = await sb
       .from("recruit_candidate_stage_state")
       .select(
-        `id, candidate_id, position_id, current_stage_id, status, updated_at, recruit_candidates ( ${RECRUIT_CANDIDATE_DB_COLS} )`
+        `id, candidate_id, position_id, current_stage_id, status, updated_at, ${RECRUIT_STAGE_STATE_SCREENING_COLS}, recruit_candidates ( ${RECRUIT_CANDIDATE_DB_COLS} )`
       )
       .eq("position_id", positionId)
       .order("updated_at", { ascending: false });
@@ -465,14 +662,7 @@ export class RecruitingService {
         throw new InternalServerErrorException("Board: candidato mancante nella join");
       }
       return {
-        state: {
-          id: String(r.id),
-          candidate_id: String(r.candidate_id),
-          position_id: String(r.position_id),
-          current_stage_id: String(r.current_stage_id),
-          status: r.status as RecruitCandidateStageStateRow["status"],
-          updated_at: this.toIso(r.updated_at)
-        } as RecruitCandidateStageStateRow,
+        state: this.mapStageStateRow(r),
         candidate: this.mapCandidateRow(c)
       };
     });
@@ -762,13 +952,21 @@ export class RecruitingService {
       throw new BadRequestException("File troppo grande (max 15 MB)");
     }
     const sb = this.sb();
-    /** Schema `040` senza colonne storage: solo metadati riga; upload binario su Storage richiede migrazione `048`. */
+    let extractedText: string | null = null;
+    if (input.kind === "cv") {
+      extractedText = await extractCvTextFromBuffer(input.buffer, mime, input.originalName);
+      if (!extractedText) {
+        extractedText = null;
+      }
+    }
+    /** Schema `040` senza colonne storage: metadati + testo estratto CV per screening interno HR. */
     const { data, error } = await sb
       .from("recruit_candidate_documents")
       .insert({
         candidate_id: input.candidateId,
         kind: input.kind,
-        label: input.label?.trim() ? input.label.trim() : input.kind === "cv" ? "CV" : "Allegato"
+        label: input.label?.trim() ? input.label.trim() : input.kind === "cv" ? "CV" : "Allegato",
+        ...(extractedText ? { extracted_text: extractedText } : {})
       })
       .select(RECRUIT_CANDIDATE_DOC_DB_COLS)
       .single();

@@ -1,41 +1,44 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanOpenEmployeeRecapPage } from "@/lib/auth-session";
+import { fetchEmployeeCvProfile } from "@/lib/api";
+import { getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
 
+/** Verifica accesso a `/employee/:userId` tramite API (self, HR, manager, team lead). */
 export function EmployeeRecapAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
+  const params = useParams();
+  const userId = typeof params.userId === "string" ? params.userId : "";
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const token = getToken();
-    if (!token) {
+    if (!token || !userId) {
       router.replace("/login");
       return;
     }
     let cancelled = false;
-    void fetchCurrentUser(token)
-      .then((u) => {
+    void fetchEmployeeCvProfile(token, userId)
+      .then(() => {
+        if (!cancelled) {
+          setReady(true);
+        }
+      })
+      .catch((e) => {
         if (cancelled) {
           return;
         }
-        if (!sessionCanOpenEmployeeRecapPage(u)) {
-          router.replace("/");
-          return;
-        }
-        setReady(true);
-      })
-      .catch(() => {
-        if (!cancelled) {
+        if (shouldClearSessionOnUnauthorizedApiError(e)) {
           router.replace("/login");
+        } else {
+          router.replace("/");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, userId]);
 
   if (!ready) {
     return (

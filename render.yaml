@@ -64,6 +64,18 @@ services:
         sync: false
       - key: NEXA_OPENAI_MODEL
         sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_ORGANIZATION_URN
+        sync: false
+      - key: LINKEDIN_WEBHOOK_SECRET
+        sync: false
+      - key: LINKEDIN_WEBHOOK_COMPANY_ID
+        sync: false
+      - key: LINKEDIN_JOB_SYNC_ENABLED
+        sync: false
 
   - type: web
     name: nexa-hr-frontend

@@ -833,6 +833,31 @@ export class UserController {
     return this.store.uploadEmployeeProfilePhoto(userId, file.buffer, file.mimetype || "image/jpeg");
   }
 
+  @Get(":userId/cv-profile")
+  @UseGuards(RoleGuard)
+  @RequireRole("user")
+  async cvProfile(@CurrentAuth() auth: AuthContext, @Param("userId") userId: string): Promise<unknown> {
+    const targetId = userId.trim();
+    const viewer = await this.store.getUser(auth.userId);
+    const isSelf = auth.userId === targetId;
+    const hrExtended = await this.permissions.canAccessHrExtendedConsole(
+      auth.userId,
+      auth.role,
+      viewer.email ?? ""
+    );
+    const includeEconomic =
+      auth.role === "superuser" || hrExtended || isSelf;
+    const includePayrollSensitive =
+      auth.role === "superuser" || hrExtended || isSelf;
+    return this.store.getEmployeeCvProfile(
+      auth.userId,
+      auth.role,
+      viewer.email ?? "",
+      targetId,
+      { includeEconomic, includePayrollSensitive }
+    );
+  }
+
   @Get(":userId/profile-photo-url")
   async profilePhotoUrl(
     @CurrentAuth() auth: AuthContext,

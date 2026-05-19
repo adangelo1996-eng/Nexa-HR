@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,12 @@ import {
   createRecruitCandidate,
   fetchRecruitCandidates,
   fetchRecruitPositions,
+  screenRecruitCandidateCv,
   uploadRecruitCandidateDocument,
   type RecruitCandidateDto,
   type RecruitPositionDto
 } from "@/lib/api";
+import { ScreeningScoreBadge } from "@/components/recruiting/screening-score-badge";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9][0-9\s().\-/]{4,39}$/;
@@ -43,6 +45,9 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
   const [candidates, setCandidates] = useState<RecruitCandidateDto[]>([]);
   const [positions, setPositions] = useState<RecruitPositionDto[]>([]);
   const [positionId, setPositionId] = useState<string>("");
+  const [minScoreFilter, setMinScoreFilter] = useState<string>("");
+  const [sortByScore, setSortByScore] = useState<"" | "desc" | "asc">("desc");
+  const [screeningId, setScreeningId] = useState<string | null>(null);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -75,6 +80,22 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
     lastName.trim().length > 0 &&
     Object.keys(clientValidation).length === 0;
 
+  const loadCandidates = useCallback(
+    (t: string) => {
+      setLoading(true);
+      setError(null);
+      const minScore = minScoreFilter.trim() !== "" ? Number(minScoreFilter) : undefined;
+      return fetchRecruitCandidates(t, {
+        minScore: Number.isFinite(minScore) ? minScore : undefined,
+        sortByScore: sortByScore || undefined
+      })
+        .then(setCandidates)
+        .catch((e) => setError(e instanceof Error ? e.message : "Errore caricamento"))
+        .finally(() => setLoading(false));
+    },
+    [minScoreFilter, sortByScore]
+  );
+
   useEffect(() => {
     const t = getToken();
     if (!t) {
@@ -82,18 +103,14 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
       return;
     }
     setToken(t);
-    setLoading(true);
-    setError(null);
-    void Promise.all([fetchRecruitCandidates(t), fetchRecruitPositions(t)])
-      .then(([cand, pos]) => {
-        setCandidates(cand);
+    void Promise.all([loadCandidates(t), fetchRecruitPositions(t)])
+      .then(([, pos]) => {
         setPositions(pos);
         const open = pos.find((p) => p.status === "open");
         setPositionId(open?.id ?? "");
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Errore caricamento"))
-      .finally(() => setLoading(false));
-  }, [router]);
+      .catch((e) => setError(e instanceof Error ? e.message : "Errore caricamento"));
+  }, [router, loadCandidates]);
 
   const openPositions = useMemo(() => positions.filter((p) => p.status === "open"), [positions]);
 
@@ -150,6 +167,20 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
       } else {
         setError("Errore creazione candidato");
       }
+    }
+  }
+
+  async function onScreen(candidateId: string): Promise<void> {
+    if (!token || !positionId) return;
+    setError(null);
+    setScreeningId(candidateId);
+    try {
+      await screenRecruitCandidateCv(token, candidateId, { positionId });
+      await loadCandidates(token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore screening CV");
+    } finally {
+      setScreeningId(null);
     }
   }
 
@@ -302,9 +333,40 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Elenco</CardTitle>
-          <CardDescription>Da qui puoi aggiungere un candidato alla pipeline.</CardDescription>
+          <CardDescription>Da qui puoi aggiungere un candidato alla pipeline o lanciare lo screening CV AI.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <label className="space-y-1 text-sm">
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Score minimo</span>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                placeholder="es. 60"
+                value={minScoreFilter}
+                onChange={(e) => setMinScoreFilter(e.target.value)}
+                className="w-28"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-synapse-muted dark:text-[#b4c9dc]">Ordina per score</span>
+              <select
+                value={sortByScore}
+                onChange={(e) => setSortByScore(e.target.value as "" | "desc" | "asc")}
+                className="rounded-lg border border-slate-300/90 bg-white/90 px-3 py-2 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
+              >
+                <option value="">Predefinito</option>
+                <option value="desc">Score ↓</option>
+                <option value="asc">Score ↑</option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <Button type="button" variant="secondary" disabled={!token || loading} onClick={() => token && void loadCandidates(token)}>
+                Applica filtri
+              </Button>
+            </div>
+          </div>
           {loading ? <p className="text-sm text-synapse-muted">Caricamento…</p> : null}
           {!loading && candidates.length === 0 ? (
             <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">Nessun candidato.</p>
@@ -316,11 +378,15 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
                   className="flex flex-col gap-2 rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-synapse-text dark:text-white">
-                      {c.first_name} {c.last_name}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-synapse-text dark:text-white">
+                        {c.first_name} {c.last_name}
+                      </p>
+                      <ScreeningScoreBadge score={c.candidate_cv_screening_score} compact />
+                    </div>
                     <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
                       {c.email ?? "—"} • {c.phone ?? "—"}
+                      {c.screened_at ? ` • screening ${new Date(c.screened_at).toLocaleDateString("it-IT")}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -330,6 +396,14 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
                     >
                       Dettaglio
                     </Link>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={!positionId || screeningId === c.id}
+                      onClick={() => void onScreen(c.id)}
+                    >
+                      {screeningId === c.id ? "Screening…" : "Screen CV"}
+                    </Button>
                     <Button type="button" disabled={!positionId} onClick={() => void onAttach(c.id)}>
                       Aggiungi in pipeline
                     </Button>

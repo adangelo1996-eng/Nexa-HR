@@ -172,7 +172,9 @@ export function canAccessNexaPortalRoute(
 
   for (const { prefix, base } of prefixToBase) {
     if (r.startsWith(prefix)) {
-      // Riesegui la logica sulla route base della sezione.
+      if (prefix === "/employee/" && user) {
+        return true;
+      }
       return canAccessNexaPortalRoute(base, user, hideSensitiveHr);
     }
   }

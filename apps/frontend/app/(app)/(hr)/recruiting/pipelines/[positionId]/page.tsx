@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { LinkedInSyncBadge } from "@/components/recruiting/linkedin-sync-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getToken } from "@/lib/auth-session";
@@ -10,12 +11,18 @@ import {
   createHrStandardContract,
   decideRecruitCandidate,
   fetchRecruitBoard,
+  fetchRecruitPosition,
   moveRecruitCandidateStage,
+  publishRecruitPositionToLinkedIn,
+  syncRecruitPositionLinkedIn,
+  type RecruitPositionDto,
+  screenRecruitCandidateCv,
   undoRecruitLastMove,
   type RecruitCandidateDto,
   type RecruitCandidateStageStateDto,
   type RecruitPipelineStageDto
 } from "@/lib/api";
+import { ScreeningScoreBadge } from "@/components/recruiting/screening-score-badge";
 import { createNewContract } from "@/lib/contracts";
 
 type BoardItem = {
@@ -33,8 +40,11 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
   const [stages, setStages] = useState<RecruitPipelineStageDto[]>([]);
   const [items, setItems] = useState<BoardItem[]>([]);
   const [positionTitle, setPositionTitle] = useState("");
+  const [positionMeta, setPositionMeta] = useState<RecruitPositionDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [linkedInBusy, setLinkedInBusy] = useState(false);
+  const [screeningStateId, setScreeningStateId] = useState<string | null>(null);
 
   const reloadBoard = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -59,8 +69,8 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     setToken(t);
     setLoading(true);
     setError(null);
-    void fetchRecruitBoard(t, positionId)
-      .then((b) => {
+    void Promise.all([fetchRecruitBoard(t, positionId), fetchRecruitPosition(t, positionId)])
+      .then(([b, pos]) => {
         setStages(b.stages);
         setItems(
           b.items.map((row) => ({
@@ -69,6 +79,7 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
           }))
         );
         setPositionTitle(b.position.title);
+        setPositionMeta(pos);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Errore caricamento pipeline"))
       .finally(() => setLoading(false));
@@ -113,6 +124,20 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
     }
   }
 
+  async function onScreenCv(candidateId: string, stateId: string): Promise<void> {
+    if (!token) return;
+    setError(null);
+    setScreeningStateId(stateId);
+    try {
+      await screenRecruitCandidateCv(token, candidateId, { positionId });
+      await reloadBoard();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore screening CV");
+    } finally {
+      setScreeningStateId(null);
+    }
+  }
+
   async function onUndoMove(stateId: string): Promise<void> {
     if (!token) return;
     setError(null);
@@ -127,7 +152,12 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">Pipeline</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold text-synapse-text dark:text-white">
+            Pipeline{positionTitle ? `: ${positionTitle}` : ""}
+          </h1>
+          {positionMeta ? <LinkedInSyncBadge position={positionMeta} /> : null}
+        </div>
         <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
           Schede compatte: espandi per spostare fase, avanzare (con passaggio automatico alla colonna successiva su
           «Avanza») o annullare l’ultimo spostamento.
@@ -145,6 +175,38 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
           >
             Aggiungi candidati
           </Link>
+          {token && positionMeta ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={linkedInBusy}
+              onClick={() => {
+                setLinkedInBusy(true);
+                setError(null);
+                const action =
+                  positionMeta.linkedin_sync_status === "synced"
+                    ? syncRecruitPositionLinkedIn(token, positionId)
+                    : publishRecruitPositionToLinkedIn(token, positionId);
+                void action
+                  .then(setPositionMeta)
+                  .catch((e) => setError(e instanceof Error ? e.message : "Errore sync LinkedIn"))
+                  .finally(() => setLinkedInBusy(false));
+              }}
+            >
+              {positionMeta.linkedin_sync_status === "synced" ? "Sincronizza ora" : "Pubblica su LinkedIn"}
+            </Button>
+          ) : null}
+          {positionMeta?.linkedin_job_url ? (
+            <a
+              href={positionMeta.linkedin_job_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-[#002D72] hover:underline dark:text-sky-200"
+            >
+              Apri su LinkedIn
+            </a>
+          ) : null}
         </div>
       </header>
 
@@ -175,8 +237,9 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                         <li key={it.state.id} className="rounded-lg border border-[var(--card-border)] p-0">
                           <details className="group rounded-lg">
                             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 [&::-webkit-details-marker]:hidden">
-                              <span className="text-sm font-medium text-synapse-text dark:text-white">
+                              <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium text-synapse-text dark:text-white">
                                 {it.candidate.first_name} {it.candidate.last_name}
+                                <ScreeningScoreBadge score={it.state.candidate_cv_screening_score} compact />
                               </span>
                               <span className="shrink-0 text-[10px] text-synapse-muted dark:text-[#b4c9dc]">
                                 {it.state.status}
@@ -192,6 +255,15 @@ export default function RecruitingPipelinePage(): React.JSX.Element {
                               >
                                 Scheda candidato
                               </Link>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                disabled={screeningStateId === it.state.id}
+                                onClick={() => void onScreenCv(it.candidate.id, it.state.id)}
+                              >
+                                {screeningStateId === it.state.id ? "Screening…" : "Riesegui screening CV"}
+                              </Button>
                               <select
                                 value={it.state.current_stage_id}
                                 onChange={(e) => void onMove(it.state.id, e.target.value)}

@@ -5338,6 +5338,235 @@ export class HrDataStore {
     return data.signedUrl;
   }
 
+  /** Profilo CV read-only: anagrafica, organizzazione, competenze (bundle unico, senza id tecnici in testa). */
+  async getEmployeeCvProfile(
+    requesterId: string,
+    requesterRole: User["role"],
+    requesterEmail: string,
+    targetUserId: string,
+    opts: { includeEconomic: boolean; includePayrollSensitive: boolean }
+  ): Promise<{
+    subject: Record<string, unknown>;
+    roleName: string | null;
+    costCenter: { code: string; name: string } | null;
+    team: { name: string } | null;
+    manager: { id: string; fullName: string } | null;
+    skills: Array<{ code: string; name: string; level: number }>;
+    companyCcnl: string | null;
+    profilePhotoUrl: string | null;
+    flags: {
+      isSelf: boolean;
+      canViewEconomic: boolean;
+      canViewPayrollSensitive: boolean;
+      canEditInAdmin: boolean;
+    };
+  }> {
+    await this.assertCanViewEmployeeCvProfile(requesterId, requesterRole, requesterEmail, targetUserId);
+    const user = await this.getUser(targetUserId);
+    const isSelf = requesterId === targetUserId;
+    const canEditInAdmin = isSynapseSuperuserEmail(requesterEmail);
+
+    let roleName: string | null = null;
+    if (user.roleId?.trim()) {
+      const role = await this.getRoleById(user.roleId.trim());
+      roleName = role?.name?.trim() || null;
+    }
+
+    let costCenter: { code: string; name: string } | null = null;
+    if (user.costCenterId?.trim()) {
+      const centers = await this.listCostCenters();
+      const cc = centers.find((c) => c.id === user.costCenterId);
+      if (cc) {
+        costCenter = { code: cc.code, name: cc.name };
+      }
+    }
+
+    let team: { name: string } | null = null;
+    if (user.teamId?.trim()) {
+      try {
+        const t = await this.getWorkTeam(user.teamId.trim());
+        team = { name: t.name };
+      } catch {
+        team = null;
+      }
+    }
+
+    let manager: { id: string; fullName: string } | null = null;
+    if (user.managerId?.trim()) {
+      try {
+        const m = await this.getUser(user.managerId.trim());
+        if (m.companyId === user.companyId) {
+          manager = { id: m.id, fullName: m.fullName };
+        }
+      } catch {
+        manager = null;
+      }
+    }
+
+    const skills = await this.listUserSkillsForCv(targetUserId);
+    const companyRow = await this.getCompanySettings(user.companyId);
+    const profilePhotoUrl = await this.getEmployeeProfilePhotoSignedUrl(
+      requesterId,
+      requesterRole,
+      targetUserId
+    );
+
+    const subject: Record<string, unknown> = {
+      fullName: user.fullName,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+      email: user.email,
+      phone: user.phone ?? null,
+      birthDate: user.birthDate ?? null,
+      hireDate: user.hireDate ?? null,
+      contractType: user.contractType ?? null,
+      weeklyContractHours: user.weeklyContractHours ?? null,
+      employmentState: user.employmentState ?? "active",
+      contractEndDate: user.contractEndDate ?? null,
+      contractFixedTerm: user.contractFixedTerm ?? false,
+      partTimeModality: user.partTimeModality ?? null,
+      legalCategory: user.legalCategory ?? null,
+      ccnlCode: user.ccnlCode ?? null,
+      ccnlLevel: user.ccnlLevel ?? null,
+      vacationAllowanceDays: user.vacationAllowanceDays ?? null,
+      jurisdiction: user.jurisdiction ?? "IT",
+      taxRegion: user.taxRegion ?? null,
+      taxMunicipalityIt: user.taxMunicipalityIt ?? null
+    };
+
+    if (opts.includePayrollSensitive) {
+      subject.fiscalCode = user.fiscalCode ?? null;
+      subject.maritalStatus = user.maritalStatus ?? null;
+      subject.dependentsChildren = user.dependentsChildren ?? null;
+      subject.dependentSpouse = user.dependentSpouse ?? null;
+      subject.disabilityFlag = user.disabilityFlag ?? null;
+      subject.taxDomicileMunicipalityIt = user.taxDomicileMunicipalityIt ?? null;
+      subject.taxDomicileSameAsResidence = user.taxDomicileSameAsResidence ?? null;
+      subject.address = user.address ?? null;
+      subject.iban = user.iban ?? null;
+      subject.bankName = user.bankName ?? null;
+      subject.bicSwift = user.bicSwift ?? null;
+      subject.accountHolder = user.accountHolder ?? null;
+    }
+
+    if (opts.includeEconomic) {
+      subject.annualGrossSalary = user.annualGrossSalary ?? null;
+      subject.baseSalaryMonthly = user.baseSalaryMonthly ?? null;
+      subject.fixedSupplementMonthly = user.fixedSupplementMonthly ?? null;
+      subject.payMonthsPerYear = user.payMonthsPerYear ?? null;
+      subject.fringeBenefitYtdEuros = user.fringeBenefitYtdEuros ?? null;
+      subject.garnishmentMonthlyEstimate = user.garnishmentMonthlyEstimate ?? null;
+    }
+
+    return {
+      subject,
+      roleName,
+      costCenter,
+      team,
+      manager,
+      skills,
+      companyCcnl: companyRow.companyCcnl?.trim() || null,
+      profilePhotoUrl,
+      flags: {
+        isSelf,
+        canViewEconomic: opts.includeEconomic,
+        canViewPayrollSensitive: opts.includePayrollSensitive,
+        canEditInAdmin
+      }
+    };
+  }
+
+  private async assertCanViewEmployeeCvProfile(
+    requesterId: string,
+    requesterRole: User["role"],
+    requesterEmail: string,
+    targetUserId: string
+  ): Promise<void> {
+    if (requesterId === targetUserId) {
+      return;
+    }
+    const [viewer, target] = await Promise.all([this.getUser(requesterId), this.getUser(targetUserId)]);
+    if ((viewer.companyId || "").trim() !== (target.companyId || "").trim()) {
+      throw new ForbiddenException("Azienda diversa");
+    }
+    if (requesterRole === "superuser") {
+      return;
+    }
+    if (await this.canAccessHrExtendedConsoleLocal(requesterId, requesterRole as AuthRole, requesterEmail)) {
+      return;
+    }
+    if (isSynapseSuperuserEmail(requesterEmail)) {
+      return;
+    }
+    if (await this.userHasReportsHrRead(requesterId)) {
+      return;
+    }
+    if (await this.isManagerOf(requesterId, targetUserId)) {
+      return;
+    }
+    if (await this.isUserLeadOfTeamContaining(requesterId, targetUserId)) {
+      return;
+    }
+    throw new ForbiddenException("Non autorizzato a visualizzare questo profilo");
+  }
+
+  private async userHasReportsHrRead(userId: string): Promise<boolean> {
+    const u = await this.getUser(userId);
+    if (!u.roleId?.trim()) {
+      return false;
+    }
+    const role = await this.getRoleById(u.roleId.trim());
+    if (!role) {
+      return false;
+    }
+    return this.expandRolePermissionsRaw(role.permissions ?? []).has("nexa.reports_hr:read");
+  }
+
+  private async listUserSkillsForCv(
+    userId: string
+  ): Promise<Array<{ code: string; name: string; level: number }>> {
+    if (!this.supabase) {
+      return [];
+    }
+    try {
+      const { data: rows, error } = await this.supabase
+        .from("hr_user_skills")
+        .select("skill_id, level")
+        .eq("user_id", userId);
+      if (error || !rows?.length) {
+        return [];
+      }
+      const typed = rows as Array<{ skill_id: string; level: number }>;
+      const skillIds = [...new Set(typed.map((r) => r.skill_id))];
+      const { data: skills, error: e2 } = await this.supabase
+        .from("hr_skills")
+        .select("id, code, name")
+        .in("id", skillIds);
+      if (e2) {
+        return [];
+      }
+      const byId = new Map(
+        ((skills ?? []) as Array<{ id: string; code: string; name: string }>).map((s) => [s.id, s])
+      );
+      const out: Array<{ code: string; name: string; level: number }> = [];
+      for (const row of typed) {
+        const sk = byId.get(row.skill_id);
+        if (!sk) {
+          continue;
+        }
+        out.push({
+          code: sk.code,
+          name: sk.name,
+          level: Number(row.level) || 0
+        });
+      }
+      out.sort((a, b) => a.name.localeCompare(b.name, "it"));
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
   async downloadSupabasePrivateFile(bucket: string, objectPath: string): Promise<Buffer> {
     if (!this.supabase) {
       throw new InternalServerErrorException("Storage non configurato");

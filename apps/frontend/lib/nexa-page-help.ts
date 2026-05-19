@@ -201,11 +201,13 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
   },
   "analytics-competenze": {
     title: "Competenze e coperture",
-    summary: "Gap per ruolo: quante persone mancano e RAL attesa per il budget.",
+    summary:
+      "Due livelli: copertura ruoli (persone mancanti e RAL) e gap competenze (livello richiesto vs media in ruolo). La sintesi mostra l'impatto hiring annuo stimato.",
     howToUse: [
-      "Inserisci headcount mancante e RAL prevista per ruolo.",
-      "I dati alimentano forecast e workforce planning.",
-      "Prioritizza hiring vs formazione dalla matrice."
+      "Leggi i KPI orchestrator in alto, poi la sintesi operativa sotto.",
+      "Usa «Aggiungi gap» o «Modifica» per headcount e RAL — il form compare solo su richiesta.",
+      "Apri forecast personale o workforce planning dai collegamenti budget.",
+      "Usa la matrice competenze per priorità hiring vs formazione per ruolo."
     ]
   },
   "analytics-retention": {

@@ -2,6 +2,7 @@ import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { BadRequestException, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { Request } from "express";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
 import { assertProductionAuthConfig } from "./platform/auth-jwt-secret";
@@ -47,7 +48,14 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  app.use(json({ limit: "12mb" }));
+  app.use(
+    json({
+      limit: "12mb",
+      verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
   app.use(urlencoded({ extended: true, limit: "12mb" }));
 
   const http = app.getHttpAdapter().getInstance();

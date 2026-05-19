@@ -14,9 +14,11 @@ import {
   exportRecruitCandidateJson,
   fetchRecruitCandidateDetail,
   fetchRecruitCandidateDocuments,
+  screenRecruitCandidateCv,
   startHrOnboardingFromCandidate,
   uploadRecruitCandidateDocument
 } from "@/lib/api";
+import { ScreeningScoreBadge, ScreeningSummaryList } from "@/components/recruiting/screening-score-badge";
 
 export default function CandidateDetailPage(): React.JSX.Element {
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function CandidateDetailPage(): React.JSX.Element {
   const [docs, setDocs] = useState<Awaited<ReturnType<typeof fetchRecruitCandidateDocuments>>>([]);
   const [token, setToken] = useState<string | null>(null);
   const [startingOnboarding, setStartingOnboarding] = useState(false);
+  const [screeningPositionId, setScreeningPositionId] = useState<string | null>(null);
 
   const reload = useCallback(async (): Promise<void> => {
     const t = getToken();
@@ -133,6 +136,20 @@ export default function CandidateDetailPage(): React.JSX.Element {
       setError(e instanceof Error ? e.message : "Avvio onboarding non riuscito");
     } finally {
       setStartingOnboarding(false);
+    }
+  }
+
+  async function onScreenForPosition(positionId: string): Promise<void> {
+    if (!token) return;
+    setScreeningPositionId(positionId);
+    setError(null);
+    try {
+      await screenRecruitCandidateCv(token, candidateId, { positionId });
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore screening CV");
+    } finally {
+      setScreeningPositionId(null);
     }
   }
 
@@ -267,16 +284,32 @@ export default function CandidateDetailPage(): React.JSX.Element {
               ) : (
                 <ul className="space-y-2">
                   {data.states.map((s) => (
-                    <li key={s.state_id} className="rounded-lg border border-[var(--card-border)] p-3">
-                      <p className="text-sm font-medium text-synapse-text dark:text-white">{s.position_title}</p>
-                      <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Esito: {s.status}</p>
-                      <div className="mt-2">
+                    <li key={s.state_id} className="rounded-lg border border-[var(--card-border)] p-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-synapse-text dark:text-white">{s.position_title}</p>
+                        <ScreeningScoreBadge score={s.candidate_cv_screening_score} />
+                      </div>
+                      <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                        Esito: {s.status}
+                        {s.screened_at ? ` • screening ${new Date(s.screened_at).toLocaleString("it-IT")}` : ""}
+                      </p>
+                      <ScreeningSummaryList summary={s.screening_summary ?? null} />
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <Link
                           href={`/recruiting/pipelines/${encodeURIComponent(s.position_id)}`}
                           className="text-sm underline text-synapse-text dark:text-white"
                         >
                           Apri pipeline posizione
                         </Link>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={screeningPositionId === s.position_id}
+                          onClick={() => void onScreenForPosition(s.position_id)}
+                        >
+                          {screeningPositionId === s.position_id ? "Screening…" : "Riesegui screening CV"}
+                        </Button>
                       </div>
                     </li>
                   ))}
