@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { Route } from "next";
 import Link from "next/link";
@@ -45,7 +45,8 @@ import { HeaderNotifications } from "@/components/header-notifications";
 import { NexaGuidePanel } from "@/components/nexa-guide-panel";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
-import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
+import { navSectionTitleAccentClass } from "@/lib/nav-visual-accents";
+import { NexaNavSectionFlyout, type NexaNavFlyoutSection } from "@/components/nexa-nav-section-flyout";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
 import {
   buildEmployeePortalMapNavSections,
@@ -56,7 +57,6 @@ import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
   NEXA_HR_PREFS_STORAGE_KEY,
-  NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY,
   readNexaHrPrefs
 } from "@/lib/synapse-prefs";
 
@@ -92,30 +92,14 @@ function getEmployeeViewOnly(): boolean {
   return sessionStorage.getItem(EMPLOYEE_VIEW_KEY) === "1";
 }
 
-function readSidebarSectionPrefs(): Record<string, boolean> {
-  if (typeof window === "undefined") {
-    return {};
-  }
-  try {
-    const raw = localStorage.getItem(NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-    return JSON.parse(raw) as Record<string, boolean>;
-  } catch {
-    return {};
-  }
-}
-
-function writeSidebarSectionPrefs(next: Record<string, boolean>): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    localStorage.setItem(NEXA_HR_SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    /* ignore quota */
-  }
+function sectionHasActiveRoute(
+  pathname: string,
+  section: { subgroups: { items: NavItem[] }[] }
+): boolean {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  return section.subgroups.some((sg) =>
+    sg.items.some((item) => pathActive(normalized, item.href, item.exact))
+  );
 }
 
 function SidebarNavLink(props: {
@@ -148,88 +132,40 @@ function SidebarNavLink(props: {
   );
 }
 
-function SidebarCollapsibleSection(props: {
-  section: {
-    id: string;
-    title: string;
-    portalCategory?: string;
-    subgroups: { id: string; title: string; items: NavItem[] }[];
-  };
+function SidebarMacroSectionButton(props: {
+  section: NexaNavFlyoutSection;
   pathname: string;
-  open: boolean;
-  onOpenChange: (id: string, nextOpen: boolean) => void;
-  onNavigate: () => void;
-  beforeNavigate?: () => void;
+  flyoutOpen: boolean;
+  onToggle: (sectionId: string) => void;
 }): React.JSX.Element {
-  const { section, pathname, open, onOpenChange, onNavigate, beforeNavigate } = props;
-  const pc = section.portalCategory;
-  const panelId = `sidebar-nav-${section.id}`;
-  const btnId = `${panelId}-btn`;
+  const { section, pathname, flyoutOpen, onToggle } = props;
+  const active = sectionHasActiveRoute(pathname, section);
 
   return (
-    <div className="mx-0 border-b border-transparent py-0.5 last:border-b-0">
-      <button
-        type="button"
-        id={btnId}
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => onOpenChange(section.id, !open)}
-        className={
-          pc
-            ? `mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${portalCategoryGlassColumnHeaderClass(pc, "compact")}`
-            : `mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--prom-muted)] transition-[background,color,opacity] duration-300 hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)] ${
-                open ? "bg-[color-mix(in_srgb,var(--prom-surface)_55%,transparent)] text-[var(--prom-text)]" : ""
-              }`
-        }
-      >
-        <span className={pc ? "min-w-0 flex-1 pr-1" : ""}>{section.title}</span>
-        <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-[650ms] ease-in-out motion-reduce:transition-none md:h-4 md:w-4 ${
-            pc ? "text-white/70 dark:text-white/60" : "text-[var(--prom-muted)] opacity-70"
-          } ${open ? "rotate-90" : ""}`}
-          aria-hidden
-        />
-      </button>
-      <div
-        id={panelId}
-        role="region"
-        aria-labelledby={btnId}
-        className={`grid overflow-hidden transition-[grid-template-rows] duration-[650ms] ease-in-out motion-reduce:transition-none motion-reduce:duration-0 ${
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+    <button
+      type="button"
+      aria-expanded={flyoutOpen}
+      aria-haspopup="dialog"
+      onClick={() => onToggle(section.id)}
+      className={`mx-2 flex w-[calc(100%-1rem)] items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-[background,color] duration-200 ${
+        flyoutOpen || active
+          ? "bg-[color-mix(in_srgb,var(--prom-gold)_14%,var(--prom-surface-soft))] text-[var(--prom-text)]"
+          : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
+      }`}
+    >
+      <span className={`min-w-0 flex-1 leading-snug ${navSectionTitleAccentClass(section.id)}`}>
+        {section.title}
+      </span>
+      <ChevronRight
+        className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-200 ${
+          flyoutOpen ? "translate-x-0.5" : ""
         }`}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="mt-0.5 space-y-1 pb-1 pt-0.5">
-            {section.subgroups.map((sg) => (
-              <div key={`${section.id}-${sg.id}`}>
-                {sg.title ? (
-                  pc ? (
-                    <div className={`mx-2 ${portalSubgroupGlassClass(pc, "compact")}`}>{sg.title}</div>
-                  ) : (
-                    <div className="mx-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                      {sg.title}
-                    </div>
-                  )
-                ) : null}
-                <div className="mt-0.5 space-y-0.5">
-                  {sg.items.map((item) => (
-                    <SidebarNavLink
-                      key={`${section.id}-${sg.id}-${item.href}`}
-                      item={item}
-                      pathname={pathname}
-                      onNavigate={onNavigate}
-                      beforeNavigate={beforeNavigate}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+        aria-hidden
+      />
+    </button>
   );
 }
+
 
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();
@@ -362,7 +298,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             if (hay.includes(q)) {
               hits.push({
                 href: `/employee/${encodeURIComponent(u.id)}` as Route,
-                label: `Dipendente · ${u.fullName}`,
+                label: `Dipendente Â· ${u.fullName}`,
                 subtitle: u.email
               });
             }
@@ -380,7 +316,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
               if (hay.includes(q)) {
                 hits.push({
                   href: `/admin/cost-centers?cc=${encodeURIComponent(c.id)}` as Route,
-                  label: `Centro di costo · ${c.code} — ${c.name}`
+                  label: `Centro di costo Â· ${c.code} â€” ${c.name}`
                 });
               }
             }
@@ -443,50 +379,35 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     return [];
   }, [user, hideSensitiveHrBecausePreview, usesHrNav, usesEmployeeNav]);
 
-  useEffect(() => {
-    if (portalMapNavSections.length === 0) {
-      return;
-    }
-    const normalized = pathname.replace(/\/$/, "") || "/";
-    for (const section of portalMapNavSections) {
-      const active = section.subgroups.some((sg) =>
-        sg.items.some((item) => pathActive(normalized, item.href, item.exact))
-      );
-      if (active) {
-        setOpenSections((prev) => {
-          if (prev[section.id]) {
-            return prev;
-          }
-          const next = { ...prev, [section.id]: true };
-          writeSidebarSectionPrefs(next);
-          return next;
-        });
-        break;
-      }
-    }
-  }, [pathname, portalMapNavSections]);
-
   const legacySixNavSections = useMemo(() => {
     if (usesHrNav || usesEmployeeNav) return [];
     return buildSixCatNavSections(user, hideSensitiveHrBecausePreview);
   }, [user, hideSensitiveHrBecausePreview, usesHrNav, usesEmployeeNav]);
 
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const flyoutNavSections = useMemo((): NexaNavFlyoutSection[] => {
+    return [...portalMapNavSections, ...legacySixNavSections];
+  }, [portalMapNavSections, legacySixNavSections]);
 
-  useEffect(() => {
-    setOpenSections(readSidebarSectionPrefs());
+  const [flyoutSectionId, setFlyoutSectionId] = useState<string | null>(null);
+
+  const flyoutSection = useMemo((): NexaNavFlyoutSection | null => {
+    if (!flyoutSectionId) {
+      return null;
+    }
+    return flyoutNavSections.find((s) => s.id === flyoutSectionId) ?? null;
+  }, [flyoutNavSections, flyoutSectionId]);
+
+  const toggleFlyoutSection = useCallback((sectionId: string): void => {
+    setFlyoutSectionId((prev) => (prev === sectionId ? null : sectionId));
   }, []);
 
-  const onSectionOpenChange = useCallback((id: string, isOpen: boolean): void => {
-    setOpenSections((prev) => {
-      const next = { ...prev, [id]: isOpen };
-      writeSidebarSectionPrefs(next);
-      return next;
-    });
+  const closeFlyout = useCallback((): void => {
+    setFlyoutSectionId(null);
   }, []);
 
   const closeMobile = useCallback((): void => {
     setMobileOpen(false);
+    setFlyoutSectionId(null);
   }, []);
 
   const desktopAsideRef = useRef<HTMLElement | null>(null);
@@ -580,31 +501,13 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
         <div className="my-2 border-t border-[var(--prom-line)]" />
       ) : null}
-      {portalMapNavSections.map((section) => (
-        <SidebarCollapsibleSection
+      {flyoutNavSections.map((section) => (
+        <SidebarMacroSectionButton
           key={section.id}
           section={section}
           pathname={pathname}
-          open={Boolean(openSections[section.id])}
-          onOpenChange={onSectionOpenChange}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
-      ))}
-      {legacySixNavSections.map((section) => (
-        <SidebarCollapsibleSection
-          key={section.id}
-          section={{
-            id: section.id,
-            title: section.title,
-            portalCategory: section.portalCategory,
-            subgroups: section.subgroups
-          }}
-          pathname={pathname}
-          open={Boolean(openSections[section.id])}
-          onOpenChange={onSectionOpenChange}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
+          flyoutOpen={flyoutSectionId === section.id}
+          onToggle={toggleFlyoutSection}
         />
       ))}
       {portalMapNavSections.length > 0 || legacySixNavSections.length > 0 ? (
@@ -625,6 +528,32 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   return (
     <div className="flex h-[100dvh] overflow-hidden">
       <SessionIdleGuard />
+      {flyoutSection && !mobileOpen ? (
+        <NexaNavSectionFlyout
+          section={flyoutSection}
+          pathname={pathname}
+          open
+          variant="desktop"
+          onClose={closeFlyout}
+          onNavigate={() => {
+            persistSidebarScrollPositions();
+            closeMobile();
+          }}
+        />
+      ) : null}
+      {flyoutSection && mobileOpen ? (
+        <NexaNavSectionFlyout
+          section={flyoutSection}
+          pathname={pathname}
+          open
+          variant="mobile"
+          onClose={closeFlyout}
+          onNavigate={() => {
+            persistSidebarScrollPositions();
+            closeMobile();
+          }}
+        />
+      ) : null}
       <aside
           ref={desktopAsideRef}
           onScroll={schedulePersistSidebarScroll}
@@ -733,7 +662,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
                   id="global-search"
                   type="search"
                   autoComplete="off"
-                  placeholder="Cerca pagine, dipendenti, centri di costo…"
+                  placeholder="Cerca pagine, dipendenti, centri di costoâ€¦"
                   value={searchQ}
                   onChange={(e) => {
                     setSearchQ(e.target.value);
@@ -844,7 +773,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             <>
               <main className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">{children}</main>
               <footer className="border-t border-[color-mix(in_srgb,var(--prom-line)_85%,transparent)] py-4 text-center text-xs text-[var(--prom-muted)] backdrop-blur-sm">
-                © Nexa HR 2026
+                Â© Nexa HR 2026
               </footer>
             </>
           )}

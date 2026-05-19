@@ -16,6 +16,12 @@ import {
   type SessionUser
 } from "@/lib/auth-session";
 import {
+  portalAccentCategoryForNavSection,
+  portalCategoryGlassColumnHeaderClass,
+  portalCategoryTileTopAccentClass,
+  portalMapSectionSurfaceClass
+} from "@/lib/nav-visual-accents";
+import {
   buildEmployeeLinearPortalSteps,
   buildHrLinearPortalSteps,
   type PortalLinearStep
@@ -27,13 +33,14 @@ function TileCard(props: {
   href: Route;
   title: string;
   blurb: string;
+  accentCategory: string;
 }): React.JSX.Element {
-  const { href, title, blurb } = props;
+  const { href, title, blurb, accentCategory } = props;
   return (
     <Link
       href={href}
       scroll={false}
-      className="group flex h-full flex-col rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)]"
+      className={`group flex h-full flex-col rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)] ${portalCategoryTileTopAccentClass(accentCategory)}`}
     >
       <div className="flex items-start gap-3">
         <span className="min-w-0 flex-1">
@@ -49,24 +56,27 @@ function TileCard(props: {
 }
 
 function GridSection(props: { step: PortalLinearStep }): React.JSX.Element {
+  const accent = portalAccentCategoryForNavSection(props.step.id, props.step.title);
   return (
-    <section className="space-y-4">
-      <PortalSectionHeader step={props.step} />
+    <section
+      className={`rounded-2xl border p-4 backdrop-blur-sm sm:p-5 md:p-6 ${portalMapSectionSurfaceClass(accent)}`}
+    >
+      <div className="mb-5 space-y-2">
+        <div className={portalCategoryGlassColumnHeaderClass(accent, "default")}>{props.step.title}</div>
+        <p className="max-w-2xl px-0.5 text-sm leading-relaxed text-[var(--prom-muted)]">{props.step.subtitle}</p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {props.step.tiles.map((tile) => (
-          <TileCard key={String(tile.href)} href={tile.href} title={tile.title} blurb={tile.blurb} />
+          <TileCard
+            key={String(tile.href)}
+            href={tile.href}
+            title={tile.title}
+            blurb={tile.blurb}
+            accentCategory={accent}
+          />
         ))}
       </div>
     </section>
-  );
-}
-
-function PortalSectionHeader(props: { step: PortalLinearStep }): React.JSX.Element {
-  return (
-    <div className="space-y-1">
-      <h2 className="text-lg font-semibold text-[var(--prom-text)]">{props.step.title}</h2>
-      <p className="max-w-2xl text-sm text-[var(--prom-muted)]">{props.step.subtitle}</p>
-    </div>
   );
 }
 
@@ -123,7 +133,7 @@ export default function MappaPortalePage(): React.JSX.Element {
         <ProfileChips user={user} hideSensitiveHr={hideSensitiveHr} />
       </header>
 
-      <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-12">
+      <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-8">
         {steps.map((step) => (
           <GridSection key={step.id} step={step} />
         ))}
