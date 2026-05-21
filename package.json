@@ -42,7 +42,8 @@
     "vercel:link": "corepack pnpm dlx vercel link --cwd apps/frontend",
     "vercel:env:pull": "corepack pnpm dlx vercel env pull .env.local --cwd apps/frontend",
     "vercel:preview": "corepack pnpm dlx vercel --cwd apps/frontend",
-    "vercel:prod": "corepack pnpm dlx vercel --prod --cwd apps/frontend"
+    "vercel:prod": "corepack pnpm dlx vercel --prod --cwd apps/frontend",
+    "build:ci": "node scripts/verify-render-build.mjs"
   },
   "dependencies": {
     "@payday/domain": "workspace:*",

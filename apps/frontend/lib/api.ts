@@ -706,6 +706,7 @@ export type StructuredAnalyticsInsightDto = {
   correlazioni: string[];
   rischi: string[];
   azioni7giorni: string[];
+  raccomandazioniHr: string[];
   llmApplied: boolean;
   templateOnly: boolean;
   llmActive: boolean;
