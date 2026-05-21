@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCard } from "@/components/glass-card";
+import { HebbFieldAssistProvider, HebbInput } from "@/components/hebb-field-assist";
 import { Button } from "@/components/ui/button";
 import {
   applyImport,
@@ -425,6 +426,41 @@ export default function SettingsPage(): React.JSX.Element {
           </div>
         </div>
       </GlassCard>
+
+      {profileUser ? (
+        <GlassCard title="Profilo organizzativo" description="Dati non sensibili (sola lettura da anagrafica).">
+          <HebbFieldAssistProvider
+            formId="settings.profile"
+            partialForm={{
+              contractType: profileUser.contractType,
+              costCenterId: profileUser.costCenterId,
+              department: profileUser.costCenterId
+            }}
+          >
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <HebbInput
+                label="Tipologia contratto (riferimento)"
+                fieldKey="contractType"
+                value={profileUser.contractType?.trim() || ""}
+                onChange={() => {}}
+                readOnly
+                className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-slate-300"
+              />
+              <HebbInput
+                label="Centro di costo / dipartimento (ID)"
+                fieldKey="department"
+                value={profileUser.costCenterId?.trim() || ""}
+                onChange={() => {}}
+                readOnly
+                className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-slate-300"
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Usa HEBB per suggerimenti; le modifiche ufficiali restano in anagrafica HR / admin.
+            </p>
+          </HebbFieldAssistProvider>
+        </GlassCard>
+      ) : null}
 
       <GlassCard title="Nexa HR" description="Comportamento predefinito nell’app.">
         <div className="space-y-4 text-sm">

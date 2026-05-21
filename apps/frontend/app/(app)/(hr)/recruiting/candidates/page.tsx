@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HebbFieldAssistProvider, HebbInput, HebbTextarea } from "@/components/hebb-field-assist";
 import { Input } from "@/components/ui/input";
 import { getToken } from "@/lib/auth-session";
 import {
@@ -218,6 +219,10 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
           <CardDescription>Inserimento con validazione e allegati (CV, attestati, lettere — max 15 MB ciascuno).</CardDescription>
         </CardHeader>
         <CardContent>
+          <HebbFieldAssistProvider
+            formId="recruiting.candidate"
+            partialForm={{ firstName, lastName, email, phone, notes, privacyNoticeVersion }}
+          >
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1 text-sm">
               <span className="text-synapse-muted dark:text-[#b4c9dc]">Nome</span>
@@ -249,26 +254,25 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
               />
               {fe.phone ? <p className="text-xs text-rose-600">{fe.phone}</p> : null}
             </label>
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#b4c9dc]">Note</span>
-              <textarea
-                className="min-h-[90px] w-full resize-y rounded-lg border border-slate-300/90 bg-white/90 p-3 text-sm text-synapse-text shadow-sm outline-none transition dark:border-white/15 dark:bg-[#052642]/90 dark:text-white"
+            <div className="md:col-span-2">
+              <HebbTextarea
+                label="Note"
+                fieldKey="notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={setNotes}
               />
               {fe.notes ? <p className="text-xs text-rose-600">{fe.notes}</p> : null}
-            </label>
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-synapse-muted dark:text-[#b4c9dc]">
-                Versione informativa privacy (opzionale, es. v2026-04)
-              </span>
-              <Input
+            </div>
+            <div className="md:col-span-2">
+              <HebbInput
+                label="Versione informativa privacy (opzionale, es. v2026-04)"
+                fieldKey="privacyNoticeVersion"
                 value={privacyNoticeVersion}
-                onChange={(e) => setPrivacyNoticeVersion(e.target.value)}
+                onChange={setPrivacyNoticeVersion}
                 className={fe.privacyNoticeVersion ? "border-rose-500" : undefined}
               />
               {fe.privacyNoticeVersion ? <p className="text-xs text-rose-600">{fe.privacyNoticeVersion}</p> : null}
-            </label>
+            </div>
             <label className="flex items-start gap-2 text-sm md:col-span-2">
               <input
                 type="checkbox"
@@ -303,6 +307,7 @@ export default function RecruitingCandidatesPage(): React.JSX.Element {
             </Button>
           </div>
           {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+          </HebbFieldAssistProvider>
         </CardContent>
       </Card>
 

@@ -3,6 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HebbFieldAssistProvider, HebbInput, HebbTextarea } from "@/components/hebb-field-assist";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -118,7 +119,10 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
     return <p className="text-sm text-synapse-muted">Caricamento wizard onboarding…</p>;
   }
 
+  const onboardingFormId = `hr.onboarding.wizard.${currentKey}`;
+
   return (
+    <HebbFieldAssistProvider formId={onboardingFormId} partialForm={form} context={{ stepKey: currentKey, userId }}>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
@@ -188,14 +192,15 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
                   ["contractType", "Tipo contratto"]
                 ] as const
               ).map(([key, label]) => (
-                <label key={key} className="block text-sm">
-                  <span className="text-synapse-muted">{label}</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm dark:bg-[#052642]"
-                    value={String(form[key] ?? "")}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  />
-                </label>
+                <HebbInput
+                  key={key}
+                  label={label}
+                  fieldKey={key}
+                  formId={onboardingFormId}
+                  partialForm={form}
+                  value={String(form[key] ?? "")}
+                  onChange={(v) => setForm({ ...form, [key]: v })}
+                />
               ))}
             </div>
           ) : null}
@@ -238,36 +243,37 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
           {currentKey === "accessi_it" ? (
             <div className="grid gap-2 text-sm">
               {["accountEmail", "adGroups", "vpn", "mfa"].map((key) => (
-                <label key={key} className="block">
-                  <span className="text-synapse-muted capitalize">{key}</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                    value={String(form[key] ?? "")}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  />
-                </label>
+                <HebbInput
+                  key={key}
+                  label={<span className="capitalize">{key}</span>}
+                  fieldKey={key}
+                  formId={onboardingFormId}
+                  partialForm={form}
+                  value={String(form[key] ?? "")}
+                  onChange={(v) => setForm({ ...form, [key]: v })}
+                />
               ))}
             </div>
           ) : null}
 
           {currentKey === "badge" ? (
             <div className="grid gap-2 text-sm">
-              <label className="block">
-                <span className="text-synapse-muted">Numero badge</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.badgeNumber ?? "")}
-                  onChange={(e) => setForm({ ...form, badgeNumber: e.target.value })}
-                />
-              </label>
-              <label className="block">
-                <span className="text-synapse-muted">Accessi sede</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.siteAccess ?? "")}
-                  onChange={(e) => setForm({ ...form, siteAccess: e.target.value })}
-                />
-              </label>
+              <HebbInput
+                label="Numero badge"
+                fieldKey="badgeNumber"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.badgeNumber ?? "")}
+                onChange={(v) => setForm({ ...form, badgeNumber: v })}
+              />
+              <HebbInput
+                label="Accessi sede"
+                fieldKey="siteAccess"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.siteAccess ?? "")}
+                onChange={(v) => setForm({ ...form, siteAccess: v })}
+              />
             </div>
           ) : null}
 
@@ -283,64 +289,69 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
           ) : null}
 
           {currentKey === "equipment" ? (
-            <textarea
-              className="min-h-[100px] w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm dark:bg-[#052642]"
+            <HebbTextarea
+              label="Attrezzature"
+              fieldKey="equipmentNotes"
+              formId={onboardingFormId}
+              partialForm={form}
               placeholder="PC, monitor, telefono, accessori…"
               value={String(form.equipmentNotes ?? "")}
-              onChange={(e) => setForm({ ...form, equipmentNotes: e.target.value })}
+              onChange={(v) => setForm({ ...form, equipmentNotes: v })}
             />
           ) : null}
 
           {currentKey === "primo_giorno" ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="text-synapse-muted">Data primo giorno</span>
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.firstDayDate ?? "")}
-                  onChange={(e) => setForm({ ...form, firstDayDate: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-synapse-muted">Orario ingresso</span>
-                <input
-                  type="time"
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.firstDayTime ?? "09:00")}
-                  onChange={(e) => setForm({ ...form, firstDayTime: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm sm:col-span-2">
-                <span className="text-synapse-muted">Sede / punto di ritrovo</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
+              <HebbInput
+                label="Data primo giorno"
+                fieldKey="firstDayDate"
+                type="date"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.firstDayDate ?? "")}
+                onChange={(v) => setForm({ ...form, firstDayDate: v })}
+              />
+              <HebbInput
+                label="Orario ingresso"
+                fieldKey="firstDayTime"
+                type="time"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.firstDayTime ?? "09:00")}
+                onChange={(v) => setForm({ ...form, firstDayTime: v })}
+              />
+              <div className="sm:col-span-2">
+                <HebbInput
+                  label="Sede / punto di ritrovo"
+                  fieldKey="firstDayLocation"
+                  formId={onboardingFormId}
+                  partialForm={form}
                   value={String(form.firstDayLocation ?? "")}
-                  onChange={(e) => setForm({ ...form, firstDayLocation: e.target.value })}
+                  onChange={(v) => setForm({ ...form, firstDayLocation: v })}
                 />
-              </label>
+              </div>
             </div>
           ) : null}
 
           {currentKey === "buddy_formazione" ? (
             <div className="space-y-4">
-              <label className="block text-sm">
-                <span className="text-synapse-muted">Buddy assegnato (nome o ID)</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.buddyName ?? "")}
-                  onChange={(e) => setForm({ ...form, buddyName: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-synapse-muted">Scadenza corsi</span>
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 dark:bg-[#052642]"
-                  value={String(form.trainingDueDate ?? "")}
-                  onChange={(e) => setForm({ ...form, trainingDueDate: e.target.value })}
-                />
-              </label>
+              <HebbInput
+                label="Buddy assegnato (nome o ID)"
+                fieldKey="buddyName"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.buddyName ?? "")}
+                onChange={(v) => setForm({ ...form, buddyName: v })}
+              />
+              <HebbInput
+                label="Scadenza corsi"
+                fieldKey="trainingDueDate"
+                type="date"
+                formId={onboardingFormId}
+                partialForm={form}
+                value={String(form.trainingDueDate ?? "")}
+                onChange={(v) => setForm({ ...form, trainingDueDate: v })}
+              />
               <div>
                 <p className="mb-2 text-sm font-medium text-synapse-text dark:text-white">Corsi da assegnare</p>
                 <ul className="max-h-48 space-y-2 overflow-y-auto text-sm">
@@ -398,5 +409,6 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
         </CardContent>
       </Card>
     </div>
+    </HebbFieldAssistProvider>
   );
 }

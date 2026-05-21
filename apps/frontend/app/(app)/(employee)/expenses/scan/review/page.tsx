@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createWorker } from "tesseract.js";
+import { HebbFieldAssistButton, HebbFieldAssistProvider } from "@/components/hebb-field-assist";
 import { ReceiptStillQuadEditor } from "@/components/receipt-still-quad-editor";
 import {
   createExpenseClaimsBatch,
@@ -414,9 +415,23 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 className="max-h-64 w-full max-w-[220px] rounded-lg object-contain"
               />
             </div>
+            <HebbFieldAssistProvider
+              formId="expenses.claim"
+              partialForm={{
+                expenseType: r.expenseType,
+                expenseDate: r.expenseDate,
+                ocrSuggestedType: r.expenseType
+              }}
+            >
             <div className="flex min-w-0 flex-col gap-3">
               <label className="block text-xs text-slate-500">
-                Tipologia
+                <span className="flex items-center justify-between gap-2">
+                  Tipologia
+                  <HebbFieldAssistButton
+                    fieldKey="expenseType"
+                    onSuggest={(res) => updateRow(r.id, { expenseType: String(res.value ?? r.expenseType) })}
+                  />
+                </span>
                 <select
                   value={r.expenseType}
                   disabled={rowActionId === r.id}
@@ -431,7 +446,13 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 </select>
               </label>
               <label className="block text-xs text-slate-500">
-                Data spesa
+                <span className="flex items-center justify-between gap-2">
+                  Data spesa
+                  <HebbFieldAssistButton
+                    fieldKey="expenseDate"
+                    onSuggest={(res) => updateRow(r.id, { expenseDate: String(res.value ?? r.expenseDate) })}
+                  />
+                </span>
                 <input
                   type="date"
                   value={r.expenseDate}
@@ -444,7 +465,10 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 Cedolino previsto: {payslipMonthLabelFromExpenseDate(r.expenseDate)}
               </p>
               <label className="block text-xs text-slate-500">
-                Importo (€)
+                <span className="flex items-center justify-between gap-2">
+                  Importo (€)
+                  <HebbFieldAssistButton fieldKey="amount" onSuggest={() => {}} />
+                </span>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -501,6 +525,7 @@ export default function ExpenseScanReviewPage(): React.JSX.Element {
                 </button>
               </div>
             </div>
+            </HebbFieldAssistProvider>
           </li>
         ))}
       </ul>

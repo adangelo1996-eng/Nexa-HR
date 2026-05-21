@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, BookOpen, CalendarClock, Users } from "lucide-react";
+import { HebbFieldAssistButton, HebbFieldAssistProvider } from "@/components/hebb-field-assist";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { Button } from "@/components/ui/button";
@@ -285,9 +286,20 @@ export default function HrFormazionePage(): React.JSX.Element | null {
           <p className="mt-1 text-xs text-[var(--prom-muted)]">
             Scegli il corso, i destinatari (tutti o selezionati) e la data entro cui completarlo.
           </p>
+          <HebbFieldAssistProvider
+            formId="hr.formazione.assign"
+            partialForm={{ courseId, dueDate, assignAll }}
+            context={{ suggestDueDays: 14 }}
+          >
           <form className="mt-5 space-y-5" onSubmit={(ev) => void onBatchAssign(ev)}>
             <label className="block max-w-md text-sm">
-              <span className="text-[var(--prom-muted)]">Corso</span>
+              <span className="flex items-center justify-between gap-2 text-[var(--prom-muted)]">
+                Corso
+                <HebbFieldAssistButton
+                  fieldKey="courseId"
+                  onSuggest={(res) => setCourseId(String(res.value ?? ""))}
+                />
+              </span>
               <select
                 className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
                 value={courseId}
@@ -304,7 +316,13 @@ export default function HrFormazionePage(): React.JSX.Element | null {
             </label>
 
             <label className="block max-w-xs text-sm">
-              <span className="text-[var(--prom-muted)]">Scadenza obbligo</span>
+              <span className="flex items-center justify-between gap-2 text-[var(--prom-muted)]">
+                Scadenza obbligo
+                <HebbFieldAssistButton
+                  fieldKey="dueDate"
+                  onSuggest={(res) => setDueDate(String(res.value ?? dueDate))}
+                />
+              </span>
               <input
                 type="date"
                 className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
@@ -356,6 +374,7 @@ export default function HrFormazionePage(): React.JSX.Element | null {
               {assigning ? "Assegnazione…" : "Assegna corso"}
             </Button>
           </form>
+          </HebbFieldAssistProvider>
         </section>
       ) : null}
 

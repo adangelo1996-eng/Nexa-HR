@@ -17,6 +17,7 @@ import {
   type User,
   type WorkTeamDto
 } from "@/lib/api";
+import { HebbFieldAssistButton, HebbFieldAssistProvider } from "@/components/hebb-field-assist";
 import { inputOptionalClass, inputRequiredClass, selectOptionalClass, selectRequiredClass } from "@/lib/form-field-styles";
 
 export type AdminUserEditTab = "anagrafica" | "contratto" | "organizzazione" | "pagamento" | "utenze_terze";
@@ -286,6 +287,15 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                   />
                 </label>
                 </div>
+                <HebbFieldAssistProvider
+                  formId="admin.user.organizzazione"
+                  partialForm={{
+                    costCenterId: selectedUser.costCenterId,
+                    teamId: selectedUser.teamId,
+                    contractType: selectedUser.contractType,
+                    roleId: selectedUser.roleId
+                  }}
+                >
                 <div className={editUserTab !== "organizzazione" ? "hidden" : "contents"}>
                 <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-900/40">
                   <p className="text-[11px] text-slate-600 dark:text-slate-400">
@@ -338,7 +348,16 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Centro di costo</span>
+                  <span className="flex items-center justify-between gap-2 text-slate-700 dark:text-slate-300">
+                    Centro di costo
+                    <HebbFieldAssistButton
+                      fieldKey="costCenterId"
+                      onSuggest={(res) => {
+                        if (!selectedUser) return;
+                        updateSelectedUser({ costCenterId: String(res.value ?? "") || undefined });
+                      }}
+                    />
+                  </span>
                   <select
                     value={selectedUser ? selectedUser.costCenterId ?? "" : ""}
                     onChange={(event) => {
@@ -364,7 +383,16 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Team (macro-area)</span>
+                  <span className="flex items-center justify-between gap-2 text-slate-700 dark:text-slate-300">
+                    Team (macro-area)
+                    <HebbFieldAssistButton
+                      fieldKey="teamId"
+                      onSuggest={(res) => {
+                        if (!selectedUser) return;
+                        updateSelectedUser({ teamId: String(res.value ?? "") || null });
+                      }}
+                    />
+                  </span>
                   <select
                     value={selectedUser?.teamId ?? ""}
                     onChange={(event) => {
@@ -401,6 +429,7 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                   </select>
                 </label>
                 </div>
+                </HebbFieldAssistProvider>
                 <div className={editUserTab !== "contratto" ? "hidden" : "contents"}>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-slate-700 dark:text-slate-300">Ore contrattuali settimanali *</span>
@@ -418,7 +447,22 @@ export function AdminUserEditPanel(props: AdminUserEditPanelProps): JSX.Element 
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-700 dark:text-slate-300">Tipo contratto *</span>
+                  <span className="flex items-center justify-between gap-2 text-slate-700 dark:text-slate-300">
+                    Tipo contratto *
+                    <HebbFieldAssistButton
+                      fieldKey="contractType"
+                      formId="admin.user.organizzazione"
+                      partialForm={{
+                        costCenterId: selectedUser.costCenterId,
+                        teamId: selectedUser.teamId,
+                        contractType: selectedUser.contractType
+                      }}
+                      onSuggest={(res) => {
+                        if (!selectedUser) return;
+                        updateSelectedUser({ contractType: String(res.value ?? "") || undefined });
+                      }}
+                    />
+                  </span>
                   <input
                     value={selectedUser ? selectedUser.contractType ?? "" : ""}
                     onChange={(event) => {

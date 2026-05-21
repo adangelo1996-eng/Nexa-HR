@@ -81,6 +81,63 @@ export interface User {
   workTeamIdsWhereLead?: string[];
 }
 
+/** Bundle read-only per scheda CV `/employee/:id` (GET /users/:id/cv-profile). */
+export interface EmployeeCvProfileDto {
+  subject: {
+    fullName: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+    phone?: string | null;
+    address?: string | null;
+    birthDate?: string | null;
+    hireDate?: string | null;
+    contractType?: string | null;
+    weeklyContractHours?: number | null;
+    employmentState?: string;
+    contractEndDate?: string | null;
+    contractFixedTerm?: boolean;
+    partTimeModality?: string | null;
+    legalCategory?: string | null;
+    ccnlCode?: string | null;
+    ccnlLevel?: string | null;
+    vacationAllowanceDays?: number | null;
+    jurisdiction?: string;
+    taxRegion?: string | null;
+    taxMunicipalityIt?: string | null;
+    fiscalCode?: string | null;
+    maritalStatus?: string | null;
+    dependentsChildren?: number | null;
+    dependentSpouse?: boolean | null;
+    disabilityFlag?: boolean | null;
+    taxDomicileMunicipalityIt?: string | null;
+    taxDomicileSameAsResidence?: boolean | null;
+    iban?: string | null;
+    bankName?: string | null;
+    bicSwift?: string | null;
+    accountHolder?: string | null;
+    annualGrossSalary?: number | null;
+    baseSalaryMonthly?: number | null;
+    fixedSupplementMonthly?: number | null;
+    payMonthsPerYear?: number | null;
+    fringeBenefitYtdEuros?: number | null;
+    garnishmentMonthlyEstimate?: number | null;
+  };
+  roleName: string | null;
+  costCenter: { code: string; name: string } | null;
+  team: { name: string } | null;
+  manager: { id: string; fullName: string } | null;
+  skills: Array<{ code: string; name: string; level: number }>;
+  companyCcnl: string | null;
+  profilePhotoUrl: string | null;
+  flags: {
+    isSelf: boolean;
+    canViewEconomic: boolean;
+    canViewPayrollSensitive: boolean;
+    canEditInAdmin: boolean;
+  };
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -615,6 +672,17 @@ export async function fetchAnalyticsHubCatalog(
   return (await response.json()) as { cards: AnalyticsHubCardDto[] };
 }
 
+export async function fetchAdvancedAnalyticsHubCatalog(
+  token: string
+): Promise<{ cards: AnalyticsHubCardDto[] }> {
+  const response = await fetch(buildApiUrl("/analytics/advanced/hub"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { cards: AnalyticsHubCardDto[] };
+}
+
+
 export async function postAnalyticsHubRun(
   token: string,
   analysisId: string,
@@ -638,21 +706,10 @@ export type StructuredAnalyticsInsightDto = {
   correlazioni: string[];
   rischi: string[];
   azioni7giorni: string[];
-  raccomandazioniHr: string[];
   llmApplied: boolean;
   templateOnly: boolean;
   llmActive: boolean;
 };
-
-export async function fetchAdvancedAnalyticsHubCatalog(
-  token: string
-): Promise<{ cards: AnalyticsHubCardDto[] }> {
-  const response = await fetch(buildApiUrl("/analytics/advanced/hub"), {
-    headers: getAuthHeaders(token)
-  });
-  if (!response.ok) await parseError(response);
-  return (await response.json()) as { cards: AnalyticsHubCardDto[] };
-}
 
 export async function fetchAdvancedAnalysisKpis(
   token: string,
@@ -734,6 +791,163 @@ export async function postPlatformAgentChat(
     reply,
     structured,
     sources,
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
+}
+
+export type HrCopilotPanelId = "today" | "people_risk" | "hiring" | "budget_alert";
+export type HrCopilotActionDto = { label: string; rationale: string; evidence: string; href?: string };
+export type HrCopilotPanelDto = {
+  id: HrCopilotPanelId;
+  title: string;
+  priority: "high" | "medium" | "low";
+  summary: string;
+  actions: HrCopilotActionDto[];
+};
+export type HrCopilotStructuredDto = { intro: string; panels: HrCopilotPanelDto[]; reply?: string };
+export type HrCopilotSignalsDto = {
+  scope: "org" | "manager";
+  generatedAt: string;
+  headcount: number;
+  pendingApprovals: number;
+  openHrAlerts: number;
+  skillsGapCount: number;
+  retentionHighRiskCount: number;
+  openPositionsCount: number;
+  trainingOverdueCount: number;
+  budgetVariancePct: number | null;
+};
+
+function parseHrCopilotStructuredDto(raw: unknown): HrCopilotStructuredDto | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const intro = typeof (raw as { intro?: unknown }).intro === "string" ? (raw as { intro: string }).intro : "";
+  const panelsRaw = (raw as { panels?: unknown }).panels;
+  if (!intro || !Array.isArray(panelsRaw)) {
+    return null;
+  }
+  const panels: HrCopilotPanelDto[] = [];
+  for (const p of panelsRaw) {
+    if (!p || typeof p !== "object") {
+      continue;
+    }
+    const id = (p as { id?: unknown }).id;
+    const title = typeof (p as { title?: unknown }).title === "string" ? (p as { title: string }).title : "";
+    const summary = typeof (p as { summary?: unknown }).summary === "string" ? (p as { summary: string }).summary : "";
+    const priorityRaw = (p as { priority?: unknown }).priority;
+    const priority =
+      priorityRaw === "high" || priorityRaw === "low" || priorityRaw === "medium" ? priorityRaw : "medium";
+    const actionsRaw = (p as { actions?: unknown }).actions;
+    if (!title || !summary || !Array.isArray(actionsRaw)) {
+      continue;
+    }
+    const actions: HrCopilotActionDto[] = [];
+    for (const a of actionsRaw) {
+      if (!a || typeof a !== "object") {
+        continue;
+      }
+      const label = typeof (a as { label?: unknown }).label === "string" ? (a as { label: string }).label : "";
+      const rationale =
+        typeof (a as { rationale?: unknown }).rationale === "string" ? (a as { rationale: string }).rationale : "";
+      const evidence =
+        typeof (a as { evidence?: unknown }).evidence === "string" ? (a as { evidence: string }).evidence : "";
+      const hrefRaw = (a as { href?: unknown }).href;
+      const href = typeof hrefRaw === "string" && hrefRaw.startsWith("/") ? hrefRaw : undefined;
+      if (label && rationale) {
+        actions.push({ label, rationale, evidence: evidence || "—", href });
+      }
+    }
+    if (
+      id === "today" ||
+      id === "people_risk" ||
+      id === "hiring" ||
+      id === "budget_alert"
+    ) {
+      panels.push({ id, title, priority, summary, actions });
+    }
+  }
+  if (!panels.length) {
+    return null;
+  }
+  const reply = typeof (raw as { reply?: unknown }).reply === "string" ? (raw as { reply: string }).reply : undefined;
+  return { intro, panels, reply };
+}
+
+export async function fetchHrCopilotBrief(token: string): Promise<
+  { structured: HrCopilotStructuredDto; signals: HrCopilotSignalsDto } & AiAssistantResponseMeta
+> {
+  const response = await fetch(buildApiUrl("/ai/hr/copilot/brief"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as Record<string, unknown>;
+  const structured = parseHrCopilotStructuredDto(body.structured);
+  if (!structured) {
+    throw new Error("Risposta Copilot non valida");
+  }
+  const signalsRaw = body.signals as Record<string, unknown> | undefined;
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    structured,
+    signals: {
+      scope: signalsRaw?.scope === "manager" ? "manager" : "org",
+      generatedAt: typeof signalsRaw?.generatedAt === "string" ? signalsRaw.generatedAt : "",
+      headcount: typeof signalsRaw?.headcount === "number" ? signalsRaw.headcount : 0,
+      pendingApprovals: typeof signalsRaw?.pendingApprovals === "number" ? signalsRaw.pendingApprovals : 0,
+      openHrAlerts: typeof signalsRaw?.openHrAlerts === "number" ? signalsRaw.openHrAlerts : 0,
+      skillsGapCount: typeof signalsRaw?.skillsGapCount === "number" ? signalsRaw.skillsGapCount : 0,
+      retentionHighRiskCount:
+        typeof signalsRaw?.retentionHighRiskCount === "number" ? signalsRaw.retentionHighRiskCount : 0,
+      openPositionsCount: typeof signalsRaw?.openPositionsCount === "number" ? signalsRaw.openPositionsCount : 0,
+      trainingOverdueCount:
+        typeof signalsRaw?.trainingOverdueCount === "number" ? signalsRaw.trainingOverdueCount : 0,
+      budgetVariancePct:
+        typeof signalsRaw?.budgetVariancePct === "number" ? signalsRaw.budgetVariancePct : null
+    },
+    llm: {
+      configured: llmRaw?.configured === true,
+      refineApplied: llmRaw?.refineApplied === true
+    },
+    privacy: {
+      pseudonymizedTokenCount:
+        typeof privRaw?.pseudonymizedTokenCount === "number" ? privRaw.pseudonymizedTokenCount : 0,
+      schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
+    }
+  };
+}
+
+export type HrCopilotChatTurnDto = { role: "user" | "assistant"; content: string };
+
+export async function postHrCopilotChat(
+  token: string,
+  payload: { message: string; history?: HrCopilotChatTurnDto[] }
+): Promise<
+  { reply: string; structured: HrCopilotStructuredDto | null } & AiAssistantResponseMeta
+> {
+  const response = await fetch(buildApiUrl("/ai/hr/copilot/chat"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as Record<string, unknown>;
+  const reply = typeof body.reply === "string" ? body.reply : "";
+  const structured = parseHrCopilotStructuredDto(body.structured);
+  const llmRaw = body.llm as Record<string, unknown> | undefined;
+  const privRaw = body.privacy as Record<string, unknown> | undefined;
+  return {
+    reply,
+    structured,
     llm: {
       configured: llmRaw?.configured === true,
       refineApplied: llmRaw?.refineApplied === true
@@ -1008,10 +1222,10 @@ export interface PayslipExplainResult {
     plainSummary?: string;
     keyPoints?: string[];
     withholdingsBullets?: string[];
-    withholdingsExplanation?: string;
     howToReadBullets?: string[];
-    howToReadPayslip?: string;
     parsedLineBullets?: string[];
+    withholdingsExplanation?: string;
+    howToReadPayslip?: string;
     parsedPayslipAnalysis?: string;
     residenceDomicileNote?: string;
     addizionaliNote?: string;
@@ -2053,6 +2267,7 @@ export interface SmartworkingRequestDto {
   id: string;
   userId: string;
   day: string;
+  endDay?: string | null;
   note?: string | null;
   status: "pending" | "approved" | "rejected";
   approverId?: string | null;
@@ -2077,7 +2292,7 @@ export async function fetchSmartworkingMe(token: string): Promise<{
 
 export async function createSmartworkingRequest(
   token: string,
-  payload: { day: string; note?: string; userId?: string }
+  payload: { day: string; endDay?: string; note?: string; userId?: string }
 ): Promise<SmartworkingRequestDto> {
   const response = await fetch(buildApiUrl("/smartworking/request"), {
     method: "POST",
@@ -2101,7 +2316,7 @@ export async function cancelSmartworkingRequest(token: string, requestId: string
 export async function updateSmartworkingRequest(
   token: string,
   requestId: string,
-  payload: { day: string; note?: string }
+  payload: { day: string; endDay?: string; note?: string }
 ): Promise<SmartworkingRequestDto> {
   const response = await fetch(buildApiUrl(`/smartworking/request/${encodeURIComponent(requestId)}`), {
     method: "PATCH",
@@ -2502,6 +2717,17 @@ export async function fetchUserProfilePhotoUrl(token: string, userId: string): P
   return body.url;
 }
 
+export async function fetchEmployeeCvProfile(token: string, userId: string): Promise<EmployeeCvProfileDto> {
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}/cv-profile`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as EmployeeCvProfileDto;
+}
+
 export async function uploadUserProfilePhoto(token: string, userId: string, file: File): Promise<User> {
   const fd = new FormData();
   fd.append("file", file);
@@ -2575,6 +2801,8 @@ export async function uploadDocumentToVault(
   return response.json() as Promise<EmployeeDocumentDto>;
 }
 
+export type LinkedInSyncStatusDto = "not_linked" | "pending" | "synced" | "error";
+
 export interface RecruitPositionDto {
   id: string;
   company_id: string;
@@ -2584,6 +2812,21 @@ export interface RecruitPositionDto {
   created_at: string;
   job_code?: string;
   due_date?: string | null;
+  location?: string | null;
+  source?: "nexa" | "linkedin";
+  linkedin_job_id?: string | null;
+  linkedin_job_url?: string | null;
+  linkedin_sync_status?: LinkedInSyncStatusDto;
+  linkedin_last_synced_at?: string | null;
+  linkedin_sync_error?: string | null;
+}
+
+export interface LinkedInIntegrationStatusDto {
+  configured: boolean;
+  adapterMode: "stub" | "oauth";
+  autoPublishOnCreate: boolean;
+  organizationUrnSet: boolean;
+  webhookSecretSet: boolean;
 }
 
 export interface RecruitCandidateDto {
@@ -2597,6 +2840,26 @@ export interface RecruitCandidateDto {
   created_at: string;
   privacy_notice_version?: string | null;
   consent_recorded_at?: string | null;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: RecruitCvScreeningSummaryDto | null;
+  screened_at?: string | null;
+  screening_position_id?: string | null;
+}
+
+export interface RecruitCvScreeningSummaryDto {
+  matches?: string[];
+  mismatches?: string[];
+  summary?: string;
+}
+
+export interface RecruitCvScreenResultDto {
+  stateId: string;
+  candidateId: string;
+  positionId: string;
+  candidateCvScreeningScore: number;
+  screeningSummary: RecruitCvScreeningSummaryDto;
+  screenedAt: string;
+  llm: { active: boolean; refineApplied: boolean };
 }
 
 export interface RecruitCandidateDocumentDto {
@@ -2626,6 +2889,9 @@ export interface RecruitCandidateStageStateDto {
   current_stage_id: string;
   status: "in_progress" | "passed" | "failed";
   updated_at: string;
+  candidate_cv_screening_score?: number | null;
+  screening_summary?: RecruitCvScreeningSummaryDto | null;
+  screened_at?: string | null;
 }
 
 export async function fetchRecruitPositions(token: string): Promise<RecruitPositionDto[]> {
@@ -2637,7 +2903,13 @@ export async function fetchRecruitPositions(token: string): Promise<RecruitPosit
 
 export async function createRecruitPosition(
   token: string,
-  payload: { title: string; jobDescription: string; dueDate?: string | null }
+  payload: {
+    title: string;
+    jobDescription: string;
+    dueDate?: string | null;
+    location?: string | null;
+    publishToLinkedIn?: boolean;
+  }
 ): Promise<RecruitPositionDto> {
   const response = await fetch(buildApiUrl("/recruiting/positions"), {
     method: "POST",
@@ -2648,6 +2920,46 @@ export async function createRecruitPosition(
   return response.json() as Promise<RecruitPositionDto>;
 }
 
+export async function fetchRecruitPosition(token: string, positionId: string): Promise<RecruitPositionDto> {
+  const response = await fetch(buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function publishRecruitPositionToLinkedIn(
+  token: string,
+  positionId: string
+): Promise<RecruitPositionDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}/linkedin/publish`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function syncRecruitPositionLinkedIn(
+  token: string,
+  positionId: string
+): Promise<RecruitPositionDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/positions/${encodeURIComponent(positionId)}/linkedin/sync`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitPositionDto>;
+}
+
+export async function fetchLinkedInIntegrationStatus(token: string): Promise<LinkedInIntegrationStatusDto> {
+  const response = await fetch(buildApiUrl("/recruiting/integrations/linkedin/status"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<LinkedInIntegrationStatusDto>;
+}
+
 export async function deleteRecruitPosition(token: string, id: string): Promise<void> {
   const response = await fetch(buildApiUrl(`/recruiting/positions/${encodeURIComponent(id)}`), {
     method: "DELETE",
@@ -2656,11 +2968,53 @@ export async function deleteRecruitPosition(token: string, id: string): Promise<
   if (!response.ok) await parseError(response);
 }
 
-export async function fetchRecruitCandidates(token: string): Promise<RecruitCandidateDto[]> {
-  const response = await fetch(buildApiUrl("/recruiting/candidates"), { headers: getAuthHeaders(token) });
+export async function fetchRecruitCandidates(
+  token: string,
+  options?: { minScore?: number; sortByScore?: "asc" | "desc" }
+): Promise<RecruitCandidateDto[]> {
+  const params = new URLSearchParams();
+  if (options?.minScore != null) params.set("minScore", String(options.minScore));
+  if (options?.sortByScore) params.set("sortByScore", options.sortByScore);
+  const qs = params.toString();
+  const response = await fetch(buildApiUrl(`/recruiting/candidates${qs ? `?${qs}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { items: RecruitCandidateDto[] };
   return body.items ?? [];
+}
+
+export async function screenRecruitCandidateCv(
+  token: string,
+  candidateId: string,
+  payload?: { positionId?: string; cvText?: string }
+): Promise<RecruitCvScreenResultDto> {
+  const response = await fetch(
+    buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}/screen-cv`),
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify(payload ?? {})
+    }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<RecruitCvScreenResultDto>;
+}
+
+export async function screenRecruitCandidateCvBatch(
+  token: string,
+  payload: { positionId: string; candidateIds: string[] }
+): Promise<{ items: RecruitCvScreenResultDto[]; errors: Array<{ candidateId: string; message: string }> }> {
+  const response = await fetch(buildApiUrl("/recruiting/candidates/screen-cv-batch"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    items: RecruitCvScreenResultDto[];
+    errors: Array<{ candidateId: string; message: string }>;
+  }>;
 }
 
 export async function createRecruitCandidate(
@@ -2778,6 +3132,9 @@ export async function fetchRecruitCandidateDetail(
     current_stage_id: string;
     status: "in_progress" | "passed" | "failed";
     updated_at: string;
+    candidate_cv_screening_score?: number | null;
+    screening_summary?: RecruitCvScreeningSummaryDto | null;
+    screened_at?: string | null;
   }>;
 }> {
   const response = await fetch(buildApiUrl(`/recruiting/candidates/${encodeURIComponent(candidateId)}`), {
@@ -2793,6 +3150,9 @@ export async function fetchRecruitCandidateDetail(
       current_stage_id: string;
       status: "in_progress" | "passed" | "failed";
       updated_at: string;
+      candidate_cv_screening_score?: number | null;
+      screening_summary?: RecruitCvScreeningSummaryDto | null;
+      screened_at?: string | null;
     }>;
   }>;
 }
@@ -2895,6 +3255,58 @@ export async function fetchRecruitOnboardingBoard(token: string): Promise<{ item
     return fallback.json() as Promise<{ items: RecruitOnboardingRowDto[] }>;
   }
   return await parseError(primary);
+}
+
+export interface LinkedInIntegrationConfigDto {
+  provider: "linkedin";
+  configured: boolean;
+  adapterMode: "stub" | "oauth";
+  autoPublishOnCreate: boolean;
+  organizationUrnSet: boolean;
+  webhookSecretSet: boolean;
+  companyId: string;
+  webhookPath: string;
+  webhookUrl: string;
+  signatureHeaders: string[];
+  signatureFormat: string;
+  rateLimitPerMinute: number;
+  defaultCompanyId: string;
+  documentationPath: string;
+}
+
+export async function fetchLinkedInIntegrationConfig(
+  token: string,
+  publicApiBaseUrl?: string
+): Promise<LinkedInIntegrationConfigDto> {
+  const q = publicApiBaseUrl?.trim()
+    ? `?publicApiBaseUrl=${encodeURIComponent(publicApiBaseUrl.trim())}`
+    : "";
+  const response = await fetch(buildApiUrl(`/recruiting/integrations/linkedin/config${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<LinkedInIntegrationConfigDto>;
+}
+
+export async function testLinkedInCandidateIngest(
+  token: string,
+  payload: {
+    jobId: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    linkedinUrl?: string;
+    resumeUrl?: string;
+    externalId?: string;
+  }
+): Promise<{ ok: boolean; action: string; result: Record<string, unknown> }> {
+  const response = await fetch(buildApiUrl("/recruiting/integrations/linkedin/test-ingest"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: boolean; action: string; result: Record<string, unknown> }>;
 }
 
 export type HrOnboardingWizardStepDef = {
@@ -3044,6 +3456,24 @@ export async function assignTrainingCourses(
   return response.json() as Promise<{ items: TrainingAssignmentDto[] }>;
 }
 
+export async function assignTrainingCoursesBatch(
+  token: string,
+  payload: {
+    userIds: string[];
+    courseIds: string[];
+    dueDate: string;
+    assignAllEmployees?: boolean;
+  }
+): Promise<{ items: TrainingAssignmentDto[]; assignedCount: number }> {
+  const response = await fetch(buildApiUrl("/training/assign-batch"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingAssignmentDto[]; assignedCount: number }>;
+}
+
 export async function patchTrainingAssignmentStatus(
   token: string,
   assignmentId: string,
@@ -3056,6 +3486,18 @@ export async function patchTrainingAssignmentStatus(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<TrainingAssignmentDto>;
+}
+
+export async function postTrainingAssignmentReminder(
+  token: string,
+  assignmentId: string
+): Promise<{ ok: true }> {
+  const response = await fetch(
+    buildApiUrl(`/training/assignments/${encodeURIComponent(assignmentId)}/reminder`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true }>;
 }
 
 export type HrRecapSummaryDto = {
@@ -3131,6 +3573,22 @@ export interface HrStandardContractDto {
   recruitPositionId?: string;
   signedAt?: string;
   signatures?: Record<string, unknown>;
+}
+
+export type HrContractPresetDto = {
+  id: string;
+  templateKey: string;
+  label: string;
+  description: string | null;
+  defaultParty: Record<string, unknown>;
+  sortOrder: number;
+};
+
+export async function fetchHrContractPresets(token: string): Promise<HrContractPresetDto[]> {
+  const response = await fetch(buildApiUrl("/hr-contracts/presets"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: HrContractPresetDto[] };
+  return body.items ?? [];
 }
 
 export async function fetchHrStandardContracts(token: string): Promise<HrStandardContractDto[]> {
@@ -3835,12 +4293,29 @@ export async function fetchSkillsGap(
   };
 }
 
+export type ManagerCopilotDirectReport = {
+  id: string;
+  fullName: string;
+  email: string;
+  contractType: string | null;
+  hireDate: string | null;
+  employmentState: string | null;
+  costCenterId: string | null;
+  teamId: string | null;
+  pendingApprovalsCount: number;
+  turnoverScore: number | null;
+  ralAnnualEur: number | null;
+  bonusMonthlyEur: number | null;
+};
+
 export async function fetchManagerCopilot(token: string): Promise<{
   pendingTotal: number;
   pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
   teamHeadcount: number;
   teamSmartworkingPending: number;
   teamTurnoverAvgScore: number | null;
+  includeEconomicData: boolean;
+  directReports: ManagerCopilotDirectReport[];
   topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
   routes: {
     approvals: string;
@@ -3859,6 +4334,8 @@ export async function fetchManagerCopilot(token: string): Promise<{
     teamHeadcount: number;
     teamSmartworkingPending: number;
     teamTurnoverAvgScore: number | null;
+    includeEconomicData: boolean;
+    directReports: ManagerCopilotDirectReport[];
     topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
     routes: {
       approvals: string;
@@ -3867,6 +4344,97 @@ export async function fetchManagerCopilot(token: string): Promise<{
       workforcePlanning: string;
     };
   };
+}
+
+export type WorkforcePlanningScenarioDto = {
+  id: string;
+  name: string;
+  assumptionsJson: Record<string, unknown>;
+  payloadJson: Record<string, unknown>;
+  analysisText: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchWorkforcePlanningScenarios(token: string): Promise<{
+  items: WorkforcePlanningScenarioDto[];
+}> {
+  const response = await fetch(buildApiUrl("/analytics/workforce-planning/scenarios"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: WorkforcePlanningScenarioDto[] };
+}
+
+export async function saveWorkforcePlanningScenario(
+  token: string,
+  body: {
+    id?: string;
+    name: string;
+    assumptionsJson?: Record<string, unknown>;
+    payloadJson: Record<string, unknown>;
+    analysisText?: string | null;
+  }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/analytics/workforce-planning/scenarios"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteWorkforcePlanningScenario(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/analytics/workforce-planning/scenarios/${encodeURIComponent(id)}/delete`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+}
+
+export type HrRoleCoverageGapDto = {
+  id: string;
+  roleTitle: string;
+  headcountGap: number;
+  expectedRalAnnual: number | null;
+  notes: string | null;
+  updatedAt: string;
+};
+
+export async function fetchRoleCoverageGaps(token: string): Promise<{ items: HrRoleCoverageGapDto[] }> {
+  const response = await fetch(buildApiUrl("/analytics/role-coverage-gaps"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: HrRoleCoverageGapDto[] };
+}
+
+export async function upsertRoleCoverageGap(
+  token: string,
+  body: {
+    id?: string;
+    roleTitle: string;
+    headcountGap: number;
+    expectedRalAnnual?: number | null;
+    notes?: string | null;
+  }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/analytics/role-coverage-gaps"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteRoleCoverageGap(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl(`/analytics/role-coverage-gaps/${encodeURIComponent(id)}/delete`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
 }
 
 export async function fetchHrCenterMeta(token: string): Promise<{
@@ -4192,6 +4760,125 @@ export async function postCompensationBenchEstimate(
   };
 }
 
+export type HiringSimulatorAdvisePhase = "criteria" | "agevolazioni" | "benefits" | "validate";
+
+export type HiringSimulatorInputBody = {
+  mode: "ral" | "net";
+  weeklyContractHours: number;
+  weeklyFullTimeHours?: number;
+  payMonthsPerYear: 12 | 13 | 14;
+  annualGrossSalaryEuros?: number;
+  targetNetMonthlyEuros?: number;
+  agevolazioni?: {
+    female?: boolean;
+    under36?: boolean;
+    southZes?: boolean;
+    naspi?: boolean;
+    protectedCategories?: boolean;
+    otherNotes?: string;
+  };
+  benefits?: {
+    welfareAnnualEuros?: number;
+    mealVouchersMonthlyEuros?: number;
+    smartWorkingMonthlyEuros?: number;
+    otherBenefitsMonthlyEuros?: number;
+  };
+  ccnlCode?: string;
+  ccnlLevel?: string;
+  contractType?: string;
+  roleTitle?: string;
+  location?: string;
+};
+
+export type HiringSimulatorAdviseResponse = {
+  advise: {
+    advisorMessage: string;
+    suggestedChips: string[];
+    agevolazioniVerificate: Array<{
+      code: string;
+      label: string;
+      applicable: boolean;
+      rationale: string;
+    }>;
+    benefitSuggestions: Array<{
+      key: string;
+      label: string;
+      monthlyEurosEstimate: number | null;
+      rationale: string;
+    }>;
+    validationOk: boolean;
+    validationNotes: string[];
+  };
+  compute: import("@payday/domain").CostCalculatorResult;
+  llm: { active: boolean; refineApplied: boolean };
+};
+
+export type HiringSimulatorScenarioRow = {
+  id: string;
+  name: string;
+  payloadJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function postHiringSimulatorCompute(
+  token: string,
+  body: HiringSimulatorInputBody
+): Promise<import("@payday/domain").CostCalculatorResult> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/compute"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  const data = (await response.json()) as { result: import("@payday/domain").CostCalculatorResult };
+  return data.result;
+}
+
+export async function postHiringSimulatorAdvise(
+  token: string,
+  body: HiringSimulatorInputBody & { phase: HiringSimulatorAdvisePhase; userQuestion?: string }
+): Promise<HiringSimulatorAdviseResponse> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/advise"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as HiringSimulatorAdviseResponse;
+}
+
+export async function fetchHiringSimulatorScenarios(token: string): Promise<HiringSimulatorScenarioRow[]> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const data = (await response.json()) as { items: HiringSimulatorScenarioRow[] };
+  return data.items ?? [];
+}
+
+export async function saveHiringSimulatorScenario(
+  token: string,
+  body: HiringSimulatorInputBody & { name: string; id?: string }
+): Promise<{ id: string }> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { id: string };
+}
+
+export async function deleteHiringSimulatorScenario(token: string, id: string): Promise<void> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/hiring-simulator/scenarios"), {
+    method: "DELETE",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ id })
+  });
+  if (!response.ok) await parseError(response);
+}
+
 export type WorkforceCockpitScenario = "base" | "growth" | "freeze" | "custom";
 
 export async function fetchWorkforceCockpit(
@@ -4343,6 +5030,86 @@ export async function deleteShift(token: string, shiftId: string): Promise<{ ok:
   return (await response.json()) as { ok: true };
 }
 
+export interface ShiftPresetDto {
+  id: string;
+  companyId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  isDefault: boolean;
+  workTeamId?: string | null;
+  userId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchShiftPresets(token: string): Promise<{ items: ShiftPresetDto[] }> {
+  const response = await fetch(buildApiUrl("/scheduling/presets"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { items: ShiftPresetDto[] };
+}
+
+export async function createShiftPreset(
+  token: string,
+  body: {
+    name: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes?: number;
+    isDefault?: boolean;
+    workTeamId?: string;
+    userId?: string;
+  }
+): Promise<{ item: ShiftPresetDto }> {
+  const response = await fetch(buildApiUrl("/scheduling/presets"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { item: ShiftPresetDto };
+}
+
+export async function updateShiftPreset(
+  token: string,
+  presetId: string,
+  body: Partial<{
+    name: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    isDefault: boolean;
+    workTeamId: string | null;
+    userId: string | null;
+  }>
+): Promise<{ item: ShiftPresetDto }> {
+  const response = await fetch(buildApiUrl(`/scheduling/presets/${encodeURIComponent(presetId)}`), {
+    method: "PATCH",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { item: ShiftPresetDto };
+}
+
+export async function deleteShiftPreset(token: string, presetId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl(`/scheduling/presets/${encodeURIComponent(presetId)}`), {
+    method: "DELETE",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { ok: true };
+}
+
+/** Etichetta periodo remote working (singolo giorno o intervallo). */
+export function formatSmartworkingPeriod(day: string, endDay?: string | null): string {
+  const s = day.slice(0, 10);
+  const e = (endDay?.trim() || s).slice(0, 10);
+  if (e === s) return s;
+  return `${s} → ${e}`;
+}
+
 export async function submitLifecycleOffboard(
   token: string,
   targetUserId: string,
@@ -4377,11 +5144,18 @@ export interface PersonnelBudgetRow {
   suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 }
 
+export interface PersonnelBudgetPlannedExtraLine {
+  id: string;
+  label: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+}
+
 export interface PersonnelBudgetDepartment {
   costCenterId: string | null;
   costCenterName: string;
   sortOrder: number;
   rows: PersonnelBudgetRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
 }
 
 export interface PersonnelBudgetSnapshot {
@@ -4389,6 +5163,52 @@ export interface PersonnelBudgetSnapshot {
   month: number;
   period: string;
   departments: PersonnelBudgetDepartment[];
+}
+
+export interface PersonnelBudgetAssumptionsDto {
+  companyId: string;
+  year: number;
+  employerInpsPercent: number | null;
+  inailPermille: number | null;
+  tfrDivisor: number | null;
+  welfarePercent: number;
+  bonusProvisionPercent: number;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+}
+
+export interface PersonnelBudgetCellNoteDto {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number | null;
+  userId: string | null;
+  plannedLineId: string | null;
+  fieldKey: string;
+  note: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  updatedAt: string;
+}
+
+export interface PersonnelBudgetYearMonthlyRow extends PersonnelBudgetRow {
+  forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+}
+
+export interface PersonnelBudgetYearMonthlyDepartment {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetYearMonthlyRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
+}
+
+export interface PersonnelBudgetYearMonthlyResult {
+  year: number;
+  months: Array<{
+    month: number;
+    departments: PersonnelBudgetYearMonthlyDepartment[];
+  }>;
 }
 
 export async function fetchPersonnelBudget(
@@ -4459,6 +5279,121 @@ export async function patchPersonnelBudgetCells(
   if (!response.ok) await parseError(response);
 }
 
+export async function upsertPersonnelBudgetPlannedExtraLine(
+  token: string,
+  payload: {
+    id?: string;
+    year: number;
+    month: number;
+    costCenterId?: string | null;
+    label: string;
+    budgetRal?: number | null;
+    budgetOvertime?: number | null;
+    budgetTravel?: number | null;
+    budgetInps?: number | null;
+    budgetInail?: number | null;
+    budgetTfr?: number | null;
+  }
+): Promise<PersonnelBudgetPlannedExtraLine> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/planned-extra-lines"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetPlannedExtraLine>;
+}
+
+export async function deletePersonnelBudgetPlannedExtraLine(token: string, lineId: string): Promise<void> {
+  const response = await fetch(
+    buildApiUrl(`/hr/personnel-budget/planned-extra-lines/${encodeURIComponent(lineId)}/delete`),
+    { method: "POST", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+}
+
+export async function fetchPersonnelBudgetYearMonthly(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetYearMonthlyResult> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/year-monthly${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetYearMonthlyResult>;
+}
+
+export async function fetchPersonnelBudgetAssumptions(
+  token: string,
+  year?: number
+): Promise<PersonnelBudgetAssumptionsDto> {
+  const q = new URLSearchParams();
+  if (year != null) q.set("year", String(year));
+  const s = q.toString();
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/assumptions${s ? `?${s}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAssumptionsDto>;
+}
+
+export async function patchPersonnelBudgetAssumptions(
+  token: string,
+  payload: {
+    year: number;
+    employerInpsPercent?: number | null;
+    inailPermille?: number | null;
+    tfrDivisor?: number | null;
+    welfarePercent?: number | null;
+    bonusProvisionPercent?: number | null;
+  }
+): Promise<PersonnelBudgetAssumptionsDto> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/assumptions"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetAssumptionsDto>;
+}
+
+export async function fetchPersonnelBudgetCellNotes(
+  token: string,
+  year: number,
+  month?: number
+): Promise<PersonnelBudgetCellNoteDto[]> {
+  const q = new URLSearchParams({ year: String(year) });
+  if (month != null) q.set("month", String(month));
+  const response = await fetch(buildApiUrl(`/hr/personnel-budget/cell-notes?${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetCellNoteDto[]>;
+}
+
+export async function patchPersonnelBudgetCellNote(
+  token: string,
+  payload: {
+    year: number;
+    month?: number | null;
+    userId?: string | null;
+    plannedLineId?: string | null;
+    fieldKey: string;
+    note: string;
+  }
+): Promise<PersonnelBudgetCellNoteDto | null> {
+  const response = await fetch(buildApiUrl("/hr/personnel-budget/cell-notes"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<PersonnelBudgetCellNoteDto | null>;
+}
+
 export type PersonnelBudgetYearStatusKind = "draft" | "approved";
 
 export interface PersonnelBudgetYearStatusDto {
@@ -4476,6 +5411,8 @@ export interface PersonnelBudgetAnnualMatrixRow {
   costCenterName?: string;
   teamId: string | null;
   teamName?: string;
+  hireDate?: string | null;
+  contractEndDate?: string | null;
   months: Array<{
     month: number;
     budget: {

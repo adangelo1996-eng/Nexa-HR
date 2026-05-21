@@ -11,6 +11,7 @@ import {
   type MeetingRoomDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { HebbFieldAssistProvider, HebbInput } from "@/components/hebb-field-assist";
 import { HebbAiGlassPanel, HebbAiGlassTile } from "@/components/hebb-ai-experience-shell";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { Button } from "@/components/ui/button";
@@ -405,18 +406,26 @@ export default function SaleRiunioniPage(): React.JSX.Element {
                 <dd className="text-right text-[var(--prom-fg)]">{selectedSlot.label}</dd>
               </div>
             </dl>
-            <label className="mt-4 block text-sm text-[var(--prom-muted)]" htmlFor="booking-title">
-              Titolo (opzionale)
-            </label>
-            <input
+            <HebbFieldAssistProvider
+              formId="sale-riunioni.booking"
+              partialForm={{ title, day }}
+              context={{
+                roomName: selectedRoom.name,
+                slotLabel: selectedSlot.label,
+                durationMinutes: 30
+              }}
+            >
+            <HebbInput
+              label="Titolo (opzionale)"
+              fieldKey="title"
               id="booking-title"
-              type="text"
               maxLength={120}
               placeholder="Es. Stand-up team prodotto"
               className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-3 py-2 text-[var(--prom-fg)]"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={setTitle}
             />
+            </HebbFieldAssistProvider>
             <Button
               type="button"
               className="mt-6 gap-2"
