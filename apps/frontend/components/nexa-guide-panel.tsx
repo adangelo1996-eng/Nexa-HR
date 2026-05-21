@@ -5,7 +5,7 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Compass, Loader2, MessageCircle, Send, X } from "lucide-react";
+import { ArrowUpRight, Compass, Loader2, MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -125,44 +125,61 @@ export function NexaGuidePanel(): React.JSX.Element | null {
     return () => window.removeEventListener("keydown", onKey);
   }, [allowed, close, open]);
 
-  const send = useCallback(async (): Promise<void> => {
-    const token = getToken();
-    const msg = input.trim();
-    if (!token || !msg || busy) {
+  const send = useCallback(
+    async (opts?: { messageOverride?: string; deepen?: boolean }): Promise<void> => {
+      const token = getToken();
+      const msg = (opts?.messageOverride ?? input).trim();
+      if (!token || !msg || busy) {
+        return;
+      }
+      const history = turns.map(({ role, content, structured }) => ({ role, content, structured }));
+      if (!opts?.messageOverride) {
+        setInput("");
+      }
+      setTurns((prev) => [...prev, { role: "user", content: msg }]);
+      setBusy(true);
+      setError(null);
+      try {
+        const pageContext = buildHebbPageContext({
+          pathname: pathname ?? "/",
+          sessionUser: getSessionUser()
+        });
+        const out = await postPlatformAgentChat(token, {
+          message: msg,
+          page: pageContext.currentPath,
+          pageContext,
+          history,
+          deepen: opts?.deepen
+        });
+        const structured = out.structured ?? parseGuideMarkdownFallback(out.reply);
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: out.reply,
+            structured
+          }
+        ]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Nexa Guide non disponibile");
+        setTurns((prev) => prev.slice(0, -1));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, input, pathname, turns]
+  );
+
+  const deepenLastReply = useCallback((): void => {
+    if (busy || turns.length === 0) {
       return;
     }
-    const history = turns.map(({ role, content, structured }) => ({ role, content, structured }));
-    setInput("");
-    setTurns((prev) => [...prev, { role: "user", content: msg }]);
-    setBusy(true);
-    setError(null);
-    try {
-      const pageContext = buildHebbPageContext({
-        pathname: pathname ?? "/",
-        sessionUser: getSessionUser()
-      });
-      const out = await postPlatformAgentChat(token, {
-        message: msg,
-        page: pageContext.currentPath,
-        pageContext,
-        history
-      });
-      const structured = out.structured ?? parseGuideMarkdownFallback(out.reply);
-      setTurns((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: out.reply,
-          structured
-        }
-      ]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Nexa Guide non disponibile");
-      setTurns((prev) => prev.slice(0, -1));
-    } finally {
-      setBusy(false);
+    const last = turns[turns.length - 1];
+    if (last?.role !== "assistant") {
+      return;
     }
-  }, [busy, input, pathname, turns]);
+    void send({ messageOverride: "Approfondisci", deepen: true });
+  }, [busy, send, turns]);
 
   if (!allowed) {
     return null;
@@ -276,6 +293,18 @@ export function NexaGuidePanel(): React.JSX.Element | null {
                         ) : (
                           <p className="text-sm leading-relaxed">{t.content}</p>
                         )}
+                        {t.role === "assistant" && i === turns.length - 1 && !busy ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-3 h-8 gap-1.5 rounded-full border border-[var(--prom-line)] px-3 text-xs text-[#002D72] hover:bg-[color-mix(in_srgb,#002D72_8%,transparent)] dark:text-sky-200"
+                            onClick={() => deepenLastReply()}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                            Approfondisci
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   ))}

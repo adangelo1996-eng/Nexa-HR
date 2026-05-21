@@ -14,7 +14,7 @@ export type EmployeeHubColumn = {
 };
 
 const HUB_META: Record<string, { title: string; subtitle: string }> = {
-  home: { title: "Home", subtitle: "Dashboard e giornata" },
+  home: { title: "Oggi", subtitle: "Dashboard e giornata" },
   io: { title: "Io", subtitle: "Presenze, flussi e percorso" },
   documenti: { title: "Documenti", subtitle: "Cedolini e profilo" }
 };

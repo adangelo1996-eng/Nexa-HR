@@ -56,7 +56,7 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
   {
     path: "/manager-copilot",
-    labelIt: "HEBB AI for HR — Manager",
+    labelIt: "Pannello manager",
     topicsIt: "manager, approvazioni team, remote working team"
   },
   { path: "/hr-center/analisi", labelIt: "Analisi costi HR", topicsIt: "cdc, costi personale, aggregati, forecast" },
@@ -121,7 +121,7 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   },
   {
     path: "/nexa-hr-copilot",
-    labelIt: "HEBB AI for HR — Brief HRBP",
+    labelIt: "NEXA HR Copilot",
     topicsIt: "copilot hr, brief, headcount, gap, retention, budget, recruiting"
   }
 ] as const;
@@ -143,8 +143,14 @@ export function getNexaHrConversationalAgentSystemPrompt(): string {
     "Fornire la miglior risposta possibile in italiano: chiara, utile, ordinata (anche con elenchi), rispettosa.",
     "Coprire l’intento a 360°: se la domanda tocca più ambiti (es. ferie + cedolini + spese), collega i temi e indica i percorsi giusti nell’app, senza diluire la precisione.",
     "",
+    "SINTESI MULTI-DOMINIO (cross-source)",
+    "Se envelope.multiSourceFacts è presente, incrocia i segnali tra le aree disponibili (Presenze, Budget, Formazione, Approvazioni): cita sempre l’area di provenienza, es. «Presenze: …», «Budget: …», «Formazione: …», «Approvazioni: …».",
+    "Per domande ampie (envelope.crossDomainQuestion true) sintetizza correlazioni plausibili tra domini usando solo numeri presenti in multiSourceFacts e snapshot; non inventare metriche.",
+    "In modalità approfondimento (envelope.deepenMode true) usa i dettagli expanded di ciascun dominio (pendingByType, topVariances, topCostCentersByAbsence, conteggi formazione) per una risposta più analitica, sempre senza nominativi.",
+    "Se un dominio ha available false, non citare numeri per quell’area; indica il percorso per verificare manualmente se pertinente.",
+    "",
     "FONTI DI VERITÀ (obbligatorie)",
-    "Usa solo informazioni coerenti con il JSON utente (envelope.facts o envelope diretto): message (domanda), pageContext (percorso, etichetta pagina, ruolo HR/manager/dipendente/superuser, company, teamScope/costCenterScope, employmentState, pageHelp) e page legacy se presente, snapshot (conteggi operativi), leaveBalance e policySnippets se presenti, platformCapabilities e routeHints.",
+    "Usa solo informazioni coerenti con il JSON utente (envelope.facts o envelope diretto): message (domanda), pageContext (percorso, etichetta pagina, ruolo HR/manager/dipendente/superuser, company, teamScope/costCenterScope, employmentState, pageHelp) e page legacy se presente, snapshot (conteggi operativi), multiSourceFacts (aggregati cross-dominio), leaveBalance e policySnippets se presenti, platformCapabilities e routeHints.",
     "Usa il contesto pagina per risposte specifiche: adatta tono, priorità e link al ruolo e alla pagina corrente (pageHelp descrive cosa fa la schermata).",
     "Non inventare numeri, date, importi, stati di richieste, nomi di colleghi, permessi dell’utente, né URL/percorsi assenti da platformCapabilities o routeHints.",
     "Se i dati nel JSON non bastano per una risposta sicura, dillo chiaramente e indica quali sezioni dell’app aprire per verificare, usando solo path dalla lista.",

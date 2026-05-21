@@ -14,6 +14,8 @@ export interface HebbPageContext {
   companyId: string;
   teamScope?: string;
   costCenterScope?: string;
+  /** Periodo analisi YYYY-MM o etichetta trimestre (es. 2026-Q1). */
+  periodScope?: string;
   employmentState?: HebbEmploymentState;
   pageHelp: string;
 }
@@ -45,6 +47,11 @@ export class HebbPageContextDto {
   costCenterScope?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  periodScope?: string;
+
+  @IsOptional()
   @IsIn(["active", "hr_onboarding", "offboarding"])
   employmentState?: HebbEmploymentState;
 
@@ -55,7 +62,7 @@ export class HebbPageContextDto {
 
 /** Istruzione aggiuntiva per prompt LLM (italiano). */
 export const HEBB_PAGE_CONTEXT_PROMPT_HINT =
-  "Usa il contesto pagina (pageContext: percorso, etichetta, ruolo utente, company, teamScope/costCenterScope se presenti, employmentState, pageHelp) per risposte specifiche al contesto Nexa; non dare consigli generici se i facts indicano pagina e ruolo.";
+  "Usa il contesto pagina (pageContext: percorso, etichetta, ruolo utente, company, teamScope/costCenterScope/periodScope se presenti, employmentState, pageHelp) per risposte specifiche al contesto Nexa; non dare consigli generici se i facts indicano pagina e ruolo.";
 
 export function normalizeHebbPageContext(raw?: HebbPageContextDto | null): HebbPageContext | null {
   if (!raw?.currentPath?.trim() || !raw.companyId?.trim()) {
@@ -68,6 +75,7 @@ export function normalizeHebbPageContext(raw?: HebbPageContextDto | null): HebbP
     companyId: raw.companyId.trim().slice(0, 120),
     teamScope: raw.teamScope?.trim().slice(0, 120) || undefined,
     costCenterScope: raw.costCenterScope?.trim().slice(0, 120) || undefined,
+    periodScope: raw.periodScope?.trim().slice(0, 32) || undefined,
     employmentState: raw.employmentState,
     pageHelp: (raw.pageHelp ?? "").trim().slice(0, 1200)
   };

@@ -156,10 +156,10 @@ function systemPromptForSchema(schemaVersion: string): string {
         base +
         " Ruolo: consulente HR / HR controller senior (Italia). " +
         " Schema: {\"envelope\":{\"title\":\"stringa\",\"situazione\":\"stringa (4-6 frasi)\",\"correlazioni\":[\"stringa\"],\"rischi\":[\"stringa\"],\"azioni7giorni\":[\"stringa\"],\"raccomandazioniHr\":[\"stringa\"]}}. " +
-        " L'ingresso ha envelope.analysisId, envelope.topic, envelope.facts (solo aggregati) e envelope.insightSeed (bozza). " +
-        " Migliora in italiano professionale: situazione con numeri da facts; correlazioni max 5 (legami tra budget, turnover, gap, operatività); " +
-        " rischi max 5 (operativi, non legali vincolanti); azioni7giorni esattamente 5 passi concreti per HR/controller; " +
-        " raccomandazioniHr esattamente 3-4 voci per HR controller (policy, governance dati, allineamento CdA/HRBP). " +
+        " L'ingresso ha envelope.analysisId, envelope.topic, envelope.facts (solo aggregati), envelope.insightSeed (bozza), envelope.insightFocus e envelope.analysisProfile (llmPromptHint, sectionLabels, focusHint). " +
+        " Se analysisProfile.llmPromptHint è presente, adatta tono, metriche e sezioni al perimetro (retention=playbook colloqui, economico=leve CFO, carico_manager=SLA approvazioni). " +
+        " Se analysisProfile.focusHint è presente, priorità assoluta a quell'obiettivo (confronto trimestre, top 3 rischi, azioni settimana). " +
+        " Migliora in italiano professionale: situazione con numeri da facts; correlazioni max 5; rischi max 5 (operativi); azioni7giorni esattamente 5 passi concreti; raccomandazioniHr 3-4 voci. " +
         " Non inventare cifre assenti da facts; nessun nominativo. " +
         HEBB_PAGE_CONTEXT_PROMPT_HINT
       );
@@ -168,11 +168,13 @@ function systemPromptForSchema(schemaVersion: string): string {
         base +
         " Schema: {\"envelope\":{\"reply\":\"stringa\"}}. " +
         " Sei l'analista AI scoped a una singola analisi Nexa HR (envelope.analysisId, envelope.topic). " +
+        " Se envelope.analysisProfile.chatPersona è presente, rispondi con quella prospettiva. " +
         HEBB_PAGE_CONTEXT_PROMPT_HINT +
         " " +
-        " Rispondi in italiano alla envelope.message usando SOLO envelope.facts, envelope.pageContext e envelope.history; " +
+        " Rispondi in italiano alla envelope.message usando SOLO envelope.facts, envelope.pageContext, envelope.multiSourceFacts (se presente) e envelope.history; " +
+        " se envelope.deepenMode true e multiSourceFacts è presente, incrocia l'analisi corrente con Presenze/Budget/Formazione/Approvazioni citando l'area; " +
         " se i dati non bastano, dillo e indica cosa verificare in app. Max 12 righe. Nessun nominativo. " +
-        " Migliora envelope.replySeed mantenendo coerenza con i fatti."
+        " Migliora envelope.replySeed mantenendo coerenza con i fatti e envelope.analysisProfile.llmPromptHint se presente."
       );
     case "ai_platform_agent_v1":
       return (
@@ -187,7 +189,8 @@ function systemPromptForSchema(schemaVersion: string): string {
           " almeno un action con href da routeHints/platformCapabilities quando c'è un passo utile; href path esatto (es. /analytics/retention, /sale-riunioni); " +
           " se knowledgeExcerpt descrive formule (turnover, budget, overtime, training %, meeting rooms), riassumile fedelmente in «Come funziona il calcolo»; " +
           " «Consiglio per te»: azioni HR contestuali (manager vs dipendente vs HR) senza nominativi; reply breve; multi-turno: history, message, replySeed; " +
-          " non inventare permessi assenti da permissionsSummary né numeri non presenti in facts/snapshot."
+          " se envelope.multiSourceFacts è presente, sintetizza cross-source citando l’area (Presenze, Budget, Formazione, Approvazioni); con envelope.deepenMode true approfondisci i domini expanded; " +
+          " non inventare permessi assenti da permissionsSummary né numeri non presenti in facts/snapshot/multiSourceFacts."
       );
     case "ai_hr_center_analytics_v1":
       return (

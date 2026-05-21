@@ -2,7 +2,7 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { Home, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import type { HubTile } from "@/lib/nexa-hub-config";
 import { SidebarPinPicker } from "@/components/sidebar-pin-picker";
 import { useState } from "react";
@@ -15,11 +15,6 @@ function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
 }
 
 type SidebarPillarNavProps = {
-  sectionId: string;
-  title: string;
-  hubHref: Route;
-  portalCategory?: string;
-  mapLabel?: string;
   availableTiles: HubTile[];
   pinnedHrefs: string[];
   pathname: string;
@@ -29,21 +24,9 @@ type SidebarPillarNavProps = {
   onRemovePin: (href: string) => void;
 };
 
+/** Blocco preferiti in cima alla sidebar (sotto Mappa e Dashboard). */
 export function SidebarPillarNav(props: SidebarPillarNavProps): React.JSX.Element {
-  const {
-    sectionId,
-    title,
-    hubHref,
-    portalCategory,
-    mapLabel = "Mappa del portale",
-    availableTiles,
-    pinnedHrefs,
-    pathname,
-    onNavigate,
-    beforeNavigate,
-    onAddPin,
-    onRemovePin
-  } = props;
+  const { availableTiles, pinnedHrefs, pathname, onNavigate, beforeNavigate, onAddPin, onRemovePin } = props;
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const tileByHref = new Map(availableTiles.map((t) => [String(t.href), t]));
@@ -51,34 +34,8 @@ export function SidebarPillarNav(props: SidebarPillarNavProps): React.JSX.Elemen
     .map((href) => tileByHref.get(href))
     .filter((t): t is HubTile => Boolean(t));
 
-  const childHrefs = [hubHref, ...pinnedHrefs.map((h) => h as Route)];
-  const sectionActive = childHrefs.some((href) => pathActive(pathname, href));
-
   return (
-    <div className="py-0.5" data-sidebar-section={sectionId}>
-      <div
-        className={`mx-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide ${
-          sectionActive ? "text-[var(--prom-text)]" : "text-[var(--prom-muted)]"
-        }`}
-      >
-        {title}
-      </div>
-      <Link
-        href={hubHref}
-        scroll={false}
-        onClick={() => {
-          beforeNavigate?.();
-          onNavigate();
-        }}
-        className={`mx-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-[background,opacity] duration-200 ${
-          pathActive(pathname, hubHref)
-            ? "bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
-            : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_80%,transparent)] hover:text-[var(--prom-text)]"
-        }`}
-      >
-        <Home className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-        <span>{mapLabel}</span>
-      </Link>
+    <div className="py-0.5" data-sidebar-section="top-pins">
       {pinnedTiles.map((tile) => {
         const Icon = tile.icon;
         const href = tile.href;
@@ -121,7 +78,7 @@ export function SidebarPillarNav(props: SidebarPillarNavProps): React.JSX.Elemen
           type="button"
           onClick={() => setPickerOpen(true)}
           className="mx-2 mt-0.5 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-dashed border-[var(--prom-line-strong)] px-3 py-2 text-sm text-[var(--prom-muted)] transition-colors hover:border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line-strong))] hover:text-[var(--prom-text)]"
-          aria-label={`Aggiungi pagina in ${title}`}
+          aria-label="Aggiungi scorciatoia alla sidebar"
         >
           <Plus className="h-4 w-4 shrink-0" aria-hidden />
           <span>Aggiungi</span>
@@ -129,8 +86,7 @@ export function SidebarPillarNav(props: SidebarPillarNavProps): React.JSX.Elemen
       ) : null}
       <SidebarPinPicker
         open={pickerOpen}
-        sectionTitle={title}
-        portalCategory={portalCategory}
+        sectionTitle="Preferiti sidebar"
         tiles={availableTiles}
         pinnedHrefs={pinnedHrefs}
         onClose={() => setPickerOpen(false)}

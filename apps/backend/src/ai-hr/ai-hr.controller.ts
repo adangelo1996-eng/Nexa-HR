@@ -1,6 +1,15 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
-import { IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from "class-validator";
+import {
+  IsBoolean,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested
+} from "class-validator";
 import { CurrentAuth, type AuthContext, type AuthRole } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AiHrService } from "./ai-hr.service";
@@ -112,6 +121,10 @@ class PlatformAgentChatDto {
   @ValidateNested()
   @Type(() => HebbPageContextDto)
   pageContext?: HebbPageContextDto;
+
+  @IsOptional()
+  @IsBoolean()
+  deepen?: boolean;
 }
 
 @Controller("ai/hr")
@@ -224,7 +237,8 @@ export class AiHrController {
         page: body.page,
         history: body.history,
         scope: body.scope,
-        pageContext: body.pageContext
+        pageContext: body.pageContext,
+        deepen: body.deepen
       }
     );
   }

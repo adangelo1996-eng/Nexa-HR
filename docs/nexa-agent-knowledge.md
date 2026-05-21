@@ -141,3 +141,21 @@ Ogni voce indica **cosa fare**, **dove** (percorso) e **permesso** tipico. I per
 
 - Chat piattaforma: **`POST /ai/hr/platform-agent/chat`** (UI: pannello Nexa Guide e `/ai-hub`).
 - Analytics avanzate: **`/analytics/advanced/:id/kpis`**, **`insight`**, **`chat`** — sempre con `nexa.reports_hr:read`.
+
+## FAQ cross-dominio (Nexa Guide)
+
+Domande ampie che incrociano più ambiti HR — esempi e come risponde l’agente:
+
+1. **«Cosa devo fare oggi?» / «Quali priorità?»** — Sintesi da **Approvazioni** (pendingCount), **Formazione** (overdueCount), **Presenze** (straordinari/assenze mese), **Budget** (fascia varianza). Percorsi: `/workflow/approvals`, `/hr/formazione`, `/reports`, `/analytics/advanced/economico`.
+2. **«Come stanno presenze e budget insieme?»** — Correla straordinari/assenze (Presenze) con varianza actual vs budget (Budget). Se varianza su overtime in analisi budget → verifica timbrature e turni.
+3. **«Formazione in ritardo e approvazioni in sospeso?»** — Conteggi da **Formazione** e **Approvazioni**; suggerisce smaltire approvazioni prima dei solleciti corsi se backlog alto.
+4. **«Panoramica situazione team»** (manager) — Approvazioni visibili al manager + snapshot assistente; domini org (Presenze/Budget/Formazione) solo con permessi HR/report.
+5. **«Approfondisci»** (follow-up o pulsante UI) — Secondo passaggio LLM con `deepen: true`: aggregati **expanded** (pendingByType, topVariances CDC, dettaglio formazione) da 2–4 domini, sempre via **AiPrivacyGateway** (nessun nominativo).
+6. **Policy nomi** — Messaggi con nomi/cognomi/email di persone sono **rifiutati** (`assertHebbUserMessageAllowed`); l’agente usa solo pseudonimi e aggregati.
+
+| Area | Segnali lite | Segnali expanded (deepen) |
+|------|--------------|---------------------------|
+| Presenze | headcount, ore straord., assenze, smart working | top 3 CDC per assenze |
+| Budget | varianza %, fascia within/warning/critical | top varianze per categoria |
+| Formazione | overdue, % completamento | totali per stato |
+| Approvazioni | conteggio pending | breakdown per tipo richiesta |

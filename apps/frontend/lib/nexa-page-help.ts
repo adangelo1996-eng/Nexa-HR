@@ -179,7 +179,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
     ]
   },
   "manager-copilot": {
-    title: "HEBB AI for HR — Manager",
+    title: "Pannello manager",
     summary: "Report diretti, approvazioni in sospeso e indicatori chiave.",
     howToUse: [
       "Controlla le approvazioni in cima alla pagina.",
@@ -188,7 +188,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
     ]
   },
   "nexa-hr-copilot": {
-    title: "HEBB AI for HR — Brief HRBP",
+    title: "NEXA HR Copilot",
     summary:
       "Assistente task-oriented per HR e manager: brief giornaliero con pannelli Cosa fare oggi, Rischi persone, Assunzioni e Budget alert. I segnali inviati al modello sono pseudonimizzati.",
     howToUse: [

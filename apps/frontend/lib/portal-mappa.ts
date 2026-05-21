@@ -93,7 +93,7 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/manager-copilot" as Route,
-    title: "HEBB AI for HR — Manager",
+    title: "Pannello manager",
     blurb: "Vista dedicata a responsabili: team, approvazioni e priorità.",
     category: "Persone e organizzazione"
   },

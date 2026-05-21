@@ -6,6 +6,7 @@ import { AiAuditService } from "../ai-hr/ai-audit.service";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
 import { assertHebbUserMessageAllowed } from "../ai-hr/ai-hr-message-policy";
 import { HITL_PROPOSAL_KIND_CATALOG, hitlProposalKindIds } from "./hitl-proposal-kinds";
+import { resolveAdvancedProfile } from "./advanced-analysis-profiles";
 
 export interface NarrativeAnalyticsRequest {
   topic: string;
@@ -74,7 +75,27 @@ export class NarrativeAnalyticsService {
         const envelopePayload = {
           envelope: {
             facts: body.payload,
-            narrativeSeed: seed
+            narrativeSeed: seed,
+            topic,
+            analysisProfile: resolveAdvancedProfile(
+              topic === "workforce_economic_control"
+                ? "economico"
+                : topic === "retention_flight_risk"
+                  ? "retention"
+                  : topic === "skills_role_coverage"
+                    ? "competenze"
+                    : topic === "hr_operational_briefing"
+                      ? "operativo"
+                      : topic === "productivity_absenteeism"
+                        ? "produttivita"
+                        : topic === "internal_pay_equity"
+                          ? "equita"
+                          : topic === "manager_load_bottlenecks"
+                            ? "carico_manager"
+                            : topic === "workforce_what_if"
+                              ? "what_if"
+                              : ""
+            )
           }
         };
         const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, refineSchema);
@@ -372,6 +393,105 @@ export class NarrativeAnalyticsService {
           String(payload.note ?? "Verificare report presenze per il dettaglio operativo.")
         ].filter(Boolean),
         summary: "Segnali aggregati v0: non sostituiscono controlli payroll formali né decisioni disciplinari."
+      };
+    }
+
+    if (topic === "workforce_economic_control") {
+      const budget = payload.budgetAnalysis as { totals?: { variancePct?: number | null } } | undefined;
+      return {
+        title: "Controllo economico workforce",
+        bullets: [
+          budget?.totals?.variancePct != null ? `Varianza budget/actual: ${budget.totals.variancePct}%.` : "",
+          "Confronto actual, budget e forecast per centro di costo.",
+          "Driver di varianza oltre soglia nel periodo corrente."
+        ].filter(Boolean),
+        summary: "Narrativa orientata al CFO: leve budget e checkpoint controller su aggregati pseudonimizzati."
+      };
+    }
+
+    if (topic === "retention_flight_risk") {
+      const bands = payload.scoreBands as { high?: number; mid?: number } | undefined;
+      return {
+        title: "Retention e flight risk",
+        bullets: [
+          `Profili ad alto score: ${bands?.high ?? 0}.`,
+          `Profili a medio rischio: ${bands?.mid ?? 0}.`,
+          "Playbook colloqui su cluster prioritari per centro di costo."
+        ],
+        summary: "Priorità retention e stay interview su aggregati, senza nominativi nel modello."
+      };
+    }
+
+    if (topic === "skills_role_coverage") {
+      const count = Number(payload.gapCount ?? payload.itemCount ?? 0);
+      return {
+        title: "Gap competenze vs fabbisogno",
+        bullets: [`Gap rilevati: ${count}.`, "Matrice hiring vs formazione per ruolo.", "Headcount coinvolto per skill critica."],
+        summary: "Copertura competenze: priorità L&D e recruiting su gap più ampi."
+      };
+    }
+
+    if (topic === "hr_operational_briefing") {
+      const pending = Number(payload.pendingApprovalsCount ?? 0);
+      return {
+        title: "Sintesi operativa HR",
+        bullets: [
+          `Approvazioni in coda: ${pending}.`,
+          "Onboarding/offboarding e alert HR aperti.",
+          "Backlog spese da smaltire con priorità per tipo."
+        ],
+        summary: "Briefing operativo giornaliero per HRBP su backlog e lifecycle."
+      };
+    }
+
+    if (topic === "productivity_absenteeism") {
+      const agg = payload.productivity as { absenceDaysMonth?: number; overtimeHoursMonth?: number } | undefined;
+      return {
+        title: "Produttività e assenteismo",
+        bullets: [
+          agg?.absenceDaysMonth != null ? `Giorni assenza mese: ${agg.absenceDaysMonth}.` : "",
+          agg?.overtimeHoursMonth != null ? `Straordinari (h): ${agg.overtimeHoursMonth}.` : "",
+          "Correlazioni indicative con flight risk se presenti in facts."
+        ].filter(Boolean),
+        summary: "Ore, assenze e straordinari su aggregati per centro di costo."
+      };
+    }
+
+    if (topic === "internal_pay_equity") {
+      const equity = payload.equity as { spreadRatioHighLow?: number | null } | undefined;
+      return {
+        title: "Equità retributiva interna",
+        bullets: [
+          equity?.spreadRatioHighLow != null ? `Rapporto max/min: ${equity.spreadRatioHighLow}.` : "",
+          "Spread per ruolo vs mediana globale.",
+          "Segnali disparità da validare con policy retributive."
+        ].filter(Boolean),
+        summary: "Audit equità interna su stipendi base in anagrafica — nessuna indicazione legale vincolante."
+      };
+    }
+
+    if (topic === "manager_load_bottlenecks") {
+      const load = payload.managerLoad as { pendingApprovalsTotal?: number } | undefined;
+      return {
+        title: "Carico manager e SLA approvazioni",
+        bullets: [
+          load?.pendingApprovalsTotal != null ? `Approvazioni in coda: ${load.pendingApprovalsTotal}.` : "",
+          "Cluster manager con span of control elevato.",
+          "Priorità delega e riduzione backlog approvazioni."
+        ].filter(Boolean),
+        summary: "Colli di bottiglia manager: SLA approvazioni e redesign carico operativo."
+      };
+    }
+
+    if (topic === "workforce_what_if") {
+      return {
+        title: "Scenario what-if organico",
+        bullets: [
+          "Confronto scenari base, crescita e freeze.",
+          "Headcount e costo ultimo mese per scenario.",
+          "Collegamento al workforce planning Nexa."
+        ],
+        summary: "Simulazione scenari organico su costo e headcount aggregati."
       };
     }
 

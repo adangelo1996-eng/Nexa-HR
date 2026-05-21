@@ -89,7 +89,7 @@ const PILLAR_DEFS: Array<{
           { href: "/reports", label: "Report presenze", icon: PieChart },
           { href: "/scheduling", label: "Turni", icon: CalendarDays },
           { href: "/sale-riunioni" as Route, label: "Sale riunioni", icon: DoorOpen },
-          { href: "/manager-copilot" as Route, label: "HEBB AI for HR — Manager", icon: ClipboardList }
+          { href: "/manager-copilot" as Route, label: "Pannello manager", icon: ClipboardList }
         ]
       },
       {
@@ -179,13 +179,13 @@ export function buildHrNavPillars(user: SessionUser | null, hideSensitiveHr: boo
 }
 
 export const HR_NAV_DASHBOARD: HrNavItem = {
-  href: "/" as Route,
+  href: "/hr/dashboard" as Route,
   label: "Dashboard",
   icon: LayoutDashboard
 };
 
 export const HR_NAV_PORTAL_MAP: HrNavItem = {
   href: "/mappa-portale" as Route,
-  label: "Mappa portale",
+  label: "Mappa del portale",
   icon: LayoutDashboard
 };

@@ -27,6 +27,7 @@ import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-pe
 import { PermissionsService } from "../platform/permissions.service";
 import { HebbPageContextDto } from "../ai-hr/hebb-page-context";
 import { AnalyticsOrchestratorService } from "./analytics-orchestrator.service";
+import { KpiSnapshotService } from "./kpi-snapshot.service";
 import { NarrativeAnalyticsService } from "./narrative-analytics.service";
 
 class PayrollWhatIfDto {
@@ -109,6 +110,11 @@ class HubRunDto {
   @ValidateNested()
   @Type(() => HebbPageContextDto)
   pageContext?: HebbPageContextDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  insightFocus?: string;
 }
 
 class AnalysisChatDto {
@@ -124,6 +130,15 @@ class AnalysisChatDto {
   @ValidateNested()
   @Type(() => HebbPageContextDto)
   pageContext?: HebbPageContextDto;
+
+  @IsOptional()
+  @IsBoolean()
+  deepen?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  insightFocus?: string;
 }
 
 @Controller("analytics")
@@ -133,6 +148,7 @@ export class AnalyticsController {
     private readonly store: HrDataStore,
     private readonly narrative: NarrativeAnalyticsService,
     private readonly orchestrator: AnalyticsOrchestratorService,
+    private readonly kpiSnapshots: KpiSnapshotService,
     private readonly permissions: PermissionsService
   ) {}
 
@@ -162,9 +178,42 @@ export class AnalyticsController {
   @RequireNexaPermissions("nexa.reports_hr:read")
   getAdvancedKpis(
     @CurrentAuth() auth: AuthContext,
-    @Param("analysisId") analysisId: string
+    @Param("analysisId") analysisId: string,
+    @Query("costCenter") costCenter?: string,
+    @Query("team") team?: string,
+    @Query("period") period?: string
   ): ReturnType<AnalyticsOrchestratorService["getAnalysisKpis"]> {
-    return this.orchestrator.getAnalysisKpis(auth, analysisId);
+    return this.orchestrator.getAnalysisKpis(auth, analysisId, {
+      costCenterId: costCenter?.trim() || undefined,
+      teamId: team?.trim() || undefined,
+      yearMonth: period?.trim() || undefined
+    });
+  }
+
+  @Get("advanced/:analysisId/kpis/history")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  getAdvancedKpiHistory(
+    @CurrentAuth() auth: AuthContext,
+    @Param("analysisId") analysisId: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("costCenter") costCenter?: string,
+    @Query("team") team?: string
+  ): ReturnType<KpiSnapshotService["getKpiHistory"]> {
+    return this.kpiSnapshots.getKpiHistory(auth, analysisId, {
+      from: from?.trim() || undefined,
+      to: to?.trim() || undefined,
+      costCenterId: costCenter?.trim() || undefined,
+      teamId: team?.trim() || undefined
+    });
+  }
+
+  @Get("advanced/:analysisId/filter-options")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  getAdvancedFilterOptions(
+    @CurrentAuth() auth: AuthContext
+  ): ReturnType<AnalyticsOrchestratorService["getAnalysisFilterOptions"]> {
+    return this.orchestrator.getAnalysisFilterOptions(auth);
   }
 
   @Post("advanced/:analysisId/insight")
@@ -176,7 +225,8 @@ export class AnalyticsController {
   ): ReturnType<AnalyticsOrchestratorService["generateStructuredInsight"]> {
     return this.orchestrator.generateStructuredInsight(auth, analysisId, {
       useLlm: body.useLlm,
-      pageContext: body.pageContext
+      pageContext: body.pageContext,
+      insightFocus: body.insightFocus
     });
   }
 
@@ -190,7 +240,9 @@ export class AnalyticsController {
     return this.orchestrator.chatWithAnalyst(auth, analysisId, {
       message: body.message,
       history: body.history,
-      pageContext: body.pageContext
+      pageContext: body.pageContext,
+      deepen: body.deepen,
+      insightFocus: body.insightFocus
     });
   }
 
@@ -328,16 +380,12 @@ export class AnalyticsController {
       const directs = await this.store.listUsersByManager(auth.userId);
       if (!hasApprovals && leadIds.length === 0 && directs.length === 0) {
         throw new ForbiddenException(
-          "HEBB AI for HR — Manager: serve permesso approvazioni, oppure essere lead di un team o avere report diretti."
+          "Pannello manager: serve permesso approvazioni, oppure essere lead di un team o avere report diretti."
         );
       }
     }
     const includeTurnover = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
-    const includeEconomic = await this.canViewHrEconomicData(auth);
-    return this.store.getManagerCopilotDashboard(auth.userId, {
-      includeTurnover,
-      includeEconomicData: includeEconomic
-    });
+    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover });
   }
 
   @Get("turnover-retention")
@@ -484,13 +532,4 @@ export class AnalyticsController {
     const m = months ? Math.min(12, Math.max(1, Number(months) || 6)) : 6;
     return this.store.payrollForecastCostBreakdown(companyId, m);
   }
-
-  private async canViewHrEconomicData(auth: AuthContext): Promise<boolean> {
-    if (auth.role === "superuser") {
-      return true;
-    }
-    const me = await this.store.getUser(auth.userId);
-    return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
-  }
-
 }

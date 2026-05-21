@@ -1,21 +1,18 @@
 /**
  * Testi guida per pagine HEBB AI for HR (popup aiuto in pagina).
- * La voce di menu «HEBB AI for HR» elenca le route che chiamano l’LLM (ai-hub, brief HRBP, manager, analytics)
- * quando l’LLM è attivo su backend e i permessi di navigazione coincidono.
+ * La voce di menu «HEBB AI for HR» corrisponde a `/ai-hub` (chip analisi, pseudonimizzazione, contesto pagina).
  */
 
 export const HEBB_AI_PAGE_KEYS = [
   "ai-hub",
   "payroll-hebb",
   "workforce-planning",
-  "manager-copilot",
   "nexa-hr-copilot",
   "insights",
   "cost-calculator",
   "hr-center-analisi",
   "hr-center-budget-report",
-  "hr-center-recap",
-  "hiring-simulator"
+  "hr-center-recap"
 ] as const;
 
 export type HebbAiPageKey = (typeof HEBB_AI_PAGE_KEYS)[number];
@@ -70,21 +67,8 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Prima di riunioni di budget, verifica che anagrafica e RAL siano aggiornate."
     ]
   },
-  "manager-copilot": {
-    title: "HEBB AI for HR — Manager",
-    summary:
-      "Vista operativa per responsabili: approvazioni in sospeso nel proprio ambito, team diretto, remote working in attesa e (se permesso) indicatori turnover aggregati.",
-    howToUse: [
-      "Controlla i riquadri numerici e usa i link per approvare in Workflow o Remote working.",
-      "Per approfondire il turnover del team apri Analisi — Retention (`/analytics/retention`) e genera insight su aggregati."
-    ],
-    bestPractices: [
-      "Intervalli regolari (es. inizio settimana) riducono accumulo di richieste.",
-      "Non condividere screenshot con dati individuali fuori dai canali aziendali."
-    ]
-  },
   "nexa-hr-copilot": {
-    title: "HEBB AI for HR — Brief HRBP",
+    title: "NEXA HR Copilot",
     summary:
       "Brief giornaliero con pannelli operativi e follow-up conversazionale su headcount, gap, retention, recruiting, approvazioni e budget — sempre con payload pseudonimizzato verso il modello.",
     howToUse: [
@@ -159,18 +143,6 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ],
     bestPractices: [
       "Tratta i suggerimenti come promemoria operativi, non come valutazioni legali."
-    ]
-  },
-  "hiring-simulator": {
-    title: "Simulatore assunzione",
-    summary:
-      "Consulente AI su criteri contrattuali, agevolazioni e benefit; il motore calcola costo azienda e netto in tempo reale.",
-    howToUse: [
-      "Compila i criteri contrattuali e avvia la fase consulenza per verificare agevolazioni e benefit.",
-      "Salva scenari riutilizzabili e confronta l'impatto sul budget personale."
-    ],
-    bestPractices: [
-      "I calcoli sono indicativi: valida sempre con payroll e consulenza del lavoro prima di formalizzare l'assunzione."
     ]
   }
 };

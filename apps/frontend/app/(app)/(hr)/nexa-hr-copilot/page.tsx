@@ -232,7 +232,7 @@ export default function NexaHrCopilotPage(): React.JSX.Element {
             NEXA · HR Intelligence
           </p>
           <h1 className="mt-3 font-synapse text-balance text-3xl font-semibold tracking-tight text-[var(--prom-text)] md:text-5xl">
-            HEBB AI for HR — Brief HRBP
+            NEXA HR Copilot
           </h1>
           <p className="mt-4 max-w-2xl text-pretty text-base leading-relaxed text-[var(--prom-muted)]">
             Brief operativo per HR e manager: azioni prioritarie con evidenze numeriche su segnali pseudonimizzati —

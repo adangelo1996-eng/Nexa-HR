@@ -103,7 +103,7 @@ export default function AnalyticsHubPage(): React.JSX.Element {
   return (
     <NexaHrAppPage
       title="Analytics"
-      subtitle="Quattro analisi core su dati aggregati. Per le otto analisi avanzate apri Advanced analysis."
+      subtitle="Quattro analisi core su dati aggregati. Le analisi avanzate (produttività, equità, carico manager, what-if) sono nel perimetro dedicato."
     >
       <div className="mb-8">
         <Link
@@ -114,9 +114,9 @@ export default function AnalyticsHubPage(): React.JSX.Element {
           <div className="flex items-start gap-3">
             <Layers className="mt-0.5 h-6 w-6 shrink-0 text-[#002D72] dark:text-sky-300" aria-hidden />
             <div>
-              <p className="font-semibold text-[var(--prom-text)]">Advanced analysis</p>
+              <p className="font-semibold text-[var(--prom-text)]">Analisi avanzate</p>
               <p className="mt-1 text-sm text-[var(--prom-muted)]">
-                Otto analisi HR: produttività, equità retributiva, carico manager, what-if e le quattro core qui sotto.
+                Quattro analisi specialistiche oltre al core: produttività, equità retributiva, carico manager e scenari what-if.
               </p>
             </div>
           </div>

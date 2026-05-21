@@ -12,7 +12,7 @@ import {
   HebbAiGlassTile,
   hebbAiLinkClassName
 } from "@/components/hebb-ai-experience-shell";
-import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
+import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 export default function ManagerCopilotPage(): React.JSX.Element {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchManagerCopilot>> | null>(null);
@@ -54,7 +54,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
   return (
     <HebbAiExperienceShell
       contentMax="standard"
-      title="HEBB AI for HR — Manager"
+      title="Pannello manager"
       subtitle={
         <>
           Riepilogo operativo sul tuo scope: approvazioni visibili, team diretto, remote working del team. Il punteggio
@@ -65,7 +65,7 @@ export default function ManagerCopilotPage(): React.JSX.Element {
           .
         </>
       }
-      headerTrailing={<HebbAiPageHelpButton pageKey="manager-copilot" />}
+      headerTrailing={<NexaPageHelpButton pageKey="manager-copilot" />}
     >
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 

@@ -5,21 +5,37 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, BarChart3, ClipboardList, Workflow } from "lucide-react";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
+import { KpiTrendChart } from "@/components/kpi-trend-chart";
 import {
+  fetchAdvancedAnalysisKpiHistory,
   fetchAnalyticsHubCatalog,
   fetchHrRecapSummary,
   fetchHrRecapTasks,
   type AnalyticsHubCardDto,
-  type HrRecapTaskDto
+  type HrRecapTaskDto,
+  type KpiHistorySeriesDto
 } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanAccessHrRecapDashboard } from "@/lib/auth-session";
 import { useRouter } from "next/navigation";
+
+function monthRange6(): { from: string; to: string } {
+  const now = new Date();
+  const to = now.toISOString().slice(0, 7);
+  let m = now.getMonth() + 1 - 5;
+  let y = now.getFullYear();
+  while (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  return { from: `${y}-${String(m).padStart(2, "0")}`, to };
+}
 
 export default function HrDashboardPage(): React.JSX.Element | null {
   const router = useRouter();
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof fetchHrRecapSummary>> | null>(null);
   const [tasks, setTasks] = useState<HrRecapTaskDto[]>([]);
   const [cards, setCards] = useState<AnalyticsHubCardDto[]>([]);
+  const [varianceTrend, setVarianceTrend] = useState<KpiHistorySeriesDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,14 +52,22 @@ export default function HrDashboardPage(): React.JSX.Element | null {
     setError(null);
     setLoading(true);
     try {
-      const [s, tk, hub] = await Promise.all([
+      const range = monthRange6();
+      const [s, tk, hub, hist] = await Promise.all([
         fetchHrRecapSummary(token),
         fetchHrRecapTasks(token),
-        fetchAnalyticsHubCatalog(token).catch(() => ({ cards: [] as AnalyticsHubCardDto[] }))
+        fetchAnalyticsHubCatalog(token).catch(() => ({ cards: [] as AnalyticsHubCardDto[] })),
+        fetchAdvancedAnalysisKpiHistory(token, "economico", range).catch(() => ({
+          analysisId: "economico",
+          from: range.from,
+          to: range.to,
+          series: [] as KpiHistorySeriesDto[]
+        }))
       ]);
       setSummary(s);
       setTasks(tk.tasks.slice(0, 8));
       setCards(hub.cards);
+      setVarianceTrend(hist.series.find((s) => s.kpiKey === "variance") ?? hist.series[0] ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento dashboard");
     } finally {
@@ -131,6 +155,21 @@ export default function HrDashboardPage(): React.JSX.Element | null {
               </div>
             </section>
           </div>
+
+          {varianceTrend ? (
+            <section className="mb-8 rounded-2xl border border-[var(--card-border)] p-4" style={{ background: "var(--card-bg)" }}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-base font-semibold text-[var(--prom-text)]">Trend varianza budget</h2>
+                <Link
+                  href={"/analytics/economico" as Route}
+                  className="text-xs font-medium text-[#002D72] hover:underline dark:text-sky-200"
+                >
+                  Analisi economico →
+                </Link>
+              </div>
+              <KpiTrendChart series={varianceTrend} compact />
+            </section>
+          ) : null}
 
           {cards.length > 0 ? (
             <section>

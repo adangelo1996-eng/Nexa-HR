@@ -5,9 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  ClipboardList,
   ChevronRight,
   ChevronDown,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -27,8 +27,6 @@ import {
   getSessionUser,
   getToken,
   sessionCanAccessPayrollArea,
-  sessionCanAccessHrRecapDashboard,
-  sessionCanAccessManagerPanel,
   sessionCanNexaAdmin,
   sessionCanOpenEmployeeRecapPage,
   sessionCanUseNexaAiOpenAiLlm,
@@ -46,16 +44,18 @@ import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import { portalCategoryGlassColumnHeaderClass, portalSubgroupGlassClass } from "@/lib/nav-visual-accents";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
-import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
+import { buildEmployeeNavSections, type EmployeeNavSection } from "@/lib/nexa-employee-nav";
 import type { HubTile } from "@/lib/nexa-hub-config";
-import { buildHrNavPillars, type HrNavPillar } from "@/lib/nexa-hr-nav";
-import type { EmployeeNavSection } from "@/lib/nexa-employee-nav";
 import {
-  addSidebarPin,
+  buildHrNavPillars,
+  HR_NAV_DASHBOARD,
+  type HrNavPillar
+} from "@/lib/nexa-hr-nav";
+import {
+  addTopSidebarPin,
   NEXA_SIDEBAR_PINS_CHANGED_EVENT,
-  readSidebarPins,
-  removeSidebarPin,
-  type SidebarPinsBySection
+  readTopSidebarPins,
+  removeTopSidebarPin
 } from "@/lib/nexa-sidebar-pins";
 import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
 import {
@@ -73,8 +73,14 @@ type NavItem = SixCatNavItem;
 
 type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 
-const NAV_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
-const NAV_HR_RECAP: NavItem = { href: "/hr-recap" as Route, label: "Recap operativo HR", icon: ClipboardList };
+const NAV_EMPLOYEE_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
+const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa del portale", icon: Home };
+
+const EMPLOYEE_PORTAL_CATEGORY: Record<string, string> = {
+  "emp-home": "Oggi",
+  "emp-io": "Io",
+  "emp-docs": "Documenti"
+};
 function pillarItemsToHubTiles(pillar: HrNavPillar): HubTile[] {
   return pillar.subgroups.flatMap((sg) =>
     sg.items.map((item) => ({
@@ -266,8 +272,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const [directorySearchHits, setDirectorySearchHits] = useState<GlobalSearchHit[]>([]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const [mobileShortcutHrefs, setMobileShortcutHrefs] = useState<string[]>(() => readNexaHrPrefs().menuShortcutHrefs ?? []);
-  const [sidebarPinsHr, setSidebarPinsHr] = useState<SidebarPinsBySection>({});
-  const [sidebarPinsEmployee, setSidebarPinsEmployee] = useState<SidebarPinsBySection>({});
+  const [topSidebarPinsHr, setTopSidebarPinsHr] = useState<string[]>([]);
+  const [topSidebarPinsEmployee, setTopSidebarPinsEmployee] = useState<string[]>([]);
 
   useEffect(() => {
     function refreshMenuShortcuts(): void {
@@ -289,8 +295,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   useEffect(() => {
     function refreshSidebarPins(): void {
-      setSidebarPinsHr(readSidebarPins("hr"));
-      setSidebarPinsEmployee(readSidebarPins("employee"));
+      setTopSidebarPinsHr(readTopSidebarPins("hr"));
+      setTopSidebarPinsEmployee(readTopSidebarPins("employee"));
     }
     refreshSidebarPins();
     window.addEventListener(NEXA_SIDEBAR_PINS_CHANGED_EVENT, refreshSidebarPins);
@@ -331,9 +337,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   const isAdminUi = sessionCanNexaAdmin(user ?? undefined);
   const hideSensitiveHrBecausePreview = Boolean(employeeView && isAdminUi);
-  const showManagerPanelNav = Boolean(
-    user && !hideSensitiveHrBecausePreview && sessionCanAccessManagerPanel(user)
-  );
 
   useEffect(() => {
     if (!user) {
@@ -471,11 +474,95 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     return buildSixCatNavSections(user, hideSensitiveHrBecausePreview);
   }, [user, hideSensitiveHrBecausePreview, usesHrNav, usesEmployeeNav]);
 
+  const hrCollapsibleSections = useMemo(
+    () =>
+      hrNavPillars.map((pillar) => ({
+        id: pillar.id,
+        title: pillar.title,
+        portalCategory: pillar.portalCategory,
+        subgroups: pillar.subgroups.map((sg) => ({
+          id: sg.id,
+          title: sg.title,
+          items: sg.items
+        }))
+      })),
+    [hrNavPillars]
+  );
+
+  const employeeCollapsibleSections = useMemo(
+    () =>
+      employeeNavHubs
+        .map((section) => ({
+          id: section.id,
+          title: section.title,
+          portalCategory: EMPLOYEE_PORTAL_CATEGORY[section.id],
+          subgroups: [
+            {
+              id: `${section.id}-items`,
+              title: "",
+              items: section.items.filter((item) => String(item.href) !== "/")
+            }
+          ]
+        }))
+        .filter((section) => section.subgroups.some((sg) => sg.items.length > 0)),
+    [employeeNavHubs]
+  );
+
+  const categoryNavSections = usesHrNav
+    ? hrCollapsibleSections
+    : usesEmployeeNav
+      ? employeeCollapsibleSections
+      : legacySixNavSections;
+
+  const allPinTiles = useMemo((): HubTile[] => {
+    if (usesHrNav) {
+      return hrNavPillars.flatMap((pillar) => pillarItemsToHubTiles(pillar));
+    }
+    if (usesEmployeeNav) {
+      return employeeNavHubs.flatMap((section) => employeeSectionToHubTiles(section));
+    }
+    return legacySixNavSections.flatMap((section) =>
+      section.subgroups.flatMap((sg) =>
+        sg.items.map((item) => ({
+          href: item.href,
+          label: item.label,
+          blurb: "",
+          icon: item.icon
+        }))
+      )
+    );
+  }, [usesHrNav, usesEmployeeNav, hrNavPillars, employeeNavHubs, legacySixNavSections]);
+
+  const dashboardNavItem = usesHrNav ? HR_NAV_DASHBOARD : NAV_EMPLOYEE_DASHBOARD;
+
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setOpenSections(readSidebarSectionPrefs());
   }, []);
+
+  useEffect(() => {
+    if (categoryNavSections.length === 0) {
+      return;
+    }
+    const normalized = pathname.replace(/\/$/, "") || "/";
+    for (const section of categoryNavSections) {
+      const active = section.subgroups.some((sg) =>
+        sg.items.some((item) => pathActive(normalized, item.href, item.exact))
+      );
+      if (active) {
+        setOpenSections((prev) => {
+          if (prev[section.id]) {
+            return prev;
+          }
+          const next = { ...prev, [section.id]: true };
+          writeSidebarSectionPrefs(next);
+          return next;
+        });
+        break;
+      }
+    }
+  }, [pathname, categoryNavSections]);
 
   const onSectionOpenChange = useCallback((id: string, isOpen: boolean): void => {
     setOpenSections((prev) => {
@@ -526,7 +613,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, [pathname]);
 
   const sidebarPinsMode = usesHrNav ? "hr" : usesEmployeeNav ? "employee" : null;
-  const activeSidebarPins = sidebarPinsMode === "hr" ? sidebarPinsHr : sidebarPinsEmployee;
+  const activeTopSidebarPins = sidebarPinsMode === "hr" ? topSidebarPinsHr : topSidebarPinsEmployee;
+  const showTopPinsBlock = Boolean(sidebarPinsMode && allPinTiles.length > 0);
+  const showCategoryNav = categoryNavSections.length > 0;
 
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
@@ -547,84 +636,38 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </span>
       </Link>
       <SidebarNavLink
-        item={NAV_DASHBOARD}
+        item={NAV_PORTAL_MAP}
         pathname={pathname}
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
-      {sessionCanAccessHrRecapDashboard(user ?? undefined) ? (
-        <SidebarNavLink
-          item={NAV_HR_RECAP}
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
-      ) : null}
-      {showManagerPanelNav ? (
-        <SidebarNavLink
-          item={
-            {
-              href: "/manager-copilot" as Route,
-              label: "HEBB AI for HR — Manager",
-              icon: ClipboardList
-            } satisfies NavItem
-          }
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
-      ) : null}
-      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
-        <div className="my-2 border-t border-[var(--prom-line)]" />
-      ) : null}
-      {hrNavPillars.map((pillar) => (
+      <SidebarNavLink
+        item={dashboardNavItem}
+        pathname={pathname}
+        onNavigate={closeMobile}
+        beforeNavigate={persistSidebarScrollPositions}
+      />
+      {showTopPinsBlock ? (
         <SidebarPillarNav
-          key={pillar.id}
-          sectionId={pillar.id}
-          title={pillar.title}
-          hubHref={pillar.hubHref}
-          portalCategory={pillar.portalCategory}
-          availableTiles={pillarItemsToHubTiles(pillar)}
-          pinnedHrefs={activeSidebarPins[pillar.id] ?? []}
+          availableTiles={allPinTiles}
+          pinnedHrefs={activeTopSidebarPins}
           pathname={pathname}
           onNavigate={closeMobile}
           beforeNavigate={persistSidebarScrollPositions}
           onAddPin={(href) => {
             if (sidebarPinsMode) {
-              addSidebarPin(sidebarPinsMode, pillar.id, String(href));
+              addTopSidebarPin(sidebarPinsMode, String(href));
             }
           }}
           onRemovePin={(href) => {
             if (sidebarPinsMode) {
-              removeSidebarPin(sidebarPinsMode, pillar.id, href);
+              removeTopSidebarPin(sidebarPinsMode, href);
             }
           }}
         />
-      ))}
-      {employeeNavHubs.map((section) => (
-        <SidebarPillarNav
-          key={section.id}
-          sectionId={section.id}
-          title={section.title}
-          hubHref={section.hubHref}
-          availableTiles={employeeSectionToHubTiles(section)}
-          pinnedHrefs={activeSidebarPins[section.id] ?? []}
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-          onAddPin={(href) => {
-            if (sidebarPinsMode) {
-              addSidebarPin(sidebarPinsMode, section.id, String(href));
-            }
-          }}
-          onRemovePin={(href) => {
-            if (sidebarPinsMode) {
-              removeSidebarPin(sidebarPinsMode, section.id, href);
-            }
-          }}
-        />
-      ))}
-      {legacySixNavSections.map((section) => (
+      ) : null}
+      {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
+      {categoryNavSections.map((section) => (
         <SidebarCollapsibleSection
           key={section.id}
           section={{
@@ -640,9 +683,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           beforeNavigate={persistSidebarScrollPositions}
         />
       ))}
-      {hrNavPillars.length > 0 || employeeNavHubs.length > 0 || legacySixNavSections.length > 0 ? (
-        <div className="my-2 border-t border-[var(--prom-line)]" />
-      ) : null}
+      {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink
           key={`settings-${item.href}`}

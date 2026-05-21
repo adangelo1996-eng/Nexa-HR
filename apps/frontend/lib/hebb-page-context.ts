@@ -15,6 +15,7 @@ export type HebbPageContextPayload = {
   companyId: string;
   teamScope?: string;
   costCenterScope?: string;
+  periodScope?: string;
   employmentState?: "active" | "hr_onboarding" | "offboarding";
   pageHelp: string;
 };
@@ -24,6 +25,7 @@ export type BuildHebbPageContextOptions = {
   sessionUser?: SessionUser | null;
   teamScope?: string;
   costCenterScope?: string;
+  periodScope?: string;
 };
 
 /** Percorsi → chiave help HEBB (match più lungo). */
@@ -37,8 +39,7 @@ const PATH_HEBB_HELP: { prefix: string; key: HebbAiPageKey }[] = [
   { prefix: "/tools/cost-calculator", key: "cost-calculator" },
   { prefix: "/hr-center/analisi", key: "hr-center-analisi" },
   { prefix: "/hr-center/budget-report", key: "hr-center-budget-report" },
-  { prefix: "/hr-center/recap", key: "hr-center-recap" },
-  { prefix: "/personnel-budget/simulatore-assunzione", key: "hiring-simulator" }
+  { prefix: "/hr-center/recap", key: "hr-center-recap" }
 ];
 
 /** Percorsi → chiave help Nexa generica. */
@@ -120,6 +121,7 @@ export function buildHebbPageContext(options: BuildHebbPageContextOptions): Hebb
     companyId,
     teamScope: options.teamScope?.trim() || undefined,
     costCenterScope: options.costCenterScope?.trim() || undefined,
+    periodScope: options.periodScope?.trim() || undefined,
     employmentState: user?.employmentState,
     pageHelp: resolveHebbPageHelpSummary(pathname)
   };
