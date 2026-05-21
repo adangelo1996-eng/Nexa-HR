@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Activity,
   ArrowRight,
+  BarChart2,
   ChevronRight,
   Compass,
+  ExternalLink,
   Lock,
   MessageCircle,
   Shield,
@@ -29,7 +32,9 @@ import {
   postAiNlQueryRun,
   postAiNlQuerySaveView,
   postAiTriage,
+  postAdvancedAnalysisInsight,
   type AiAssistantScopeMode,
+  type StructuredAnalyticsInsightDto,
   type AiAssistantScopeOptionsDto,
   type AiAssistantScopePayload,
   type AiNlCatalogEntryDto
@@ -39,6 +44,7 @@ import { AssistantMarkdownLite } from "@/components/assistant-markdown-lite";
 import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
+import { HEBB_ANALYSIS_AREA_CHIPS, type HebbAnalysisAreaId } from "@/lib/hebb-analysis-areas";
 
 const ASSISTANT_SUGGESTIONS = [
   { label: "Ferie", text: "Quanto mi resta di ferie quest’anno?" },
@@ -228,6 +234,11 @@ export default function AiHubPage(): React.JSX.Element {
   const [triageText, setTriageText] = useState("");
   const [triageOut, setTriageOut] = useState<string | null>(null);
   const [triageBusy, setTriageBusy] = useState(false);
+
+  const [analysisAreaId, setAnalysisAreaId] = useState<HebbAnalysisAreaId | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisInsight, setAnalysisInsight] = useState<StructuredAnalyticsInsightDto | null>(null);
+  const [analysisLlm, setAnalysisLlm] = useState<{ active: boolean; refineApplied: boolean } | null>(null);
 
   const [scopeOptions, setScopeOptions] = useState<AiAssistantScopeOptionsDto | null>(null);
   const [scopeMode, setScopeMode] = useState<AiAssistantScopeMode>("self");
@@ -449,6 +460,31 @@ export default function AiHubPage(): React.JSX.Element {
     }
   };
 
+  const runAreaAnalysis = async (areaId: HebbAnalysisAreaId): Promise<void> => {
+    const t = token ?? getToken();
+    if (!t) return;
+    setAnalysisAreaId(areaId);
+    setAnalysisBusy(true);
+    setError(null);
+    setAnalysisInsight(null);
+    try {
+      const chip = HEBB_ANALYSIS_AREA_CHIPS.find((c) => c.id === areaId);
+      const r = await postAdvancedAnalysisInsight(t, chip?.orchestratorId ?? areaId, {
+        useLlm: llmActive
+      });
+      setAnalysisInsight(r);
+      setAnalysisLlm({
+        active: r.llmActive,
+        refineApplied: r.llmApplied
+      });
+    } catch (e) {
+      setError(friendlyError(e));
+      setAnalysisAreaId(null);
+    } finally {
+      setAnalysisBusy(false);
+    }
+  };
+
   const runTriage = async (): Promise<void> => {
     const t = token ?? getToken();
     if (!t || !triageText.trim()) return;
@@ -468,18 +504,18 @@ export default function AiHubPage(): React.JSX.Element {
   const hubEyebrow = (
     <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
       <Activity className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
-      Il cuore intelligente di <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
+      HEBB AI for HR · <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
     </p>
   );
 
   return (
     <HebbAiExperienceShell
       eyebrow={hubEyebrow}
-      title="Assistente personale"
+      title="HEBB AI for HR"
       subtitle={
         <>
-          Conversazione con modello linguistico su ferie, numeri consentiti e piccoli controlli — in linguaggio
-          naturale, con dati sensibili gestiti dal perimetro privacy Nexa prima dell’elaborazione.
+          Assistente e analisi su aree Nexa (economico, retention, competenze, operativo, budget, turnover): conversazione,
+          insight strutturati e controlli — sempre con pseudonimizzazione prima del modello linguistico.
         </>
       }
       headerTrailing={<HebbAiPageHelpButton pageKey="ai-hub" />}
@@ -578,6 +614,80 @@ export default function AiHubPage(): React.JSX.Element {
             </li>
           </ul>
         </details>
+
+        <motion.section
+          className="mx-auto mt-10 max-w-3xl rounded-3xl border border-[var(--glass-border)] p-6 shadow-[var(--card-shadow)] md:p-8"
+          style={{ background: "var(--card-bg)" }}
+          {...motionProps}
+          variants={fadeUp}
+          transition={{ duration: 0.35, delay: 0.04 }}
+        >
+          <div className="flex gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3a5466] to-[#002D72] text-white shadow-lg">
+              <BarChart2 className="h-7 w-7" aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-[var(--prom-text)]">Analisi per area Nexa</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--prom-muted)]">
+                Scegli un’area per generare un insight strutturato su aggregati pseudonimizzati (serve permesso report HR).
+                Non inserire nominativi nei messaggi della chat: usa i chip o l’ambito strutturato.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {HEBB_ANALYSIS_AREA_CHIPS.map((chip) => {
+              const active = analysisAreaId === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  title={chip.hintIt}
+                  disabled={analysisBusy}
+                  onClick={() => void runAreaAnalysis(chip.id)}
+                  className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                    active
+                      ? "border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
+                      : "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-[var(--prom-text)] hover:border-[var(--prom-gold)]"
+                  }`}
+                >
+                  {chip.labelIt}
+                </button>
+              );
+            })}
+          </div>
+          <LlmUsageStatusBanner idle={!analysisLlm} llm={analysisLlm} className="mt-4" />
+          {analysisBusy ? (
+            <p className="mt-4 text-sm text-[var(--prom-muted)]">Generazione insight in corso…</p>
+          ) : null}
+          {analysisInsight ? (
+            <div className="mt-5 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_94%,transparent)] p-4 text-sm leading-relaxed text-[var(--prom-text)]">
+              <p className="font-semibold">{analysisInsight.title}</p>
+              <p>{analysisInsight.situazione}</p>
+              {analysisInsight.correlazioni.length ? (
+                <ul className="list-inside list-disc space-y-1 text-[var(--prom-muted)]">
+                  {analysisInsight.correlazioni.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {analysisInsight.azioni7giorni.length ? (
+                <p className="text-xs text-[var(--prom-muted)]">
+                  Azioni suggerite (7 giorni): {analysisInsight.azioni7giorni.join(" · ")}
+                </p>
+              ) : null}
+              {analysisAreaId ? (
+                <Link
+                  href={HEBB_ANALYSIS_AREA_CHIPS.find((c) => c.id === analysisAreaId)?.href ?? "/analytics"}
+                  scroll={false}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--prom-gold-soft)] hover:underline"
+                >
+                  Apri analisi completa
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+        </motion.section>
 
         {error ? (
           <p

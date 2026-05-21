@@ -15,9 +15,9 @@ import {
 
 const RESOURCE_FOOTNOTE: Partial<Record<string, string>> = {
   ai_assistant_scope_managed:
-    "In Centro AI consente di scegliere una persona tra i riporti o un team di cui sei responsabile.",
+    "In HEBB AI for HR consente di scegliere una persona tra i riporti o un team di cui sei responsabile.",
   ai_assistant_scope_org:
-    "In Centro AI consente ricerca su tutta l’organizzazione (persona, team, centro di costo)."
+    "In HEBB AI for HR consente ricerca su tutta l’organizzazione (persona, team, centro di costo)."
 };
 
 function hasReadEffective(set: Set<string>, readId: string | undefined, writeId: string | undefined): boolean {

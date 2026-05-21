@@ -45,7 +45,9 @@ export function parseGuideMarkdownFallback(text: string): PlatformAgentStructure
     if (!line) {
       continue;
     }
-    const headerMatch = line.match(/^#{1,3}\s+(.+)$/) || line.match(/^([A-ZÀ-Ú][^:]{2,40}):\s*$/);
+    const headerMatch =
+      line.match(/^#{1,3}\s+(.+)$/) ||
+      line.match(/^([A-ZÀ-Úa-zà-ú][^:]{2,48}):\s*$/);
     if (headerMatch) {
       current = { title: headerMatch[1]!.trim(), bullets: [] };
       sections.push(current);

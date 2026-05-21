@@ -222,14 +222,14 @@ export const NEXA_HR_PERMISSIONS: PermissionDefinition[] = [
     "nexa_hr",
     "ai_assistant_scope_managed",
     "Assistente AI — ambito team / riporti",
-    "Scegliere in Centro AI una persona tra i riporti o i membri dei team di cui si è responsabili.",
+    "Scegliere in HEBB AI for HR una persona tra i riporti o i membri dei team di cui si è responsabili.",
     "Non usato (solo permesso di lettura catalogo)."
   ),
   ...cat(
     "nexa_hr",
     "ai_assistant_scope_org",
     "Assistente AI — ambito organizzazione",
-    "Scegliere in Centro AI qualsiasi dipendente, team o centro di costo dell’azienda.",
+    "Scegliere in HEBB AI for HR qualsiasi dipendente, team o centro di costo dell’azienda.",
     "Non usato (solo permesso di lettura catalogo)."
   ),
   ...cat(

@@ -159,7 +159,7 @@ export default function NexaHrCopilotPage(): React.JSX.Element {
       setScopeLabel(r.signals.scope === "manager" ? "Team diretto" : "Organizzazione");
       setLlmStatus({ active: r.llm.configured, refineApplied: r.llm.refineApplied });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore caricamento Copilot");
+      setError(e instanceof Error ? e.message : "Errore caricamento HEBB AI for HR");
     } finally {
       setLoading(false);
       setAiLoading(false);
@@ -232,11 +232,11 @@ export default function NexaHrCopilotPage(): React.JSX.Element {
             NEXA · HR Intelligence
           </p>
           <h1 className="mt-3 font-synapse text-balance text-3xl font-semibold tracking-tight text-[var(--prom-text)] md:text-5xl">
-            NEXA HR Copilot
+            HEBB AI for HR — Brief HRBP
           </h1>
           <p className="mt-4 max-w-2xl text-pretty text-base leading-relaxed text-[var(--prom-muted)]">
-            Assistente orientato al task per HR e manager: azioni prioritarie con evidenze numeriche su segnali
-            pseudonimizzati — headcount, gap, retention, recruiting, approvazioni e budget.
+            Brief operativo per HR e manager: azioni prioritarie con evidenze numeriche su segnali pseudonimizzati —
+            headcount, gap, retention, recruiting, approvazioni e budget.
           </p>
           {scopeLabel ? (
             <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_60%,transparent)] px-3 py-1 text-xs text-[var(--prom-muted)]">
@@ -313,7 +313,7 @@ export default function NexaHrCopilotPage(): React.JSX.Element {
           <Textarea
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Chiedi un follow-up al Copilot (es. «Cosa prioritizzo questa settimana sul budget?»)"
+            placeholder="Chiedi un follow-up a HEBB AI (es. «Cosa prioritizzo questa settimana sul budget?») — senza nominativi"
             rows={2}
             className="min-h-[3rem] resize-none rounded-2xl border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_50%,transparent)] text-sm"
             onKeyDown={(e) => {

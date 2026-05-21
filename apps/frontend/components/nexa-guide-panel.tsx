@@ -21,7 +21,9 @@ type Turn = PlatformAgentTurnDto;
 const STARTERS = [
   "Come approvo le ferie del team?",
   "Dove vedo il budget personale?",
-  "Cosa significa il turnover score?",
+  "Come si calcola il turnover score?",
+  "Come funziona la varianza budget?",
+  "Come prenoto una sala riunioni?",
   "Come apro le quattro analisi HR?"
 ];
 

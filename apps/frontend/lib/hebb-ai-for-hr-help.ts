@@ -1,6 +1,6 @@
 /**
- * Testi guida per pagine con esperienza «Centro AI HR» (popup aiuto in pagina).
- * La voce di menu «HEBB AI for HR» elenca le route che chiamano l’LLM (Centro AI, workforce planning, turnover)
+ * Testi guida per pagine HEBB AI for HR (popup aiuto in pagina).
+ * La voce di menu «HEBB AI for HR» elenca le route che chiamano l’LLM (ai-hub, brief HRBP, manager, analytics)
  * quando l’LLM è attivo su backend e i permessi di navigazione coincidono.
  */
 
@@ -12,7 +12,6 @@ export const HEBB_AI_PAGE_KEYS = [
   "nexa-hr-copilot",
   "insights",
   "cost-calculator",
-  "hiring-simulator",
   "hr-center-analisi",
   "hr-center-budget-report",
   "hr-center-recap"
@@ -29,13 +28,13 @@ export type HebbAiPageHelpContent = {
 
 const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "ai-hub": {
-    title: "Assistente personale",
+    title: "HEBB AI for HR",
     summary:
-      "Conversazione con modello linguistico su Nexa HR: orientamento sulla piattaforma, numeri aggregati in sicurezza, controlli e triage delle richieste, con dati sensibili gestiti secondo le policy aziendali.",
+      "Assistente e analisi per area Nexa (economico, retention, competenze, operativo, budget, turnover): chat, insight strutturati e controlli con pseudonimizzazione obbligatoria prima del modello.",
     howToUse: [
       "Inizia da «Chiedi» per domande in linguaggio naturale su ferie, cedolini, policy e percorsi nell’app.",
-      "Se hai permessi estesi, scegli l’ambito dati indicato (es. organizzazione) senza inserire nominativi nel testo: il sistema applica i filtri e l’anonimizzazione.",
-      "Usa i suggerimenti rapidi e la sezione «Capire una richiesta» per classificare messaggi e capire dove agire."
+      "Usa i chip «Analisi per area Nexa» per insight su aggregati (permesso report HR); apri la pagina analisi dedicata per il dettaglio.",
+      "Se hai permessi estesi, scegli l’ambito strutturato senza nominativi nel messaggio: nomi, cognomi ed email sono bloccati dalla policy di pseudonimizzazione."
     ],
     bestPractices: [
       "Non incollare codici fiscali, IBAN o dati sanitari se non necessari.",
@@ -71,7 +70,7 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "manager-copilot": {
-    title: "Pannello manager",
+    title: "HEBB AI for HR — Manager",
     summary:
       "Vista operativa per responsabili: approvazioni in sospeso nel proprio ambito, team diretto, remote working in attesa e (se permesso) indicatori turnover aggregati.",
     howToUse: [
@@ -84,17 +83,17 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "nexa-hr-copilot": {
-    title: "NEXA HR Copilot",
+    title: "HEBB AI for HR — Brief HRBP",
     summary:
-      "Copilot HRBP con pannelli operativi e follow-up conversazionale. Aggrega headcount, gap, retention, posizioni aperte, approvazioni, formazione scaduta e varianza budget — pseudonimizzati prima dell’LLM.",
+      "Brief giornaliero con pannelli operativi e follow-up conversazionale su headcount, gap, retention, recruiting, approvazioni e budget — sempre con payload pseudonimizzato verso il modello.",
     howToUse: [
-      "Leggi i quattro pannelli e le evidenze numeriche sotto ogni azione suggerita.",
-      "Chiedi follow-up nella barra fissa in basso per ricalibrare priorità.",
-      "Rigenera il brief dopo aver smaltito backlog o aggiornato i dati in app."
+      "All’apertura viene generato un brief con azioni prioritarie ed evidenze numeriche.",
+      "Usa la chat in basso per follow-up; non digitare nominativi (policy pseudonimizzazione).",
+      "Ogni azione con link «Apri» porta al modulo operativo Nexa."
     ],
     bestPractices: [
-      "Serve permesso assistente AI e profilo HR esteso, report HR o ruolo manager.",
-      "L’audit registra solo fingerprint dell’input, non il testo in chiaro."
+      "Per decisioni ufficiali usa Workflow, Budget e Recruiting, non solo il brief AI.",
+      "Incrocia sempre i segnali con dati verificati in app."
     ]
   },
   insights: {
@@ -114,23 +113,14 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "cost-calculator": {
     title: "Calcolatore costo azienda / netto",
     summary:
-      "Percorso legacy reindirizzato al Simulatore assunzione.",
-    howToUse: ["Usa /personnel-budget/simulatore-assunzione per la versione corrente."],
-    bestPractices: []
-  },
-  "hiring-simulator": {
-    title: "Simulatore assunzione",
-    summary:
-      "Wizard contratto → agevolazioni → benefit con breakdown live e consulente AI (OpenAI via gateway pseudonimizzazione). Calcolo server e salvataggio scenari opzionale.",
+      "Simulatore lato browser con logica dominio Italia: passa da RAL a costo azienda o da netto target a struttura retributiva indicativa.",
     howToUse: [
-      "Compila CCNL, livello, RAL o netto target e part-time.",
-      "Attiva le agevolazioni e chiedi al consulente AI la verifica (chip suggeriti).",
-      "Aggiungi welfare, buoni pasto e smart working: il costo azienda si aggiorna.",
-      "Salva scenari se hai permesso scrittura budget personale."
+      "Scegli modalità RAL o netto mensile target, imposta ore settimanali e mensilità (12–14).",
+      "Compila agevolazioni applicabili per vedere l’effetto sulle aliquote indicative."
     ],
     bestPractices: [
-      "Output indicativo: validare sempre con consulente del lavoro prima dell’offerta.",
-      "Non inserire dati personali del candidato nel testo libero."
+      "È uno strumento orientativo, non sostituisce consulenza fiscale o contrattuale.",
+      "Esporta o annota gli input se devi confrontare più scenari."
     ]
   },
   "hr-center-analisi": {

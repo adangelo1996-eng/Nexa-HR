@@ -13,7 +13,7 @@ import {
   NEXA_HR_AGENT_VERSION,
   NEXA_HR_PLATFORM_NAV
 } from "./ai-hr-agent";
-import { assertMessageHasNoKnownPersonFullNames } from "./ai-hr-message-policy";
+import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 
 const SCHEMA_ASSISTANT = "ai_assistant_v1";
@@ -98,7 +98,7 @@ export class AiHrService {
   }> {
     const me = await this.store.getUser(auth.userId);
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
-    assertMessageHasNoKnownPersonFullNames(body.message, companyUsers);
+    assertHebbUserMessageAllowed(body.message, companyUsers);
 
     const { subjectUserIds, scopeKind } = await this.resolveAssistantSubjectUserIds(auth, me, body.scope);
     const org = await this.hasOrgAiScope(auth, me);
@@ -917,6 +917,8 @@ export class AiHrService {
     llm: { configured: boolean; refineApplied: boolean };
   }> {
     const me = await this.store.getUser(auth.userId);
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    assertHebbUserMessageAllowed(body.text, companyUsers);
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
       const wrapped = { envelope: { text: body.text.trim() } };

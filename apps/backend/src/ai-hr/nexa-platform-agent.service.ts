@@ -13,7 +13,7 @@ import {
   NEXA_HR_AGENT_VERSION,
   NEXA_HR_PLATFORM_NAV
 } from "./ai-hr-agent";
-import { assertMessageHasNoKnownPersonFullNames } from "./ai-hr-message-policy";
+import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiHrService, type AssistantScopePayload } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import {
@@ -76,7 +76,7 @@ export class NexaPlatformAgentService implements OnModuleInit {
   }> {
     const me = await this.store.getUser(auth.userId);
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
-    assertMessageHasNoKnownPersonFullNames(body.message, companyUsers);
+    assertHebbUserMessageAllowed(body.message, companyUsers);
 
     const history = (body.history ?? [])
       .filter((t) => (t.role === "user" || t.role === "assistant") && typeof t.content === "string")
