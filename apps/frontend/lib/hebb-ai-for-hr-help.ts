@@ -14,7 +14,8 @@ export const HEBB_AI_PAGE_KEYS = [
   "cost-calculator",
   "hr-center-analisi",
   "hr-center-budget-report",
-  "hr-center-recap"
+  "hr-center-recap",
+  "hiring-simulator"
 ] as const;
 
 export type HebbAiPageKey = (typeof HEBB_AI_PAGE_KEYS)[number];
@@ -158,6 +159,18 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ],
     bestPractices: [
       "Tratta i suggerimenti come promemoria operativi, non come valutazioni legali."
+    ]
+  },
+  "hiring-simulator": {
+    title: "Simulatore assunzione",
+    summary:
+      "Consulente AI su criteri contrattuali, agevolazioni e benefit; il motore calcola costo azienda e netto in tempo reale.",
+    howToUse: [
+      "Compila i criteri contrattuali e avvia la fase consulenza per verificare agevolazioni e benefit.",
+      "Salva scenari riutilizzabili e confronta l'impatto sul budget personale."
+    ],
+    bestPractices: [
+      "I calcoli sono indicativi: valida sempre con payroll e consulenza del lavoro prima di formalizzare l'assunzione."
     ]
   }
 };

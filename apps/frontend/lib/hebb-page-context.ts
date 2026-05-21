@@ -37,7 +37,8 @@ const PATH_HEBB_HELP: { prefix: string; key: HebbAiPageKey }[] = [
   { prefix: "/tools/cost-calculator", key: "cost-calculator" },
   { prefix: "/hr-center/analisi", key: "hr-center-analisi" },
   { prefix: "/hr-center/budget-report", key: "hr-center-budget-report" },
-  { prefix: "/hr-center/recap", key: "hr-center-recap" }
+  { prefix: "/hr-center/recap", key: "hr-center-recap" },
+  { prefix: "/personnel-budget/simulatore-assunzione", key: "hiring-simulator" }
 ];
 
 /** Percorsi → chiave help Nexa generica. */
