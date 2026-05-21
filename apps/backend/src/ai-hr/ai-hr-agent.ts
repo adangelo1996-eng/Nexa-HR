@@ -1,5 +1,5 @@
 /**
- * Agente conversazionale del Centro AI HR: identità, regole e mappa della piattaforma.
+ * Agente conversazionale HEBB AI for HR: identità, regole e mappa della piattaforma.
  * Allineare i percorsi a `apps/frontend/lib/nav-routes-catalog.ts` e al raggruppamento menu (sezioni collassabili)
  * in `apps/frontend/components/app-shell.tsx` quando cambia la navigazione.
  */
@@ -32,12 +32,12 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/reports", labelIt: "Report presenze", topicsIt: "report presenze, timbrature, export" },
   { path: "/analytics", labelIt: "Hub Analytics HR", topicsIt: "analisi, analytics, intelligence, report hr" },
   {
-    path: "/analytics/economico",
+    path: "/analytics/advanced/economico",
     labelIt: "Analisi — controllo economico workforce",
     topicsIt: "budget, actual, forecast, varianza, centro di costo, controller"
   },
   {
-    path: "/analytics/retention",
+    path: "/analytics/advanced/retention",
     labelIt: "Analisi — retention e flight risk",
     topicsIt: "turnover score, retention, flight risk, assenze, tenure"
   },
@@ -54,11 +54,10 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/hr/dashboard", labelIt: "Dashboard HR", topicsIt: "dashboard hr, approvazioni, alert, analisi" },
   { path: "/hr-recap", labelIt: "Attività HR", topicsIt: "recap, task hr, solleciti, organico" },
   { path: "/workforce-planning", labelIt: "Workforce planning", topicsIt: "headcount, costi, scenari, forecast" },
-  { path: "/manager-copilot", labelIt: "Pannello manager", topicsIt: "manager, approvazioni team, remote working team" },
   {
-    path: "/nexa-hr-copilot",
-    labelIt: "NEXA HR Copilot",
-    topicsIt: "assistente hr, brief giornaliero, rischi persone, assunzioni, budget, azioni prioritarie"
+    path: "/manager-copilot",
+    labelIt: "HEBB AI for HR — Manager",
+    topicsIt: "manager, approvazioni team, remote working team"
   },
   { path: "/hr-center/analisi", labelIt: "Analisi costi HR", topicsIt: "cdc, costi personale, aggregati, forecast" },
   { path: "/hr-center/recap", labelIt: "Recap AI dipendenti", topicsIt: "skills, contratto, formazione, filtri team/cdc" },
@@ -106,12 +105,7 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   },
   { path: "/forecast", labelIt: "Forecast costi", topicsIt: "previsioni, forecast, costi futuri" },
   { path: "/compensation/bench", labelIt: "Benchmark retribuzione", topicsIt: "benchmark, mercato, retribuzione" },
-  {
-    path: "/personnel-budget/simulatore-assunzione",
-    labelIt: "Simulatore assunzione",
-    topicsIt: "costo azienda, netto, assunzione, agevolazioni, benefit, RAL"
-  },
-  { path: "/tools/cost-calculator", labelIt: "Calcolatore costo (legacy)", topicsIt: "reindirizza simulatore assunzione" },
+  { path: "/tools/cost-calculator", labelIt: "Calcolatore costo azienda / netto", topicsIt: "costo azienda, netto, simulazione stipendio" },
   { path: "/tools/third-party-licenses", labelIt: "Utenze e licenze terze", topicsIt: "licenze, software, terze parti" },
   { path: "/payroll-hebb", labelIt: "Payroll", topicsIt: "payroll, hebb, elaborazione paghe" },
   { path: "/admin", labelIt: "Area amministrazione", topicsIt: "admin, amministratore, configurazione" },
@@ -120,7 +114,16 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/admin/data-export", labelIt: "Export Excel dipendenti", topicsIt: "export, excel, dipendenti" },
   { path: "/admin/data-import", labelIt: "Import Excel dipendenti", topicsIt: "import, excel, anagrafica" },
   { path: "/admin/payslip-import", labelIt: "Import cedolini PDF", topicsIt: "import cedolini, pdf" },
-  { path: "/ai-hub", labelIt: "Assistente AI (chat)", topicsIt: "ai, assistente, chat, intelligenza artificiale, aiuto" }
+  {
+    path: "/ai-hub",
+    labelIt: "HEBB AI for HR",
+    topicsIt: "hebb, ai, assistente, chat, analisi economico retention competenze operativo budget turnover"
+  },
+  {
+    path: "/nexa-hr-copilot",
+    labelIt: "HEBB AI for HR — Brief HRBP",
+    topicsIt: "copilot hr, brief, headcount, gap, retention, budget, recruiting"
+  }
 ] as const;
 
 /** Alias compatibile con il payload precedente `routeHints`. */
@@ -133,7 +136,7 @@ export const AI_HR_ROUTE_HINTS: { path: string; labelIt: string; topicsIt: strin
 export function getNexaHrConversationalAgentSystemPrompt(): string {
   return [
     "IDENTITÀ",
-    "Sei l’agente conversazionale ufficiale del Centro AI HR di Nexa HR: il punto centrale da cui l’utente orientarsi su tutta la piattaforma (tempi, compensi, policy, amministrazione, strumenti).",
+    "Sei l’agente conversazionale ufficiale HEBB AI for HR su Nexa HR: il punto centrale da cui l’utente orientarsi su tutta la piattaforma (tempi, compensi, policy, amministrazione, strumenti, analisi HR).",
     "Non sei un semplice chatbot generico: parli sempre nel contesto Nexa HR e delle funzioni realmente presenti nell’applicazione.",
     "",
     "OBIETTIVO",
@@ -154,13 +157,27 @@ export function getNexaHrConversationalAgentSystemPrompt(): string {
     "Se snapshot segnala elementi in sospeso (richieste proprie, approvazioni team, notifiche, spese, cedolini nuovi, ferie basse), mettili in evidenza in modo calmo e pratico.",
     "Se l’utente chiede cosa è urgente o cosa fare oggi e lo snapshot è vuoto, comunque suggerisci controlli sensati (Workflow, notifiche, cedolini) senza allarmismo.",
     "",
+    "CALCOLI E METRICHE (quando l'utente chiede «come si calcola», «cosa significa», «perché questo numero»)",
+    "Spiega la logica rule-based o di aggregazione usata in Nexa HR (turnover score, varianza budget, straordinari, % formazione, regole prenotazione sale) usando envelope.knowledgeExcerpt e i fatti noti.",
+    "Non inventare formule diverse da quelle documentate; se mancano dati numerici nel JSON, descrivi il meccanismo e indica dove verificare i valori in app (path dalla lista).",
+    "Per turnover: ricorda scala 0–100, modello rule-v1, fasce indicative (<34 / 34–66 / ≥67) e che non è decisione automatica su persone.",
+    "Per budget: distingui varianza forecast−budget (analisi) da actual vs budget mese (se presente in snapshot/facts).",
+    "",
+    "CONSIGLIO HR SPECIFICO (obbligatorio)",
+    "Ogni risposta deve essere ancorata alla domanda dell'utente: ruolo implicito (dipendente, manager, HR), pagina corrente (envelope.page) e permessi (permissionsSummary).",
+    "Evita frasi generiche («contatta HR», «verifica in app») senza legarle al caso: indica quale modulo, quale controllo e quale prossima azione concreta.",
+    "Esempi: approvazioni in sospeso → Approvazioni team con priorità per tipo; turnover alto → retention + colloquio strutturato; formazione in ritardo → sollecito corsi obbligatori; straordinario → presenze + eventuale turni.",
+    "Non sostituire HR/legal/payroll per decisioni vincolanti; per policy contrattuali rimanda a Corporate Policies o HR umano.",
+    "",
     "STILE",
     "Linguaggio semplice, no gergo IT interno; spiega acronimi se necessario.",
     "Quando indichi un percorso, usa la forma: nome sezione — path esatto tra parentesi, es. Workflow (/workflow), copiando il path dalla lista.",
-    "Per Nexa Guide strutturato: organizza in sezioni (Cosa fare, Dove andare, Passi) con elenchi puntati; ogni passo può avere un'azione con label e href solo da path reali della piattaforma.",
+    "Per Nexa Guide strutturato: 2–4 sezioni con title utili, ad es. «Cosa fare», «Dove andare», «Come funziona il calcolo» (solo se pertinente), «Consiglio per te», «Passi successivi».",
+    "Ogni sezione: 2–6 bullets; almeno un bullet con action {label, href} quando esiste un path utile in platformCapabilities/routeHints.",
+    "Per domande su metriche: includi una sezione «Come funziona il calcolo» con formula ad alto livello e una «Consiglio per te» con azioni HR contestuali.",
     "",
     "CHIUSURA UTILE",
-    "Chiudi spesso con un passo concreto prossimo (una o due azioni), adattato al ruolo implicito (es. se ci sono approvazioni team, ricorda Approvazioni team)."
+    "Chiudi con uno o due passi concreti prossimi (azione in app), adattati a page, permessi e urgenze da snapshot — non chiusure vuote."
   ].join("\n");
 }
 

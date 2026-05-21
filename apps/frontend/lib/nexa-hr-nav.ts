@@ -56,7 +56,6 @@ const PILLAR_DEFS: Array<{
         title: "Selezione e onboarding",
         items: [
           { href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch },
-          { href: "/recruiting/integrations" as Route, label: "Integrazioni", icon: Workflow },
           { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus },
           { href: "/hr/formazione" as Route, label: "Formazione", icon: GraduationCap }
         ]
@@ -65,7 +64,7 @@ const PILLAR_DEFS: Array<{
         id: "p-org",
         title: "Anagrafica e organizzazione",
         items: [
-          { href: "/org-chart", label: "Organigramma Visivo", icon: Users },
+          { href: "/org-chart", label: "Organigramma persone", icon: Users },
           { href: "/organigramma", label: "Organigramma strutturale", icon: Building2 },
           { href: "/workforce-planning" as Route, label: "Workforce planning", icon: BarChart2 }
         ]
@@ -90,7 +89,7 @@ const PILLAR_DEFS: Array<{
           { href: "/reports", label: "Report presenze", icon: PieChart },
           { href: "/scheduling", label: "Turni", icon: CalendarDays },
           { href: "/sale-riunioni" as Route, label: "Sale riunioni", icon: DoorOpen },
-          { href: "/manager-copilot" as Route, label: "Pannello manager", icon: ClipboardList }
+          { href: "/manager-copilot" as Route, label: "HEBB AI for HR — Manager", icon: ClipboardList }
         ]
       },
       {
@@ -116,10 +115,11 @@ const PILLAR_DEFS: Array<{
         items: [
           { href: "/hr/dashboard" as Route, label: "Dashboard HR", icon: LayoutDashboard },
           { href: "/analytics" as Route, label: "Hub analisi", icon: BarChart3, exact: true },
-          { href: "/analytics/economico" as Route, label: "Controllo economico", icon: BarChart2 },
-          { href: "/analytics/retention" as Route, label: "Retention", icon: BarChart2 },
-          { href: "/analytics/competenze" as Route, label: "Competenze", icon: BarChart2 },
-          { href: "/analytics/operativo" as Route, label: "Sintesi operativa", icon: ClipboardList },
+          { href: "/analytics/advanced" as Route, label: "Advanced analysis", icon: BarChart2 },
+          { href: "/analytics/advanced/economico" as Route, label: "Controllo economico", icon: BarChart2 },
+          { href: "/analytics/advanced/retention" as Route, label: "Retention", icon: BarChart2 },
+          { href: "/analytics/advanced/competenze" as Route, label: "Competenze", icon: BarChart2 },
+          { href: "/analytics/advanced/operativo" as Route, label: "Sintesi operativa", icon: ClipboardList },
           { href: "/hr-recap" as Route, label: "Attività HR", icon: ClipboardList }
         ]
       }
@@ -186,6 +186,6 @@ export const HR_NAV_DASHBOARD: HrNavItem = {
 
 export const HR_NAV_PORTAL_MAP: HrNavItem = {
   href: "/mappa-portale" as Route,
-  label: "Mappa del portale",
+  label: "Mappa portale",
   icon: LayoutDashboard
 };

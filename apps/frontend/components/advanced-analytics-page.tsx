@@ -7,10 +7,7 @@ import { ArrowLeft, MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
-import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
-import type { NexaPageHelpKey } from "@/lib/nexa-page-help";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
-import { NexaKpiBarChart } from "@/components/nexa-charts";
 import {
   fetchAdvancedAnalysisKpis,
   postAdvancedAnalysisChat,
@@ -27,7 +24,6 @@ export type AdvancedAnalyticsPageConfig = {
   title: string;
   subtitle: string;
   eyebrow?: string;
-  pageHelpKey?: NexaPageHelpKey;
   children?: React.ReactNode;
 };
 
@@ -54,6 +50,7 @@ function StructuredInsightBlock(props: { insight: StructuredAnalyticsInsightDto 
       <InsightList title="Correlazioni" items={insight.correlazioni} />
       <InsightList title="Rischi" items={insight.rischi} />
       <InsightList title="Azioni 7 giorni" items={insight.azioni7giorni} />
+      <InsightList title="Raccomandazioni HR controller" items={insight.raccomandazioniHr ?? []} />
     </section>
   );
 }
@@ -77,7 +74,7 @@ function InsightList(props: { title: string; items: string[] }): React.JSX.Eleme
 }
 
 export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React.JSX.Element {
-  const { analysisId, title, subtitle, eyebrow = "Analytics & Intelligence", pageHelpKey, children } = props;
+  const { analysisId, title, subtitle, eyebrow = "Analytics & Intelligence", children } = props;
   const [kpis, setKpis] = useState<AnalyticsKpiDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -162,19 +159,21 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
   }, [analysisId, chatInput, chatTurns]);
 
   return (
-    <NexaHrAppPage
-      eyebrow={eyebrow}
-      title={title}
-      subtitle={subtitle}
-      headerTrailing={pageHelpKey ? <NexaPageHelpButton pageKey={pageHelpKey} /> : undefined}
-    >
-      <div className="mb-6">
+    <NexaHrAppPage eyebrow={eyebrow} title={title} subtitle={subtitle}>
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
-          href={"/analytics" as Route}
+          href={"/analytics/advanced" as Route}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          Torna all&apos;hub Analytics
+          Advanced analysis
+        </Link>
+        <span className="text-[var(--prom-muted)]">·</span>
+        <Link
+          href={"/analytics" as Route}
+          className="text-sm font-medium text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
+        >
+          Hub analisi
         </Link>
       </div>
 
@@ -227,8 +226,6 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
           </div>
         )}
       </section>
-
-      {!loading && kpis.length > 0 ? <NexaKpiBarChart kpis={kpis} className="mb-8" /> : null}
 
       {children}
 

@@ -4,6 +4,7 @@ import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { AiAuditService } from "../ai-hr/ai-audit.service";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
+import { assertHebbUserMessageAllowed } from "../ai-hr/ai-hr-message-policy";
 import { HITL_PROPOSAL_KIND_CATALOG, hitlProposalKindIds } from "./hitl-proposal-kinds";
 
 export interface NarrativeAnalyticsRequest {
@@ -51,7 +52,11 @@ export class NarrativeAnalyticsService {
       topic === "workforce_economic_control" ||
       topic === "retention_flight_risk" ||
       topic === "skills_role_coverage" ||
-      topic === "hr_operational_briefing"
+      topic === "hr_operational_briefing" ||
+      topic === "productivity_absenteeism" ||
+      topic === "internal_pay_equity" ||
+      topic === "manager_load_bottlenecks" ||
+      topic === "workforce_what_if"
         ? "ai_advanced_analytics_v1"
         : topic === "turnover_insights_deep"
         ? "ai_turnover_insights_deep_v1"
@@ -124,6 +129,8 @@ export class NarrativeAnalyticsService {
     const me = await this.store.getUser(auth.userId);
     const companyId = me.companyId || "synapse-default";
     const intent = body.intent.trim().slice(0, 2000);
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    assertHebbUserMessageAllowed(intent, companyUsers);
     const allowedKinds = hitlProposalKindIds();
     const defaultKind = allowedKinds[0] ?? "reminder.leave_balance";
     const seed = {

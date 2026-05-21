@@ -5,7 +5,7 @@ import { HrDataStore } from "../platform/hr-data.store";
 import { PermissionsService } from "../platform/permissions.service";
 import { AiAuditService } from "./ai-audit.service";
 import { NEXA_HR_PLATFORM_NAV } from "./ai-hr-agent";
-import { assertMessageHasNoKnownPersonFullNames } from "./ai-hr-message-policy";
+import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import {
   parseHrCopilotFromEnvelope,
@@ -94,7 +94,7 @@ export class HrCopilotService {
     const directs = await this.store.listUsersByManager(auth.userId);
     if (!hasApprovals && leadIds.length === 0 && directs.length === 0) {
       throw new ForbiddenException(
-        "NEXA HR Copilot: serve console HR estesa, permesso report HR, oppure ruolo manager con team/approvazioni."
+        "HEBB AI for HR: serve console HR estesa, permesso report HR, oppure ruolo manager con team/approvazioni."
       );
     }
   }
@@ -320,7 +320,7 @@ export class HrCopilotService {
           label: "Approfondire retention aggregata",
           rationale: "Analizza trend e fasce di rischio senza nominativi nel modello AI.",
           evidence: `${signals.retentionHighRiskCount} profili ad alto rischio`,
-          href: "/analytics/retention"
+          href: "/analytics/advanced/retention"
         },
         ...(signals.highRiskPseudonyms.slice(0, 2).map((p) => ({
           label: `Pianificare check-in con ${p.label}`,
@@ -368,7 +368,7 @@ export class HrCopilotService {
                 label: "Analizzare scostamento economico",
                 rationale: "Verifica actual, forecast e centri di costo prima di rettifiche.",
                 evidence: `Actual ${eur(signals.budgetActualEur ?? 0)} vs budget ${eur(signals.budgetBudgetEur ?? 0)}`,
-                href: "/analytics/economico"
+                href: "/analytics/advanced/economico"
               },
               {
                 label: "Aprire report budget personale",
@@ -482,13 +482,18 @@ export class HrCopilotService {
     await this.assertAccess(auth);
     const me = await this.store.getUser(auth.userId);
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
-    assertMessageHasNoKnownPersonFullNames(body.message, companyUsers);
+    assertHebbUserMessageAllowed(body.message, companyUsers);
 
     const signals = await this.buildSignals(auth);
     const seed = this.buildTemplateBrief(signals);
     const history = (body.history ?? [])
       .filter((t) => (t.role === "user" || t.role === "assistant") && typeof t.content === "string")
       .slice(-10);
+    for (const turn of history) {
+      if (turn.role === "user") {
+        assertHebbUserMessageAllowed(turn.content, companyUsers);
+      }
+    }
 
     const { structured, refineApplied, sessionId, tokenCount } = await this.refineWithLlm(auth, {
       message: body.message,

@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { ArrowUpRight, Layers, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
@@ -101,7 +101,28 @@ export default function AnalyticsHubPage(): React.JSX.Element {
   );
 
   return (
-    <NexaHrAppPage title="Analytics" subtitle="Analisi su dati aggregati, con narrativa AI opzionale.">
+    <NexaHrAppPage
+      title="Analytics"
+      subtitle="Quattro analisi core su dati aggregati. Per le otto analisi avanzate apri Advanced analysis."
+    >
+      <div className="mb-8">
+        <Link
+          href={"/analytics/advanced" as Route}
+          className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--card-border)] p-5 transition hover:border-[#002D72]/40 dark:hover:border-sky-700/50"
+          style={{ background: "var(--card-bg)" }}
+        >
+          <div className="flex items-start gap-3">
+            <Layers className="mt-0.5 h-6 w-6 shrink-0 text-[#002D72] dark:text-sky-300" aria-hidden />
+            <div>
+              <p className="font-semibold text-[var(--prom-text)]">Advanced analysis</p>
+              <p className="mt-1 text-sm text-[var(--prom-muted)]">
+                Otto analisi HR: produttività, equità retributiva, carico manager, what-if e le quattro core qui sotto.
+              </p>
+            </div>
+          </div>
+          <ArrowUpRight className="h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+        </Link>
+      </div>
       <LlmUsageStatusBanner
         className="mb-6"
         idle={Object.keys(results).length === 0}

@@ -63,8 +63,8 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/org-chart",
-    title: "Organigramma Visivo",
-    blurb: "Vista grafica delle relazioni tra persone e ruoli.",
+    title: "Organigramma (persone)",
+    blurb: "Chi è chi: collegamenti tra persone e ruoli.",
     category: "Persone e organizzazione"
   },
   {
@@ -93,7 +93,7 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/manager-copilot" as Route,
-    title: "Pannello manager",
+    title: "HEBB AI for HR — Manager",
     blurb: "Vista dedicata a responsabili: team, approvazioni e priorità.",
     category: "Persone e organizzazione"
   },
@@ -112,7 +112,13 @@ export const PORTAL_TILES: PortalTile[] = [
   {
     href: "/analytics" as Route,
     title: "Hub Analytics",
-    blurb: "Quattro analisi strategiche su aggregati pseudonimizzati con narrativa AI.",
+    blurb: "Quattro analisi core su aggregati pseudonimizzati; link alle otto analisi avanzate.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/advanced" as Route,
+    title: "Advanced analysis",
+    blurb: "Otto analisi HR avanzate: economico, retention, competenze, operativo, produttività, equità, carico manager, what-if.",
     category: "HEBB AI for HR"
   },
   {
@@ -122,27 +128,51 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "HEBB AI for HR"
   },
   {
-    href: "/analytics/economico" as Route,
+    href: "/analytics/advanced/economico" as Route,
     title: "Controllo economico workforce",
     blurb: "Budget vs actual vs forecast per centro di costo con insight AI.",
     category: "HEBB AI for HR"
   },
   {
-    href: "/analytics/retention" as Route,
+    href: "/analytics/advanced/retention" as Route,
     title: "Retention e flight risk",
     blurb: "Turnover e tenure su aggregati per fascia e centro di costo.",
     category: "HEBB AI for HR"
   },
   {
-    href: "/analytics/competenze" as Route,
-    title: "Competenze e copertura ruoli",
+    href: "/analytics/advanced/competenze" as Route,
+    title: "Gap competenze",
     blurb: "Gap competenze vs fabbisogno con matrice hiring vs formazione.",
     category: "HEBB AI for HR"
   },
   {
-    href: "/analytics/operativo" as Route,
+    href: "/analytics/advanced/operativo" as Route,
     title: "Sintesi operativa HR",
     blurb: "Briefing giornaliero: approvazioni, lifecycle e backlog.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/advanced/produttivita" as Route,
+    title: "Produttività e assenteismo",
+    blurb: "Ore lavorate, straordinari e assenze su aggregati per centro di costo.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/advanced/equita-retributiva" as Route,
+    title: "Equità retributiva interna",
+    blurb: "Spread retributivo per ruolo senza nominativi nel modello AI.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/advanced/carico-manager" as Route,
+    title: "Carico manager",
+    blurb: "Report diretti e colli di bottiglia sulle approvazioni.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/analytics/advanced/what-if" as Route,
+    title: "Scenario what-if organico",
+    blurb: "Confronto scenari workforce collegato al planning.",
     category: "HEBB AI for HR"
   },
   {
@@ -189,7 +219,7 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/ai-hub" as Route,
-    title: "Assistente personale",
+    title: "HEBB AI for HR",
     blurb: "Conversazione con modello linguistico su policy, ferie e dati consentiti dal tuo ruolo.",
     category: "HEBB AI for HR"
   },
@@ -224,9 +254,9 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Selezione e documenti"
   },
   {
-    href: "/personnel-budget/simulatore-assunzione" as Route,
-    title: "Simulatore assunzione",
-    blurb: "Costo azienda, netto, agevolazioni e benefit con consulente AI.",
+    href: "/tools/cost-calculator" as Route,
+    title: "Calcolatore costo / netto",
+    blurb: "Simulazioni indicative su costo azienda e netto.",
     category: "Analisi e pianificazione"
   },
   {

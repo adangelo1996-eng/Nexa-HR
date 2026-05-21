@@ -104,60 +104,6 @@ class AnalysisChatDto {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
-class WorkforceScenarioSaveDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  id?: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(120)
-  name!: string;
-
-  @IsOptional()
-  @IsObject()
-  assumptionsJson?: Record<string, unknown>;
-
-  @IsObject()
-  payloadJson!: Record<string, unknown>;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(12000)
-  analysisText?: string;
-}
-
-class RoleCoverageGapUpsertDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  id?: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  roleTitle!: string;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(999)
-  headcountGap!: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(9999999)
-  expectedRalAnnual?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  notes?: string;
-}
-
 @Controller("analytics")
 @UseGuards(NexaPermissionGuard)
 export class AnalyticsController {
@@ -172,6 +118,12 @@ export class AnalyticsController {
   @RequireNexaPermissions("nexa.reports_hr:read")
   hubCatalog(): { cards: ReturnType<AnalyticsOrchestratorService["listHubCards"]> } {
     return { cards: this.orchestrator.listHubCards() };
+  }
+
+  @Get("advanced/hub")
+  @RequireNexaPermissions("nexa.reports_hr:read")
+  advancedHubCatalog(): { cards: ReturnType<AnalyticsOrchestratorService["listAdvancedHubCards"]> } {
+    return { cards: this.orchestrator.listAdvancedHubCards() };
   }
 
   @Post("hub/:analysisId/run")
@@ -340,53 +292,6 @@ export class AnalyticsController {
     return { items };
   }
 
-  /**
-   * Rigenera `hr_role_skill_requirements` (e opz. backfill `hr_user_skills`) da template ruolo.
-   * Query: `dryRun=true` (default sicuro) | `apply=true` per scrivere; `backup=true` obbligatorio con replace/overwrite.
-   */
-  @Post("skills/regenerate-from-roles")
-  @RequireNexaPermissions("nexa.reports_hr:write")
-  async regenerateSkillsFromRoles(
-    @CurrentAuth() auth: AuthContext,
-    @Query("dryRun") dryRun?: string,
-    @Query("apply") apply?: string,
-    @Query("backfillUsers") backfillUsers?: string,
-    @Query("replaceRoleRequirements") replaceRoleRequirements?: string,
-    @Query("backup") backup?: string,
-    @Query("overwriteUserSkills") overwriteUserSkills?: string,
-    @Query("companyId") companyIdOverride?: string
-  ): Promise<Awaited<ReturnType<HrDataStore["regenerateSkillsFromRolesForCompany"]>>> {
-    const viewer = await this.store.getUser(auth.userId);
-    const isHrAdmin =
-      viewer.role === "superuser" ||
-      (await this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, viewer.email));
-    if (!isHrAdmin) {
-      throw new ForbiddenException("Solo admin HR possono rigenerare le competenze aziendali");
-    }
-    const companyId = (companyIdOverride?.trim() || viewer.companyId || auth.tenantId || "").trim();
-    if (!companyId) {
-      throw new ForbiddenException("Azienda non disponibile per l'utente");
-    }
-    if (companyIdOverride?.trim() && viewer.role !== "superuser" && viewer.companyId !== companyId) {
-      throw new ForbiddenException("companyId non consentito per questo utente");
-    }
-
-    const applyFlag = apply === "true" || apply === "1";
-
-    return this.store.regenerateSkillsFromRolesForCompany(
-      companyId,
-      {
-        dryRun: !applyFlag,
-        apply: applyFlag,
-        backfillUsers: backfillUsers === "true" || backfillUsers === "1",
-        replaceRoleRequirements: replaceRoleRequirements === "true" || replaceRoleRequirements === "1",
-        backup: backup === "true" || backup === "1",
-        overwriteUserSkills: overwriteUserSkills === "true" || overwriteUserSkills === "1"
-      },
-      auth.userId
-    );
-  }
-
   @Get("manager-copilot")
   async managerCopilot(@CurrentAuth() auth: AuthContext): Promise<
     Awaited<ReturnType<HrDataStore["getManagerCopilotDashboard"]>>
@@ -397,102 +302,12 @@ export class AnalyticsController {
       const directs = await this.store.listUsersByManager(auth.userId);
       if (!hasApprovals && leadIds.length === 0 && directs.length === 0) {
         throw new ForbiddenException(
-          "Pannello manager: serve permesso approvazioni, oppure essere lead di un team o avere report diretti."
+          "HEBB AI for HR — Manager: serve permesso approvazioni, oppure essere lead di un team o avere report diretti."
         );
       }
     }
     const includeTurnover = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
-    const includeEconomic = await this.canViewHrEconomicData(auth);
-    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover, includeEconomicData: includeEconomic });
-  }
-
-  @Get("workforce-planning/scenarios")
-  @RequireNexaPermissions("nexa.reports_hr:read")
-  async listWorkforceScenarios(@CurrentAuth() auth: AuthContext): Promise<{
-    items: Awaited<ReturnType<HrDataStore["listWorkforcePlanningScenarios"]>>;
-  }> {
-    const companyId = await this.companyIdForAuth(auth);
-    return { items: await this.store.listWorkforcePlanningScenarios(companyId) };
-  }
-
-  @Post("workforce-planning/scenarios")
-  @RequireNexaPermissions("nexa.reports_hr:write")
-  async saveWorkforceScenario(
-    @CurrentAuth() auth: AuthContext,
-    @Body() body: WorkforceScenarioSaveDto
-  ): Promise<{ id: string }> {
-    const companyId = await this.companyIdForAuth(auth);
-    return this.store.saveWorkforcePlanningScenario(companyId, auth.userId, {
-      id: body.id,
-      name: body.name,
-      assumptionsJson: body.assumptionsJson,
-      payloadJson: body.payloadJson,
-      analysisText: body.analysisText
-    });
-  }
-
-  @Post("workforce-planning/scenarios/:id/delete")
-  @RequireNexaPermissions("nexa.reports_hr:write")
-  async deleteWorkforceScenario(
-    @CurrentAuth() auth: AuthContext,
-    @Param("id") scenarioId: string
-  ): Promise<{ ok: true }> {
-    const companyId = await this.companyIdForAuth(auth);
-    await this.store.deleteWorkforcePlanningScenario(companyId, scenarioId);
-    return { ok: true };
-  }
-
-  @Get("role-coverage-gaps")
-  @RequireNexaPermissions("nexa.reports_hr:read")
-  async listRoleCoverageGaps(@CurrentAuth() auth: AuthContext): Promise<{
-    items: Awaited<ReturnType<HrDataStore["listRoleCoverageGaps"]>>;
-  }> {
-    const companyId = await this.companyIdForAuth(auth);
-    return { items: await this.store.listRoleCoverageGaps(companyId) };
-  }
-
-  @Post("role-coverage-gaps")
-  @RequireNexaPermissions("nexa.reports_hr:write")
-  async upsertRoleCoverageGap(
-    @CurrentAuth() auth: AuthContext,
-    @Body() body: RoleCoverageGapUpsertDto
-  ): Promise<{ id: string }> {
-    const companyId = await this.companyIdForAuth(auth);
-    return this.store.upsertRoleCoverageGap(companyId, auth.userId, {
-      id: body.id,
-      roleTitle: body.roleTitle,
-      headcountGap: body.headcountGap,
-      expectedRalAnnual: body.expectedRalAnnual,
-      notes: body.notes
-    });
-  }
-
-  @Post("role-coverage-gaps/:id/delete")
-  @RequireNexaPermissions("nexa.reports_hr:write")
-  async deleteRoleCoverageGap(
-    @CurrentAuth() auth: AuthContext,
-    @Param("id") gapId: string
-  ): Promise<{ ok: true }> {
-    const companyId = await this.companyIdForAuth(auth);
-    await this.store.deleteRoleCoverageGap(companyId, gapId);
-    return { ok: true };
-  }
-
-  private async companyIdForAuth(auth: AuthContext): Promise<string> {
-    const viewer = await this.store.getUser(auth.userId);
-    const companyId = (viewer.companyId || auth.tenantId || "").trim();
-    if (!companyId) {
-      throw new ForbiddenException("Azienda non disponibile per l'utente");
-    }
-    return companyId;
-  }
-
-  private async canViewHrEconomicData(auth: AuthContext): Promise<boolean> {
-    if (auth.role === "superuser") {
-      return true;
-    }
-    const me = await this.store.getUser(auth.userId);
-    return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover });
   }
 
   @Get("turnover-retention")

@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import type { AuthContext } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
+import { assertHebbUserMessageAllowed } from "../ai-hr/ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NarrativeAnalyticsService } from "./narrative-analytics.service";
@@ -22,17 +23,20 @@ export type StructuredAnalyticsInsight = {
   correlazioni: string[];
   rischi: string[];
   azioni7giorni: string[];
+  raccomandazioniHr: string[];
   llmApplied: boolean;
   templateOnly: boolean;
 };
 
-const HUB_CARDS: AnalyticsHubCard[] = [
+const ADVANCED_BASE = "/analytics/advanced";
+
+const ADVANCED_HUB_CARDS: AnalyticsHubCard[] = [
   {
     id: "economico",
     titleIt: "Controllo economico workforce",
     blurbIt:
       "Budget vs actual vs forecast per centro di costo, driver di varianza e trend costo FTE. Narrativa per controller HR.",
-    href: "/analytics/economico",
+    href: `${ADVANCED_BASE}/economico`,
     topic: "workforce_economic_control",
     llmCapable: true
   },
@@ -41,15 +45,15 @@ const HUB_CARDS: AnalyticsHubCard[] = [
     titleIt: "Retention e flight risk",
     blurbIt:
       "Segnali turnover, assenze e tenure su aggregati per fascia e centro di costo. Playbook retention prioritario.",
-    href: "/analytics/retention",
+    href: `${ADVANCED_BASE}/retention`,
     topic: "retention_flight_risk",
     llmCapable: true
   },
   {
     id: "competenze",
-    titleIt: "Competenze e copertura ruoli",
+    titleIt: "Gap competenze",
     blurbIt: "Gap competenze vs fabbisogno per ruolo. Matrice raccomandazioni hiring vs formazione.",
-    href: "/analytics/competenze",
+    href: `${ADVANCED_BASE}/competenze`,
     topic: "skills_role_coverage",
     llmCapable: true
   },
@@ -58,11 +62,59 @@ const HUB_CARDS: AnalyticsHubCard[] = [
     titleIt: "Sintesi operativa HR",
     blurbIt:
       "Approvazioni in sospeso, onboarding/offboarding, delta organico e backlog spese. Briefing giornaliero HRBP.",
-    href: "/analytics/operativo",
+    href: `${ADVANCED_BASE}/operativo`,
     topic: "hr_operational_briefing",
+    llmCapable: true
+  },
+  {
+    id: "produttivita",
+    titleIt: "Produttività e assenteismo",
+    blurbIt:
+      "Ore lavorate, straordinari e assenze su aggregati per centro di costo. Correlazioni con retention e costo.",
+    href: `${ADVANCED_BASE}/produttivita`,
+    topic: "productivity_absenteeism",
+    llmCapable: true
+  },
+  {
+    id: "equita",
+    titleIt: "Equità retributiva interna",
+    blurbIt:
+      "Spread retributivo per ruolo e centro di costo su stipendi base. Segnali di disparità interna da validare con policy.",
+    href: `${ADVANCED_BASE}/equita-retributiva`,
+    topic: "internal_pay_equity",
+    llmCapable: true
+  },
+  {
+    id: "carico_manager",
+    titleIt: "Carico manager e colli di bottiglia",
+    blurbIt:
+      "Report diretti e code approvazioni per cluster manager. Priorità di delega e riduzione backlog.",
+    href: `${ADVANCED_BASE}/carico-manager`,
+    topic: "manager_load_bottlenecks",
+    llmCapable: true
+  },
+  {
+    id: "what_if",
+    titleIt: "Scenario what-if organico",
+    blurbIt:
+      "Confronto scenari workforce base, crescita e freeze su costo e headcount. Collegamento al workforce planning.",
+    href: `${ADVANCED_BASE}/what-if`,
+    topic: "workforce_what_if",
     llmCapable: true
   }
 ];
+
+/** Quattro analisi core mostrate nell'hub principale `/analytics`. */
+const CORE_HUB_CARDS: AnalyticsHubCard[] = ADVANCED_HUB_CARDS.slice(0, 4);
+
+/** Alias richiesti da HEBB AI for HR (chip budget / turnover / path legacy). */
+const ANALYSIS_ID_ALIASES: Record<string, string> = {
+  budget: "economico",
+  turnover: "retention",
+  equita_retributiva: "equita",
+  "carico-manager": "carico_manager",
+  whatif: "what_if"
+};
 
 function turnoverAggregateForLlm(
   items: Array<{ score: number; costCenterId: string | null }>,
@@ -118,11 +170,17 @@ export class AnalyticsOrchestratorService {
   ) {}
 
   listHubCards(): AnalyticsHubCard[] {
-    return [...HUB_CARDS];
+    return [...CORE_HUB_CARDS];
+  }
+
+  listAdvancedHubCards(): AnalyticsHubCard[] {
+    return [...ADVANCED_HUB_CARDS];
   }
 
   resolveCard(analysisId: string): AnalyticsHubCard {
-    const card = HUB_CARDS.find((c) => c.id === analysisId.trim().toLowerCase());
+    const raw = analysisId.trim().toLowerCase().replace(/-/g, "_");
+    const resolved = ANALYSIS_ID_ALIASES[raw] ?? raw;
+    const card = ADVANCED_HUB_CARDS.find((c) => c.id === resolved);
     if (!card) {
       throw new ForbiddenException("Analisi non riconosciuta");
     }
@@ -204,6 +262,7 @@ export class AnalyticsOrchestratorService {
                 correlazioni?: unknown;
                 rischi?: unknown;
                 azioni7giorni?: unknown;
+                raccomandazioniHr?: unknown;
               };
             }
           ).envelope;
@@ -220,6 +279,9 @@ export class AnalyticsOrchestratorService {
               azioni7giorni: Array.isArray(env.azioni7giorni)
                 ? env.azioni7giorni.filter((x): x is string => typeof x === "string").slice(0, 5)
                 : seed.azioni7giorni,
+              raccomandazioniHr: Array.isArray(env.raccomandazioniHr)
+                ? env.raccomandazioniHr.filter((x): x is string => typeof x === "string").slice(0, 5)
+                : seed.raccomandazioniHr,
               llmApplied: true,
               templateOnly: false
             };
@@ -244,11 +306,18 @@ export class AnalyticsOrchestratorService {
     if (!message) {
       throw new ForbiddenException("Messaggio vuoto");
     }
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === companyId);
+    assertHebbUserMessageAllowed(message, companyUsers);
     const payload = await this.buildPayload(card.id, companyId, auth.userId);
     const history = (body.history ?? [])
       .filter((t) => (t.role === "user" || t.role === "assistant") && typeof t.content === "string")
       .slice(-8)
       .map((t) => ({ role: t.role, content: t.content.trim().slice(0, 1500) }));
+    for (const turn of history) {
+      if (turn.role === "user") {
+        assertHebbUserMessageAllowed(turn.content, companyUsers);
+      }
+    }
 
     const draft = this.buildAnalystReplyDraft(card, message, payload, history);
     if (!this.openAi.isActive()) {
@@ -289,17 +358,32 @@ export class AnalyticsOrchestratorService {
           ? "turnover_insights_deep"
           : card.topic === "skills_role_coverage"
             ? "skills_gap"
-            : "executive_recap";
+            : card.topic === "productivity_absenteeism"
+              ? "attendance_payroll_anomalies"
+              : card.topic === "internal_pay_equity"
+                ? "compensation_bench"
+                : card.topic === "manager_load_bottlenecks"
+                  ? "process_bottlenecks"
+                  : card.topic === "workforce_what_if"
+                    ? "workforce_planning"
+                    : "executive_recap";
     const tpl = this.narrativeSeedFromPayload(narrativeTopic, payload);
     return {
       title: tpl.title,
       situazione: tpl.summary,
       correlazioni: tpl.bullets.slice(0, 4),
-      rischi: ["Verificare i dati in app prima di decisioni su singole persone.", "I segnali AI non sostituiscono controlli formali payroll o legali."],
+      rischi: [
+        "Verificare i dati in app prima di decisioni su singole persone.",
+        "I segnali AI non sostituiscono controlli formali payroll o legali."
+      ],
       azioni7giorni: [
         "Aprire la pagina analisi dedicata e validare i KPI con HR controller.",
         "Allineare manager sui cluster a rischio più elevato (solo aggregati).",
         "Pianificare un checkpoint entro 7 giorni su varianze o gap prioritari."
+      ],
+      raccomandazioniHr: [
+        "Condividere la sintesi con HRBP e controller prima di comunicazioni ai team.",
+        "Documentare le ipotesi usate per eventuali scenari what-if o varianze budget."
       ],
       llmApplied: false,
       templateOnly: true
@@ -419,27 +503,18 @@ export class AnalyticsOrchestratorService {
         ];
       }
       case "competenze": {
-        const [items, coverageGaps] = await Promise.all([
-          this.store.getSkillsGapReport(companyId),
-          this.store.listRoleCoverageGaps(companyId)
-        ]);
+        const items = await this.store.getSkillsGapReport(companyId);
         const gaps = items.filter((r) => r.gap > 0);
         const roles = new Set(gaps.map((g) => g.roleId));
-        const headcountMissing = coverageGaps.reduce((s, g) => s + g.headcountGap, 0);
         return [
-          { id: "gaps", labelIt: "Gap competenze", value: String(gaps.length) },
+          { id: "gaps", labelIt: "Gap rilevati", value: String(gaps.length) },
           { id: "roles", labelIt: "Ruoli coinvolti", value: String(roles.size) },
           {
-            id: "coverage",
-            labelIt: "Persone mancanti (ruoli)",
-            value: String(headcountMissing),
-            hintIt: `${coverageGaps.length} ruoli in tabella copertura`
-          },
-          {
             id: "top",
-            labelIt: "Gap max competenza",
+            labelIt: "Gap massimo",
             value: gaps.length ? String(Math.max(...gaps.map((g) => g.gap))) : "0"
-          }
+          },
+          { id: "rows", labelIt: "Righe report", value: String(items.length) }
         ];
       }
       case "operativo": {
@@ -454,6 +529,95 @@ export class AnalyticsOrchestratorService {
           { id: "off", labelIt: "In offboarding", value: String(headcount.offboarding) },
           { id: "hc", labelIt: "Organico attivo", value: String(headcount.active) },
           { id: "exp", labelIt: "Spese in attesa", value: String(summary.pendingExpenseCount) }
+        ];
+      }
+      case "produttivita": {
+        const agg = await this.store.getProductivityAbsenteeismAggregate(companyId);
+        return [
+          { id: "hc", labelIt: "Headcount", value: String(agg.headcount) },
+          {
+            id: "avgMin",
+            labelIt: "Media minuti/giorno",
+            value: agg.avgMinutesWorkedPerDay != null ? String(agg.avgMinutesWorkedPerDay) : "—"
+          },
+          { id: "ot", labelIt: "Straordinari (h mese)", value: String(agg.overtimeHoursMonth) },
+          { id: "abs", labelIt: "Giorni assenza mese", value: String(agg.absenceDaysMonth) },
+          { id: "sw", labelIt: "Giorni smartworking", value: String(agg.smartworkingDaysMonth) }
+        ];
+      }
+      case "equita": {
+        const agg = await this.store.getInternalPayEquityAggregate(companyId);
+        const top = agg.byRole[0];
+        return [
+          { id: "hc", labelIt: "Headcount", value: String(agg.headcount) },
+          { id: "roles", labelIt: "Ruoli analizzati", value: String(agg.rolesAnalyzed) },
+          {
+            id: "median",
+            labelIt: "Mediana globale mensile",
+            value: agg.globalMedianMonthlyEur != null ? eur(agg.globalMedianMonthlyEur) : "—"
+          },
+          {
+            id: "spread",
+            labelIt: "Rapporto max/min globale",
+            value: agg.spreadRatioHighLow != null ? String(agg.spreadRatioHighLow) : "—"
+          },
+          {
+            id: "topRole",
+            labelIt: "Spread max ruolo",
+            value: top?.spreadPct != null ? `${top.spreadPct}%` : "—",
+            hintIt: top?.roleName
+          }
+        ];
+      }
+      case "carico_manager": {
+        const agg = await this.store.getManagerLoadAggregate(companyId);
+        const top = agg.topLoad[0];
+        return [
+          { id: "mgr", labelIt: "Manager con team", value: String(agg.managersCount) },
+          { id: "reports", labelIt: "Report diretti totali", value: String(agg.totalDirectReports) },
+          { id: "pend", labelIt: "Approvazioni in coda", value: String(agg.pendingApprovalsTotal) },
+          {
+            id: "median",
+            labelIt: "Mediana report/manager",
+            value: agg.medianReportsPerManager != null ? String(agg.medianReportsPerManager) : "—"
+          },
+          {
+            id: "top",
+            labelIt: "Carico max cluster",
+            value: top ? String(top.loadScore) : "—",
+            hintIt: top ? `${top.directReports} report, ${top.pendingApprovals} approvazioni` : undefined
+          }
+        ];
+      }
+      case "what_if": {
+        const [base, growth, freeze] = await Promise.all([
+          this.store.getWorkforceCockpit("base", 6),
+          this.store.getWorkforceCockpit("growth", 6),
+          this.store.getWorkforceCockpit("freeze", 6)
+        ]);
+        const lastBase = base.series.length ? base.series[base.series.length - 1]!.costEur : 0;
+        const lastGrowth = growth.series.length ? growth.series[growth.series.length - 1]!.costEur : 0;
+        const deltaPct =
+          lastBase > 0 ? Math.round(((lastGrowth - lastBase) / lastBase) * 1000) / 10 : null;
+        return [
+          { id: "hc", labelIt: "Headcount base", value: String(base.summary.headcount) },
+          {
+            id: "mass",
+            labelIt: "Massa mensile base",
+            value: eur(base.summary.monthlyPayrollMassEur)
+          },
+          {
+            id: "growth",
+            labelIt: "Costo ultimo mese (crescita)",
+            value: eur(lastGrowth),
+            hintIt: deltaPct != null ? `Δ vs base ${deltaPct > 0 ? "+" : ""}${deltaPct}%` : undefined
+          },
+          {
+            id: "freeze",
+            labelIt: "Costo ultimo mese (freeze)",
+            value: freeze.series.length ? eur(freeze.series[freeze.series.length - 1]!.costEur) : "—"
+          },
+          { id: "exp", labelIt: "Spese in attesa", value: String(base.summary.pendingExpenseCount) }
         ];
       }
       default:
@@ -527,10 +691,7 @@ export class AnalyticsOrchestratorService {
         );
       }
       case "competenze": {
-        const [items, roleCoverageGaps] = await Promise.all([
-          this.store.getSkillsGapReport(companyId),
-          this.store.listRoleCoverageGaps(companyId)
-        ]);
+        const items = await this.store.getSkillsGapReport(companyId);
         const gapRows = items
           .filter((r) => r.gap > 0)
           .sort((a, b) => b.gap - a.gap)
@@ -543,18 +704,7 @@ export class AnalyticsOrchestratorService {
             minLevel: r.minLevel,
             avgUserLevel: r.avgUserLevel
           }));
-        const coverage = roleCoverageGaps.slice(0, 16).map((g) => ({
-          roleTitle: g.roleTitle,
-          headcountGap: g.headcountGap,
-          expectedRalAnnual: g.expectedRalAnnual
-        }));
-        return {
-          items: gapRows,
-          itemCount: items.length,
-          gapCount: gapRows.length,
-          roleCoverageGaps: coverage,
-          roleCoverageHeadcountGap: coverage.reduce((s, g) => s + g.headcountGap, 0)
-        };
+        return { items: gapRows, itemCount: items.length, gapCount: gapRows.length };
       }
       case "operativo": {
         const [summary, headcount, pending, alerts, cycles] = await Promise.all([
@@ -575,6 +725,62 @@ export class AnalyticsOrchestratorService {
           }, {}),
           openAlertsCount: alerts.length,
           processCycles: cycles
+        };
+      }
+      case "produttivita": {
+        const agg = await this.store.getProductivityAbsenteeismAggregate(companyId);
+        const retention = await this.store.getLatestTurnoverRetention(companyId);
+        const highRisk = retention.filter((r) => r.score >= 67).length;
+        return { productivity: agg, turnoverHighRiskCount: highRisk, period: new Date().toISOString().slice(0, 7) };
+      }
+      case "equita": {
+        const equity = await this.store.getInternalPayEquityAggregate(companyId);
+        const breakdown = await this.store.payrollForecastCostBreakdown(companyId, 3);
+        return {
+          equity,
+          byCostCenterPayroll: breakdown.byCostCenter.slice(0, 10).map((c) => ({
+            label: c.label,
+            headcount: c.headcount,
+            monthlyRalMassEur: c.monthlyRalMassEur
+          }))
+        };
+      }
+      case "carico_manager": {
+        const [load, cycles, companyPending] = await Promise.all([
+          this.store.getManagerLoadAggregate(companyId),
+          this.store.getProcessCycleMetrics(companyId),
+          this.store.listCompanyPendingApprovalViewsForHrDashboard(companyId)
+        ]);
+        return {
+          managerLoad: load,
+          processCycles: cycles,
+          pendingApprovalsSampleSize: companyPending.length
+        };
+      }
+      case "what_if": {
+        const [base, growth, freeze, breakdown] = await Promise.all([
+          this.store.getWorkforceCockpit("base", 6),
+          this.store.getWorkforceCockpit("growth", 6),
+          this.store.getWorkforceCockpit("freeze", 6),
+          this.store.payrollForecastCostBreakdown(companyId, 6)
+        ]);
+        const scenarioCompare = ["base", "growth", "freeze"].map((name, i) => {
+          const cock = [base, growth, freeze][i]!;
+          const last = cock.series.length ? cock.series[cock.series.length - 1] : undefined;
+          return {
+            scenario: name,
+            headcount: cock.summary.headcount,
+            monthlyPayrollMassEur: cock.summary.monthlyPayrollMassEur,
+            lastMonthCostEur: last?.costEur ?? null,
+            lastMonthLabel: last?.month
+          };
+        });
+        return {
+          scenarioCompare,
+          baseSeries: base.series,
+          growthSeries: growth.series,
+          freezeSeries: freeze.series,
+          byCostCenter: breakdown.byCostCenter.slice(0, 8)
         };
       }
       default:

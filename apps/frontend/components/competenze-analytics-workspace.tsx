@@ -236,7 +236,7 @@ function BudgetLinksFooter(props: { annualHiringCost: number }): React.JSX.Eleme
   const links: Array<{ href: Route; label: string }> = [
     { href: "/personnel-budget/forecast" as Route, label: "Forecast personale" },
     { href: "/personnel-budget/analysis" as Route, label: "Analisi budget" },
-    { href: "/analytics/economico" as Route, label: "Controllo economico" },
+    { href: "/analytics/advanced/economico" as Route, label: "Controllo economico" },
     { href: "/workforce-planning" as Route, label: "Workforce planning" }
   ];
 

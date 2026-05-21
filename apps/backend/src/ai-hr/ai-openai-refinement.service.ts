@@ -58,14 +58,11 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     const intent = (pseudonymizedInput as { envelope?: { facts?: { intent?: unknown } } })?.envelope?.facts?.intent;
     return typeof intent === "string" ? collectTokensFromString(intent) : new Set();
   }
-  if (schemaVersion === "ai_hr_center_analytics_v1" || schemaVersion === "ai_hiring_simulator_advise_v1") {
+  if (schemaVersion === "ai_hr_center_analytics_v1") {
     // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
     return new Set();
   }
   if (schemaVersion === "ai_payslip_explain_v1") {
-    return new Set();
-  }
-  if (schemaVersion === "ai_recruit_cv_screen_v1") {
     return new Set();
   }
   return collectTokensFromJson(pseudonymizedInput);
@@ -155,10 +152,11 @@ function systemPromptForSchema(schemaVersion: string): string {
       return (
         base +
         " Ruolo: consulente HR / HR controller senior (Italia). " +
-        " Schema: {\"envelope\":{\"title\":\"stringa\",\"situazione\":\"stringa (4-6 frasi)\",\"correlazioni\":[\"stringa\"],\"rischi\":[\"stringa\"],\"azioni7giorni\":[\"stringa\"]}}. " +
+        " Schema: {\"envelope\":{\"title\":\"stringa\",\"situazione\":\"stringa (4-6 frasi)\",\"correlazioni\":[\"stringa\"],\"rischi\":[\"stringa\"],\"azioni7giorni\":[\"stringa\"],\"raccomandazioniHr\":[\"stringa\"]}}. " +
         " L'ingresso ha envelope.analysisId, envelope.topic, envelope.facts (solo aggregati) e envelope.insightSeed (bozza). " +
         " Migliora in italiano professionale: situazione con numeri da facts; correlazioni max 5 (legami tra budget, turnover, gap, operatività); " +
-        " rischi max 5 (operativi, non legali vincolanti); azioni7giorni esattamente 5 passi concreti per HR/controller. " +
+        " rischi max 5 (operativi, non legali vincolanti); azioni7giorni esattamente 5 passi concreti per HR/controller; " +
+        " raccomandazioniHr esattamente 3-4 voci per HR controller (policy, governance dati, allineamento CdA/HRBP). " +
         " Non inventare cifre assenti da facts; nessun nominativo."
       );
     case "ai_advanced_analytics_chat_v1":
@@ -175,21 +173,13 @@ function systemPromptForSchema(schemaVersion: string): string {
         getNexaHrConversationalAgentSystemPrompt() +
           "\n\n" +
           base +
-          " Schema obbligatorio: {\"envelope\":{\"reply\":\"stringa (1-2 frasi intro)\",\"sections\":[{\"title\":\"stringa\",\"bullets\":[{\"text\":\"stringa\",\"action\":{\"label\":\"stringa\",\"href\":\"/path\"}}]}]}}. " +
-          " sections: 1-4 blocchi con title utili (es. Cosa fare, Dove andare, Passi successivi); bullets: 2-6 voci ciascuna, text conciso; " +
-          " action opzionale solo se c'è un percorso reale in routeHints/platformCapabilities (href deve essere path esatto, es. /workflow/approvals); " +
-          " reply breve; conversazione multi-turno: envelope.history, envelope.message, envelope.replySeed; " +
-          " usa envelope.knowledgeExcerpt, platformCapabilities, routeHints e permissionsSummary; non inventare permessi assenti da permissionsSummary."
-      );
-    case "ai_hr_copilot_v1":
-      return (
-        base +
-        " Ruolo: senior HR business partner italiano, orientato all'azione con evidenze numeriche. " +
-        " Schema obbligatorio: {\"envelope\":{\"intro\":\"stringa (2-3 frasi)\",\"reply\":\"stringa opzionale per follow-up chat\",\"panels\":[{\"id\":\"today|people_risk|hiring|budget_alert\",\"title\":\"stringa\",\"priority\":\"high|medium|low\",\"summary\":\"stringa\",\"actions\":[{\"label\":\"stringa\",\"rationale\":\"stringa\",\"evidence\":\"stringa con numeri da envelope.signals\",\"href\":\"/path opzionale\"}]}]}}. " +
-        " Usa SOLO envelope.signals (aggregati pseudonimizzati) e envelope.seed come bozza; migliora intro, summary e actions; ogni action deve avere evidence con conteggi/percentuali presenti in signals; " +
-        " href solo da envelope.platformCapabilities.path; non inventare numeri; non usare nomi di persone reali (usa Collaboratore A/B se serve); " +
-        " panels: esattamente 4 con id today, people_risk, hiring, budget_alert; 2-4 actions per panel; " +
-        " se envelope.message è presente (chat), compila envelope.reply (max 12 righe) rispondendo come HRBP usando signals e history."
+          " Schema obbligatorio: {\"envelope\":{\"reply\":\"stringa (1-2 frasi intro, specifica sul caso)\",\"sections\":[{\"title\":\"stringa\",\"bullets\":[{\"text\":\"stringa\",\"action\":{\"label\":\"stringa\",\"href\":\"/path\"}}]}]}}. " +
+          " sections: 2-4 blocchi; title tra: Cosa fare, Dove andare, Come funziona il calcolo (se domanda su metriche/score/varianza/straordinari/formazione/sale), Consiglio per te, Passi successivi; " +
+          " bullets: 2-6 voci ciascuna, text conciso e legato a envelope.message/page (niente boilerplate generico); " +
+          " almeno un action con href da routeHints/platformCapabilities quando c'è un passo utile; href path esatto (es. /analytics/retention, /sale-riunioni); " +
+          " se knowledgeExcerpt descrive formule (turnover, budget, overtime, training %, meeting rooms), riassumile fedelmente in «Come funziona il calcolo»; " +
+          " «Consiglio per te»: azioni HR contestuali (manager vs dipendente vs HR) senza nominativi; reply breve; multi-turno: history, message, replySeed; " +
+          " non inventare permessi assenti da permissionsSummary né numeri non presenti in facts/snapshot."
       );
     case "ai_hr_center_analytics_v1":
       return (
@@ -229,36 +219,14 @@ function systemPromptForSchema(schemaVersion: string): string {
     case "ai_payslip_explain_v1":
       return (
         base +
-        " Schema: {\"envelope\":{\"plainSummary\":\"stringa (max 2 frasi)\",\"keyPoints\":[\"stringa\"]," +
-        "\"withholdingsBullets\":[\"stringa\"],\"howToReadBullets\":[\"stringa\"]," +
-        "\"parsedLineBullets\":[\"stringa\"],\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
-        "\"lineHighlights\":[{\"lineRef\":\"stringa\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}]," +
-        "\"closingTip\":\"stringa (max 1 frase)\"}}. " +
-        "L'ingresso ha envelope.facts con period, lordo/netto, facts.lines (SOLO questo cedolino). " +
-        "keyPoints: max 5 bullet brevi sulla situazione del mese. withholdingsBullets: max 5, ogni bullet cita importi da facts. " +
-        "howToReadBullets: max 4 passi pratici. parsedLineBullets: max 6 commenti su righe reali. " +
-        "lineHighlights: max 6. Non inventare codici/importi. Mantieni anche plainSummary compatto."
-      );
-    case "ai_recruit_cv_screen_v1":
-      return (
-        base +
-        " Ruolo: recruiter HR senior. Valuta fit tra CV e posizione aperta. " +
-        " Schema: {\"envelope\":{\"score\":number,\"matches\":[\"stringa\"],\"mismatches\":[\"stringa\"],\"summary\":\"stringa\"}}. " +
-        " L'ingresso ha envelope.facts: roleTitle, jobDescription, requiredSkills (array name/minLevel), cvExcerpt, disclaimer. " +
-        " score: intero 0-100 (100 = fit eccellente). matches: max 6 bullet concreti di allineamento; mismatches: max 6 gap/rischi; " +
-        " summary: 2-3 frasi operative per HR in italiano. Non inventare esperienze assenti dal CV; non citare dati sensibili non pertinenti; " +
-        " tono professionale, nessuna discriminazione; ricorda che è supporto decisionale umano."
-      );
-    case "ai_hiring_simulator_advise_v1":
-      return (
-        base +
-        " Ruolo: consulente del lavoro senior (Italia). Supporti HR nella simulazione di un'assunzione. " +
-        " Schema: {\"envelope\":{\"advisorMessage\":\"stringa\",\"suggestedChips\":[\"stringa\"],\"agevolazioniVerificate\":[{\"code\":\"stringa\",\"label\":\"stringa\",\"applicable\":boolean,\"rationale\":\"stringa\"}],\"benefitSuggestions\":[{\"key\":\"stringa\",\"label\":\"stringa\",\"monthlyEurosEstimate\":number|null,\"rationale\":\"stringa\"}],\"validationOk\":boolean,\"validationNotes\":[\"stringa\"]}}. " +
-        " L'ingresso ha envelope.facts.phase (criteria|agevolazioni|benefits|validate), contract, agevolazioni, benefits, resultSummary (solo numeri aggregati), warnings, disclaimer. " +
-        " advisorMessage: 3-6 frasi operative in italiano; suggestedChips: max 6 azioni brevi cliccabili; " +
-        " per phase=agevolazioni compila agevolazioniVerificate su female, under36, south, naspi, protected con applicable e rationale prudente; " +
-        " per phase=benefits proponi benefitSuggestions realistiche; per phase=validate imposta validationOk e validationNotes incrociando warnings e numeri; " +
-        " non promettere risparmi certi; non citare nominativi; non inventare importi non coerenti con resultSummary."
+        " Schema: {\"envelope\":{\"plainSummary\":\"stringa\",\"residenceDomicileNote\":\"stringa\",\"addizionaliNote\":\"stringa\"," +
+        "\"lineHighlights\":[" +
+        "{\"lineRef\":\"stringa (codice o descrizione sintetica)\",\"signal\":\"ok|verify|info\",\"comment\":\"stringa\"}" +
+        "],\"closingTip\":\"stringa (max 2 frasi)\"}}. " +
+        "L'ingresso ha envelope.facts con period, importi lordo/netto, elenco linee (code, description, amount), itProfile (residenceLine, ccnl), disclaimer. " +
+        "plainSummary: 3-6 frasi semplici per un dipendente. residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
+        "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 3-8 voci su righe interessanti o trattenute; " +
+        "non inventare codici o importi non presenti in facts.lines."
       );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";
@@ -289,13 +257,12 @@ export class AiOpenAiRefinementService {
     const maxTokens =
       schemaVersion === "ai_assistant_v1"
         ? 4096
-        : schemaVersion === "ai_hr_center_analytics_v1" || schemaVersion === "ai_hr_copilot_v1"
+        : schemaVersion === "ai_hr_center_analytics_v1"
           ? 4096
           : schemaVersion === "ai_hitl_draft_v1" ||
               schemaVersion === "ai_turnover_insights_deep_v1" ||
               schemaVersion === "ai_compensation_benchmark_v1" ||
-              schemaVersion === "ai_payslip_explain_v1" ||
-              schemaVersion === "ai_hiring_simulator_advise_v1"
+              schemaVersion === "ai_payslip_explain_v1"
             ? 2048
             : 2048;
 

@@ -47,7 +47,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "h-ai",
       title: "Assistente e sintesi AI",
-      hrefs: ["/ai-hub" as Route, "/analytics/retention" as Route]
+      hrefs: ["/ai-hub" as Route, "/analytics/advanced" as Route, "/analytics/advanced/retention" as Route]
     }
   ],
   "Selezione e documenti": [
@@ -63,11 +63,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "a-analisi",
       title: "Analisi HR",
-      hrefs: [
-        "/personnel-budget/simulatore-assunzione" as Route,
-        "/forecast",
-        "/compensation/bench" as Route
-      ]
+      hrefs: ["/tools/cost-calculator" as Route, "/forecast", "/compensation/bench" as Route]
     },
     {
       id: "a-budget",

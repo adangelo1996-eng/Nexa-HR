@@ -36,8 +36,12 @@ const nextConfig: NextConfig = {
     return [
       { source: "/payroll-calc", destination: "/payroll-hebb", permanent: true },
       { source: "/payroll-batch", destination: "/payroll-hebb", permanent: true },
-      { source: "/insights", destination: "/analytics/retention", permanent: true },
-      { source: "/insights/:path*", destination: "/analytics/retention", permanent: true }
+      { source: "/insights", destination: "/analytics/advanced/retention", permanent: true },
+      { source: "/insights/:path*", destination: "/analytics/advanced/retention", permanent: true },
+      { source: "/analytics/economico", destination: "/analytics/advanced/economico", permanent: true },
+      { source: "/analytics/retention", destination: "/analytics/advanced/retention", permanent: true },
+      { source: "/analytics/competenze", destination: "/analytics/advanced/competenze", permanent: true },
+      { source: "/analytics/operativo", destination: "/analytics/advanced/operativo", permanent: true }
     ];
   }
 };
