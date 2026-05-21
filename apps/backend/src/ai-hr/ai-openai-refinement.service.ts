@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { AI_TOKEN_BODY_RE } from "../ai-privacy/ai-privacy.constants";
 import { isNexaAiOpenAiLlmEnabled } from "../platform/nexa-ai-llm-env";
 import { getNexaHrConversationalAgentSystemPrompt } from "./ai-hr-agent";
+import { HEBB_PAGE_CONTEXT_PROMPT_HINT } from "./hebb-page-context";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 const REQUEST_MS = 55_000;
@@ -62,7 +63,7 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
     return new Set();
   }
-  if (schemaVersion === "ai_payslip_explain_v1") {
+  if (schemaVersion === "ai_payslip_explain_v1" || schemaVersion === "ai_field_suggest_v1") {
     return new Set();
   }
   return collectTokensFromJson(pseudonymizedInput);
@@ -103,7 +104,9 @@ function systemPromptForSchema(schemaVersion: string): string {
         getNexaHrConversationalAgentSystemPrompt() +
           "\n\n" +
           base +
-          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.text (bozza in italiano) e envelope.facts (message, page, snapshot, routeHints, platformCapabilities, agent, leaveBalance, policySnippets, ecc.): usa i facts solo come contesto, non ripeterli nel JSON di output. " +
+          " Schema: {\"envelope\":{\"text\":\"stringa\"}}. L'ingresso contiene envelope.text (bozza in italiano) e envelope.facts (message, pageContext, page, snapshot, routeHints, platformCapabilities, agent, leaveBalance, policySnippets, ecc.): usa i facts solo come contesto, non ripeterli nel JSON di output. " +
+          HEBB_PAGE_CONTEXT_PROMPT_HINT +
+          " " +
           "Se envelope.text contiene token __nexa_ref:...__, copiali IDENTICI nella tua envelope.text. " +
           "Produci una sola envelope.text in italiano: applica IDENTITÀ e FONTI DI VERITÀ dell’agente sopra; rispondi prima all’intento della domanda (es. remote working: usa smartWorkingInsight / smartWorkingMultiScopeSummary se presenti); usa il resto dello snapshot per priorità operative; per percorsi usa solo voci da platformCapabilities/routeHints; quando suggerisci dove andare nell’app, includi link Markdown [etichetta](/path) con path esatti dalla lista. Non inventare numeri assenti da snapshot o leaveBalance."
       );
@@ -157,14 +160,17 @@ function systemPromptForSchema(schemaVersion: string): string {
         " Migliora in italiano professionale: situazione con numeri da facts; correlazioni max 5 (legami tra budget, turnover, gap, operatività); " +
         " rischi max 5 (operativi, non legali vincolanti); azioni7giorni esattamente 5 passi concreti per HR/controller; " +
         " raccomandazioniHr esattamente 3-4 voci per HR controller (policy, governance dati, allineamento CdA/HRBP). " +
-        " Non inventare cifre assenti da facts; nessun nominativo."
+        " Non inventare cifre assenti da facts; nessun nominativo. " +
+        HEBB_PAGE_CONTEXT_PROMPT_HINT
       );
     case "ai_advanced_analytics_chat_v1":
       return (
         base +
         " Schema: {\"envelope\":{\"reply\":\"stringa\"}}. " +
         " Sei l'analista AI scoped a una singola analisi Nexa HR (envelope.analysisId, envelope.topic). " +
-        " Rispondi in italiano alla envelope.message usando SOLO envelope.facts e envelope.history; " +
+        HEBB_PAGE_CONTEXT_PROMPT_HINT +
+        " " +
+        " Rispondi in italiano alla envelope.message usando SOLO envelope.facts, envelope.pageContext e envelope.history; " +
         " se i dati non bastano, dillo e indica cosa verificare in app. Max 12 righe. Nessun nominativo. " +
         " Migliora envelope.replySeed mantenendo coerenza con i fatti."
       );
@@ -175,7 +181,9 @@ function systemPromptForSchema(schemaVersion: string): string {
           base +
           " Schema obbligatorio: {\"envelope\":{\"reply\":\"stringa (1-2 frasi intro, specifica sul caso)\",\"sections\":[{\"title\":\"stringa\",\"bullets\":[{\"text\":\"stringa\",\"action\":{\"label\":\"stringa\",\"href\":\"/path\"}}]}]}}. " +
           " sections: 2-4 blocchi; title tra: Cosa fare, Dove andare, Come funziona il calcolo (se domanda su metriche/score/varianza/straordinari/formazione/sale), Consiglio per te, Passi successivi; " +
-          " bullets: 2-6 voci ciascuna, text conciso e legato a envelope.message/page (niente boilerplate generico); " +
+          " bullets: 2-6 voci ciascuna, text conciso e legato a envelope.message, envelope.pageContext e envelope.page (niente boilerplate generico); " +
+          HEBB_PAGE_CONTEXT_PROMPT_HINT +
+          " " +
           " almeno un action con href da routeHints/platformCapabilities quando c'è un passo utile; href path esatto (es. /analytics/retention, /sale-riunioni); " +
           " se knowledgeExcerpt descrive formule (turnover, budget, overtime, training %, meeting rooms), riassumile fedelmente in «Come funziona il calcolo»; " +
           " «Consiglio per te»: azioni HR contestuali (manager vs dipendente vs HR) senza nominativi; reply breve; multi-turno: history, message, replySeed; " +
@@ -215,6 +223,14 @@ function systemPromptForSchema(schemaVersion: string): string {
         "ralLowEur < ralMedianEur < ralHighEur, valori interi EUR realistici; notesIt in italiano (2-5 frasi) con limiti del benchmark e assenza di fonti primarie; " +
         "se ccnlCode è presente, cita in notesIt in modo sintetico che la fascia va contestualizzata al contratto collettivo indicato; " +
         "non citare aziende reali né persone."
+      );
+    case "ai_field_suggest_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"value\":\"stringa o numero\",\"confidence\":number,\"reason\":\"stringa\"}}. " +
+        " L'ingresso ha envelope.fieldKey, envelope.formId, envelope.partialForm e envelope.context (solo aggregati organizzativi, nessun nominativo). " +
+        " Suggerisci UN solo valore appropriato per fieldKey; confidence tra 0 e 1; reason in italiano breve (max 2 frasi). " +
+        " Non inventare email, IBAN, codici fiscali, indirizzi, stipendi o importi; non citare persone."
       );
     case "ai_payslip_explain_v1":
       return (

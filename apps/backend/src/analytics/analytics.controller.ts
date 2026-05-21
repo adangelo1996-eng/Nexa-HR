@@ -10,10 +10,22 @@ import {
 } from "@nestjs/common";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { Type } from "class-transformer";
-import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
+import {
+  IsBoolean,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested
+} from "class-validator";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
+import { HebbPageContextDto } from "../ai-hr/hebb-page-context";
 import { AnalyticsOrchestratorService } from "./analytics-orchestrator.service";
 import { NarrativeAnalyticsService } from "./narrative-analytics.service";
 
@@ -92,6 +104,11 @@ class HubRunDto {
   @Type(() => Boolean)
   @IsBoolean()
   useLlm?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HebbPageContextDto)
+  pageContext?: HebbPageContextDto;
 }
 
 class AnalysisChatDto {
@@ -102,6 +119,11 @@ class AnalysisChatDto {
 
   @IsOptional()
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HebbPageContextDto)
+  pageContext?: HebbPageContextDto;
 }
 
 @Controller("analytics")
@@ -152,7 +174,10 @@ export class AnalyticsController {
     @Param("analysisId") analysisId: string,
     @Body() body: HubRunDto
   ): ReturnType<AnalyticsOrchestratorService["generateStructuredInsight"]> {
-    return this.orchestrator.generateStructuredInsight(auth, analysisId, { useLlm: body.useLlm });
+    return this.orchestrator.generateStructuredInsight(auth, analysisId, {
+      useLlm: body.useLlm,
+      pageContext: body.pageContext
+    });
   }
 
   @Post("advanced/:analysisId/chat")
@@ -164,7 +189,8 @@ export class AnalyticsController {
   ): ReturnType<AnalyticsOrchestratorService["chatWithAnalyst"]> {
     return this.orchestrator.chatWithAnalyst(auth, analysisId, {
       message: body.message,
-      history: body.history
+      history: body.history,
+      pageContext: body.pageContext
     });
   }
 
@@ -307,7 +333,11 @@ export class AnalyticsController {
       }
     }
     const includeTurnover = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
-    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover });
+    const includeEconomic = await this.canViewHrEconomicData(auth);
+    return this.store.getManagerCopilotDashboard(auth.userId, {
+      includeTurnover,
+      includeEconomicData: includeEconomic
+    });
   }
 
   @Get("turnover-retention")
@@ -454,4 +484,13 @@ export class AnalyticsController {
     const m = months ? Math.min(12, Math.max(1, Number(months) || 6)) : 6;
     return this.store.payrollForecastCostBreakdown(companyId, m);
   }
+
+  private async canViewHrEconomicData(auth: AuthContext): Promise<boolean> {
+    if (auth.role === "superuser") {
+      return true;
+    }
+    const me = await this.store.getUser(auth.userId);
+    return this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, me.email);
+  }
+
 }

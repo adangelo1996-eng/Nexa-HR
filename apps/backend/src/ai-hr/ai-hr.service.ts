@@ -15,6 +15,12 @@ import {
 } from "./ai-hr-agent";
 import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
+import {
+  applyHebbPageContextToRecord,
+  normalizeHebbPageContext,
+  type HebbPageContext,
+  type HebbPageContextDto
+} from "./hebb-page-context";
 
 const SCHEMA_ASSISTANT = "ai_assistant_v1";
 const SCHEMA_NL = "ai_nl_query_v1";
@@ -89,7 +95,12 @@ export class AiHrService {
 
   async assistant(
     auth: { userId: string; role: AuthRole },
-    body: { message: string; page?: string | null; scope?: AssistantScopePayload }
+    body: {
+      message: string;
+      page?: string | null;
+      scope?: AssistantScopePayload;
+      pageContext?: HebbPageContextDto | null;
+    }
   ): Promise<{
     reply: string;
     sources: string[];
@@ -108,13 +119,17 @@ export class AiHrService {
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
       const sources: string[] = [];
+      const pageContext = this.mergePageContextForUser(me, normalizeHebbPageContext(body.pageContext));
       const facts: Record<string, unknown> = {
-        page: body.page ?? null,
         message: body.message,
         scopeKind,
         scopeSubjects: subjectUserIds.map((id) => ({ id })),
         subjectCount: subjectUserIds.length
       };
+      applyHebbPageContextToRecord(facts, pageContext, body.page ?? null);
+      if (pageContext) {
+        sources.push("page_context");
+      }
       facts.snapshot = await this.buildAssistantSnapshot(auth, me, subjectUserIds, org, managedSet);
       facts.routeHints = AI_HR_ROUTE_HINTS;
       facts.platformCapabilities = NEXA_HR_PLATFORM_NAV;
@@ -153,9 +168,10 @@ export class AiHrService {
         sessionId,
         inputForFingerprint: {
           message: body.message,
-          page: body.page,
+          page: pageContext?.currentPath ?? body.page,
           scopeKind,
-          subjectCount: subjectUserIds.length
+          subjectCount: subjectUserIds.length,
+          userRole: pageContext?.userRole
         },
         dataSources: sources,
         responseSizeBytes: Buffer.byteLength(reply, "utf8"),
@@ -553,6 +569,21 @@ export class AiHrService {
       .slice(0, 3)
       .map(([wd, count]) => ({ label: wdLabels[wd] ?? String(wd), count }));
     return { windowStart, windowEnd, months, topWeekdays, pendingInWindow, approvedInWindow };
+  }
+
+  /** Arricchisce il contesto client con company/employment dal profilo server. */
+  private mergePageContextForUser(
+    me: User,
+    incoming: HebbPageContext | null
+  ): HebbPageContext | null {
+    if (!incoming) {
+      return null;
+    }
+    return {
+      ...incoming,
+      companyId: me.companyId || incoming.companyId,
+      employmentState: incoming.employmentState ?? me.employmentState ?? undefined
+    };
   }
 
   private buildAssistantDraft(facts: Record<string, unknown>, message: string): string {

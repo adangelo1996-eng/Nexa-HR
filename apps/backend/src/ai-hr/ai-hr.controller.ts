@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
-import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from "class-validator";
+import { IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext, type AuthRole } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AiHrService } from "./ai-hr.service";
-import { HrCopilotService, type HrCopilotTurn } from "./hr-copilot.service";
+import { FieldSuggestService } from "./field-suggest.service";
+import { HebbPageContextDto } from "./hebb-page-context";
 import { NexaPlatformAgentService, type PlatformAgentTurn } from "./nexa-platform-agent.service";
 
 class AssistantScopeBodyDto {
@@ -38,6 +39,11 @@ class AssistantDto {
   @ValidateNested()
   @Type(() => AssistantScopeBodyDto)
   scope?: AssistantScopeBodyDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HebbPageContextDto)
+  pageContext?: HebbPageContextDto;
 }
 
 class NlRunDto {
@@ -64,14 +70,24 @@ class TriageDto {
   text!: string;
 }
 
-class HrCopilotChatDto {
+class FieldSuggestDto {
   @IsString()
   @MinLength(1)
-  @MaxLength(8000)
-  message!: string;
+  @MaxLength(128)
+  fieldKey!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  formId!: string;
 
   @IsOptional()
-  history?: HrCopilotTurn[];
+  @IsObject()
+  context?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  partialForm?: Record<string, unknown>;
 }
 
 class PlatformAgentChatDto {
@@ -91,6 +107,11 @@ class PlatformAgentChatDto {
   @ValidateNested()
   @Type(() => AssistantScopeBodyDto)
   scope?: AssistantScopeBodyDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HebbPageContextDto)
+  pageContext?: HebbPageContextDto;
 }
 
 @Controller("ai/hr")
@@ -99,8 +120,25 @@ export class AiHrController {
   constructor(
     private readonly aiHr: AiHrService,
     private readonly platformAgent: NexaPlatformAgentService,
-    private readonly hrCopilot: HrCopilotService
+    private readonly fieldSuggest: FieldSuggestService
   ) {}
+
+  @Post("field-suggest")
+  @RequireNexaPermissions("nexa.ai_assistant:read")
+  postFieldSuggest(
+    @CurrentAuth() auth: AuthContext,
+    @Body() body: FieldSuggestDto
+  ): ReturnType<FieldSuggestService["suggest"]> {
+    return this.fieldSuggest.suggest(
+      { userId: auth.userId, role: auth.role as AuthRole },
+      {
+        fieldKey: body.fieldKey,
+        formId: body.formId,
+        context: body.context,
+        partialForm: body.partialForm
+      }
+    );
+  }
 
   @Post("assistant")
   @RequireNexaPermissions("nexa.ai_assistant:read")
@@ -113,7 +151,8 @@ export class AiHrController {
       {
         message: body.message,
         page: body.page,
-        scope: body.scope
+        scope: body.scope,
+        pageContext: body.pageContext
       }
     );
   }
@@ -172,24 +211,6 @@ export class AiHrController {
     return this.aiHr.triage({ userId: auth.userId, role: auth.role as AuthRole }, body);
   }
 
-  @Get("copilot/brief")
-  @RequireNexaPermissions("nexa.ai_assistant:read")
-  getHrCopilotBrief(@CurrentAuth() auth: AuthContext): ReturnType<HrCopilotService["generateBrief"]> {
-    return this.hrCopilot.generateBrief({
-      userId: auth.userId,
-      role: auth.role as AuthRole
-    });
-  }
-
-  @Post("copilot/chat")
-  @RequireNexaPermissions("nexa.ai_assistant:read")
-  postHrCopilotChat(
-    @CurrentAuth() auth: AuthContext,
-    @Body() body: HrCopilotChatDto
-  ): ReturnType<HrCopilotService["chat"]> {
-    return this.hrCopilot.chat({ userId: auth.userId, role: auth.role as AuthRole }, { message: body.message, history: body.history });
-  }
-
   @Post("platform-agent/chat")
   @RequireNexaPermissions("nexa.ai_assistant:read")
   postPlatformAgentChat(
@@ -202,7 +223,8 @@ export class AiHrController {
         message: body.message,
         page: body.page,
         history: body.history,
-        scope: body.scope
+        scope: body.scope,
+        pageContext: body.pageContext
       }
     );
   }

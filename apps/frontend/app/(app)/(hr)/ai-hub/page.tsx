@@ -39,7 +39,8 @@ import {
   type AiAssistantScopePayload,
   type AiNlCatalogEntryDto
 } from "@/lib/api";
-import { getToken } from "@/lib/auth-session";
+import { getSessionUser, getToken } from "@/lib/auth-session";
+import { buildHebbPageContext } from "@/lib/hebb-page-context";
 import { AssistantMarkdownLite } from "@/components/assistant-markdown-lite";
 import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
@@ -245,6 +246,17 @@ export default function AiHubPage(): React.JSX.Element {
   const [scopeUserId, setScopeUserId] = useState("");
   const [scopeTeamId, setScopeTeamId] = useState("");
   const [scopeCostCenterId, setScopeCostCenterId] = useState("");
+
+  const hebbPageContext = useMemo(
+    () =>
+      buildHebbPageContext({
+        pathname: pathname ?? "/ai-hub",
+        sessionUser: getSessionUser(),
+        teamScope: scopeMode === "team" ? scopeTeamId : undefined,
+        costCenterScope: scopeMode === "cost_center" ? scopeCostCenterId : undefined
+      }),
+    [pathname, scopeMode, scopeTeamId, scopeCostCenterId]
+  );
   const [orgUserQuery, setOrgUserQuery] = useState("");
   const [orgUserResults, setOrgUserResults] = useState<{ userId: string; label: string }[]>([]);
   const [orgUserSearchBusy, setOrgUserSearchBusy] = useState(false);
@@ -393,7 +405,8 @@ export default function AiHubPage(): React.JSX.Element {
     try {
       const r = await postAiAssistant(t, {
         message: userText,
-        page: pathname ?? undefined,
+        page: hebbPageContext.currentPath,
+        pageContext: hebbPageContext,
         ...(scope ? { scope } : {})
       });
       setAssistantLastRun({ llm: r.llm, privacy: r.privacy, sources: r.sources });
@@ -470,7 +483,8 @@ export default function AiHubPage(): React.JSX.Element {
     try {
       const chip = HEBB_ANALYSIS_AREA_CHIPS.find((c) => c.id === areaId);
       const r = await postAdvancedAnalysisInsight(t, chip?.orchestratorId ?? areaId, {
-        useLlm: llmActive
+        useLlm: llmActive,
+        pageContext: hebbPageContext
       });
       setAnalysisInsight(r);
       setAnalysisLlm({

@@ -4,6 +4,11 @@ import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { assertHebbUserMessageAllowed } from "../ai-hr/ai-hr-message-policy";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
 import { HrDataStore } from "../platform/hr-data.store";
+import {
+  applyHebbPageContextToRecord,
+  normalizeHebbPageContext,
+  type HebbPageContextDto
+} from "../ai-hr/hebb-page-context";
 import { NarrativeAnalyticsService } from "./narrative-analytics.service";
 
 export type AnalyticsHubCard = {
@@ -232,7 +237,7 @@ export class AnalyticsOrchestratorService {
   async generateStructuredInsight(
     auth: AuthContext,
     analysisId: string,
-    options?: { useLlm?: boolean }
+    options?: { useLlm?: boolean; pageContext?: HebbPageContextDto | null }
   ): Promise<StructuredAnalyticsInsight & { analysisId: string; llmActive: boolean }> {
     const card = this.resolveCard(analysisId);
     const companyId = await this.companyIdForAuth(auth);
@@ -243,14 +248,14 @@ export class AnalyticsOrchestratorService {
     if (options?.useLlm === true && this.openAi.isActive()) {
       const { sessionId } = await this.gateway.beginSession(companyId, auth.userId);
       try {
-        const envelopePayload = {
-          envelope: {
-            analysisId: card.id,
-            topic: card.topic,
-            facts: payload,
-            insightSeed: seed
-          }
+        const envelope: Record<string, unknown> = {
+          analysisId: card.id,
+          topic: card.topic,
+          facts: payload,
+          insightSeed: seed
         };
+        applyHebbPageContextToRecord(envelope, normalizeHebbPageContext(options?.pageContext));
+        const envelopePayload = { envelope };
         const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, "ai_advanced_analytics_v1");
         const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_advanced_analytics_v1");
         if (refined.ok && refined.data && typeof refined.data === "object") {
@@ -298,7 +303,11 @@ export class AnalyticsOrchestratorService {
   async chatWithAnalyst(
     auth: AuthContext,
     analysisId: string,
-    body: { message: string; history?: Array<{ role: "user" | "assistant"; content: string }> }
+    body: {
+      message: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+      pageContext?: HebbPageContextDto | null;
+    }
   ): Promise<{ reply: string; llmApplied: boolean; llmActive: boolean }> {
     const card = this.resolveCard(analysisId);
     const companyId = await this.companyIdForAuth(auth);
@@ -326,16 +335,16 @@ export class AnalyticsOrchestratorService {
 
     const { sessionId } = await this.gateway.beginSession(companyId, auth.userId);
     try {
-      const envelopePayload = {
-        envelope: {
-          analysisId: card.id,
-          topic: card.topic,
-          facts: payload,
-          message,
-          history,
-          replySeed: draft
-        }
+      const envelope: Record<string, unknown> = {
+        analysisId: card.id,
+        topic: card.topic,
+        facts: payload,
+        message,
+        history,
+        replySeed: draft
       };
+      applyHebbPageContextToRecord(envelope, normalizeHebbPageContext(body.pageContext));
+      const envelopePayload = { envelope };
       const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, "ai_advanced_analytics_chat_v1");
       const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, "ai_advanced_analytics_chat_v1");
       if (refined.ok && refined.data && typeof refined.data === "object") {

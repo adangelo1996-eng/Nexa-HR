@@ -1,6 +1,9 @@
 "use client";
 
 import { clearSession, getSessionUser, saveSession, type SessionUser, type UserRole } from "./auth-session";
+import type { HebbPageContextPayload } from "./hebb-page-context";
+
+export type { HebbPageContextPayload };
 
 export interface Payslip {
   id: string;
@@ -665,7 +668,7 @@ export async function fetchAdvancedAnalysisKpis(
 export async function postAdvancedAnalysisInsight(
   token: string,
   analysisId: string,
-  body?: { useLlm?: boolean }
+  body?: { useLlm?: boolean; pageContext?: HebbPageContextPayload }
 ): Promise<StructuredAnalyticsInsightDto> {
   const response = await fetch(buildApiUrl(`/analytics/advanced/${encodeURIComponent(analysisId)}/insight`), {
     method: "POST",
@@ -679,7 +682,11 @@ export async function postAdvancedAnalysisInsight(
 export async function postAdvancedAnalysisChat(
   token: string,
   analysisId: string,
-  body: { message: string; history?: Array<{ role: "user" | "assistant"; content: string }> }
+  body: {
+    message: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+    pageContext?: HebbPageContextPayload;
+  }
 ): Promise<{ reply: string; llmApplied: boolean; llmActive: boolean }> {
   const response = await fetch(buildApiUrl(`/analytics/advanced/${encodeURIComponent(analysisId)}/chat`), {
     method: "POST",
@@ -708,6 +715,7 @@ export async function postPlatformAgentChat(
     page?: string;
     history?: PlatformAgentTurnDto[];
     scope?: AiAssistantScopePayload;
+    pageContext?: HebbPageContextPayload;
   }
 ): Promise<{ reply: string; structured: PlatformAgentStructuredDto | null; sources: string[] } & AiAssistantResponseMeta> {
   const response = await fetch(buildApiUrl("/ai/hr/platform-agent/chat"), {
@@ -736,6 +744,31 @@ export async function postPlatformAgentChat(
       schemaVersion: typeof privRaw?.schemaVersion === "string" ? privRaw.schemaVersion : ""
     }
   };
+}
+
+export type HebbFieldSuggestResult = {
+  value: string | number | boolean | null;
+  confidence: number;
+  reason: string;
+  source: "blocked" | "rules" | "llm";
+};
+
+export async function postHebbFieldSuggest(
+  token: string,
+  payload: {
+    fieldKey: string;
+    formId: string;
+    context?: Record<string, unknown>;
+    partialForm?: Record<string, unknown>;
+  }
+): Promise<HebbFieldSuggestResult> {
+  const response = await fetch(buildApiUrl("/ai/hr/field-suggest"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as HebbFieldSuggestResult;
 }
 
 function parsePlatformAgentStructuredDto(raw: unknown): PlatformAgentStructuredDto | null {
@@ -4763,7 +4796,12 @@ export interface AiAssistantResponseMeta {
 
 export async function postAiAssistant(
   token: string,
-  payload: { message: string; page?: string; scope?: AiAssistantScopePayload }
+  payload: {
+    message: string;
+    page?: string;
+    scope?: AiAssistantScopePayload;
+    pageContext?: HebbPageContextPayload;
+  }
 ): Promise<{ reply: string; sources: string[] } & AiAssistantResponseMeta> {
   const response = await fetch(buildApiUrl("/ai/hr/assistant"), {
     method: "POST",

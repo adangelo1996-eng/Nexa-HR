@@ -17,6 +17,11 @@ import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiHrService, type AssistantScopePayload } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import {
+  applyHebbPageContextToRecord,
+  normalizeHebbPageContext,
+  type HebbPageContextDto
+} from "./hebb-page-context";
+import {
   parsePlatformAgentStructured,
   structuredToPlainReply,
   tryParseStructuredFromText,
@@ -66,6 +71,7 @@ export class NexaPlatformAgentService implements OnModuleInit {
       page?: string | null;
       history?: PlatformAgentTurn[];
       scope?: AssistantScopePayload;
+      pageContext?: HebbPageContextDto | null;
     }
   ): Promise<{
     reply: string;
@@ -86,7 +92,8 @@ export class NexaPlatformAgentService implements OnModuleInit {
     const assistantOut = await this.aiHr.assistant(auth, {
       message: body.message,
       page: body.page,
-      scope: body.scope
+      scope: body.scope,
+      pageContext: body.pageContext
     });
 
     if (!this.openAi.isActive()) {
@@ -103,19 +110,19 @@ export class NexaPlatformAgentService implements OnModuleInit {
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
       const perms = await this.permissions.getExpandedPermissionsForUserId(auth.userId);
-      const envelopePayload = {
-        envelope: {
-          message: body.message,
-          page: body.page ?? null,
-          history,
-          replySeed: assistantOut.reply,
-          routeHints: AI_HR_ROUTE_HINTS,
-          platformCapabilities: NEXA_HR_PLATFORM_NAV,
-          agent: { id: NEXA_HR_AGENT_ID, version: NEXA_HR_AGENT_VERSION },
-          knowledgeExcerpt: this.knowledgeMd.slice(0, 12000),
-          permissionsSummary: [...perms].slice(0, 48)
-        }
+      const pageContext = normalizeHebbPageContext(body.pageContext);
+      const envelope: Record<string, unknown> = {
+        message: body.message,
+        history,
+        replySeed: assistantOut.reply,
+        routeHints: AI_HR_ROUTE_HINTS,
+        platformCapabilities: NEXA_HR_PLATFORM_NAV,
+        agent: { id: NEXA_HR_AGENT_ID, version: NEXA_HR_AGENT_VERSION },
+        knowledgeExcerpt: this.knowledgeMd.slice(0, 12000),
+        permissionsSummary: [...perms].slice(0, 48)
       };
+      applyHebbPageContextToRecord(envelope, pageContext, body.page ?? null);
+      const envelopePayload = { envelope };
       const pseudo = await this.gateway.toModelPayload(sessionId, envelopePayload, SCHEMA_PLATFORM_AGENT);
       const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, SCHEMA_PLATFORM_AGENT);
       let reply = assistantOut.reply;
@@ -141,7 +148,12 @@ export class NexaPlatformAgentService implements OnModuleInit {
         feature: "platform_agent",
         schemaVersion: SCHEMA_PLATFORM_AGENT,
         sessionId,
-        inputForFingerprint: { messageLen: body.message.length, historyLen: history.length, page: body.page },
+        inputForFingerprint: {
+          messageLen: body.message.length,
+          historyLen: history.length,
+          page: pageContext?.currentPath ?? body.page,
+          userRole: pageContext?.userRole
+        },
         dataSources: ["assistant_snapshot", "nexa_agent_knowledge", "platform_nav"],
         responseSizeBytes: Buffer.byteLength(reply, "utf8"),
         outcome: refineApplied ? "llm" : "template"

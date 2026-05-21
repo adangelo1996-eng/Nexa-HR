@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { parseGuideMarkdownFallback } from "@/lib/nexa-guide-content";
 import { getToken, getSessionUser, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
+import { buildHebbPageContext } from "@/lib/hebb-page-context";
 
 type Turn = PlatformAgentTurnDto;
 
@@ -136,9 +137,14 @@ export function NexaGuidePanel(): React.JSX.Element | null {
     setBusy(true);
     setError(null);
     try {
+      const pageContext = buildHebbPageContext({
+        pathname: pathname ?? "/",
+        sessionUser: getSessionUser()
+      });
       const out = await postPlatformAgentChat(token, {
         message: msg,
-        page: pathname,
+        page: pageContext.currentPath,
+        pageContext,
         history
       });
       const structured = out.structured ?? parseGuideMarkdownFallback(out.reply);

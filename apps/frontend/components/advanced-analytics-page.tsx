@@ -2,7 +2,8 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { ArrowLeft, MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
   type StructuredAnalyticsInsightDto
 } from "@/lib/api";
 import { getToken, getSessionUser, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
+import { buildHebbPageContext } from "@/lib/hebb-page-context";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
@@ -86,8 +88,17 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
   const [chatTurns, setChatTurns] = useState<ChatTurn[]>([]);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
+  const pathname = usePathname();
   const sessionUser = getSessionUser();
   const llmAllowed = sessionCanUseNexaAiOpenAiLlm(sessionUser ?? undefined);
+  const hebbPageContext = useMemo(
+    () =>
+      buildHebbPageContext({
+        pathname: pathname ?? `/analytics/advanced/${analysisId}`,
+        sessionUser
+      }),
+    [pathname, analysisId, sessionUser]
+  );
 
   const loadKpis = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -123,7 +134,8 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
     setError(null);
     try {
       const out = await postAdvancedAnalysisInsight(token, analysisId, {
-        useLlm: useLlm && llmAllowed
+        useLlm: useLlm && llmAllowed,
+        pageContext: hebbPageContext
       });
       setInsight(out);
     } catch (e) {
@@ -131,7 +143,7 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
     } finally {
       setInsightBusy(false);
     }
-  }, [analysisId, useLlm, llmAllowed]);
+  }, [analysisId, useLlm, llmAllowed, hebbPageContext]);
 
   const sendChat = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -147,7 +159,8 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
     try {
       const out = await postAdvancedAnalysisChat(token, analysisId, {
         message: msg,
-        history: nextHistory.slice(0, -1)
+        history: nextHistory.slice(0, -1),
+        pageContext: hebbPageContext
       });
       setChatTurns((prev) => [...prev, { role: "assistant", content: out.reply }]);
     } catch (e) {
@@ -156,7 +169,7 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
     } finally {
       setChatBusy(false);
     }
-  }, [analysisId, chatInput, chatTurns]);
+  }, [analysisId, chatInput, chatTurns, hebbPageContext]);
 
   return (
     <NexaHrAppPage eyebrow={eyebrow} title={title} subtitle={subtitle}>
