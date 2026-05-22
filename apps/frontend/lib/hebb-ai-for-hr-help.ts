@@ -7,12 +7,14 @@ export const HEBB_AI_PAGE_KEYS = [
   "ai-hub",
   "payroll-hebb",
   "workforce-planning",
+  "manager-copilot",
   "nexa-hr-copilot",
   "insights",
   "cost-calculator",
   "hr-center-analisi",
   "hr-center-budget-report",
-  "hr-center-recap"
+  "hr-center-recap",
+  "hiring-simulator"
 ] as const;
 
 export type HebbAiPageKey = (typeof HEBB_AI_PAGE_KEYS)[number];
@@ -51,6 +53,15 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     bestPractices: [
       "Documenta override e periodi fuori standard.",
       "Dopo import o modifiche massive, ricalcola una bozza su campione prima del batch completo."
+    ]
+  },
+  "manager-copilot": {
+    title: "Pannello manager",
+    summary: "Report diretti, approvazioni in sospeso e indicatori chiave.",
+    howToUse: [
+      "Controlla le approvazioni in cima alla pagina.",
+      "Apri la scheda di un report per RAL e dati economici (se autorizzato).",
+      "Collega a Retention per approfondire il team."
     ]
   },
   "workforce-planning": {
@@ -143,6 +154,18 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ],
     bestPractices: [
       "Tratta i suggerimenti come promemoria operativi, non come valutazioni legali."
+    ]
+  },
+  "hiring-simulator": {
+    title: "Simulatore assunzione",
+    summary:
+      "Consulente AI su criteri contrattuali, agevolazioni e benefit; il motore calcola costo azienda e netto in tempo reale.",
+    howToUse: [
+      "Compila i criteri contrattuali e avvia la fase consulenza per verificare agevolazioni e benefit.",
+      "Salva scenari riutilizzabili e confronta l'impatto sul budget personale."
+    ],
+    bestPractices: [
+      "I calcoli sono indicativi: valida sempre con payroll e consulenza del lavoro prima di formalizzare l'assunzione."
     ]
   }
 };

@@ -385,7 +385,8 @@ export class AnalyticsController {
       }
     }
     const includeTurnover = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
-    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover });
+    const includeEconomicData = await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]);
+    return this.store.getManagerCopilotDashboard(auth.userId, { includeTurnover, includeEconomicData });
   }
 
   @Get("turnover-retention")
