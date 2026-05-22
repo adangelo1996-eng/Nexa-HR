@@ -39,6 +39,8 @@ export type PortalMapNavSubgroup = { id: string; title: string; items: PortalMap
 export type PortalMapNavSection = {
   id: string;
   title: string;
+  /** Accento colonna portale (header sidebar + flyout). */
+  portalCategory?: string;
   subgroups: PortalMapNavSubgroup[];
 };
 
