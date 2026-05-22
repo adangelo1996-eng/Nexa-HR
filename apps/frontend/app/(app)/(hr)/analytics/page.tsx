@@ -7,6 +7,7 @@ import { ArrowUpRight, Layers, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
+import { HUB_ACCENT_MAP, HUB_ICON_MAP } from "@/lib/advanced-analytics-profiles";
 import {
   fetchAnalyticsHubCatalog,
   postAdvancedAnalysisInsight,
@@ -151,6 +152,8 @@ export default function AnalyticsHubPage(): React.JSX.Element {
           {cards.map((card) => {
             const result = results[card.id];
             const busy = busyId === card.id;
+            const CardIcon = card.iconKey ? HUB_ICON_MAP[card.iconKey] : Sparkles;
+            const accent = card.accentKey ? HUB_ACCENT_MAP[card.accentKey] : "text-[#002D72] dark:text-sky-300";
             return (
               <article
                 key={card.id}
@@ -158,9 +161,14 @@ export default function AnalyticsHubPage(): React.JSX.Element {
                 style={{ background: "var(--card-bg)" }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-lg font-semibold text-[var(--prom-text)]">{card.titleIt}</h2>
+                  <div className="flex items-start gap-3">
+                    {CardIcon ? (
+                      <CardIcon className={`mt-0.5 h-6 w-6 shrink-0 ${accent}`} aria-hidden />
+                    ) : null}
+                    <h2 className="text-lg font-semibold text-[var(--prom-text)]">{card.titleIt}</h2>
+                  </div>
                   {card.llmCapable ? (
-                    <Sparkles className="h-5 w-5 shrink-0 text-[#002D72] opacity-70 dark:text-sky-300" aria-hidden />
+                    <Sparkles className={`h-5 w-5 shrink-0 opacity-70 ${accent}`} aria-hidden />
                   ) : null}
                 </div>
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--prom-muted)]">{card.blurbIt}</p>

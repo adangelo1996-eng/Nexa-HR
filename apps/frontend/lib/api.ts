@@ -590,6 +590,8 @@ export type AnalyticsHubCardDto = {
   href: string;
   topic: string;
   llmCapable: boolean;
+  iconKey?: string;
+  accentKey?: string;
 };
 
 export type AnalyticsHubRunResult = {
