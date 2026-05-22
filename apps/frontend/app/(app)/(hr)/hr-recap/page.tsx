@@ -15,6 +15,7 @@ import {
   type HrRecapTaskDto
 } from "@/lib/api";
 import { EmployeeLink } from "@/components/nexa-entity-links";
+import { HrOffboardStartAction } from "@/components/hr-offboard-start-action";
 import { getSessionUser, getToken, sessionCanAccessHrRecapDashboard, type SessionUser } from "@/lib/auth-session";
 
 type PeopleCategory = "active" | "hr_onboarding" | "offboarding" | "contracts_pending";
@@ -54,7 +55,9 @@ export default function HrRecapPage(): React.JSX.Element {
   const [peopleCategory, setPeopleCategory] = useState<PeopleCategory | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
-  const [peopleUsers, setPeopleUsers] = useState<Array<{ id: string; fullName: string; email: string }>>([]);
+  const [peopleUsers, setPeopleUsers] = useState<
+    Array<{ id: string; fullName: string; email: string; employmentState?: string }>
+  >([]);
   const [peopleContracts, setPeopleContracts] = useState<
     Array<{ id: string; title: string; recruit_candidate_id: string | null; updated_at: string }>
   >([]);
@@ -364,6 +367,19 @@ export default function HrRecapPage(): React.JSX.Element {
                       >
                         Apri wizard onboarding →
                       </Link>
+                    ) : null}
+                    {peopleCategory === "offboarding" ? (
+                      <Link
+                        href={`/hr/offboarding/wizard/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
+                        className="mt-2 inline-block text-xs font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+                      >
+                        Apri wizard offboarding →
+                      </Link>
+                    ) : null}
+                    {peopleCategory === "active" ? (
+                      <div className="mt-2">
+                        <HrOffboardStartAction userId={u.id} fullName={u.fullName} employmentState={u.employmentState} />
+                      </div>
                     ) : null}
                   </li>
                 ))}

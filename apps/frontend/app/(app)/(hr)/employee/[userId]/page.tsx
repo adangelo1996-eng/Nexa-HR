@@ -102,7 +102,7 @@ export default function EmployeeProfilePage(): React.JSX.Element {
           Indietro
         </Button>
       </div>
-      <EmployeeCvProfile profile={profile} viewer={sessionUser} />
+      <EmployeeCvProfile profile={profile} viewer={sessionUser} userId={userId} />
     </div>
   );
 }

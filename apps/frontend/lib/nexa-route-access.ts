@@ -9,7 +9,6 @@ import {
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanOpenEmployeeRecapPage,
   sessionCanViewOrgExpenseClaims,
-  sessionIsPlainEmployee,
   sessionUsesHrReorganizedNav,
   type SessionUser
 } from "@/lib/auth-session";
@@ -35,66 +34,6 @@ function normalizePath(href: string): string {
  * `NexaPermissionGuard`, `RoleGuard`, controlli in service). La “vista dipendente” da admin è anteprima UX
  * (`sessionStorage`): manipolare Inspect cambia solo i link mostrati, non i permessi sul server.
  */
-/** Percorsi consentiti al dipendente senza console HR (self-service + aree comuni). */
-const PLAIN_EMPLOYEE_EXACT_ROUTES = new Set([
-  "/",
-  "/mappa-portale",
-  "/attendance",
-  "/work-calendar",
-  "/workflow",
-  "/expenses",
-  "/payslips",
-  "/settings",
-  "/il-mio-team",
-  "/percorso",
-  "/percorso/formazione",
-  "/formazione",
-  "/scheduling",
-  "/smartworking",
-  "/sale-riunioni"
-]);
-
-/** Prefissi HR sempre negati ai dipendenti plain (difesa in profondità lato UI). */
-const PLAIN_EMPLOYEE_BLOCKED_PREFIXES = [
-  "/recruiting",
-  "/hr/",
-  "/admin",
-  "/contracts",
-  "/corporate-policies",
-  "/workforce-planning",
-  "/personnel-budget",
-  "/analytics",
-  "/lifecycle",
-  "/org-chart",
-  "/organigramma",
-  "/payroll-hebb",
-  "/employee",
-  "/reports",
-  "/hr-center",
-  "/ai-hub",
-  "/forecast",
-  "/compensation",
-  "/tools/",
-  "/hr-recap"
-] as const;
-
-function plainEmployeeMayAccessRoute(r: string): boolean {
-  if (PLAIN_EMPLOYEE_BLOCKED_PREFIXES.some((prefix) => r.startsWith(prefix))) {
-    return false;
-  }
-  if (PLAIN_EMPLOYEE_EXACT_ROUTES.has(r)) {
-    return true;
-  }
-  if (r.startsWith("/hub/")) {
-    const slug = r === "/hub" ? "" : r.slice("/hub/".length).split("/")[0] ?? "";
-    return slug === "home" || slug === "io" || slug === "documenti";
-  }
-  if (r.startsWith("/percorso/")) {
-    return r === "/percorso/formazione" || r.startsWith("/percorso/formazione/");
-  }
-  return false;
-}
-
 export function canAccessNexaPortalRoute(
   href: string,
   user: SessionUser | null,
@@ -108,23 +47,6 @@ export function canAccessNexaPortalRoute(
   const hrTools = !hide && sessionCanNexaAdmin(user);
 
   const r = normalizePath(href);
-
-  if (sessionIsPlainEmployee(user) && !hide) {
-    if (r === "/manager-copilot" || r.startsWith("/manager-copilot/")) {
-      return sessionCanAccessManagerPanel(user);
-    }
-    if (r === "/nexa-hr-copilot" || r.startsWith("/nexa-hr-copilot/")) {
-      return (
-        sessionCanUseNexaAiOpenAiLlm(user) &&
-        (sessionCanAccessManagerPanel(user) ||
-          sessionCanAccessHrRecapDashboard(user) ||
-          sessionCanNexaAdmin(user))
-      );
-    }
-    if (!plainEmployeeMayAccessRoute(r)) {
-      return false;
-    }
-  }
 
   /**
    * Route “sezione/*” reali (App Router): abilita per prefisso quando la pagina base è consentita.
@@ -140,6 +62,9 @@ export function canAccessNexaPortalRoute(
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
   if (r === "/hr/onboarding" || r.startsWith("/hr/onboarding/")) {
+    return !hide && sessionCanAccessHrRecapDashboard(user);
+  }
+  if (r === "/hr/offboarding" || r.startsWith("/hr/offboarding/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
   if (r === "/hr/formazione" || r.startsWith("/hr/formazione/")) {
@@ -180,9 +105,7 @@ export function canAccessNexaPortalRoute(
 
   for (const { prefix, base } of prefixToBase) {
     if (r.startsWith(prefix)) {
-      if (prefix === "/employee/" && user) {
-        return true;
-      }
+      // Riesegui la logica sulla route base della sezione.
       return canAccessNexaPortalRoute(base, user, hideSensitiveHr);
     }
   }
@@ -210,14 +133,6 @@ export function canAccessNexaPortalRoute(
       return !hide && hrExtras;
     case "/manager-copilot":
       return !hide && sessionCanAccessManagerPanel(user);
-    case "/nexa-hr-copilot":
-      return (
-        !hide &&
-        sessionCanUseNexaAiOpenAiLlm(user) &&
-        (sessionCanAccessManagerPanel(user) ||
-          sessionCanAccessHrRecapDashboard(user) ||
-          sessionCanNexaAdmin(user))
-      );
     case "/hr-center":
       return !hide && sessionCanUseNexaAiOpenAiLlm(user);
     case "/ai-hub":

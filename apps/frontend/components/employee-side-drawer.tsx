@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { CostCenterLink, EmployeeLink } from "@/components/nexa-entity-links";
+import { HrOffboardStartAction } from "@/components/hr-offboard-start-action";
 import { Button } from "@/components/ui/button";
 import { fetchUsers, type User } from "@/lib/api";
 import { getSessionUser, getToken, type SessionUser } from "@/lib/auth-session";
@@ -216,6 +217,16 @@ function DrawerBody(props: {
           Vai al profilo
         </Button>
       </Link>
+      {!isSelf && detailUser ? (
+        <div className="mt-3 flex justify-center">
+          <HrOffboardStartAction
+            userId={subject.userId}
+            fullName={subject.fullName}
+            employmentState={detailUser.employmentState}
+            variant="button"
+          />
+        </div>
+      ) : null}
       {isSelf ? (
         <Link
           href={"/settings" as Route}

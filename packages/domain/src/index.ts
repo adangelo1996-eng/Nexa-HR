@@ -103,6 +103,7 @@ export interface User {
   /** Stato occupazionale per dashboard HR (default active). */
   employmentState?: "active" | "hr_onboarding" | "offboarding";
   contractEndDate?: string | null;
+  noticePeriodMonths?: number | null;
   fixedSupplementMonthly?: number | null;
   garnishmentMonthlyEstimate?: number | null;
   fringeBenefitYtdEuros?: number | null;

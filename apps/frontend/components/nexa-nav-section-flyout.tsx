@@ -15,7 +15,7 @@ import type { SixCatNavSection } from "@/lib/nexa-six-category-nav";
 
 export type NexaNavFlyoutSection = PortalMapNavSection | SixCatNavSection;
 
-const SIDEBAR_OFFSET = "var(--nexa-sidebar-width, 15.5rem)";
+const SIDEBAR_OFFSET = "var(--nexa-sidebar-width, 12.5rem)";
 
 function pathActive(pathname: string, href: Route, exact?: boolean): boolean {
   if (exact) {
@@ -108,7 +108,7 @@ export function NexaNavSectionFlyout(props: {
   const isMobile = variant === "mobile";
   const panelClass = isMobile
     ? "nexa-nav-flyout fixed inset-y-0 right-0 z-[60] flex w-[min(100vw,22rem)] flex-col border-l border-[var(--prom-line)] shadow-2xl md:hidden"
-    : "nexa-nav-flyout fixed inset-y-0 z-[45] hidden w-[min(22rem,calc(100vw-var(--nexa-sidebar-width,15.5rem)))] flex-col border-r border-[var(--prom-line)] shadow-[6px_0_28px_-10px_rgba(0,0,0,0.28)] md:flex";
+    : "nexa-nav-flyout fixed inset-y-0 z-[45] hidden w-[min(22rem,calc(100vw-var(--nexa-sidebar-width,12.5rem)))] flex-col border-y border-r border-[var(--prom-line)] shadow-[6px_0_28px_-10px_rgba(0,0,0,0.28)] md:flex";
 
   const panelStyle = isMobile ? undefined : { left: SIDEBAR_OFFSET };
 

@@ -48,13 +48,13 @@ import {
 } from "@/lib/nav-visual-accents";
 import { NexaNavSectionFlyout, type NexaNavFlyoutSection } from "@/components/nexa-nav-section-flyout";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
-import { buildEmployeeNavSections, type EmployeeNavSection } from "@/lib/nexa-employee-nav";
 import type { HubTile } from "@/lib/nexa-hub-config";
 import {
-  buildHrNavPillars,
-  HR_NAV_DASHBOARD,
-  type HrNavPillar
-} from "@/lib/nexa-hr-nav";
+  buildEmployeePortalMapNavSections,
+  buildHrPortalMapNavSections,
+  type PortalMapNavSection
+} from "@/lib/nexa-portal-map-nav";
+import { HR_NAV_DASHBOARD } from "@/lib/nexa-hr-nav";
 import {
   addTopSidebarPin,
   NEXA_SIDEBAR_PINS_CHANGED_EVENT,
@@ -80,12 +80,12 @@ const NAV_EMPLOYEE_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard"
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa del portale", icon: Home };
 
 const EMPLOYEE_PORTAL_CATEGORY: Record<string, string> = {
-  "emp-home": "Oggi",
-  "emp-io": "Io",
-  "emp-docs": "Documenti"
+  home: "Oggi",
+  io: "Io",
+  documenti: "Documenti"
 };
-function pillarItemsToHubTiles(pillar: HrNavPillar): HubTile[] {
-  return pillar.subgroups.flatMap((sg) =>
+function portalSectionToHubTiles(section: PortalMapNavSection): HubTile[] {
+  return section.subgroups.flatMap((sg) =>
     sg.items.map((item) => ({
       href: item.href,
       label: item.label,
@@ -93,15 +93,6 @@ function pillarItemsToHubTiles(pillar: HrNavPillar): HubTile[] {
       icon: item.icon
     }))
   );
-}
-
-function employeeSectionToHubTiles(section: EmployeeNavSection): HubTile[] {
-  return section.items.map((item) => ({
-    href: item.href,
-    label: item.label,
-    blurb: "",
-    icon: item.icon
-  }));
 }
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
@@ -421,14 +412,14 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const usesEmployeeNav =
     hideSensitiveHrBecausePreview || sessionIsPlainEmployee(user ?? undefined);
 
-  const hrNavPillars = useMemo((): HrNavPillar[] => {
+  const hrNavSections = useMemo((): PortalMapNavSection[] => {
     if (!usesHrNav) return [];
-    return buildHrNavPillars(user, hideSensitiveHrBecausePreview);
+    return buildHrPortalMapNavSections(user, hideSensitiveHrBecausePreview);
   }, [user, hideSensitiveHrBecausePreview, usesHrNav]);
 
-  const employeeNavHubs = useMemo(() => {
+  const employeeNavSections = useMemo((): PortalMapNavSection[] => {
     if (!usesEmployeeNav) return [];
-    return buildEmployeeNavSections(user, hideSensitiveHrBecausePreview);
+    return buildEmployeePortalMapNavSections(user, hideSensitiveHrBecausePreview);
   }, [user, hideSensitiveHrBecausePreview, usesEmployeeNav]);
 
   const legacySixNavSections = useMemo(() => {
@@ -438,36 +429,32 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   const hrCollapsibleSections = useMemo(
     () =>
-      hrNavPillars.map((pillar) => ({
-        id: pillar.id,
-        title: pillar.title,
-        portalCategory: pillar.portalCategory,
-        subgroups: pillar.subgroups.map((sg) => ({
+      hrNavSections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        portalCategory: section.portalCategory,
+        subgroups: section.subgroups.map((sg) => ({
           id: sg.id,
           title: sg.title,
           items: sg.items
         }))
       })),
-    [hrNavPillars]
+    [hrNavSections]
   );
 
   const employeeCollapsibleSections = useMemo(
     () =>
-      employeeNavHubs
-        .map((section) => ({
-          id: section.id,
-          title: section.title,
-          portalCategory: EMPLOYEE_PORTAL_CATEGORY[section.id],
-          subgroups: [
-            {
-              id: `${section.id}-items`,
-              title: "",
-              items: section.items.filter((item) => String(item.href) !== "/")
-            }
-          ]
+      employeeNavSections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        portalCategory: section.portalCategory ?? EMPLOYEE_PORTAL_CATEGORY[section.id],
+        subgroups: section.subgroups.map((sg) => ({
+          id: sg.id,
+          title: sg.title,
+          items: sg.items.filter((item) => String(item.href) !== "/")
         }))
-        .filter((section) => section.subgroups.some((sg) => sg.items.length > 0)),
-    [employeeNavHubs]
+      })).filter((section) => section.subgroups.some((sg) => sg.items.length > 0)),
+    [employeeNavSections]
   );
 
   const flyoutNavSections = useMemo((): SidebarFlyoutSection[] => {
@@ -482,10 +469,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   const allPinTiles = useMemo((): HubTile[] => {
     if (usesHrNav) {
-      return hrNavPillars.flatMap((pillar) => pillarItemsToHubTiles(pillar));
+      return hrNavSections.flatMap((section) => portalSectionToHubTiles(section));
     }
     if (usesEmployeeNav) {
-      return employeeNavHubs.flatMap((section) => employeeSectionToHubTiles(section));
+      return employeeNavSections.flatMap((section) => portalSectionToHubTiles(section));
     }
     return legacySixNavSections.flatMap((section) =>
       section.subgroups.flatMap((sg) =>
@@ -497,7 +484,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         }))
       )
     );
-  }, [usesHrNav, usesEmployeeNav, hrNavPillars, employeeNavHubs, legacySixNavSections]);
+  }, [usesHrNav, usesEmployeeNav, hrNavSections, employeeNavSections, legacySixNavSections]);
 
   const dashboardNavItem = usesHrNav ? HR_NAV_DASHBOARD : NAV_EMPLOYEE_DASHBOARD;
 
@@ -641,7 +628,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   );
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden">
+    <div
+      className="flex h-[100dvh] overflow-hidden"
+      style={{ ["--nexa-sidebar-width" as string]: "12.5rem" }}
+    >
       <SessionIdleGuard />
       {flyoutSection && !mobileOpen ? (
         <NexaNavSectionFlyout
@@ -673,6 +663,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         <aside
           ref={desktopAsideRef}
           onScroll={schedulePersistSidebarScroll}
+          style={{ ["--nexa-sidebar-width" as string]: "12.5rem" }}
           className="hidden h-full min-h-0 w-[200px] shrink-0 overflow-y-auto overscroll-y-contain border-r border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)] md:block"
           aria-label="Navigazione principale"
         >

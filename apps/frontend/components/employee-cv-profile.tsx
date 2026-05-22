@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { JSX, ReactNode } from "react";
 import { Building2, Mail, Phone, UserCircle, Users } from "lucide-react";
 import { EmployeeLink } from "@/components/nexa-entity-links";
+import { HrOffboardStartAction } from "@/components/hr-offboard-start-action";
 import type { EmployeeCvProfileDto } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth-session";
 import { sessionCanNexaAdmin } from "@/lib/auth-session";
@@ -91,10 +92,11 @@ function CvSection(props: { title: string; children: ReactNode }): JSX.Element {
 export type EmployeeCvProfileProps = {
   profile: EmployeeCvProfileDto;
   viewer: SessionUser | null;
+  userId: string;
 };
 
 export function EmployeeCvProfile(props: EmployeeCvProfileProps): JSX.Element {
-  const { profile, viewer } = props;
+  const { profile, viewer, userId } = props;
   const s = profile.subject;
   const hireFmt = formatDateIt(s.hireDate);
   const birthFmt = formatDateIt(s.birthDate);
@@ -306,6 +308,14 @@ export function EmployeeCvProfile(props: EmployeeCvProfileProps): JSX.Element {
           >
             Impostazioni e aggiornamenti
           </Link>
+        ) : null}
+        {profile.flags.canEditInAdmin && canAdmin && !profile.flags.isSelf ? (
+          <HrOffboardStartAction
+            userId={userId}
+            fullName={s.fullName}
+            employmentState={s.employmentState}
+            variant="button"
+          />
         ) : null}
         {profile.flags.canEditInAdmin && canAdmin ? (
           <Link

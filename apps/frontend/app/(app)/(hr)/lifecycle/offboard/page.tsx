@@ -1,57 +1,46 @@
 "use client";
 
-import { useState } from "react";
-import { submitLifecycleOffboard } from "@/lib/api";
+import type { Route } from "next";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { fetchHrRecapSummary, type HrRecapSummaryDto } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
-import { Button } from "@/components/ui/button";
-
-const DEFAULT_CHECKLIST = {
-  revoca_accessi: false,
-  payroll_finale: false,
-  hardware: false
-};
 
 export default function OffboardPage(): React.JSX.Element {
-  const [userId, setUserId] = useState("");
-  const [checklist, setChecklist] = useState(DEFAULT_CHECKLIST);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [summary, setSummary] = useState<HrRecapSummaryDto | null>(null);
 
-  async function submit(): Promise<void> {
+  useEffect(() => {
     const token = getToken();
-    if (!token || !userId.trim()) {
-      return;
-    }
-    const res = (await submitLifecycleOffboard(token, userId.trim(), checklist)) as { accessDisabled?: boolean };
-    setMsg(res.accessDisabled ? "Offboarding completato, accessi revocati lato email." : "Checklist aggiornata.");
-  }
+    if (!token) return;
+    void fetchHrRecapSummary(token)
+      .then(setSummary)
+      .catch(() => setSummary(null));
+  }, []);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-[var(--prom-text)]">Offboarding</h1>
-      <input
-        placeholder="userId dipendente"
-        value={userId}
-        onChange={(e) => setUserId(e.target.value)}
-        className="w-full max-w-md rounded border border-[var(--prom-line)] bg-transparent px-3 py-2 text-sm"
-      />
-      <ul className="space-y-2 text-sm text-[var(--prom-text)]">
-        {Object.keys(checklist).map((k) => (
-          <li key={k}>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={checklist[k as keyof typeof checklist]}
-                onChange={(e) => setChecklist((c) => ({ ...c, [k]: e.target.checked }))}
-              />
-              {k}
-            </label>
-          </li>
-        ))}
-      </ul>
-      <Button type="button" onClick={() => void submit()}>
-        Salva
-      </Button>
-      {msg ? <p className="text-sm text-[var(--prom-muted)]">{msg}</p> : null}
+    <div className="mx-auto max-w-2xl space-y-6">
+      <header>
+        <h1 className="text-xl font-semibold text-[var(--prom-text)]">Offboarding dipendenti</h1>
+        <p className="mt-2 text-sm text-[var(--prom-muted)]">
+          Avvia la procedura guidata di uscita da scheda dipendente, recap HR o organigramma. Il wizard copre preavviso,
+          documenti, revoca accessi, payroll e chiusura formazione.
+        </p>
+      </header>
+
+      <div className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] p-4 text-sm">
+        <p className="font-medium text-[var(--prom-text)]">In offboarding</p>
+        <p className="mt-1 text-2xl font-semibold tabular-nums">{summary?.offboarding ?? "—"}</p>
+        <Link
+          href={"/hr-recap" as Route}
+          className="mt-3 inline-block text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+        >
+          Apri recap HR →
+        </Link>
+      </div>
+
+      <p className="text-xs text-[var(--prom-muted)]">
+        Per avviare un nuovo offboarding, apri il profilo di un dipendente attivo e seleziona «Avvia offboarding».
+      </p>
     </div>
   );
 }
