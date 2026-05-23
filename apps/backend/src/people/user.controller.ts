@@ -713,6 +713,15 @@ export class UserController {
       auth.role === "superuser" ||
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]));
+    const canAccessNexaReportsHr =
+      auth.role === "superuser" ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]));
+    const canAccessNexaAiAssistant =
+      auth.role === "superuser" ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]));
+    const canAccessNexaLifecycleHr =
+      auth.role === "superuser" ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"]));
     const canEditSelfPayrollProfileIt = auth.role === "superuser" || canAccessHrExtendedConsole;
     const directReports = await this.store.listUsersByManager(auth.userId);
     const companyRow = await this.store.getCompanySettings(user.companyId);
@@ -732,6 +741,9 @@ export class UserController {
       canAccessPayrollArea,
       canAccessPersonnelBudgetArea,
       canAccessHrRecapDashboard,
+      canAccessNexaReportsHr,
+      canAccessNexaAiAssistant,
+      canAccessNexaLifecycleHr,
       companyCcnl: companyRow.companyCcnl?.trim() || null
     };
   }

@@ -1,10 +1,11 @@
 /**
  * Testi guida per pagine HEBB AI for HR (popup aiuto in pagina).
- * La voce di menu «HEBB AI for HR» corrisponde a `/ai-hub` (chip analisi, pseudonimizzazione, contesto pagina).
+ * Support assistente: `/hebb-ai-support` · Analytics: `/analytics` · Copilot: `/nexa-hr-copilot` · Mate: `/hr/cowork`.
  */
 
 export const HEBB_AI_PAGE_KEYS = [
   "ai-hub",
+  "hebb-ai-support",
   "payroll-hebb",
   "workforce-planning",
   "manager-copilot",
@@ -29,17 +30,23 @@ export type HebbAiPageHelpContent = {
 
 const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "ai-hub": {
-    title: "Hebb AI Analytics",
+    title: "AI Analytics (hub)",
+    summary: "Percorso storico `/ai-hub`: reindirizza all’hub analisi su `/analytics` (permesso `nexa.reports_hr:read`).",
+    howToUse: ["Apri Hub Analytics o Advanced analysis dalla mappa portale."],
+    bestPractices: ["Non usare la chat assistente qui: è su Hebb AI Support."]
+  },
+  "hebb-ai-support": {
+    title: "Hebb AI Support",
     summary:
-      "Assistente e analisi per area Nexa (economico, retention, competenze, operativo, budget, turnover): chat, insight strutturati e controlli con pseudonimizzazione obbligatoria prima del modello.",
+      "Assistente HR, interrogazioni guidate, controlli e triage richieste — con pseudonimizzazione obbligatoria. Richiede `nexa.ai_assistant:read`.",
     howToUse: [
-      "Inizia da «Chiedi» per domande in linguaggio naturale su ferie, cedolini, policy e percorsi nell’app.",
-      "Usa i chip «Analisi per area Nexa» per insight su aggregati (permesso report HR); apri la pagina analisi dedicata per il dettaglio.",
-      "Se hai permessi estesi, scegli l’ambito strutturato senza nominativi nel messaggio: nomi, cognomi ed email sono bloccati dalla policy di pseudonimizzazione."
+      "«Chiedi» per ferie, cedolini, policy e percorsi nell’app.",
+      "«I tuoi numeri» per query NL approvate; «Controlli» e triage per classificare messaggi.",
+      "Per brief operativo HRBP usa NEXA HR Copilot; per insight analitici usa AI Analytics."
     ],
     bestPractices: [
       "Non incollare codici fiscali, IBAN o dati sanitari se non necessari.",
-      "Per operazioni ufficiali (approvazioni, invii) usa sempre i moduli dedicati (Workflow, Approvazioni)."
+      "Per operazioni ufficiali usa Workflow, Approvazioni o Hebb AI Mate (lifecycle)."
     ]
   },
   "payroll-hebb": {
@@ -98,9 +105,10 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     summary:
       "Batch HR con linguaggio naturale e conferma obbligatoria (HITL). I nominativi compaiono solo in preview autorizzata; verso OpenAI transitano conteggi e aggregati.",
     howToUse: [
-      "Genera un piano dalla chat, rivedi ogni riga nella tabella destra.",
+      "Nel pannello Vault documenti scegli la persona, scarica o proponi una modifica con approvazione HITL.",
+      "Genera un piano dalla chat, rivedi ogni riga nella preview operazioni.",
       "Deseleziona le eccezioni, poi applica solo le righe confermate.",
-      "Domini v1: accordi SW annuali, estensione richieste approvate, clausole contratto."
+      "Domini: documenti vault, accordi SW, richieste, contratti e altri tool Cowork."
     ],
     bestPractices: [
       "Richiede permessi lifecycle HR esteso (nexa.lifecycle:write per applicare).",

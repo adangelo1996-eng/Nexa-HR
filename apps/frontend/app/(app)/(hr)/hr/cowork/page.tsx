@@ -21,7 +21,9 @@ import {
   postCoworkApply,
   postCoworkCancel,
   postCoworkPlan,
+  postCoworkBulkUndo,
   postCoworkUndo,
+  type CoworkHistoryCategoryDto,
   type CoworkHistoryEntryDto,
   type CoworkHistoryBatchDto,
   type CoworkHistoryMonthDto,
@@ -39,6 +41,7 @@ import {
   HebbAiGlassPanel
 } from "@/components/hebb-ai-experience-shell";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
+import { HebbMateDocumentsPanel } from "@/components/hebb-mate-documents-panel";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -78,7 +81,9 @@ const TOOL_LABELS: Record<string, string> = {
   create_expense_claim: "Nota spese",
   approve_pending_expenses: "Approva note spese",
   create_innovation_job: "Job Innovation",
-  training_batch: "Formazione batch"
+  training_batch: "Formazione batch",
+  upload_employee_document: "Registra documento vault",
+  link_document_ack: "Promemoria lettura documento"
 };
 
 function toolLabel(toolId: string | undefined, domain: string): string {
@@ -340,8 +345,10 @@ function HistoryMonthBlock(props: {
   onToggleMonth: (monthKey: string) => void;
   onToggleBatch: (batchKey: string) => void;
   onUndo: (entry: CoworkHistoryEntryDto) => void;
+  onBulkUndo: (batch: CoworkHistoryBatchDto, category: CoworkHistoryCategoryDto) => void;
 }): React.JSX.Element {
-  const { month, expanded, expandedBatches, busy, onToggleMonth, onToggleBatch, onUndo } = props;
+  const { month, expanded, expandedBatches, busy, onToggleMonth, onToggleBatch, onUndo, onBulkUndo } =
+    props;
   const batchCount = month.batches.length;
 
   return (
@@ -376,6 +383,7 @@ function HistoryMonthBlock(props: {
               busy={busy}
               onToggleExpand={onToggleBatch}
               onUndo={onUndo}
+              onBulkUndo={onBulkUndo}
             />
           ))}
         </div>
@@ -384,16 +392,46 @@ function HistoryMonthBlock(props: {
   );
 }
 
+function historyCategoriesForBatch(batch: CoworkHistoryBatchDto): CoworkHistoryCategoryDto[] {
+  if (batch.categories?.length) {
+    return batch.categories;
+  }
+  const map = new Map<string, CoworkHistoryCategoryDto>();
+  for (const entry of batch.entries) {
+    const key = entry.categoryKey || `${entry.domain ?? batch.domain}:${entry.toolId}`;
+    const label = entry.categoryLabel || toolLabel(entry.toolId, entry.domain ?? batch.domain);
+    const cur = map.get(key);
+    if (cur) {
+      cur.appliedCount += 1;
+      if (entry.undoStatus === "available") {
+        cur.undoAvailableCount += 1;
+      }
+    } else {
+      map.set(key, {
+        categoryKey: key,
+        categoryLabel: label,
+        domain: entry.domain ?? batch.domain,
+        toolId: entry.toolId,
+        appliedCount: 1,
+        undoAvailableCount: entry.undoStatus === "available" ? 1 : 0
+      });
+    }
+  }
+  return [...map.values()];
+}
+
 function HistoryBatchBlock(props: {
   batch: CoworkHistoryBatchDto;
   expanded: boolean;
   busy: boolean;
   onToggleExpand: (key: string) => void;
   onUndo: (entry: CoworkHistoryEntryDto) => void;
+  onBulkUndo: (batch: CoworkHistoryBatchDto, category: CoworkHistoryCategoryDto) => void;
 }): React.JSX.Element {
-  const { batch, expanded, busy, onToggleExpand, onUndo } = props;
+  const { batch, expanded, busy, onToggleExpand, onUndo, onBulkUndo } = props;
   const batchKey = historyBatchKey(batch);
   const appliedCount = batch.entries.length;
+  const categories = historyCategoriesForBatch(batch);
   const areaLabels = batch.sections
     .map((s) => toolLabel(s.toolId, s.domain))
     .filter((v, i, a) => a.indexOf(v) === i)
@@ -425,44 +463,81 @@ function HistoryBatchBlock(props: {
         </button>
       </header>
       {expanded ? (
-        <ul className="divide-y divide-[var(--prom-line)] p-3">
+        <div className="flex flex-col gap-4 p-3">
           {batch.entries.length === 0 ? (
-            <li className="px-2 py-3 text-sm text-[var(--prom-muted)]">Nessuna operazione registrata.</li>
+            <p className="px-2 py-3 text-sm text-[var(--prom-muted)]">Nessuna operazione registrata.</p>
           ) : (
-            batch.entries.map((entry) => (
-              <li key={entry.logId} className="flex flex-wrap items-start justify-between gap-2 px-2 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-[var(--prom-text)]">{entry.subjectFullName}</p>
-                  <p className="mt-0.5 text-xs text-[var(--prom-muted)]">
-                    {toolLabel(entry.toolId, batch.domain)}
-                  </p>
-                  <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{entry.detail}</p>
-                  {entry.undoBlockedReason ? (
-                    <p className="mt-1 text-xs text-[var(--prom-muted)]">{entry.undoBlockedReason}</p>
-                  ) : null}
+            categories.map((category) => {
+              const categoryEntries = batch.entries.filter(
+                (e) =>
+                  (e.categoryKey || `${e.domain ?? batch.domain}:${e.toolId}`) === category.categoryKey
+              );
+              return (
+                <div
+                  key={category.categoryKey}
+                  className="rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_94%,transparent)]"
+                >
+                  <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--prom-line)] px-3 py-2.5">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[var(--prom-text)]">{category.categoryLabel}</h4>
+                      <p className="text-xs text-[var(--prom-muted)]">
+                        {category.appliedCount} operazioni
+                        {category.undoAvailableCount > 0
+                          ? ` · ${category.undoAvailableCount} annullabili`
+                          : ""}
+                      </p>
+                    </div>
+                    {category.undoAvailableCount > 0 ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => onBulkUndo(batch, category)}
+                      >
+                        Annulla tutti in {category.categoryLabel}
+                      </Button>
+                    ) : null}
+                  </header>
+                  <ul className="divide-y divide-[var(--prom-line)]">
+                    {categoryEntries.map((entry) => (
+                      <li
+                        key={entry.logId}
+                        className="flex flex-wrap items-start justify-between gap-2 px-3 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-[var(--prom-text)]">{entry.subjectFullName}</p>
+                          <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{entry.detail}</p>
+                          {entry.undoBlockedReason ? (
+                            <p className="mt-1 text-xs text-[var(--prom-muted)]">{entry.undoBlockedReason}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${historyUndoStatusClass(entry.undoStatus)}`}
+                          >
+                            {historyUndoStatusLabel(entry)}
+                          </span>
+                          {entry.undoStatus === "available" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => onUndo(entry)}
+                            >
+                              Annulla
+                            </Button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${historyUndoStatusClass(entry.undoStatus)}`}
-                  >
-                    {historyUndoStatusLabel(entry)}
-                  </span>
-                  {entry.undoStatus === "available" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => onUndo(entry)}
-                    >
-                      Annulla
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            ))
+              );
+            })
           )}
-        </ul>
+        </div>
       ) : null}
     </section>
   );
@@ -493,6 +568,11 @@ export default function NexaCoworkPage(): React.JSX.Element {
   const [undoTarget, setUndoTarget] = useState<{
     logId: string;
     subjectFullName: string;
+  } | null>(null);
+  const [bulkUndoTarget, setBulkUndoTarget] = useState<{
+    planId: string;
+    batchId: string;
+    category: CoworkHistoryCategoryDto;
   } | null>(null);
   const [cancelTargetPlanId, setCancelTargetPlanId] = useState<string | null>(null);
 
@@ -708,6 +788,14 @@ export default function NexaCoworkPage(): React.JSX.Element {
         if (result.appliedCount > 0) {
           void loadHistory();
         }
+        if (result.errorCount === 0 && result.appliedCount > 0) {
+          setMessages([]);
+          setPlan(null);
+          setClarification(null);
+          setSelected(new Set());
+          setExpandedSections(new Set());
+          setInput("");
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Errore applicazione");
       } finally {
@@ -716,6 +804,31 @@ export default function NexaCoworkPage(): React.JSX.Element {
     },
     [plan, selected, loadHistory]
   );
+
+  const runBulkUndo = useCallback(async () => {
+    const t = getToken();
+    if (!t || !bulkUndoTarget) return;
+    setHistoryBusy(true);
+    setError(null);
+    try {
+      const result = await postCoworkBulkUndo(t, {
+        planId: bulkUndoTarget.planId,
+        batchId: bulkUndoTarget.batchId,
+        category: bulkUndoTarget.category.categoryKey
+      });
+      setBulkUndoTarget(null);
+      await loadHistory();
+      if (result.failed > 0) {
+        setError(
+          `Annullamento parziale: ${result.succeeded} riuscite, ${result.failed} non annullate. Controlla lo storico.`
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Annullamento massivo non riuscito");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [bulkUndoTarget, loadHistory]);
 
   const runUndo = useCallback(async () => {
     const t = getToken();
@@ -793,8 +906,8 @@ export default function NexaCoworkPage(): React.JSX.Element {
       <HebbAiGlassPanel className="flex items-start gap-3 border-[color-mix(in_srgb,var(--prom-accent)_25%,var(--glass-border))] bg-[color-mix(in_srgb,var(--prom-accent)_6%,var(--card-bg))]">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-accent)]" aria-hidden />
         <p className="text-sm leading-relaxed text-[var(--prom-muted)]">
-          I nominativi compaiono solo in questa preview HR autorizzata. Il modello AI vede conteggi e aggregati, mai
-          nomi o email in chiaro.
+          Puoi citare i nominativi nella richiesta: verso il modello vengono tradotti in pseudonimi stabili. I nomi
+          compaiono solo in questa preview HR autorizzata, insieme a conteggi e aggregati.
         </p>
       </HebbAiGlassPanel>
 
@@ -836,6 +949,8 @@ export default function NexaCoworkPage(): React.JSX.Element {
           </select>
         </div>
       </HebbAiGlassPanel>
+
+      <HebbMateDocumentsPanel costCenterId={costCenterId} teamId={teamId} />
 
       <div className="flex w-full flex-col gap-6">
         <HebbAiGlassPanel className="flex min-h-[360px] w-full flex-col">
@@ -1104,6 +1219,13 @@ export default function NexaCoworkPage(): React.JSX.Element {
                           subjectFullName: entry.subjectFullName
                         })
                       }
+                      onBulkUndo={(batch, category) =>
+                        setBulkUndoTarget({
+                          planId: batch.planId,
+                          batchId: batch.batchId,
+                          category
+                        })
+                      }
                     />
                   ))}
                 </div>
@@ -1120,6 +1242,24 @@ export default function NexaCoworkPage(): React.JSX.Element {
           ) : null}
         </HebbAiGlassPanel>
       </div>
+
+      <GlassConfirmDialog
+        open={bulkUndoTarget !== null}
+        title="Annullare tutte le operazioni nella categoria?"
+        message={
+          bulkUndoTarget
+            ? `Verranno annullate fino a ${bulkUndoTarget.category.undoAvailableCount} operazioni in «${bulkUndoTarget.category.categoryLabel}». Le voci non reversibili resteranno invariate.`
+            : ""
+        }
+        confirmLabel="Annulla tutti"
+        cancelLabel="Chiudi"
+        variant="danger"
+        busy={historyBusy}
+        onCancel={() => {
+          if (!historyBusy) setBulkUndoTarget(null);
+        }}
+        onConfirm={() => void runBulkUndo()}
+      />
 
       <GlassConfirmDialog
         open={undoTarget !== null}

@@ -2,6 +2,9 @@ import type { Route } from "next";
 import {
   sessionCanAccessHrRecapDashboard,
   sessionCanAccessManagerPanel,
+  sessionCanAccessNexaAiAssistant,
+  sessionCanAccessNexaLifecycleHr,
+  sessionCanAccessNexaReportsHr,
   sessionCanAccessPayrollArea,
   sessionCanAccessPersonnelBudgetArea,
   sessionCanNexaAdmin,
@@ -68,7 +71,13 @@ export function canAccessNexaPortalRoute(
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
   if (r === "/hr/cowork" || r.startsWith("/hr/cowork/")) {
-    return !hide && hrExtras;
+    return !hide && sessionCanAccessNexaLifecycleHr(user);
+  }
+  if (r === "/hebb-ai-support" || r.startsWith("/hebb-ai-support/")) {
+    return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaAiAssistant(user);
+  }
+  if (r === "/nexa-hr-copilot" || r.startsWith("/nexa-hr-copilot/")) {
+    return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaAiAssistant(user);
   }
   if (r === "/hr/formazione" || r.startsWith("/hr/formazione/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
@@ -139,15 +148,9 @@ export function canAccessNexaPortalRoute(
     case "/hr-center":
       return !hide && sessionCanUseNexaAiOpenAiLlm(user);
     case "/ai-hub":
-      return !hide && sessionCanUseNexaAiOpenAiLlm(user);
+      return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaReportsHr(user);
     case "/analytics":
-      return (
-        !hide &&
-        sessionCanUseNexaAiOpenAiLlm(user) &&
-        (sessionCanNexaAdmin(user) ||
-          sessionCanAccessHrRecapDashboard(user) ||
-          sessionCanAccessPersonnelBudgetArea(user) === true)
-      );
+      return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaReportsHr(user);
     case "/recruiting":
     case "/contracts":
     case "/tools/third-party-licenses":

@@ -4,6 +4,7 @@ import {
   BarChart2,
   BarChart3,
   Building2,
+  MessageCircle,
   CalendarDays,
   ClipboardList,
   DoorOpen,
@@ -110,11 +111,19 @@ const PILLAR_DEFS: Array<{
     portalCategory: "Analytics",
     subgroups: [
       {
+        id: "a-assist",
+        title: "Assistente AI",
+        items: [
+          { href: "/hebb-ai-support" as Route, label: "Hebb AI Support", icon: MessageCircle },
+          { href: "/nexa-hr-copilot" as Route, label: "NEXA HR Copilot", icon: Sparkles }
+        ]
+      },
+      {
         id: "a-hub",
         title: "Centro analisi",
         items: [
           { href: "/hr/dashboard" as Route, label: "Dashboard HR", icon: LayoutDashboard },
-          { href: "/analytics" as Route, label: "Hub analisi", icon: BarChart3, exact: true },
+          { href: "/analytics" as Route, label: "Hub Analytics", icon: BarChart3, exact: true },
           { href: "/analytics/advanced" as Route, label: "Advanced analysis", icon: BarChart2 },
           { href: "/analytics/advanced/economico" as Route, label: "Controllo economico", icon: BarChart2 },
           { href: "/analytics/advanced/retention" as Route, label: "Retention", icon: BarChart2 },

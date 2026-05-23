@@ -101,6 +101,28 @@ export function historyTypeKey(item: ApprovalItem): string {
   return item.type;
 }
 
+/** Etichetta italiana per categoria in coda approvazioni (assenze, spese, storico). */
+export function pendingApprovalCategoryLabel(typeKey: string): string {
+  switch (typeKey) {
+    case "leave:annual":
+      return "Ferie annuali";
+    case "leave:rol":
+      return "ROL";
+    case "sickness":
+      return "Malattia";
+    case "travel":
+      return "Trasferte";
+    case "smartworking":
+      return "Smart working";
+    case "expense:manager":
+      return "Spese · responsabile";
+    case "expense:hr":
+      return "Spese · HR";
+    default:
+      return typeKey;
+  }
+}
+
 function historyTypeOrderIndex(key: string): number {
   const i = HISTORY_TYPE_ORDER.indexOf(key as (typeof HISTORY_TYPE_ORDER)[number]);
   return i === -1 ? 999 : i;

@@ -30,6 +30,7 @@ export type BuildHebbPageContextOptions = {
 
 /** Percorsi → chiave help HEBB (match più lungo). */
 const PATH_HEBB_HELP: { prefix: string; key: HebbAiPageKey }[] = [
+  { prefix: "/hebb-ai-support", key: "hebb-ai-support" },
   { prefix: "/ai-hub", key: "ai-hub" },
   { prefix: "/payroll-hebb", key: "payroll-hebb" },
   { prefix: "/workforce-planning", key: "workforce-planning" },

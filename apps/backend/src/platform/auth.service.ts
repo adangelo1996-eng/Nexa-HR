@@ -24,6 +24,12 @@ interface LoginUser {
   canAccessPersonnelBudgetArea: boolean;
   /** Recap operativo HR (report HR o console HR estesa). */
   canAccessHrRecapDashboard: boolean;
+  /** Report e analytics HR (`nexa.reports_hr:read`). */
+  canAccessNexaReportsHr: boolean;
+  /** Assistente HR / support AI (`nexa.ai_assistant:read`). */
+  canAccessNexaAiAssistant: boolean;
+  /** Hebb AI Mate / lifecycle batch (`nexa.lifecycle:read`). */
+  canAccessNexaLifecycleHr: boolean;
   /** LLM OpenAI attivo su questo ambiente (stesso criterio di `GET /users/me`). */
   nexaAiOpenAiEnabled: boolean;
 }
@@ -158,6 +164,9 @@ export class AuthService {
       | "canAccessPayrollArea"
       | "canAccessPersonnelBudgetArea"
       | "canAccessHrRecapDashboard"
+      | "canAccessNexaReportsHr"
+      | "canAccessNexaAiAssistant"
+      | "canAccessNexaLifecycleHr"
       | "nexaAiOpenAiEnabled"
     >
   > {
@@ -190,6 +199,15 @@ export class AuthService {
       user.role === "superuser" ||
       canAccessHrExtendedConsole ||
       (await this.permissions.userHasAll(user.id, ["nexa.reports_hr:read"]));
+    const canAccessNexaReportsHr =
+      user.role === "superuser" ||
+      (await this.permissions.userHasAll(user.id, ["nexa.reports_hr:read"]));
+    const canAccessNexaAiAssistant =
+      user.role === "superuser" ||
+      (await this.permissions.userHasAll(user.id, ["nexa.ai_assistant:read"]));
+    const canAccessNexaLifecycleHr =
+      user.role === "superuser" ||
+      (await this.permissions.userHasAll(user.id, ["nexa.lifecycle:read"]));
     return {
       canNexaAdmin,
       canAccessHrExtendedConsole,
@@ -198,6 +216,9 @@ export class AuthService {
       canAccessPayrollArea,
       canAccessPersonnelBudgetArea,
       canAccessHrRecapDashboard,
+      canAccessNexaReportsHr,
+      canAccessNexaAiAssistant,
+      canAccessNexaLifecycleHr,
       nexaAiOpenAiEnabled: isNexaAiOpenAiLlmEnabled()
     };
   }

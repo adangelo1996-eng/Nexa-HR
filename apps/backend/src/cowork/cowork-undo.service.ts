@@ -26,7 +26,8 @@ const NON_REVERSIBLE_TOOLS = new Set([
   "upload_employee_document"
 ]);
 
-import type { CoworkUndoRequest } from "./cowork.types";
+import type { CoworkBulkUndoRequest, CoworkBulkUndoResult, CoworkUndoRequest } from "./cowork.types";
+import { coworkHistoryCategoryKey } from "./cowork-history.util";
 
 export type { CoworkUndoRequest };
 
@@ -116,6 +117,73 @@ export class CoworkUndoService {
       logId: entry.id,
       message: "Operazione annullata",
       reversible: true
+    };
+  }
+
+  async undoBulk(auth: AuthContext, body: CoworkBulkUndoRequest): Promise<CoworkBulkUndoResult> {
+    const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId;
+
+    let logIds: string[];
+    if ("logIds" in body) {
+      logIds = [...new Set(body.logIds.map((id) => id.trim()).filter(Boolean))];
+      if (logIds.length === 0) {
+        throw new BadRequestException("Nessun logId valido");
+      }
+    } else {
+      const { planId, batchId, category } = body;
+      if (!planId?.trim() || !batchId?.trim() || !category?.trim()) {
+        throw new BadRequestException("planId, batchId e category sono obbligatori");
+      }
+      const { items } = await this.applyLog.listSince(companyId, new Date(0).toISOString(), {
+        limit: 2000,
+        offset: 0
+      });
+      logIds = items
+        .filter(
+          (e) =>
+            e.planId === planId &&
+            e.batchId === batchId &&
+            coworkHistoryCategoryKey(e.domain, e.toolId) === category.trim() &&
+            e.undoStatus === "available"
+        )
+        .map((e) => e.id);
+      if (logIds.length === 0) {
+        throw new BadRequestException("Nessuna operazione reversibile in questa categoria");
+      }
+    }
+
+    const results: CoworkBulkUndoResult["results"] = [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const logId of logIds) {
+      try {
+        const one = await this.undo(auth, { logId });
+        results.push({
+          logId,
+          ok: one.ok,
+          message: one.message,
+          reversible: one.reversible
+        });
+        if (one.ok) {
+          succeeded += 1;
+        } else {
+          failed += 1;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        results.push({ logId, ok: false, message: msg, reversible: false });
+        failed += 1;
+      }
+    }
+
+    return {
+      ok: failed === 0,
+      total: logIds.length,
+      succeeded,
+      failed,
+      results
     };
   }
 

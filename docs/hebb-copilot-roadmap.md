@@ -38,4 +38,4 @@ Sostituisce lavoro ripetitivo HRBP/controller con flussi precomposti (retention,
 Vedi tabella; ordine ROI consigliato: **1 → 2 → 3 → 4 → 5**, poi 6–10 in base a capacità team.
 
 ## Primo sprint consigliato
-Pacchetto **1 + 2 + 3** su `/ai-hub` e analisi avanzate, riusando `AnalyticsOrchestrator`, `AiPrivacyGateway` e agente piattaforma già presenti.
+Pacchetto **1 + 2 + 3** su `/hebb-ai-support` (assistente) e `/analytics` (insight), riusando `AnalyticsOrchestrator`, `AiPrivacyGateway` e agente piattaforma già presenti. `/ai-hub` reindirizza a `/analytics`.

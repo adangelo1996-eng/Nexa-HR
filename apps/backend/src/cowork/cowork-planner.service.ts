@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
+import type { PersonDirectoryEntry } from "../ai-privacy/pseudonymize-free-text";
 import { AiOpenAiRefinementService } from "../ai-hr/ai-openai-refinement.service";
 import type { AuthContext } from "../platform/auth";
 import {
@@ -47,6 +48,7 @@ export class CoworkPlannerService {
     companyId: string;
     actorUserId: string;
     message: string;
+    personDirectory: PersonDirectoryEntry[];
     scopeUsers: ScopeUser[];
     costCenterId?: string;
     teamId?: string;
@@ -59,6 +61,7 @@ export class CoworkPlannerService {
       companyId,
       actorUserId,
       message,
+      personDirectory,
       scopeUsers,
       costCenterId,
       teamId,
@@ -88,7 +91,7 @@ export class CoworkPlannerService {
       executable: t.executable
     }));
 
-    const conversationTail = (conversationHistory ?? [])
+    const conversationTailRaw = (conversationHistory ?? [])
       .slice(-COWORK_CONVERSATION_HISTORY_MAX)
       .map((t) => ({ role: t.role, content: t.content.slice(0, 500) }));
 
@@ -105,10 +108,29 @@ export class CoworkPlannerService {
     let tokenCount = 0;
     const { sessionId } = await this.gateway.beginSession(companyId, actorUserId);
     try {
+      const { text: modelMessage } = await this.gateway.pseudonymizeFreeText(
+        sessionId,
+        message,
+        personDirectory
+      );
+      const conversationTail: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const turn of conversationTailRaw) {
+        if (turn.role === "user") {
+          const pseudo = await this.gateway.pseudonymizeFreeText(
+            sessionId,
+            turn.content,
+            personDirectory
+          );
+          conversationTail.push({ role: "user", content: pseudo.text });
+        } else {
+          conversationTail.push(turn);
+        }
+      }
+
       const envelope = {
         envelope: {
           facts: {
-            message,
+            message: modelMessage,
             scopeCount: scopeUsers.length,
             filters: {
               costCenterId: costCenterId ?? null,

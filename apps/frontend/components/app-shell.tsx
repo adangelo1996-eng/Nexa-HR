@@ -17,6 +17,7 @@ import {
   Sun,
   User,
   UserCog,
+  MessageCircle,
   Sparkles,
   Wand2,
   X
@@ -31,6 +32,9 @@ import {
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
   sessionCanOpenEmployeeRecapPage,
+  sessionCanAccessNexaAiAssistant,
+  sessionCanAccessNexaLifecycleHr,
+  sessionCanAccessNexaReportsHr,
   sessionCanUseNexaAiOpenAiLlm,
   sessionCanViewOrgExpenseClaims,
   sessionIsPlainEmployee,
@@ -103,9 +107,15 @@ const NAV_HEBB_AI_MATE: NavItem = {
   icon: Sparkles
 };
 
+const NAV_HEBB_AI_SUPPORT: NavItem = {
+  href: "/hebb-ai-support" as Route,
+  label: "Hebb AI Support",
+  icon: MessageCircle
+};
+
 const NAV_HEBB_AI_ANALYTICS: NavItem = {
-  href: "/ai-hub" as Route,
-  label: "Hebb AI Analytics",
+  href: "/analytics" as Route,
+  label: "AI Analytics",
   icon: Wand2
 };
 
@@ -604,18 +614,32 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       ))}
       {usesHrNav ? (
         <>
-          <SidebarNavLink
-            item={NAV_HEBB_AI_MATE}
-            pathname={pathname}
-            onNavigate={closeMobile}
-            beforeNavigate={persistSidebarScrollPositions}
-          />
-          <SidebarNavLink
-            item={NAV_HEBB_AI_ANALYTICS}
-            pathname={pathname}
-            onNavigate={closeMobile}
-            beforeNavigate={persistSidebarScrollPositions}
-          />
+          {sessionCanAccessNexaLifecycleHr(user ?? undefined) ? (
+            <SidebarNavLink
+              item={NAV_HEBB_AI_MATE}
+              pathname={pathname}
+              onNavigate={closeMobile}
+              beforeNavigate={persistSidebarScrollPositions}
+            />
+          ) : null}
+          {sessionCanAccessNexaAiAssistant(user ?? undefined) &&
+          sessionCanUseNexaAiOpenAiLlm(user ?? undefined) ? (
+            <SidebarNavLink
+              item={NAV_HEBB_AI_SUPPORT}
+              pathname={pathname}
+              onNavigate={closeMobile}
+              beforeNavigate={persistSidebarScrollPositions}
+            />
+          ) : null}
+          {sessionCanAccessNexaReportsHr(user ?? undefined) &&
+          sessionCanUseNexaAiOpenAiLlm(user ?? undefined) ? (
+            <SidebarNavLink
+              item={NAV_HEBB_AI_ANALYTICS}
+              pathname={pathname}
+              onNavigate={closeMobile}
+              beforeNavigate={persistSidebarScrollPositions}
+            />
+          ) : null}
         </>
       ) : null}
       {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}

@@ -1,6 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { depseudonymizeFromModel } from "./depseudonymize-json";
 import { countVaultTokens, pseudonymizeForAi } from "./pseudonymize-json";
+import {
+  pseudonymizeFreeTextForAi,
+  type PersonDirectoryEntry
+} from "./pseudonymize-free-text";
 import { TokenVaultService } from "./token-vault.service";
 
 /**
@@ -41,5 +45,17 @@ export class AiPrivacyGateway {
 
   async endSession(sessionId: string): Promise<void> {
     await this.vault.endSession(sessionId);
+  }
+
+  /**
+   * Traduce nominativi/email noti in token prima dell'invio al modello (testo libero, es. messaggio Cowork).
+   */
+  async pseudonymizeFreeText(
+    sessionId: string,
+    text: string,
+    directory: PersonDirectoryEntry[]
+  ): Promise<{ text: string; replacementCount: number }> {
+    await this.vault.assertSessionOpen(sessionId);
+    return pseudonymizeFreeTextForAi(text, directory, sessionId, this.vault);
   }
 }

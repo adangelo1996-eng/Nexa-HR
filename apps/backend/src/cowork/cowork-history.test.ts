@@ -58,6 +58,7 @@ describe("cowork history monthly grouping", () => {
     actorUserId: "u1",
     appliedAt,
     sections: [],
+    categories: [],
     entries: []
   });
 

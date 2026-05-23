@@ -5,7 +5,13 @@ import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { COWORK_EXAMPLE_PROMPTS } from "./cowork.constants";
 import { CoworkOrchestratorService } from "./cowork-orchestrator.service";
-import type { CoworkApplyRequest, CoworkCancelRequest, CoworkPlanRequest, CoworkUndoRequest } from "./cowork.types";
+import type {
+  CoworkApplyRequest,
+  CoworkBulkUndoRequest,
+  CoworkCancelRequest,
+  CoworkPlanRequest,
+  CoworkUndoRequest
+} from "./cowork.types";
 
 class CoworkPlanDtoBody implements CoworkPlanRequest {
   @IsString()
@@ -66,6 +72,26 @@ class CoworkCancelDtoBody implements CoworkCancelRequest {
   planId!: string;
 }
 
+class CoworkBulkUndoDtoBody {
+  @ValidateIf((o: CoworkBulkUndoDtoBody) => !o.planId && !o.batchId && !o.category)
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  logIds?: string[];
+
+  @ValidateIf((o: CoworkBulkUndoDtoBody) => !o.logIds?.length)
+  @IsString()
+  planId?: string;
+
+  @ValidateIf((o: CoworkBulkUndoDtoBody) => !o.logIds?.length)
+  @IsString()
+  batchId?: string;
+
+  @ValidateIf((o: CoworkBulkUndoDtoBody) => !o.logIds?.length)
+  @IsString()
+  category?: string;
+}
+
 @Controller("cowork")
 @UseGuards(NexaPermissionGuard)
 export class CoworkController {
@@ -111,6 +137,22 @@ export class CoworkController {
       return this.orchestrator.undo(auth, { planId: body.planId, rowId: body.rowId });
     }
     return this.orchestrator.undo(auth, body as CoworkUndoRequest);
+  }
+
+  @Post("undo/bulk")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async undoBulk(@CurrentAuth() auth: AuthContext, @Body() body: CoworkBulkUndoDtoBody): Promise<unknown> {
+    if (body.logIds?.length) {
+      return this.orchestrator.undoBulk(auth, { logIds: body.logIds });
+    }
+    if (body.planId && body.batchId && body.category) {
+      return this.orchestrator.undoBulk(auth, {
+        planId: body.planId,
+        batchId: body.batchId,
+        category: body.category
+      });
+    }
+    return this.orchestrator.undoBulk(auth, body as CoworkBulkUndoRequest);
   }
 
   @Post("cancel")

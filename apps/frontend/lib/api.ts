@@ -2324,6 +2324,32 @@ export async function rejectApproval(
   return (await response.json()) as ApprovalItem;
 }
 
+export interface BulkApproveResult {
+  succeeded: string[];
+  failed: Array<{ id: string; message: string }>;
+}
+
+/** Approva in sequenza (permesso `nexa.approvals:write` su ogni PATCH). */
+export async function approveApprovalsBulk(
+  token: string,
+  approvalIds: string[]
+): Promise<BulkApproveResult> {
+  const succeeded: string[] = [];
+  const failed: BulkApproveResult["failed"] = [];
+  for (const id of approvalIds) {
+    try {
+      await approveApproval(token, id);
+      succeeded.push(id);
+    } catch (err) {
+      failed.push({
+        id,
+        message: err instanceof Error ? err.message : "Errore approvazione"
+      });
+    }
+  }
+  return { succeeded, failed };
+}
+
 /** Richiesta remote working (endpoint `/smartworking/*`, stato dominio `smartworking`). */
 export interface SmartworkingRequestDto {
   id: string;
@@ -2842,6 +2868,28 @@ export async function deleteAllUserNotifications(token: string): Promise<void> {
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
+}
+
+export async function fetchDocumentVault(
+  token: string,
+  userId?: string
+): Promise<{ items: EmployeeDocumentDto[] }> {
+  const params = userId?.trim() ? `?${new URLSearchParams({ userId: userId.trim() })}` : "";
+  const response = await fetch(buildApiUrl(`/documents/vault${params}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: EmployeeDocumentDto[] }>;
+}
+
+export async function downloadDocumentVaultFile(token: string, documentId: string): Promise<Blob> {
+  const response = await fetch(
+    buildApiUrl(`/documents/vault/${encodeURIComponent(documentId)}/file`),
+    { method: "GET", headers: getAuthHeaders(token) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.blob();
 }
 
 export async function uploadDocumentToVault(
@@ -3605,10 +3653,22 @@ export type CoworkHistoryEntryDto = {
   logId: string;
   rowId: string;
   toolId: string;
+  domain: string;
+  categoryKey: string;
+  categoryLabel: string;
   subjectFullName: string;
   detail: string;
   undoStatus: string;
   undoBlockedReason?: string | null;
+};
+
+export type CoworkHistoryCategoryDto = {
+  categoryKey: string;
+  categoryLabel: string;
+  domain: string;
+  toolId: string;
+  appliedCount: number;
+  undoAvailableCount: number;
 };
 
 export type CoworkHistorySectionSummaryDto = {
@@ -3627,6 +3687,7 @@ export type CoworkHistoryBatchDto = {
   actorUserId: string;
   appliedAt: string;
   sections: CoworkHistorySectionSummaryDto[];
+  categories: CoworkHistoryCategoryDto[];
   entries: CoworkHistoryEntryDto[];
 };
 
@@ -3644,6 +3705,19 @@ export type CoworkHistoryResponseDto = {
   totalMonths: number;
   totalBatches: number;
   months: CoworkHistoryMonthDto[];
+};
+
+export type CoworkBulkUndoResultDto = {
+  ok: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: Array<{
+    logId: string;
+    ok: boolean;
+    message: string;
+    reversible: boolean;
+  }>;
 };
 
 export type CoworkUndoResultDto = {
@@ -3679,6 +3753,19 @@ export async function postCoworkUndo(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<CoworkUndoResultDto>;
+}
+
+export async function postCoworkBulkUndo(
+  token: string,
+  body: { logIds: string[] } | { planId: string; batchId: string; category: string }
+): Promise<CoworkBulkUndoResultDto> {
+  const response = await fetch(buildApiUrl("/cowork/undo/bulk"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<CoworkBulkUndoResultDto>;
 }
 
 export async function postCoworkCancel(token: string, body: { planId: string }): Promise<CoworkPlanDto> {
@@ -4317,6 +4404,27 @@ export async function approveExpenseClaim(token: string, id: string): Promise<Ex
   });
   if (!response.ok) await parseError(response);
   return (await response.json()) as ExpenseClaimDto;
+}
+
+/** Approva note spese in sequenza (`nexa.approvals:write` sul backend). */
+export async function approveExpenseClaimsBulk(
+  token: string,
+  claimIds: string[]
+): Promise<BulkApproveResult> {
+  const succeeded: string[] = [];
+  const failed: BulkApproveResult["failed"] = [];
+  for (const id of claimIds) {
+    try {
+      await approveExpenseClaim(token, id);
+      succeeded.push(id);
+    } catch (err) {
+      failed.push({
+        id,
+        message: err instanceof Error ? err.message : "Errore approvazione spesa"
+      });
+    }
+  }
+  return { succeeded, failed };
 }
 
 export async function rejectExpenseClaim(token: string, id: string): Promise<ExpenseClaimDto> {

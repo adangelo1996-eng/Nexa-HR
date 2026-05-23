@@ -71,10 +71,12 @@ const HR_LINEAR_STEPS: Array<{
   },
   {
     id: "hebb-ai-hr",
-    title: "Hebb AI Analytics",
-    subtitle: "Hub analisi, sintesi AI e report HR con contesto pseudonimizzato.",
+    title: "HEBB AI for HR",
+    subtitle: "Support assistente, copilot HR, hub analytics e centro HR.",
     hrefs: [
-      "/ai-hub" as Route,
+      "/hebb-ai-support" as Route,
+      "/nexa-hr-copilot" as Route,
+      "/analytics" as Route,
       "/hr-center/recap",
       "/hr-center/analisi" as Route,
       "/hr-center/budget-report" as Route

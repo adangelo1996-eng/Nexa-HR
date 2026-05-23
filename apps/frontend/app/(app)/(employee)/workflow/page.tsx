@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { WorkflowApprovalFlowDiagram } from "@/components/workflow-flow-diagram";
 import { WorkflowExpenseRow } from "@/components/workflow-expense-row";
+import { WorkflowPendingCategorySection } from "@/components/workflow-pending-category-section";
 import {
   approveApproval,
+  approveApprovalsBulk,
   approveExpenseClaim,
+  approveExpenseClaimsBulk,
   cancelPendingLeavePlan,
   cancelPendingSicknessEvent,
   cancelSmartworkingRequest,
@@ -30,8 +33,10 @@ import {
 } from "@/lib/auth-session";
 import {
   groupHistoryByRequestDayAndType,
+  groupPendingApprovalsByCategory,
   isHighPriorityPending,
   partitionForWorkflow,
+  pendingApprovalCategoryLabel,
   sortMine,
   sortToApprove
 } from "@/lib/workflow-approval-groups";
@@ -49,22 +54,6 @@ function requestTypeLabel(item: ApprovalItem): string {
   return "Remote working";
 }
 
-function historyTypeHeading(typeKey: string): string {
-  if (typeKey === "leave:annual") {
-    return "Ferie annuali";
-  }
-  if (typeKey === "leave:rol") {
-    return "ROL";
-  }
-  if (typeKey === "sickness") {
-    return "Malattia";
-  }
-  if (typeKey === "travel") {
-    return "Trasferta";
-  }
-  return "Remote working";
-}
-
 export default function WorkflowPage(): React.JSX.Element {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
@@ -77,6 +66,7 @@ export default function WorkflowPage(): React.JSX.Element {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusyCategory, setBulkBusyCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { toApprove, mine, historyGrouped } = useMemo(() => {
@@ -322,6 +312,53 @@ export default function WorkflowPage(): React.JSX.Element {
   const hrQ = expenseWf?.toApproveHr ?? [];
   const pendingTotal = toApprove.length + mgr.length + hrQ.length;
 
+  const absencePendingGroups = useMemo(
+    () => groupPendingApprovalsByCategory(toApprove),
+    [toApprove]
+  );
+
+  async function onBulkApproveCategory(categoryKey: string, approvalIds: string[]): Promise<void> {
+    if (!token || approvalIds.length === 0) {
+      return;
+    }
+    setBulkBusyCategory(categoryKey);
+    setError(null);
+    try {
+      const result = await approveApprovalsBulk(token, approvalIds);
+      if (result.failed.length > 0) {
+        setError(
+          `${result.succeeded.length} approvate, ${result.failed.length} non riuscite. ${result.failed[0]?.message ?? ""}`
+        );
+      }
+      await refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore approvazione multipla");
+    } finally {
+      setBulkBusyCategory(null);
+    }
+  }
+
+  async function onBulkApproveExpenses(categoryKey: string, claimIds: string[]): Promise<void> {
+    if (!token || claimIds.length === 0) {
+      return;
+    }
+    setBulkBusyCategory(categoryKey);
+    setError(null);
+    try {
+      const result = await approveExpenseClaimsBulk(token, claimIds);
+      if (result.failed.length > 0) {
+        setError(
+          `${result.succeeded.length} approvate, ${result.failed.length} non riuscite. ${result.failed[0]?.message ?? ""}`
+        );
+      }
+      await refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Errore approvazione spese");
+    } finally {
+      setBulkBusyCategory(null);
+    }
+  }
+
   if (loading) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-8">
@@ -348,41 +385,76 @@ export default function WorkflowPage(): React.JSX.Element {
       </header>
 
       <div className="space-y-10">
-        <section className="card">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">In sospeso</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Assenze, trasferte, remote working e note spese. Priorità alta se la data è entro 2 giorni o passata.
-          </p>
-          <div className="mt-4 space-y-3">
-            {pendingTotal === 0 ? (
-              <p className="text-sm text-slate-600 dark:text-slate-400">Nessuna richiesta in attesa.</p>
-            ) : null}
-            {toApprove.map((item) => (
-              <Fragment key={item.id}>{renderCard(item, { showActions: true, showPriority: true })}</Fragment>
-            ))}
-            {mgr.map((row) => (
-              <WorkflowExpenseRow
-                key={`exp-mgr-${row.claim.id}`}
-                row={row}
-                variant="queue_manager"
-                showActions
-                busy={busyId === `exp:${row.claim.id}`}
-                onApprove={() => void onExpenseAction(row.claim.id, "approve")}
-                onReject={() => void onExpenseAction(row.claim.id, "reject")}
-              />
-            ))}
-            {hrQ.map((row) => (
-              <WorkflowExpenseRow
-                key={`exp-hr-${row.claim.id}`}
-                row={row}
-                variant="queue_hr"
-                showActions
-                busy={busyId === `exp:${row.claim.id}`}
-                onApprove={() => void onExpenseAction(row.claim.id, "approve")}
-                onReject={() => void onExpenseAction(row.claim.id, "reject")}
-              />
-            ))}
+        <section className="card space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--prom-text)]">In sospeso</h2>
+            <p className="mt-1 text-sm text-[var(--prom-muted)]">
+              Raggruppate per categoria. Priorità alta se la data è entro 2 giorni o passata.
+            </p>
           </div>
+          {pendingTotal === 0 ? (
+            <p className="text-sm text-[var(--prom-muted)]">Nessuna richiesta in attesa.</p>
+          ) : (
+            <div className="space-y-4">
+              {absencePendingGroups.map(({ typeKey, items }) => (
+                <WorkflowPendingCategorySection
+                  key={typeKey}
+                  categoryKey={typeKey}
+                  itemCount={items.length}
+                  bulkBusy={bulkBusyCategory === typeKey}
+                  onBulkApprove={() => onBulkApproveCategory(typeKey, items.map((i) => i.id))}
+                >
+                  <div className="space-y-3">
+                    {items.map((item) => (
+                      <Fragment key={item.id}>
+                        {renderCard(item, { showActions: true, showPriority: true })}
+                      </Fragment>
+                    ))}
+                  </div>
+                </WorkflowPendingCategorySection>
+              ))}
+              <WorkflowPendingCategorySection
+                categoryKey="expense:manager"
+                itemCount={mgr.length}
+                bulkBusy={bulkBusyCategory === "expense:manager"}
+                onBulkApprove={() => onBulkApproveExpenses("expense:manager", mgr.map((r) => r.claim.id))}
+              >
+                <div className="space-y-3">
+                  {mgr.map((row) => (
+                    <WorkflowExpenseRow
+                      key={`exp-mgr-${row.claim.id}`}
+                      row={row}
+                      variant="queue_manager"
+                      showActions
+                      busy={busyId === `exp:${row.claim.id}`}
+                      onApprove={() => void onExpenseAction(row.claim.id, "approve")}
+                      onReject={() => void onExpenseAction(row.claim.id, "reject")}
+                    />
+                  ))}
+                </div>
+              </WorkflowPendingCategorySection>
+              <WorkflowPendingCategorySection
+                categoryKey="expense:hr"
+                itemCount={hrQ.length}
+                bulkBusy={bulkBusyCategory === "expense:hr"}
+                onBulkApprove={() => onBulkApproveExpenses("expense:hr", hrQ.map((r) => r.claim.id))}
+              >
+                <div className="space-y-3">
+                  {hrQ.map((row) => (
+                    <WorkflowExpenseRow
+                      key={`exp-hr-${row.claim.id}`}
+                      row={row}
+                      variant="queue_hr"
+                      showActions
+                      busy={busyId === `exp:${row.claim.id}`}
+                      onApprove={() => void onExpenseAction(row.claim.id, "approve")}
+                      onReject={() => void onExpenseAction(row.claim.id, "reject")}
+                    />
+                  ))}
+                </div>
+              </WorkflowPendingCategorySection>
+            </div>
+          )}
         </section>
 
         <section className="card">
@@ -435,7 +507,7 @@ export default function WorkflowPage(): React.JSX.Element {
                   {typeGroups.map(({ typeKey, items }) => (
                     <div key={`${day}-${typeKey}`}>
                       <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {historyTypeHeading(typeKey)}
+                        {pendingApprovalCategoryLabel(typeKey)}
                       </h4>
                       <div className="mt-2 space-y-2">
                         {items.map((item) => (

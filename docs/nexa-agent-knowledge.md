@@ -27,7 +27,7 @@ Ogni voce indica **cosa fare**, **dove** (percorso) e **permesso** tipico. I per
 12. **Annullare una richiesta in bozza** — `/workflow` prima dell'invio definitivo.
 13. **Approvare richieste del team (manager)** — `/workflow/approvals` oppure **HEBB AI for HR — Manager** (`/manager-copilot`). Serve `nexa.approvals:read` o ruolo lead con report diretti.
 14. **Delegare approvazioni** — Configurazione HR in admin/workflow; l'agente indica il percorso ma non modifica deleghe.
-15. **Verificare ferie residue** — Dashboard personale `/` o assistente AI (`/ai-hub`) su dati propri; cedolini e anagrafica per dettaglio contrattuale.
+15. **Verificare ferie residue** — Dashboard personale `/` o assistente AI (`/hebb-ai-support`, permesso `nexa.ai_assistant:read`) su dati propri; cedolini e anagrafica per dettaglio contrattuale.
 16. **Policy assenze** — `/corporate-policies` (admin/HR) o chiedi a Nexa Guide su regole generali.
 
 ## Budget e costi del personale (17–24)
@@ -47,7 +47,7 @@ Ogni voce indica **cosa fare**, **dove** (percorso) e **permesso** tipico. I per
 26. **Retention e flight risk** — `/analytics/retention` (sostituisce il vecchio `/insights`, reindirizzato automaticamente).
 27. **Gap competenze** — `/analytics/competenze`.
 28. **Sintesi operativa HR** — `/analytics/operativo` (approvazioni, lifecycle, backlog).
-29. **Generare insight strutturato** — Nella pagina analisi o da `/ai-hub` (chip economico, retention, competenze, operativo, budget, turnover): insight su aggregati via `AiPrivacyGateway.toModelPayload`. Vietato inserire nominativi nei messaggi chat.
+29. **Generare insight strutturato** — Hub `/analytics` e pagine Advanced analysis (permesso `nexa.reports_hr:read`): insight su aggregati via `AiPrivacyGateway.toModelPayload`. Vietato inserire nominativi nei messaggi chat.
 30. **Chiedere all'analista (chat)** — Box «Chiedi all'analista» nella pagina analisi; solo aggregati del dataset di quella analisi.
 31. **Dashboard HR giornaliera** — `/hr/dashboard` — organico, task, link alle analisi.
 32. **Recap attività HR** — `/hr-recap` — coda operativa (contratti, onboarding, solleciti).
@@ -64,7 +64,7 @@ Ogni voce indica **cosa fare**, **dove** (percorso) e **permesso** tipico. I per
 ## Permessi, ruoli e sicurezza (39–40)
 
 39. **Capire perché non vedo una pagina** — Controlla ruolo Nexa e permessi (`nexa.reports_hr:read`, `nexa.approvals:read`, `nexa.ai_assistant:read`, budget, payroll). La mappa portale (`/mappa-portale`) nasconde le tile non consentite; l'API resta protetta da guard server.
-40. **Usare HEBB AI for HR / Nexa Guide (Cmd+K)** — Disponibile con `nexa.ai_assistant:read`; orientamento su percorsi e how-to senza esporre PII al modello. Hub assistente e chip analisi (economico, retention, competenze, operativo, budget, turnover): `/ai-hub`. Brief HRBP: `/nexa-hr-copilot`. I messaggi con nomi, cognomi o email di persone sono rifiutati (policy pseudonimizzazione).
+40. **Usare HEBB AI for HR / Nexa Guide (Cmd+K)** — Support assistente: `/hebb-ai-support` (`nexa.ai_assistant:read`). Analytics: `/analytics` (`nexa.reports_hr:read`). Brief HRBP: `/nexa-hr-copilot` (`nexa.ai_assistant:read`). Hebb AI Mate: `/hr/cowork` (`nexa.lifecycle:read`). I messaggi con nominativi sono rifiutati (policy pseudonimizzazione).
 
 ---
 
@@ -139,7 +139,7 @@ Ogni voce indica **cosa fare**, **dove** (percorso) e **permesso** tipico. I per
 
 ## Assistente AI
 
-- Chat piattaforma: **`POST /ai/hr/platform-agent/chat`** (UI: pannello Nexa Guide e `/ai-hub`).
+- Chat piattaforma: **`POST /ai/hr/platform-agent/chat`** (UI: Nexa Guide e `/hebb-ai-support`).
 - Analytics avanzate: **`/analytics/advanced/:id/kpis`**, **`insight`**, **`chat`** — sempre con `nexa.reports_hr:read`.
 
 ## FAQ cross-dominio (Nexa Guide)

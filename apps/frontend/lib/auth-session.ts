@@ -75,6 +75,12 @@ export interface SessionUser {
   canAccessPersonnelBudgetArea?: boolean;
   /** Recap operativo HR (`/hr-recap`): report HR o console HR estesa. */
   canAccessHrRecapDashboard?: boolean;
+  /** Report e analytics HR (`nexa.reports_hr:read`). */
+  canAccessNexaReportsHr?: boolean;
+  /** Assistente / support AI (`nexa.ai_assistant:read`). */
+  canAccessNexaAiAssistant?: boolean;
+  /** Hebb AI Mate / lifecycle (`nexa.lifecycle:read`). */
+  canAccessNexaLifecycleHr?: boolean;
   /**
    * LLM OpenAI disponibile su questo backend (`NEXA_AI_OPENAI_ENABLED` + `OPENAI_API_KEY`).
    * Da `GET /users/me` / login.
@@ -276,6 +282,27 @@ export function sessionCanUseNexaAiOpenAiLlm(
   u: Pick<SessionUser, "nexaAiOpenAiEnabled"> | null | undefined
 ): boolean {
   return u?.nexaAiOpenAiEnabled === true;
+}
+
+/** Hub analytics e pagine `/analytics` (`nexa.reports_hr:read`). */
+export function sessionCanAccessNexaReportsHr(
+  u: Pick<SessionUser, "canAccessNexaReportsHr" | "canNexaAdmin"> | null | undefined
+): boolean {
+  return u?.canAccessNexaReportsHr === true || u?.canNexaAdmin === true;
+}
+
+/** Hebb AI Support, copilot e assistente (`nexa.ai_assistant:read`). */
+export function sessionCanAccessNexaAiAssistant(
+  u: Pick<SessionUser, "canAccessNexaAiAssistant" | "canNexaAdmin"> | null | undefined
+): boolean {
+  return u?.canAccessNexaAiAssistant === true || u?.canNexaAdmin === true;
+}
+
+/** Hebb AI Mate / batch lifecycle (`nexa.lifecycle:read`). */
+export function sessionCanAccessNexaLifecycleHr(
+  u: Pick<SessionUser, "canAccessNexaLifecycleHr" | "canNexaAdmin"> | null | undefined
+): boolean {
+  return u?.canAccessNexaLifecycleHr === true || u?.canNexaAdmin === true;
 }
 
 /** Dipendente senza console HR estesa (menu semplificato). */

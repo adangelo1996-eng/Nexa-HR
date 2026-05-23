@@ -290,6 +290,38 @@ export class FieldSuggestService {
       };
     }
 
+    if (formId === "hr.cowork.documents" && fk === "title") {
+      const existing = typeof partial.title === "string" ? partial.title.trim() : "";
+      const kind = typeof partial.kind === "string" ? partial.kind : "other";
+      const kindLabels: Record<string, string> = {
+        contract: "Contratto",
+        payslip: "Cedolino",
+        personal: "Personale",
+        other: "Documento"
+      };
+      const prefix = kindLabels[kind] ?? "Documento";
+      if (existing.length >= 3) {
+        return {
+          value: existing.startsWith(prefix) ? existing : `${prefix} — ${existing}`.slice(0, 120),
+          confidence: 0.72,
+          reason: "Titolo normalizzato con prefisso da tipologia documento."
+        };
+      }
+      return {
+        value: `${prefix} — revisione ${todayIso()}`.slice(0, 120),
+        confidence: 0.68,
+        reason: "Titolo operativo standard per nuova versione in vault."
+      };
+    }
+
+    if (formId === "hr.cowork.documents" && fk === "kind") {
+      const existing = typeof partial.kind === "string" ? partial.kind : "";
+      if (existing === "contract" || existing === "payslip" || existing === "personal") {
+        return { value: existing, confidence: 0.9, reason: "Tipologia invariata rispetto al documento di origine." };
+      }
+      return { value: "other", confidence: 0.75, reason: "Tipologia generica per documenti non classificati." };
+    }
+
     if (formId === "settings.profile" && (fk === "jobtitle" || fk === "department")) {
       const role =
         me.roleId != null

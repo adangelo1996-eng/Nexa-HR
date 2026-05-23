@@ -1,4 +1,59 @@
+import { getCoworkTool } from "./cowork-tool-catalog";
 import type { CoworkHistoryBatch, CoworkHistoryMonth } from "./cowork.types";
+
+export function coworkHistoryCategoryKey(domain: string, toolId: string): string {
+  return `${domain}:${toolId}`;
+}
+
+export function coworkHistoryCategoryLabel(domain: string, toolId: string, title?: string): string {
+  if (title?.trim()) {
+    return title.trim();
+  }
+  const tool = getCoworkTool(toolId);
+  if (tool?.labelIt) {
+    return tool.labelIt;
+  }
+  return toolId || domain;
+}
+
+export function buildCoworkHistoryBatchCategories(
+  batch: Pick<CoworkHistoryBatch, "entries" | "sections">
+): CoworkHistoryBatch["categories"] {
+  const map = new Map<string, CoworkHistoryBatch["categories"][0]>();
+  for (const entry of batch.entries) {
+    const key = entry.categoryKey;
+    const cur = map.get(key);
+    if (cur) {
+      cur.appliedCount += 1;
+      if (entry.undoStatus === "available") {
+        cur.undoAvailableCount += 1;
+      }
+    } else {
+      map.set(key, {
+        categoryKey: key,
+        categoryLabel: entry.categoryLabel,
+        domain: entry.domain,
+        toolId: entry.toolId,
+        appliedCount: 1,
+        undoAvailableCount: entry.undoStatus === "available" ? 1 : 0
+      });
+    }
+  }
+  for (const section of batch.sections) {
+    const key = coworkHistoryCategoryKey(section.domain, section.toolId);
+    if (!map.has(key)) {
+      map.set(key, {
+        categoryKey: key,
+        categoryLabel: coworkHistoryCategoryLabel(section.domain, section.toolId, section.title),
+        domain: section.domain,
+        toolId: section.toolId,
+        appliedCount: section.appliedCount,
+        undoAvailableCount: 0
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.categoryLabel.localeCompare(b.categoryLabel, "it"));
+}
 
 export function coworkHistoryMonthKey(appliedAtIso: string): string {
   const d = new Date(appliedAtIso);

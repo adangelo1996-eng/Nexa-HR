@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import type { User } from "@payday/domain";
 import { AiAuditService } from "../ai-hr/ai-audit.service";
-import { assertHebbUserMessageAllowed } from "../ai-hr/ai-hr-message-policy";
+import type { PersonDirectoryEntry } from "../ai-privacy/pseudonymize-free-text";
 import type { AuthContext } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import {
@@ -17,6 +17,9 @@ import { CoworkPermissionsService } from "./cowork-permissions.service";
 import { CoworkPlannerService } from "./cowork-planner.service";
 import { CoworkApplyLogStore } from "./cowork-apply-log.store";
 import {
+  buildCoworkHistoryBatchCategories,
+  coworkHistoryCategoryKey,
+  coworkHistoryCategoryLabel,
   groupCoworkHistoryBatchesByMonth,
   paginateCoworkHistoryMonths
 } from "./cowork-history.util";
@@ -38,6 +41,8 @@ import type {
   CoworkPlanResponse,
   CoworkPlanRow,
   CoworkPlanSection,
+  CoworkBulkUndoRequest,
+  CoworkBulkUndoResult,
   CoworkUndoRequest
 } from "./cowork.types";
 
@@ -65,7 +70,12 @@ export class CoworkOrchestratorService {
     }
 
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === companyId);
-    assertHebbUserMessageAllowed(message, companyUsers);
+    const personDirectory: PersonDirectoryEntry[] = companyUsers.map((u) => ({
+      fullName: u.fullName,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email
+    }));
 
     const draftRequest = await this.coworkRequests.upsertDraft({
       companyId,
@@ -100,6 +110,7 @@ export class CoworkOrchestratorService {
         companyId,
         actorUserId: auth.userId,
         message,
+        personDirectory,
         scopeUsers,
         costCenterId: body.costCenterId,
         teamId: body.teamId,
@@ -387,7 +398,30 @@ export class CoworkOrchestratorService {
         }
       }
 
-      resultBatches.push({
+      const entries = batch.entries.map((e) => {
+        const sectionId = String(e.appliedPayload.sectionId ?? e.rowId);
+        const meta = planMeta.sectionMeta.find((s) => s.sectionId === sectionId);
+        const categoryKey = coworkHistoryCategoryKey(e.domain, e.toolId);
+        const categoryLabel = coworkHistoryCategoryLabel(
+          e.domain,
+          e.toolId,
+          meta?.title
+        );
+        return {
+          logId: e.id,
+          rowId: e.rowId,
+          toolId: e.toolId,
+          domain: e.domain,
+          categoryKey,
+          categoryLabel,
+          subjectFullName: e.subjectFullName,
+          detail: e.detail,
+          undoStatus: e.undoStatus,
+          undoBlockedReason: e.undoBlockedReason
+        };
+      });
+
+      const historyBatch: CoworkHistoryBatch = {
         planId: batch.planId,
         batchId: batch.batchId,
         summary: planMeta.summary,
@@ -395,16 +429,12 @@ export class CoworkOrchestratorService {
         actorUserId: batch.entries[0]?.actorUserId ?? auth.userId,
         appliedAt: batch.appliedAt,
         sections: [...sectionCounts.values()],
-        entries: batch.entries.map((e) => ({
-          logId: e.id,
-          rowId: e.rowId,
-          toolId: e.toolId,
-          subjectFullName: e.subjectFullName,
-          detail: e.detail,
-          undoStatus: e.undoStatus,
-          undoBlockedReason: e.undoBlockedReason
-        }))
-      });
+        entries,
+        categories: []
+      };
+      historyBatch.categories = buildCoworkHistoryBatchCategories(historyBatch);
+
+      resultBatches.push(historyBatch);
     }
 
     const totalBatches = batchMap.size;
@@ -424,6 +454,10 @@ export class CoworkOrchestratorService {
 
   async undo(auth: AuthContext, body: CoworkUndoRequest): Promise<CoworkUndoResult> {
     return this.undoService.undo(auth, body);
+  }
+
+  async undoBulk(auth: AuthContext, body: CoworkBulkUndoRequest): Promise<CoworkBulkUndoResult> {
+    return this.undoService.undoBulk(auth, body);
   }
 
   async cancel(auth: AuthContext, body: CoworkCancelRequest): Promise<CoworkPlanDto> {

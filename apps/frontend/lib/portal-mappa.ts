@@ -218,9 +218,15 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "HEBB AI for HR"
   },
   {
-    href: "/ai-hub" as Route,
-    title: "Hebb AI Analytics",
-    blurb: "Conversazione con modello linguistico su policy, ferie e dati consentiti dal tuo ruolo.",
+    href: "/hebb-ai-support" as Route,
+    title: "Hebb AI Support",
+    blurb: "Assistente HR, domande in linguaggio naturale, controlli e triage — permesso assistente AI.",
+    category: "HEBB AI for HR"
+  },
+  {
+    href: "/nexa-hr-copilot" as Route,
+    title: "NEXA HR Copilot",
+    blurb: "Brief giornaliero HR con pannelli operativi e follow-up conversazionale pseudonimizzato.",
     category: "HEBB AI for HR"
   },
   {

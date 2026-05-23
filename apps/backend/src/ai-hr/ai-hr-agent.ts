@@ -115,9 +115,14 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/admin/data-import", labelIt: "Import Excel dipendenti", topicsIt: "import, excel, anagrafica" },
   { path: "/admin/payslip-import", labelIt: "Import cedolini PDF", topicsIt: "import cedolini, pdf" },
   {
-    path: "/ai-hub",
-    labelIt: "HEBB AI for HR",
-    topicsIt: "hebb, ai, assistente, chat, analisi economico retention competenze operativo budget turnover"
+    path: "/hebb-ai-support",
+    labelIt: "Hebb AI Support",
+    topicsIt: "hebb, ai, assistente, chat, supporto hr, ferie, policy, triage"
+  },
+  {
+    path: "/analytics",
+    labelIt: "AI Analytics",
+    topicsIt: "analytics, analisi, economico, retention, competenze, operativo, budget, turnover"
   },
   {
     path: "/nexa-hr-copilot",

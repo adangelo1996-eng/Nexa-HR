@@ -150,10 +150,21 @@ export type CoworkHistoryBatch = {
     logId: string;
     rowId: string;
     toolId: string;
+    domain: CoworkDomain;
+    categoryKey: string;
+    categoryLabel: string;
     subjectFullName: string;
     detail: string;
     undoStatus: string;
     undoBlockedReason?: string | null;
+  }>;
+  categories: Array<{
+    categoryKey: string;
+    categoryLabel: string;
+    domain: CoworkDomain;
+    toolId: string;
+    appliedCount: number;
+    undoAvailableCount: number;
   }>;
 };
 
@@ -174,6 +185,25 @@ export type CoworkHistoryResult = {
 };
 
 export type CoworkUndoRequest = { logId: string } | { planId: string; rowId: string };
+
+export type CoworkBulkUndoRequest =
+  | { logIds: string[] }
+  | { planId: string; batchId: string; category: string };
+
+export type CoworkBulkUndoItemResult = {
+  logId: string;
+  ok: boolean;
+  message: string;
+  reversible: boolean;
+};
+
+export type CoworkBulkUndoResult = {
+  ok: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: CoworkBulkUndoItemResult[];
+};
 
 export type CoworkCancelRequest = {
   planId: string;
