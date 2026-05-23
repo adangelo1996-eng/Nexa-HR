@@ -8,7 +8,7 @@
  *
  * Skips: supabase-remote-push.mjs --optional (needs SUPABASE_DB_URL on Render).
  *
- * Usage: pnpm render:verify-build | pnpm prepush
+ * Usage: pnpm run build:ci | pnpm render:verify-build | pnpm prepush
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";

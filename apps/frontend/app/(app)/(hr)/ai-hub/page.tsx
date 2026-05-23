@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -652,27 +653,27 @@ export default function AiHubPage(): React.JSX.Element {
             {HEBB_ANALYSIS_AREA_CHIPS.map((chip) => {
               const active = analysisAreaId === chip.id;
               return (
-                <button
+                <LoadingButton
                   key={chip.id}
                   type="button"
+                  size="sm"
+                  variant="secondary"
                   title={chip.hintIt}
+                  loading={analysisBusy && analysisAreaId === chip.id}
                   disabled={analysisBusy}
                   onClick={() => void runAreaAnalysis(chip.id)}
-                  className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                  className={`rounded-full px-3.5 py-2 ${
                     active
                       ? "border-[var(--prom-gold)] bg-[color-mix(in_srgb,var(--prom-gold)_18%,transparent)] text-[var(--prom-text)]"
                       : "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-[var(--prom-text)] hover:border-[var(--prom-gold)]"
                   }`}
                 >
                   {chip.labelIt}
-                </button>
+                </LoadingButton>
               );
             })}
           </div>
           <LlmUsageStatusBanner idle={!analysisLlm} llm={analysisLlm} className="mt-4" />
-          {analysisBusy ? (
-            <p className="mt-4 text-sm text-[var(--prom-muted)]">Generazione insight in corso…</p>
-          ) : null}
           {analysisInsight ? (
             <div className="mt-5 space-y-3 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_94%,transparent)] p-4 text-sm leading-relaxed text-[var(--prom-text)]">
               <p className="font-semibold">{analysisInsight.title}</p>

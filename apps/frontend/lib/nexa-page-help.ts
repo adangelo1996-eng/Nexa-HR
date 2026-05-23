@@ -18,6 +18,7 @@ export const NEXA_PAGE_HELP_KEYS = [
   "workforce-planning",
   "manager-copilot",
   "nexa-hr-copilot",
+  "hr-cowork",
   "hr-formazione",
   "formazione",
   "personnel-budget",
@@ -199,6 +200,20 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
     bestPractices: [
       "Non digitare nominativi nel follow-up: usa ruoli o «il team».",
       "Per decisioni ufficiali usa sempre i moduli dedicati (Workflow, Budget, Recruiting)."
+    ]
+  },
+  "hr-cowork": {
+    title: "Nexa Cowork",
+    summary:
+      "Workspace per operazioni di massa guidate da linguaggio naturale: accordi SW, estensioni richieste, clausole contrattuali. Preview HITL con nominativi; il modello vede solo aggregati pseudonimizzati.",
+    howToUse: [
+      "Descrivi l’operazione in chat o usa un chip esempio, poi **Genera piano**.",
+      "Controlla la tabella preview: seleziona le righe da applicare.",
+      "Conferma con **Applica selezionati**; le righe non selezionate restano in sospeso."
+    ],
+    bestPractices: [
+      "Verifica date e perimetro prima di applicare: le modifiche sono reali su DB.",
+      "Non incollare elenchi nominativi nel messaggio chat: usa filtri CDC/team se disponibili."
     ]
   },
   "hr-formazione": {

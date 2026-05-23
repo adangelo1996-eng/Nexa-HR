@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import {
   HebbAiErrorBanner,
   HebbAiExperienceShell,
@@ -359,9 +360,9 @@ export default function InsightsPage(): React.JSX.Element {
                   Raffinamento con AI (solo su numeri aggregati)
                 </label>
               ) : null}
-              <Button type="button" size="sm" variant="outline" disabled={narrativeBusy} onClick={() => void runNarrative()}>
-                {narrativeBusy ? "Generazione…" : "Genera sintesi"}
-              </Button>
+              <LoadingButton type="button" size="sm" variant="outline" loading={narrativeBusy} onClick={() => void runNarrative()}>
+                Genera sintesi
+              </LoadingButton>
             </div>
           </div>
           <div className="mt-4">

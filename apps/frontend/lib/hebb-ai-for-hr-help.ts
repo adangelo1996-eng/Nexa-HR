@@ -9,6 +9,7 @@ export const HEBB_AI_PAGE_KEYS = [
   "workforce-planning",
   "manager-copilot",
   "nexa-hr-copilot",
+  "hr-cowork",
   "insights",
   "cost-calculator",
   "hr-center-analisi",
@@ -55,15 +56,6 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Dopo import o modifiche massive, ricalcola una bozza su campione prima del batch completo."
     ]
   },
-  "manager-copilot": {
-    title: "Pannello manager",
-    summary: "Report diretti, approvazioni in sospeso e indicatori chiave.",
-    howToUse: [
-      "Controlla le approvazioni in cima alla pagina.",
-      "Apri la scheda di un report per RAL e dati economici (se autorizzato).",
-      "Collega a Retention per approfondire il team."
-    ]
-  },
   "workforce-planning": {
     title: "Workforce planning",
     summary:
@@ -78,6 +70,15 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
       "Prima di riunioni di budget, verifica che anagrafica e RAL siano aggiornate."
     ]
   },
+  "manager-copilot": {
+    title: "Pannello manager",
+    summary: "Report diretti, approvazioni in sospeso e indicatori chiave.",
+    howToUse: [
+      "Controlla le approvazioni in cima alla pagina.",
+      "Apri la scheda di un report per RAL e dati economici (se autorizzato).",
+      "Collega a Retention per approfondire il team."
+    ]
+  },
   "nexa-hr-copilot": {
     title: "NEXA HR Copilot",
     summary:
@@ -90,6 +91,20 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     bestPractices: [
       "Per decisioni ufficiali usa Workflow, Budget e Recruiting, non solo il brief AI.",
       "Incrocia sempre i segnali con dati verificati in app."
+    ]
+  },
+  "hr-cowork": {
+    title: "Nexa Cowork",
+    summary:
+      "Batch HR con linguaggio naturale e conferma obbligatoria (HITL). I nominativi compaiono solo in preview autorizzata; verso OpenAI transitano conteggi e aggregati.",
+    howToUse: [
+      "Genera un piano dalla chat, rivedi ogni riga nella tabella destra.",
+      "Deseleziona le eccezioni, poi applica solo le righe confermate.",
+      "Domini v1: accordi SW annuali, estensione richieste approvate, clausole contratto."
+    ],
+    bestPractices: [
+      "Richiede permessi lifecycle HR esteso (nexa.lifecycle:write per applicare).",
+      "I piani scadono dopo 24 ore: rigenera se necessario."
     ]
   },
   insights: {

@@ -7,15 +7,15 @@ alwaysApply: true
 
 ## Regola per agenti e sviluppatori
 
-**Il commit dell'utente deve essere definitivo:** prima che l'agente chieda (o accetti) un commit/push, **`pnpm render:verify-build` deve passare al 100% in locale**. Se fallisce, **correggere prima** — non proporre commit finché lo script non termina con `OK`.
+**Il commit dell'utente deve essere definitivo:** prima che l'agente chieda (o accetti) un commit/push, **`pnpm run build:ci`** (o `pnpm render:verify-build`) **deve passare al 100% in locale**. Se fallisce, **correggere prima** — non proporre commit finché lo script non termina con `OK`.
 
 ### Comando
 
 ```bash
-pnpm render:verify-build
+pnpm run build:ci
 ```
 
-Equivalente a `node scripts/verify-render-build.mjs`: replica i passi di **compile** di `render.yaml` (senza migrazioni Supabase, che richiedono `SUPABASE_DB_URL` su Render).
+Equivalente a `node scripts/verify-render-build.mjs`: replica i passi di **compile** di `render.yaml` (senza migrazioni Supabase, che richiedono `SUPABASE_DB_URL` su Render). Vedi anche [`docs/deploy-render.md`](../../docs/deploy-render.md).
 
 | Step | Comando | Servizio Render |
 |------|---------|-----------------|

@@ -3,6 +3,7 @@ import { AiHrModule } from "./ai-hr/ai-hr.module";
 import { AiPrivacyModule } from "./ai-privacy/ai-privacy.module";
 import { HebbHrModule } from "./ai/hebb-hr.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { CoworkModule } from "./cowork/cowork.module";
 import { CompensationModule } from "./compensation/compensation.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { HrContractsModule } from "./hr-contracts/hr-contracts.module";
@@ -48,6 +49,7 @@ import { WorkforceModule } from "./workforce/workforce.module";
     HrRecapModule,
     HrOnboardingModule,
     HrOffboardingModule,
+    CoworkModule,
     TrainingModule,
     SuiteIntegrationsModule
   ]

@@ -97,6 +97,7 @@ const PILLAR_DEFS: Array<{
         title: "Flussi e payroll",
         items: [
           { href: "/workflow/approvals", label: "Approvazioni team", icon: Workflow },
+          { href: "/hr/cowork" as Route, label: "Nexa Cowork", icon: Sparkles },
           { href: "/expenses/org" as Route, label: "Note spese organico", icon: Receipt },
           { href: "/payroll-hebb", label: "Payroll", icon: Sparkles }
         ]

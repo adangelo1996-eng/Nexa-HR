@@ -86,12 +86,28 @@ export interface SmartworkingRequestRow {
   id: string;
   userId: string;
   day: string;
+  /** Ultimo giorno incluso (YYYY-MM-DD); se assente equivale a `day`. */
+  endDay?: string | null;
   note?: string | null;
   status: "pending" | "approved" | "rejected";
   approverId?: string | null;
   decisionAt?: string | null;
   rejectReason?: string | null;
   createdAt: string;
+}
+
+export interface HrShiftPresetRow {
+  id: string;
+  companyId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  isDefault: boolean;
+  workTeamId?: string | null;
+  userId?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type TravelRequestRow = SmartworkingRequestRow;
@@ -141,11 +157,19 @@ export type PersonnelBudgetRow = {
   suggestedBudget?: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
 };
 
+export type PersonnelBudgetPlannedExtraLine = {
+  id: string;
+  label: string;
+  budget: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+};
+
 export type PersonnelBudgetDepartment = {
   costCenterId: string | null;
   costCenterName: string;
   sortOrder: number;
   rows: PersonnelBudgetRow[];
+  /** Voci pianificate aggiuntive (non legate a dipendente). */
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
 };
 
 export type PersonnelBudgetSnapshot = {
@@ -181,10 +205,33 @@ export type PersonnelBudgetAnnualMatrixRow = {
   costCenterName?: string;
   teamId: string | null;
   teamName?: string;
+  /** YYYY-MM-DD da anagrafica (pro-rata / mese ingresso). */
+  hireDate?: string | null;
+  /** YYYY-MM-DD fine rapporto se presente (mese uscita). */
+  contractEndDate?: string | null;
   months: Array<{
     month: number;
     budget: PersonnelBudgetCellValues;
   }>;
+};
+
+export type WorkforcePlanningScenarioRow = {
+  id: string;
+  name: string;
+  assumptionsJson: Record<string, unknown>;
+  payloadJson: Record<string, unknown>;
+  analysisText: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HrRoleCoverageGapRow = {
+  id: string;
+  roleTitle: string;
+  headcountGap: number;
+  expectedRalAnnual: number | null;
+  notes: string | null;
+  updatedAt: string;
 };
 
 export type PersonnelBudgetAnnualMatrixResult = {
@@ -192,6 +239,52 @@ export type PersonnelBudgetAnnualMatrixResult = {
   yearStatus: PersonnelBudgetYearStatusDto;
   payrollInstallmentMonths: number;
   rows: PersonnelBudgetAnnualMatrixRow[];
+};
+
+export type PersonnelBudgetAssumptionsDto = {
+  companyId: string;
+  year: number;
+  employerInpsPercent: number | null;
+  inailPermille: number | null;
+  tfrDivisor: number | null;
+  welfarePercent: number;
+  bonusProvisionPercent: number;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export type PersonnelBudgetCellNoteDto = {
+  id: string;
+  companyId: string;
+  year: number;
+  month: number | null;
+  userId: string | null;
+  plannedLineId: string | null;
+  fieldKey: string;
+  note: string;
+  authorUserId: string | null;
+  authorName: string | null;
+  updatedAt: string;
+};
+
+export type PersonnelBudgetYearMonthlyRow = PersonnelBudgetRow & {
+  forecast: Partial<PersonnelBudgetMoney> & { totalCompanyCost?: number };
+};
+
+export type PersonnelBudgetYearMonthlyDepartment = {
+  costCenterId: string | null;
+  costCenterName: string;
+  sortOrder: number;
+  rows: PersonnelBudgetYearMonthlyRow[];
+  plannedExtraLines?: PersonnelBudgetPlannedExtraLine[];
+};
+
+export type PersonnelBudgetYearMonthlyResult = {
+  year: number;
+  months: Array<{
+    month: number;
+    departments: PersonnelBudgetYearMonthlyDepartment[];
+  }>;
 };
 
 export type PersonnelBudgetForecastSnapshot = {
@@ -254,6 +347,8 @@ export type PersonnelBudgetAnalysisResult = {
 const SMARTWORKING_MONTHLY_QUOTA = 8;
 /** Massimo giorni di remote working richiedibili nella stessa settimana (lun–dom UTC) per dipendente (tipo `smartworking`). */
 const SMARTWORKING_WEEKLY_QUOTA = 2;
+/** Massimo giorni consecutivi per singola richiesta remote working. */
+const SMARTWORKING_MAX_RANGE_DAYS = 14;
 
 function coercePlatformRole(role: string | undefined | null): User["role"] {
   const r = String(role ?? "user");
@@ -326,7 +421,6 @@ interface UserCreateInput {
   ccnlLevel?: string | null;
   legalCategory?: string | null;
   contractEndDate?: string | null;
-  noticePeriodMonths?: number | null;
   fixedSupplementMonthly?: number | null;
   garnishmentMonthlyEstimate?: number | null;
   fringeBenefitYtdEuros?: number | null;
@@ -382,7 +476,6 @@ interface UserUpdateInput {
   ccnlLevel?: string | null;
   legalCategory?: string | null;
   contractEndDate?: string | null;
-  noticePeriodMonths?: number | null;
   fixedSupplementMonthly?: number | null;
   garnishmentMonthlyEstimate?: number | null;
   fringeBenefitYtdEuros?: number | null;
@@ -581,6 +674,7 @@ export class HrDataStore {
   private readonly sicknessEvents: SicknessEvent[] = [];
   private readonly approvals: ApprovalRecord[] = [];
   private readonly smartworkingRequests: SmartworkingRequestRow[] = [];
+  private readonly shiftPresets: HrShiftPresetRow[] = [];
   private readonly travelRequests: TravelRequestRow[] = [];
   private readonly payslips: Payslip[] = [];
   private readonly delegations: Delegation[] = [];
@@ -649,6 +743,15 @@ export class HrDataStore {
     }
   >();
   private readonly personnelBudgetAnalysisNotesMem = new Map<string, PersonnelBudgetAnalysisNoteDto>();
+  /** key companyId|year|month|lineId */
+  private readonly personnelBudgetPlannedExtraMem = new Map<
+    string,
+    PersonnelBudgetPlannedExtraLine & { costCenterId: string | null }
+  >();
+  /** key companyId|year */
+  private readonly personnelBudgetAssumptionsMem = new Map<string, PersonnelBudgetAssumptionsDto>();
+  /** key companyId|year|month|fieldKey|userId|plannedLineId */
+  private readonly personnelBudgetCellNotesMem = new Map<string, PersonnelBudgetCellNoteDto>();
   /** Dev senza DB: ultimi run turnover per companyId. */
   private readonly turnoverSignalRunsMem = new Map<
     string,
@@ -3324,6 +3427,41 @@ export class HrDataStore {
     );
   }
 
+  private mergeEmployerRatesWithAssumptions(
+    base: { employerInpsRate: number; inailRate: number; tfrDivisor: number },
+    assumptions: PersonnelBudgetAssumptionsDto | null
+  ): { employerInpsRate: number; inailRate: number; tfrDivisor: number } {
+    if (!assumptions) {
+      return base;
+    }
+    return {
+      employerInpsRate:
+        assumptions.employerInpsPercent != null && Number.isFinite(assumptions.employerInpsPercent)
+          ? assumptions.employerInpsPercent / 100
+          : base.employerInpsRate,
+      inailRate:
+        assumptions.inailPermille != null && Number.isFinite(assumptions.inailPermille)
+          ? assumptions.inailPermille / 1000
+          : base.inailRate,
+      tfrDivisor:
+        assumptions.tfrDivisor != null && Number.isFinite(assumptions.tfrDivisor)
+          ? assumptions.tfrDivisor
+          : base.tfrDivisor
+    };
+  }
+
+  private employerExtrasFromAssumptions(
+    gross: number,
+    assumptions: PersonnelBudgetAssumptionsDto | null
+  ): number {
+    if (!assumptions) {
+      return 0;
+    }
+    const w = (assumptions.welfarePercent ?? 0) / 100;
+    const b = (assumptions.bonusProvisionPercent ?? 0) / 100;
+    return Math.round(gross * (w + b) * 100) / 100;
+  }
+
   private async buildItalianPayrollInputForUser(
     user: User,
     period: string,
@@ -4074,7 +4212,11 @@ export class HrDataStore {
           requestedCalendarDays = undefined;
         }
       } else if (sw) {
-        requestedCalendarDays = 1;
+        try {
+          requestedCalendarDays = this.countCalendarDays(sw.day, this.smartworkingRequestEndDay(sw));
+        } catch {
+          requestedCalendarDays = 1;
+        }
         note = sw.note ?? null;
         smartworkingWeekQuota = SMARTWORKING_WEEKLY_QUOTA;
         smartworkingWeekUsed = await this.countSmartworkingBookedDaysInWeek(sw.userId, sw.day);
@@ -4101,7 +4243,11 @@ export class HrDataStore {
         requesterName: user?.fullName,
         requesterPhotoUrl,
         startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day ?? tr?.day,
-        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day ?? tr?.day,
+        endDate:
+          leave?.endDate ??
+          sickness?.toDate ??
+          (sw ? this.smartworkingRequestEndDay(sw) : undefined) ??
+          tr?.day,
         leaveKind,
         residualAnnualLeaveDays,
         requestedCalendarDays,
@@ -4235,7 +4381,11 @@ export class HrDataStore {
           requestedCalendarDays = undefined;
         }
       } else if (sw) {
-        requestedCalendarDays = 1;
+        try {
+          requestedCalendarDays = this.countCalendarDays(sw.day, this.smartworkingRequestEndDay(sw));
+        } catch {
+          requestedCalendarDays = 1;
+        }
         note = sw.note ?? null;
       } else if (tr) {
         requestedCalendarDays = 1;
@@ -4255,7 +4405,11 @@ export class HrDataStore {
         requesterName: user?.fullName,
         requesterPhotoUrl: null,
         startDate: leave?.startDate ?? sickness?.fromDate ?? sw?.day ?? tr?.day,
-        endDate: leave?.endDate ?? sickness?.toDate ?? sw?.day ?? tr?.day,
+        endDate:
+          leave?.endDate ??
+          sickness?.toDate ??
+          (sw ? this.smartworkingRequestEndDay(sw) : undefined) ??
+          tr?.day,
         leaveKind,
         requestedCalendarDays,
         note
@@ -4780,10 +4934,17 @@ export class HrDataStore {
       });
     }
     const all: CalendarEvent[] = [...holidayEvents];
-    for (const uid of userIds) {
-      const chunk = await this.buildCalendarEventsForUser(uid, from, to, true);
-      for (const ev of chunk) {
-        all.push({ ...ev, userId: uid });
+    const CALENDAR_USER_CHUNK = 12;
+    for (let i = 0; i < userIds.length; i += CALENDAR_USER_CHUNK) {
+      const slice = userIds.slice(i, i + CALENDAR_USER_CHUNK);
+      const chunks = await Promise.all(
+        slice.map((uid) => this.buildCalendarEventsForUser(uid, from, to, true))
+      );
+      for (let j = 0; j < slice.length; j++) {
+        const uid = slice[j]!;
+        for (const ev of chunks[j]!) {
+          all.push({ ...ev, userId: uid });
+        }
       }
     }
     all.sort((a, b) => a.start.localeCompare(b.start));
@@ -5062,7 +5223,8 @@ export class HrDataStore {
     const shifts = await this.listShiftsForUser(userId);
     for (const sh of shifts) {
       const startDay = sh.startAt.slice(0, 10);
-      if (!this.inCalendarRange(startDay, from, to)) continue;
+      const endDay = sh.endAt.slice(0, 10);
+      if (!this.inCalendarRange(startDay, from, to) && !this.inCalendarRange(endDay, from, to)) continue;
       events.push({
         id: `cal-sh-${sh.id}`,
         kind: "shift",
@@ -5073,23 +5235,25 @@ export class HrDataStore {
       });
     }
     const summaries = await this.listWorkdaySummariesInRange(userId, from, to);
-    const summarySwDays = new Set(
-      summaries.filter((ws) => ws.mode === "smartworking").map((ws) => ws.date)
-    );
-    const officeDaysFromSummary = new Set(
-      summaries.filter((ws) => ws.mode === "office").map((ws) => ws.date)
-    );
     const swRequests = await this.listMySmartworking(userId);
-    const pendingSwDays = new Set(swRequests.filter((r) => r.status === "pending").map((r) => r.day));
+    const swRequestCoveredDays = new Set<string>();
     for (const r of swRequests) {
-      if (!this.inCalendarRange(r.day, from, to)) continue;
+      if (r.status === "rejected") continue;
+      for (const d of this.enumerateCalendarDaysInclusive(r.day, this.smartworkingRequestEndDay(r))) {
+        swRequestCoveredDays.add(d);
+      }
+    }
+    for (const r of swRequests) {
+      const swStart = r.day.slice(0, 10);
+      const swEnd = this.smartworkingRequestEndDay(r);
+      if (!this.inCalendarRange(swStart, from, to) && !this.inCalendarRange(swEnd, from, to)) continue;
       if (r.status === "rejected") {
         events.push({
           id: `cal-swr-${r.id}`,
           kind: "smartworking",
           title: "Remote working (rifiutato)",
-          start: r.day,
-          end: r.day,
+          start: swStart,
+          end: swEnd,
           meta: {
             swRequestId: r.id,
             status: r.status,
@@ -5098,15 +5262,17 @@ export class HrDataStore {
         });
         continue;
       }
-      if (r.status === "approved" && summarySwDays.has(r.day)) continue;
-      if (r.status === "approved" && officeDaysFromSummary.has(r.day.slice(0, 10))) continue;
       const pending = r.status === "pending";
+      const rangeLabel =
+        swEnd !== swStart ? ` (${swStart} → ${swEnd})` : "";
       events.push({
         id: `cal-swr-${r.id}`,
         kind: "smartworking",
-        title: pending ? "Remote working (in attesa)" : "Remote working",
-        start: r.day,
-        end: r.day,
+        title: pending
+          ? `Remote working (in attesa)${rangeLabel}`
+          : `Remote working${rangeLabel}`,
+        start: swStart,
+        end: swEnd,
         meta: {
           swRequestId: r.id,
           status: r.status,
@@ -5116,7 +5282,7 @@ export class HrDataStore {
     }
     for (const ws of summaries) {
       if (ws.mode !== "smartworking") continue;
-      if (pendingSwDays.has(ws.date)) continue;
+      if (swRequestCoveredDays.has(ws.date)) continue;
       if (!this.inCalendarRange(ws.date, from, to)) continue;
       events.push({
         id: `cal-sw-${userId}-${ws.date}`,
@@ -5255,6 +5421,235 @@ export class HrDataStore {
       return null;
     }
     return data.signedUrl;
+  }
+
+  /** Profilo CV read-only: anagrafica, organizzazione, competenze (bundle unico, senza id tecnici in testa). */
+  async getEmployeeCvProfile(
+    requesterId: string,
+    requesterRole: User["role"],
+    requesterEmail: string,
+    targetUserId: string,
+    opts: { includeEconomic: boolean; includePayrollSensitive: boolean }
+  ): Promise<{
+    subject: Record<string, unknown>;
+    roleName: string | null;
+    costCenter: { code: string; name: string } | null;
+    team: { name: string } | null;
+    manager: { id: string; fullName: string } | null;
+    skills: Array<{ code: string; name: string; level: number }>;
+    companyCcnl: string | null;
+    profilePhotoUrl: string | null;
+    flags: {
+      isSelf: boolean;
+      canViewEconomic: boolean;
+      canViewPayrollSensitive: boolean;
+      canEditInAdmin: boolean;
+    };
+  }> {
+    await this.assertCanViewEmployeeCvProfile(requesterId, requesterRole, requesterEmail, targetUserId);
+    const user = await this.getUser(targetUserId);
+    const isSelf = requesterId === targetUserId;
+    const canEditInAdmin = isSynapseSuperuserEmail(requesterEmail);
+
+    let roleName: string | null = null;
+    if (user.roleId?.trim()) {
+      const role = await this.getRoleById(user.roleId.trim());
+      roleName = role?.name?.trim() || null;
+    }
+
+    let costCenter: { code: string; name: string } | null = null;
+    if (user.costCenterId?.trim()) {
+      const centers = await this.listCostCenters();
+      const cc = centers.find((c) => c.id === user.costCenterId);
+      if (cc) {
+        costCenter = { code: cc.code, name: cc.name };
+      }
+    }
+
+    let team: { name: string } | null = null;
+    if (user.teamId?.trim()) {
+      try {
+        const t = await this.getWorkTeam(user.teamId.trim());
+        team = { name: t.name };
+      } catch {
+        team = null;
+      }
+    }
+
+    let manager: { id: string; fullName: string } | null = null;
+    if (user.managerId?.trim()) {
+      try {
+        const m = await this.getUser(user.managerId.trim());
+        if (m.companyId === user.companyId) {
+          manager = { id: m.id, fullName: m.fullName };
+        }
+      } catch {
+        manager = null;
+      }
+    }
+
+    const skills = await this.listUserSkillsForCv(targetUserId);
+    const companyRow = await this.getCompanySettings(user.companyId);
+    const profilePhotoUrl = await this.getEmployeeProfilePhotoSignedUrl(
+      requesterId,
+      requesterRole,
+      targetUserId
+    );
+
+    const subject: Record<string, unknown> = {
+      fullName: user.fullName,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+      email: user.email,
+      phone: user.phone ?? null,
+      birthDate: user.birthDate ?? null,
+      hireDate: user.hireDate ?? null,
+      contractType: user.contractType ?? null,
+      weeklyContractHours: user.weeklyContractHours ?? null,
+      employmentState: user.employmentState ?? "active",
+      contractEndDate: user.contractEndDate ?? null,
+      contractFixedTerm: user.contractFixedTerm ?? false,
+      partTimeModality: user.partTimeModality ?? null,
+      legalCategory: user.legalCategory ?? null,
+      ccnlCode: user.ccnlCode ?? null,
+      ccnlLevel: user.ccnlLevel ?? null,
+      vacationAllowanceDays: user.vacationAllowanceDays ?? null,
+      jurisdiction: user.jurisdiction ?? "IT",
+      taxRegion: user.taxRegion ?? null,
+      taxMunicipalityIt: user.taxMunicipalityIt ?? null
+    };
+
+    if (opts.includePayrollSensitive) {
+      subject.fiscalCode = user.fiscalCode ?? null;
+      subject.maritalStatus = user.maritalStatus ?? null;
+      subject.dependentsChildren = user.dependentsChildren ?? null;
+      subject.dependentSpouse = user.dependentSpouse ?? null;
+      subject.disabilityFlag = user.disabilityFlag ?? null;
+      subject.taxDomicileMunicipalityIt = user.taxDomicileMunicipalityIt ?? null;
+      subject.taxDomicileSameAsResidence = user.taxDomicileSameAsResidence ?? null;
+      subject.address = user.address ?? null;
+      subject.iban = user.iban ?? null;
+      subject.bankName = user.bankName ?? null;
+      subject.bicSwift = user.bicSwift ?? null;
+      subject.accountHolder = user.accountHolder ?? null;
+    }
+
+    if (opts.includeEconomic) {
+      subject.annualGrossSalary = user.annualGrossSalary ?? null;
+      subject.baseSalaryMonthly = user.baseSalaryMonthly ?? null;
+      subject.fixedSupplementMonthly = user.fixedSupplementMonthly ?? null;
+      subject.payMonthsPerYear = user.payMonthsPerYear ?? null;
+      subject.fringeBenefitYtdEuros = user.fringeBenefitYtdEuros ?? null;
+      subject.garnishmentMonthlyEstimate = user.garnishmentMonthlyEstimate ?? null;
+    }
+
+    return {
+      subject,
+      roleName,
+      costCenter,
+      team,
+      manager,
+      skills,
+      companyCcnl: companyRow.companyCcnl?.trim() || null,
+      profilePhotoUrl,
+      flags: {
+        isSelf,
+        canViewEconomic: opts.includeEconomic,
+        canViewPayrollSensitive: opts.includePayrollSensitive,
+        canEditInAdmin
+      }
+    };
+  }
+
+  private async assertCanViewEmployeeCvProfile(
+    requesterId: string,
+    requesterRole: User["role"],
+    requesterEmail: string,
+    targetUserId: string
+  ): Promise<void> {
+    if (requesterId === targetUserId) {
+      return;
+    }
+    const [viewer, target] = await Promise.all([this.getUser(requesterId), this.getUser(targetUserId)]);
+    if ((viewer.companyId || "").trim() !== (target.companyId || "").trim()) {
+      throw new ForbiddenException("Azienda diversa");
+    }
+    if (requesterRole === "superuser") {
+      return;
+    }
+    if (await this.canAccessHrExtendedConsoleLocal(requesterId, requesterRole as AuthRole, requesterEmail)) {
+      return;
+    }
+    if (isSynapseSuperuserEmail(requesterEmail)) {
+      return;
+    }
+    if (await this.userHasReportsHrRead(requesterId)) {
+      return;
+    }
+    if (await this.isManagerOf(requesterId, targetUserId)) {
+      return;
+    }
+    if (await this.isUserLeadOfTeamContaining(requesterId, targetUserId)) {
+      return;
+    }
+    throw new ForbiddenException("Non autorizzato a visualizzare questo profilo");
+  }
+
+  private async userHasReportsHrRead(userId: string): Promise<boolean> {
+    const u = await this.getUser(userId);
+    if (!u.roleId?.trim()) {
+      return false;
+    }
+    const role = await this.getRoleById(u.roleId.trim());
+    if (!role) {
+      return false;
+    }
+    return this.expandRolePermissionsRaw(role.permissions ?? []).has("nexa.reports_hr:read");
+  }
+
+  private async listUserSkillsForCv(
+    userId: string
+  ): Promise<Array<{ code: string; name: string; level: number }>> {
+    if (!this.supabase) {
+      return [];
+    }
+    try {
+      const { data: rows, error } = await this.supabase
+        .from("hr_user_skills")
+        .select("skill_id, level")
+        .eq("user_id", userId);
+      if (error || !rows?.length) {
+        return [];
+      }
+      const typed = rows as Array<{ skill_id: string; level: number }>;
+      const skillIds = [...new Set(typed.map((r) => r.skill_id))];
+      const { data: skills, error: e2 } = await this.supabase
+        .from("hr_skills")
+        .select("id, code, name")
+        .in("id", skillIds);
+      if (e2) {
+        return [];
+      }
+      const byId = new Map(
+        ((skills ?? []) as Array<{ id: string; code: string; name: string }>).map((s) => [s.id, s])
+      );
+      const out: Array<{ code: string; name: string; level: number }> = [];
+      for (const row of typed) {
+        const sk = byId.get(row.skill_id);
+        if (!sk) {
+          continue;
+        }
+        out.push({
+          code: sk.code,
+          name: sk.name,
+          level: Number(row.level) || 0
+        });
+      }
+      out.sort((a, b) => a.name.localeCompare(b.name, "it"));
+      return out;
+    } catch {
+      return [];
+    }
   }
 
   async downloadSupabasePrivateFile(bucket: string, objectPath: string): Promise<Buffer> {
@@ -6335,6 +6730,212 @@ export class HrDataStore {
     }
   }
 
+  private mapShiftPresetRow(raw: Record<string, unknown>): HrShiftPresetRow {
+    return {
+      id: String(raw.id),
+      companyId: String(raw.company_id ?? raw.companyId),
+      name: String(raw.name),
+      startTime: String(raw.start_time ?? raw.startTime ?? "08:00:00"),
+      endTime: String(raw.end_time ?? raw.endTime ?? "17:00:00"),
+      breakMinutes: Number(raw.break_minutes ?? raw.breakMinutes ?? 0),
+      isDefault: Boolean(raw.is_default ?? raw.isDefault),
+      workTeamId: raw.work_team_id != null ? String(raw.work_team_id) : raw.workTeamId != null ? String(raw.workTeamId) : null,
+      userId: raw.user_id != null ? String(raw.user_id) : raw.userId != null ? String(raw.userId) : null,
+      createdAt: String(raw.created_at ?? raw.createdAt ?? new Date().toISOString()),
+      updatedAt: String(raw.updated_at ?? raw.updatedAt ?? new Date().toISOString())
+    };
+  }
+
+  private normalizeShiftPresetTime(t: string): string {
+    const v = t.trim();
+    if (/^\d{2}:\d{2}$/.test(v)) return `${v}:00`;
+    if (/^\d{2}:\d{2}:\d{2}$/.test(v)) return v;
+    throw new BadRequestException("Orario preset non valido (usa HH:mm o HH:mm:ss)");
+  }
+
+  async listShiftPresets(requesterId: string): Promise<HrShiftPresetRow[]> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) {
+      return this.shiftPresets
+        .filter((p) => p.companyId === me.companyId)
+        .sort((a, b) => a.name.localeCompare(b.name, "it"));
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_shift_presets")
+      .select("*")
+      .eq("company_id", me.companyId)
+      .order("name", { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(`Lettura preset turni fallita: ${error.message}`);
+    }
+    return ((data as Record<string, unknown>[]) ?? []).map((r) => this.mapShiftPresetRow(r));
+  }
+
+  async resolveShiftPresetForUser(userId: string): Promise<HrShiftPresetRow | null> {
+    const user = await this.getUser(userId);
+    const presets = await this.listShiftPresets(userId);
+    const byUser = presets.find((p) => p.userId === userId);
+    if (byUser) return byUser;
+    const teamId = user.teamId?.trim();
+    if (teamId) {
+      const byTeam = presets.find((p) => p.workTeamId === teamId);
+      if (byTeam) return byTeam;
+    }
+    return presets.find((p) => p.isDefault && !p.userId && !p.workTeamId) ?? null;
+  }
+
+  async createShiftPreset(
+    requesterId: string,
+    input: {
+      name: string;
+      startTime: string;
+      endTime: string;
+      breakMinutes?: number;
+      isDefault?: boolean;
+      workTeamId?: string | null;
+      userId?: string | null;
+    }
+  ): Promise<HrShiftPresetRow> {
+    const me = await this.getUser(requesterId);
+    const name = input.name?.trim();
+    if (!name) throw new BadRequestException("Nome preset obbligatorio");
+    const workTeamId = input.workTeamId?.trim() || null;
+    const userId = input.userId?.trim() || null;
+    const isDefault = Boolean(input.isDefault);
+    if (!workTeamId && !userId && !isDefault) {
+      throw new BadRequestException("Indica dipendente, team o default azienda");
+    }
+    const now = new Date().toISOString();
+    const row: HrShiftPresetRow = {
+      id: randomUUID(),
+      companyId: me.companyId,
+      name,
+      startTime: this.normalizeShiftPresetTime(input.startTime),
+      endTime: this.normalizeShiftPresetTime(input.endTime),
+      breakMinutes: Math.max(0, Math.min(480, Number(input.breakMinutes ?? 0))),
+      isDefault,
+      workTeamId,
+      userId,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (this.useDb) {
+      const { error } = await this.supabase!.from("hr_shift_presets").insert({
+        company_id: row.companyId,
+        name: row.name,
+        start_time: row.startTime,
+        end_time: row.endTime,
+        break_minutes: row.breakMinutes,
+        is_default: row.isDefault,
+        work_team_id: row.workTeamId,
+        user_id: row.userId,
+        created_at: row.createdAt,
+        updated_at: row.updatedAt
+      });
+      if (error) {
+        throw new InternalServerErrorException(`Creazione preset turno fallita: ${error.message}`);
+      }
+    } else {
+      this.shiftPresets.push(row);
+    }
+    return row;
+  }
+
+  async updateShiftPreset(
+    requesterId: string,
+    presetId: string,
+    input: {
+      name?: string;
+      startTime?: string;
+      endTime?: string;
+      breakMinutes?: number;
+      isDefault?: boolean;
+      workTeamId?: string | null;
+      userId?: string | null;
+    }
+  ): Promise<HrShiftPresetRow> {
+    const me = await this.getUser(requesterId);
+    const presets = await this.listShiftPresets(requesterId);
+    const existing = presets.find((p) => p.id === presetId);
+    if (!existing || existing.companyId !== me.companyId) {
+      throw new NotFoundException("Preset turno non trovato");
+    }
+    const workTeamId =
+      input.workTeamId !== undefined ? input.workTeamId?.trim() || null : existing.workTeamId ?? null;
+    const userId = input.userId !== undefined ? input.userId?.trim() || null : existing.userId ?? null;
+    const isDefault = input.isDefault !== undefined ? Boolean(input.isDefault) : existing.isDefault;
+    if (!workTeamId && !userId && !isDefault) {
+      throw new BadRequestException("Indica dipendente, team o default azienda");
+    }
+    const updated: HrShiftPresetRow = {
+      ...existing,
+      name: input.name?.trim() || existing.name,
+      startTime: input.startTime ? this.normalizeShiftPresetTime(input.startTime) : existing.startTime,
+      endTime: input.endTime ? this.normalizeShiftPresetTime(input.endTime) : existing.endTime,
+      breakMinutes:
+        input.breakMinutes !== undefined
+          ? Math.max(0, Math.min(480, Number(input.breakMinutes)))
+          : existing.breakMinutes,
+      isDefault,
+      workTeamId,
+      userId,
+      updatedAt: new Date().toISOString()
+    };
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("hr_shift_presets")
+        .update({
+          name: updated.name,
+          start_time: updated.startTime,
+          end_time: updated.endTime,
+          break_minutes: updated.breakMinutes,
+          is_default: updated.isDefault,
+          work_team_id: updated.workTeamId,
+          user_id: updated.userId,
+          updated_at: updated.updatedAt
+        })
+        .eq("id", presetId)
+        .eq("company_id", me.companyId);
+      if (error) {
+        throw new InternalServerErrorException(`Aggiornamento preset turno fallito: ${error.message}`);
+      }
+    } else {
+      const idx = this.shiftPresets.findIndex((p) => p.id === presetId);
+      if (idx >= 0) this.shiftPresets[idx] = updated;
+    }
+    return updated;
+  }
+
+  async deleteShiftPreset(requesterId: string, presetId: string): Promise<void> {
+    const me = await this.getUser(requesterId);
+    const presets = await this.listShiftPresets(requesterId);
+    if (!presets.some((p) => p.id === presetId)) {
+      throw new NotFoundException("Preset turno non trovato");
+    }
+    if (this.useDb) {
+      const { error } = await this.supabase!
+        .from("hr_shift_presets")
+        .delete()
+        .eq("id", presetId)
+        .eq("company_id", me.companyId);
+      if (error) {
+        throw new InternalServerErrorException(`Eliminazione preset turno fallita: ${error.message}`);
+      }
+    } else {
+      const idx = this.shiftPresets.findIndex((p) => p.id === presetId);
+      if (idx >= 0) this.shiftPresets.splice(idx, 1);
+    }
+  }
+
+  shiftPresetToUtcWindow(ymd: string, preset: HrShiftPresetRow): { startAt: string; endAt: string } {
+    const start = preset.startTime.slice(0, 8);
+    const end = preset.endTime.slice(0, 8);
+    return {
+      startAt: `${ymd}T${start}.000Z`,
+      endAt: `${ymd}T${end}.000Z`
+    };
+  }
+
   private defaultOnboarding(userId: string): OnboardingStatus {
     const now = new Date().toISOString();
     const checklist: OnboardingChecklistItem[] = [
@@ -6592,25 +7193,36 @@ export class HrDataStore {
     userId: string,
     day: string,
     note?: string,
-    actorRole?: AuthRole
+    actorRole?: AuthRole,
+    endDay?: string
   ): Promise<SmartworkingRequestRow> {
     const user = await this.getUser(userId);
-    const dayNorm = day.slice(0, 10);
-    if (await this.hasActiveSmartworkingRequestForDay(userId, dayNorm)) {
-      throw new BadRequestException("Remote working già richiesto per questa data");
+    const { start: dayNorm, end: endNorm } = this.normalizeSmartworkingRange(day, endDay);
+    const rangeDays = this.enumerateCalendarDaysInclusive(dayNorm, endNorm);
+    for (const d of rangeDays) {
+      if (await this.hasActiveSmartworkingRequestForDay(userId, d)) {
+        throw new BadRequestException(`Remote working già richiesto per il ${d}`);
+      }
     }
     const skipSwQuota = actorRole === "superuser";
     if (!skipSwQuota) {
       const monthPrefix = dayNorm.slice(0, 7);
       const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(userId, monthPrefix);
-      if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
+      if (monthBooked + rangeDays.length > SMARTWORKING_MONTHLY_QUOTA) {
         throw new BadRequestException("Quota mensile remote working esaurita (richieste in attesa incluso)");
       }
-      const weekBooked = await this.countSmartworkingBookedDaysInWeek(userId, dayNorm);
-      if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
-        throw new BadRequestException(
-          `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
-        );
+      const weekIds = new Set<string>();
+      for (const d of rangeDays) {
+        weekIds.add(this.mondayOfWeekUtcContaining(d));
+      }
+      for (const mon of weekIds) {
+        const weekBooked = await this.countSmartworkingBookedDaysInWeek(userId, mon);
+        const addInWeek = rangeDays.filter((d) => this.mondayOfWeekUtcContaining(d) === mon).length;
+        if (weekBooked + addInWeek > SMARTWORKING_WEEKLY_QUOTA) {
+          throw new BadRequestException(
+            `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
+          );
+        }
       }
     }
     const id = `sw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -6619,6 +7231,7 @@ export class HrDataStore {
       id,
       userId,
       day: dayNorm,
+      endDay: endNorm,
       note: note?.trim() || null,
       status: "pending",
       approverId: user.managerId ?? null,
@@ -6629,6 +7242,7 @@ export class HrDataStore {
         id: row.id,
         userId: row.userId,
         day: row.day,
+        endDay: row.endDay,
         note: row.note,
         status: row.status,
         approverId: row.approverId,
@@ -6653,10 +7267,12 @@ export class HrDataStore {
     } else {
       this.approvals.push(swApproval);
     }
+    const periodLabel = this.formatSmartworkingPeriodLabel(dayNorm, endNorm);
+    const daysLabel = rangeDays.length > 1 ? ` · ${rangeDays.length} giorni` : "";
     await this.notifyApproversOfRequest(
       user,
       "Richiesta remote working",
-      `${user.fullName}: ${dayNorm}${note?.trim() ? ` — ${note.trim()}` : ""}`,
+      `${user.fullName}: ${periodLabel}${daysLabel}${note?.trim() ? ` — ${note.trim()}` : ""}`,
       "smartworking_request",
       `/workflow/approvals?approvalId=${encodeURIComponent(swApproval.id)}`
     );
@@ -6676,7 +7292,8 @@ export class HrDataStore {
     requestId: string,
     day: string,
     note: string | null | undefined,
-    actorRole: AuthRole
+    actorRole: AuthRole,
+    endDay?: string
   ): Promise<SmartworkingRequestRow> {
     const row = await this.findSmartworkingRequestById(requestId);
     if (!row) {
@@ -6694,51 +7311,53 @@ export class HrDataStore {
     } else if (row.status !== "pending") {
       throw new BadRequestException("Solo le richieste in attesa possono essere modificate");
     }
-    const nextDay = day.slice(0, 10);
+    const { start: nextDay, end: nextEnd } = this.normalizeSmartworkingRange(day, endDay ?? row.endDay ?? row.day);
     const nextNote = note?.trim() || null;
     const prevDay = row.day.slice(0, 10);
+    const prevEnd = this.smartworkingRequestEndDay(row);
     const prevNote = row.note?.trim() || null;
-    if (nextDay === prevDay && nextNote === prevNote) {
+    if (nextDay === prevDay && nextEnd === prevEnd && nextNote === prevNote) {
       return row;
     }
     const subjectId = row.userId;
-    if (
-      nextDay !== row.day.slice(0, 10) &&
-      (await this.hasActiveSmartworkingRequestForDay(subjectId, nextDay, requestId))
-    ) {
-      throw new BadRequestException("Remote working già richiesto per questa data");
+    const nextRangeDays = this.enumerateCalendarDaysInclusive(nextDay, nextEnd);
+    for (const d of nextRangeDays) {
+      if (await this.hasActiveSmartworkingRequestForDay(subjectId, d, requestId)) {
+        throw new BadRequestException(`Remote working già richiesto per il ${d}`);
+      }
     }
     if (
-      nextDay !== row.day.slice(0, 10) &&
+      (nextDay !== prevDay || nextEnd !== prevEnd) &&
       actorRole !== "superuser" &&
       !isApprovedSwCorrection
     ) {
       const monthPrefix = nextDay.slice(0, 7);
-      const monthBooked = (
-        await this.listMySmartworking(subjectId)
-      ).filter(
-        (r) => r.id !== requestId && r.status !== "rejected" && r.day.startsWith(monthPrefix)
-      ).length;
-      if (monthBooked >= SMARTWORKING_MONTHLY_QUOTA) {
+      const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(subjectId, monthPrefix, requestId);
+      if (monthBooked + nextRangeDays.length > SMARTWORKING_MONTHLY_QUOTA) {
         throw new BadRequestException("Quota mensile remote working esaurita per il mese selezionato");
       }
-      const weekBooked = await this.countSmartworkingBookedDaysInWeek(subjectId, nextDay, requestId);
-      if (weekBooked >= SMARTWORKING_WEEKLY_QUOTA) {
-        throw new BadRequestException(
-          `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
-        );
+      const weekIds = new Set(nextRangeDays.map((d) => this.mondayOfWeekUtcContaining(d)));
+      for (const mon of weekIds) {
+        const weekBooked = await this.countSmartworkingBookedDaysInWeek(subjectId, mon, requestId);
+        const addInWeek = nextRangeDays.filter((d) => this.mondayOfWeekUtcContaining(d) === mon).length;
+        if (weekBooked + addInWeek > SMARTWORKING_WEEKLY_QUOTA) {
+          throw new BadRequestException(
+            `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
+          );
+        }
       }
     }
     if (this.useDb) {
       const { error } = await this.supabase!
         .from("smartworking_requests")
-        .update({ day: nextDay, note: nextNote })
+        .update({ day: nextDay, endDay: nextEnd, note: nextNote })
         .eq("id", requestId);
       if (error) {
         throw new InternalServerErrorException(`Aggiornamento SW fallito: ${error.message}`);
       }
     } else {
       row.day = nextDay;
+      row.endDay = nextEnd;
       row.note = nextNote;
     }
     if (!isApprovedSwCorrection) {
@@ -6758,17 +7377,20 @@ export class HrDataStore {
           (a) => a.entityId === requestId && a.type === "smartworking" && a.status === "pending"
         )?.id;
       }
+      const periodLabel = this.formatSmartworkingPeriodLabel(nextDay, nextEnd);
+      const daysLabel =
+        nextRangeDays.length > 1 ? ` · ${nextRangeDays.length} giorni` : "";
       await this.notifyApproversOfRequest(
         user,
         "Richiesta remote working",
-        `${user.fullName}: ${nextDay}${nextNote ? ` — ${nextNote}` : ""}`,
+        `${user.fullName}: ${periodLabel}${daysLabel}${nextNote ? ` — ${nextNote}` : ""}`,
         "smartworking_request",
         linkApprovalId
           ? `/workflow/approvals?approvalId=${encodeURIComponent(linkApprovalId)}`
           : "/workflow/approvals"
       );
     }
-    return { ...row, day: nextDay, note: nextNote };
+    return { ...row, day: nextDay, endDay: nextEnd, note: nextNote };
   }
 
   async cancelSmartworkingRequest(requesterId: string, requestId: string, actorRole: AuthRole): Promise<void> {
@@ -6919,11 +7541,12 @@ export class HrDataStore {
         arow.rejectReason = approve ? null : reason;
       }
     }
+    const periodLabel = this.formatSmartworkingPeriodLabel(row.day, this.smartworkingRequestEndDay(row));
     await this.insertUserNotification({
       id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       userId: row.userId,
       title: approve ? "Remote working approvato" : "Remote working rifiutato",
-      body: `${row.day}${!approve && reason ? ` — ${reason}` : ""}`,
+      body: `${periodLabel}${!approve && reason ? ` — ${reason}` : ""}`,
       read: false,
       createdAt: decisionAt,
       kind: "smartworking"
@@ -7280,6 +7903,58 @@ export class HrDataStore {
     return d.toISOString().slice(0, 10);
   }
 
+  private smartworkingRequestEndDay(row: SmartworkingRequestRow): string {
+    const end = row.endDay?.trim();
+    if (end && end.length >= 10) {
+      return end.slice(0, 10);
+    }
+    return row.day.slice(0, 10);
+  }
+
+  private normalizeSmartworkingRange(
+    day: string,
+    endDay?: string | null
+  ): { start: string; end: string } {
+    const start = day.slice(0, 10);
+    const endRaw = (endDay?.trim() || start).slice(0, 10);
+    if (endRaw < start) {
+      throw new BadRequestException("La data fine non può essere precedente alla data inizio");
+    }
+    const days = this.countCalendarDays(start, endRaw);
+    if (days > SMARTWORKING_MAX_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Il periodo remote working non può superare ${SMARTWORKING_MAX_RANGE_DAYS} giorni`
+      );
+    }
+    return { start, end: endRaw };
+  }
+
+  private enumerateCalendarDaysInclusive(start: string, end: string): string[] {
+    const out: string[] = [];
+    let cur = start.slice(0, 10);
+    const endNorm = end.slice(0, 10);
+    while (cur <= endNorm) {
+      out.push(cur);
+      if (cur === endNorm) break;
+      cur = this.addCalendarDaysUtcIso(cur, 1);
+    }
+    return out;
+  }
+
+  private smartworkingRequestCoversDay(row: SmartworkingRequestRow, dayIso: string): boolean {
+    const d = dayIso.slice(0, 10);
+    const start = row.day.slice(0, 10);
+    const end = this.smartworkingRequestEndDay(row);
+    return d >= start && d <= end;
+  }
+
+  private formatSmartworkingPeriodLabel(start: string, end: string): string {
+    const s = start.slice(0, 10);
+    const e = end.slice(0, 10);
+    if (e === s) return s;
+    return `${s} → ${e}`;
+  }
+
   /** Giorni con richiesta SW attiva (pending o approved) nella settimana UTC che contiene dayIso. */
   private async countSmartworkingBookedDaysInWeek(
     userId: string,
@@ -7289,14 +7964,15 @@ export class HrDataStore {
     const mon = this.mondayOfWeekUtcContaining(dayIso);
     const sun = this.addCalendarDaysUtcIso(mon, 6);
     const list = await this.listMySmartworking(userId);
-    let n = 0;
+    const booked = new Set<string>();
     for (const r of list) {
       if (excludeRequestId && r.id === excludeRequestId) continue;
       if (r.status === "rejected") continue;
-      const day = r.day.slice(0, 10);
-      if (day >= mon && day <= sun) n += 1;
+      for (const d of this.enumerateCalendarDaysInclusive(r.day, this.smartworkingRequestEndDay(r))) {
+        if (d >= mon && d <= sun) booked.add(d);
+      }
     }
-    return n;
+    return booked.size;
   }
 
   /** Richiesta pending o approvata per quel giorno (rejected escluso). Opzionale: ignora una riga (es. update stesso id). */
@@ -7309,20 +7985,39 @@ export class HrDataStore {
     const list = await this.listMySmartworking(userId);
     return list.some(
       (r) =>
-        r.day.slice(0, 10) === d &&
         r.status !== "rejected" &&
+        this.smartworkingRequestCoversDay(r, d) &&
         (excludeRequestId === undefined || r.id !== excludeRequestId)
     );
   }
 
   private async countApprovedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
     const list = await this.listMySmartworking(userId);
-    return list.filter((r) => r.status === "approved" && r.day.startsWith(monthPrefix)).length;
+    const days = new Set<string>();
+    for (const r of list) {
+      if (r.status !== "approved") continue;
+      for (const d of this.enumerateCalendarDaysInclusive(r.day, this.smartworkingRequestEndDay(r))) {
+        if (d.startsWith(monthPrefix)) days.add(d);
+      }
+    }
+    return days.size;
   }
 
-  private async countNonRejectedSmartworkingDaysInMonth(userId: string, monthPrefix: string): Promise<number> {
+  private async countNonRejectedSmartworkingDaysInMonth(
+    userId: string,
+    monthPrefix: string,
+    excludeRequestId?: string
+  ): Promise<number> {
     const list = await this.listMySmartworking(userId);
-    return list.filter((r) => r.status !== "rejected" && r.day.startsWith(monthPrefix)).length;
+    const days = new Set<string>();
+    for (const r of list) {
+      if (excludeRequestId && r.id === excludeRequestId) continue;
+      if (r.status === "rejected") continue;
+      for (const d of this.enumerateCalendarDaysInclusive(r.day, this.smartworkingRequestEndDay(r))) {
+        if (d.startsWith(monthPrefix)) days.add(d);
+      }
+    }
+    return days.size;
   }
 
   private composeAttendanceBoardRow(
@@ -7847,13 +8542,28 @@ export class HrDataStore {
 
   async getManagerCopilotDashboard(
     actorUserId: string,
-    opts: { includeTurnover: boolean }
+    opts: { includeTurnover: boolean; includeEconomicData: boolean }
   ): Promise<{
     pendingTotal: number;
     pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>>;
     teamHeadcount: number;
     teamSmartworkingPending: number;
     teamTurnoverAvgScore: number | null;
+    includeEconomicData: boolean;
+    directReports: Array<{
+      id: string;
+      fullName: string;
+      email: string;
+      contractType: string | null;
+      hireDate: string | null;
+      employmentState: string | null;
+      costCenterId: string | null;
+      teamId: string | null;
+      pendingApprovalsCount: number;
+      turnoverScore: number | null;
+      ralAnnualEur: number | null;
+      bonusMonthlyEur: number | null;
+    }>;
     topPendingPreview: Array<{ type: string; requesterName?: string; at: string }>;
     routes: {
       approvals: string;
@@ -7868,19 +8578,29 @@ export class HrDataStore {
 
     const pending = await this.listApprovalsForUser(actorUserId, "pending");
     const pendingByType: Partial<Record<"leave" | "sickness" | "smartworking" | "travel", number>> = {};
+    const pendingByRequester = new Map<string, number>();
     let teamSw = 0;
     for (const p of pending) {
       pendingByType[p.type] = (pendingByType[p.type] ?? 0) + 1;
+      if (p.requestedBy) {
+        pendingByRequester.set(p.requestedBy, (pendingByRequester.get(p.requestedBy) ?? 0) + 1);
+      }
       if (p.type === "smartworking" && teamIds.has(p.requestedBy)) {
         teamSw += 1;
       }
     }
 
     let teamTurnoverAvg: number | null = null;
+    const turnoverByUser = new Map<string, number>();
     const companyId = (actor.companyId || "").trim();
     if (opts.includeTurnover && companyId && teamIds.size > 0) {
       const latest = await this.getLatestTurnoverRetention(companyId);
       const scores = latest.filter((r) => teamIds.has(r.userId)).map((r) => r.score);
+      for (const row of latest) {
+        if (teamIds.has(row.userId)) {
+          turnoverByUser.set(row.userId, row.score);
+        }
+      }
       if (scores.length > 0) {
         teamTurnoverAvg = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
       }
@@ -7892,12 +8612,35 @@ export class HrDataStore {
       at: p.at
     }));
 
+    const directReports = team.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      contractType: u.contractType?.trim() || null,
+      hireDate: u.hireDate?.trim() || null,
+      employmentState: u.employmentState ?? "active",
+      costCenterId: u.costCenterId?.trim() || null,
+      teamId: u.teamId?.trim() || null,
+      pendingApprovalsCount: pendingByRequester.get(u.id) ?? 0,
+      turnoverScore: turnoverByUser.get(u.id) ?? null,
+      ralAnnualEur:
+        opts.includeEconomicData && u.annualGrossSalary != null && Number.isFinite(u.annualGrossSalary)
+          ? Math.round(u.annualGrossSalary)
+          : null,
+      bonusMonthlyEur:
+        opts.includeEconomicData && u.fixedSupplementMonthly != null && Number.isFinite(u.fixedSupplementMonthly)
+          ? Math.round(u.fixedSupplementMonthly * 100) / 100
+          : null
+    }));
+
     return {
       pendingTotal: pending.length,
       pendingByType,
       teamHeadcount: team.length,
       teamSmartworkingPending: teamSw,
       teamTurnoverAvgScore: teamTurnoverAvg,
+      includeEconomicData: opts.includeEconomicData,
+      directReports,
       topPendingPreview,
       routes: {
         approvals: "/workflow/approvals",
@@ -7906,6 +8649,309 @@ export class HrDataStore {
         workforcePlanning: "/workforce-planning"
       }
     };
+  }
+
+  async listWorkforcePlanningScenarios(companyId: string): Promise<WorkforcePlanningScenarioRow[]> {
+    const cid = companyId.trim();
+    if (!cid) {
+      return [];
+    }
+    if (!this.useDb) {
+      return [];
+    }
+    const { data, error } = await this.supabase!
+      .from("workforce_planning_scenarios")
+      .select("id, name, assumptions_json, payload_json, analysis_text, created_at, updated_at")
+      .eq("company_id", cid)
+      .order("updated_at", { ascending: false })
+      .limit(40);
+    if (error) {
+      throw new BadRequestException(`Lettura scenari workforce: ${error.message}`);
+    }
+    return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      id: String(r.id),
+      name: String(r.name ?? ""),
+      assumptionsJson: (r.assumptions_json as Record<string, unknown>) ?? {},
+      payloadJson: (r.payload_json as Record<string, unknown>) ?? {},
+      analysisText: r.analysis_text != null ? String(r.analysis_text) : null,
+      createdAt: String(r.created_at ?? ""),
+      updatedAt: String(r.updated_at ?? "")
+    }));
+  }
+
+  async saveWorkforcePlanningScenario(
+    companyId: string,
+    actorUserId: string,
+    input: {
+      id?: string;
+      name: string;
+      assumptionsJson?: Record<string, unknown>;
+      payloadJson: Record<string, unknown>;
+      analysisText?: string | null;
+    }
+  ): Promise<{ id: string }> {
+    const cid = companyId.trim();
+    const name = input.name.trim().slice(0, 120);
+    if (!cid || !name) {
+      throw new BadRequestException("Nome scenario obbligatorio.");
+    }
+    if (!this.useDb) {
+      return { id: input.id?.trim() || `demo-ws-${Date.now()}` };
+    }
+    const row = {
+      company_id: cid,
+      name,
+      assumptions_json: input.assumptionsJson ?? {},
+      payload_json: input.payloadJson ?? {},
+      analysis_text: input.analysisText?.trim() || null,
+      created_by_user_id: actorUserId,
+      updated_at: new Date().toISOString()
+    };
+    const id = input.id?.trim();
+    if (id) {
+      const { error } = await this.supabase!
+        .from("workforce_planning_scenarios")
+        .update(row)
+        .eq("id", id)
+        .eq("company_id", cid);
+      if (error) {
+        throw new BadRequestException(`Aggiornamento scenario: ${error.message}`);
+      }
+      return { id };
+    }
+    const { data, error } = await this.supabase!
+      .from("workforce_planning_scenarios")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio scenario: ${error.message}`);
+    }
+    return { id: String((data as { id: string }).id) };
+  }
+
+  async deleteWorkforcePlanningScenario(companyId: string, scenarioId: string): Promise<void> {
+    const cid = companyId.trim();
+    const sid = scenarioId.trim();
+    if (!cid || !sid) {
+      throw new BadRequestException("Scenario non valido.");
+    }
+    if (!this.useDb) {
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("workforce_planning_scenarios")
+      .delete()
+      .eq("id", sid)
+      .eq("company_id", cid);
+    if (error) {
+      throw new BadRequestException(`Eliminazione scenario: ${error.message}`);
+    }
+  }
+
+  async listHiringSimulationScenarios(
+    companyId: string
+  ): Promise<
+    Array<{ id: string; name: string; payloadJson: Record<string, unknown>; createdAt: string; updatedAt: string }>
+  > {
+    const cid = companyId.trim();
+    if (!cid) {
+      return [];
+    }
+    if (!this.useDb) {
+      return [];
+    }
+    const { data, error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .select("id, name, payload_json, created_at, updated_at")
+      .eq("company_id", cid)
+      .order("updated_at", { ascending: false })
+      .limit(40);
+    if (error) {
+      throw new BadRequestException(`Lettura scenari assunzione: ${error.message}`);
+    }
+    return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      id: String(r.id),
+      name: String(r.name ?? ""),
+      payloadJson: (r.payload_json as Record<string, unknown>) ?? {},
+      createdAt: String(r.created_at ?? ""),
+      updatedAt: String(r.updated_at ?? "")
+    }));
+  }
+
+  async saveHiringSimulationScenario(
+    companyId: string,
+    actorUserId: string,
+    input: { id?: string; name: string; payloadJson: Record<string, unknown> }
+  ): Promise<{ id: string }> {
+    const cid = companyId.trim();
+    const name = input.name.trim().slice(0, 120);
+    if (!cid || !name) {
+      throw new BadRequestException("Nome scenario obbligatorio.");
+    }
+    if (!this.useDb) {
+      return { id: input.id?.trim() || `demo-hiring-${Date.now()}` };
+    }
+    const row = {
+      company_id: cid,
+      name,
+      payload_json: input.payloadJson ?? {},
+      created_by_user_id: actorUserId,
+      updated_at: new Date().toISOString()
+    };
+    const id = input.id?.trim();
+    if (id) {
+      const { error } = await this.supabase!
+        .from("hiring_simulation_scenarios")
+        .update(row)
+        .eq("id", id)
+        .eq("company_id", cid);
+      if (error) {
+        throw new BadRequestException(`Aggiornamento scenario assunzione: ${error.message}`);
+      }
+      return { id };
+    }
+    const { data, error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio scenario assunzione: ${error.message}`);
+    }
+    return { id: String((data as { id: string }).id) };
+  }
+
+  async deleteHiringSimulationScenario(companyId: string, scenarioId: string): Promise<void> {
+    const cid = companyId.trim();
+    const sid = scenarioId.trim();
+    if (!cid || !sid) {
+      throw new BadRequestException("Scenario non valido.");
+    }
+    if (!this.useDb) {
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("hiring_simulation_scenarios")
+      .delete()
+      .eq("id", sid)
+      .eq("company_id", cid);
+    if (error) {
+      throw new BadRequestException(`Eliminazione scenario assunzione: ${error.message}`);
+    }
+  }
+
+  async listRoleCoverageGaps(companyId: string): Promise<HrRoleCoverageGapRow[]> {
+    const cid = companyId.trim();
+    if (!cid) {
+      return [];
+    }
+    if (!this.useDb) {
+      return [
+        {
+          id: "demo-gap-1",
+          roleTitle: "Ruolo esempio (senza DB)",
+          headcountGap: 2,
+          expectedRalAnnual: 42000,
+          notes: "Configura Supabase per persistenza.",
+          updatedAt: new Date().toISOString()
+        }
+      ];
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_role_coverage_gaps")
+      .select("id, role_title, headcount_gap, expected_ral_annual, notes, updated_at")
+      .eq("company_id", cid)
+      .order("role_title", { ascending: true });
+    if (error) {
+      throw new BadRequestException(`Lettura copertura ruoli: ${error.message}`);
+    }
+    return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      id: String(r.id),
+      roleTitle: String(r.role_title ?? ""),
+      headcountGap: Math.max(0, Math.round(Number(r.headcount_gap) || 0)),
+      expectedRalAnnual:
+        r.expected_ral_annual != null && Number.isFinite(Number(r.expected_ral_annual))
+          ? Math.round(Number(r.expected_ral_annual))
+          : null,
+      notes: r.notes != null ? String(r.notes) : null,
+      updatedAt: String(r.updated_at ?? "")
+    }));
+  }
+
+  async upsertRoleCoverageGap(
+    companyId: string,
+    actorUserId: string,
+    input: {
+      id?: string;
+      roleTitle: string;
+      headcountGap: number;
+      expectedRalAnnual?: number | null;
+      notes?: string | null;
+    }
+  ): Promise<{ id: string }> {
+    const cid = companyId.trim();
+    const roleTitle = input.roleTitle.trim().slice(0, 200);
+    if (!cid || !roleTitle) {
+      throw new BadRequestException("Titolo ruolo obbligatorio.");
+    }
+    const headcountGap = Math.max(0, Math.min(999, Math.round(Number(input.headcountGap) || 0)));
+    const expectedRalAnnual =
+      input.expectedRalAnnual != null && Number.isFinite(Number(input.expectedRalAnnual))
+        ? Math.round(Number(input.expectedRalAnnual))
+        : null;
+    const notes = input.notes?.trim().slice(0, 2000) || null;
+    if (!this.useDb) {
+      return { id: input.id?.trim() || `demo-gap-${Date.now()}` };
+    }
+    const row = {
+      company_id: cid,
+      role_title: roleTitle,
+      headcount_gap: headcountGap,
+      expected_ral_annual: expectedRalAnnual,
+      notes,
+      updated_by_user_id: actorUserId,
+      updated_at: new Date().toISOString()
+    };
+    if (input.id?.trim()) {
+      const { error } = await this.supabase!
+        .from("hr_role_coverage_gaps")
+        .update(row)
+        .eq("id", input.id.trim())
+        .eq("company_id", cid);
+      if (error) {
+        throw new BadRequestException(`Aggiornamento gap ruolo: ${error.message}`);
+      }
+      return { id: input.id.trim() };
+    }
+    const { data, error } = await this.supabase!
+      .from("hr_role_coverage_gaps")
+      .upsert(row, { onConflict: "company_id,role_title" })
+      .select("id")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio gap ruolo: ${error.message}`);
+    }
+    return { id: String((data as { id: string }).id) };
+  }
+
+  async deleteRoleCoverageGap(companyId: string, gapId: string): Promise<void> {
+    const cid = companyId.trim();
+    const gid = gapId.trim();
+    if (!cid || !gid) {
+      throw new BadRequestException("Gap non valido.");
+    }
+    if (!this.useDb) {
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("hr_role_coverage_gaps")
+      .delete()
+      .eq("id", gid)
+      .eq("company_id", cid);
+    if (error) {
+      throw new BadRequestException(`Eliminazione gap ruolo: ${error.message}`);
+    }
   }
 
   async getSkillsGapReport(
@@ -8023,6 +9069,26 @@ export class HrDataStore {
     }
 
     return out.sort((a, b) => b.gap - a.gap || a.roleName.localeCompare(b.roleName, "it"));
+  }
+
+  /** Rigenera fabbisogni competenze da `hr_role_skill_templates` + ruoli catalogo in uso. */
+  async regenerateSkillsFromRolesForCompany(
+    companyId: string,
+    options: Omit<
+      import("./skills-regeneration").SkillsRegenerationOptions,
+      "companyId"
+    >,
+    createdBy?: string
+  ): Promise<import("./skills-regeneration").SkillsRegenerationReport> {
+    if (!this.useDb || !this.supabase) {
+      throw new BadRequestException("Rigenerazione competenze richiede database configurato");
+    }
+    const { regenerateSkillsFromRoles } = await import("./skills-regeneration");
+    return regenerateSkillsFromRoles(this.supabase, {
+      companyId: companyId.trim(),
+      ...options,
+      createdBy: createdBy ?? options.createdBy
+    });
   }
 
   async listHrAlerts(
@@ -8582,7 +9648,6 @@ export class HrDataStore {
       valueText: String((row as { value_text?: string }).value_text ?? "")
     }));
   }
-
   private isMissingRelationError(error: { message?: string; code?: string }, table: string): boolean {
     const msg = (error.message ?? "").toLowerCase();
     return (
@@ -9395,6 +10460,8 @@ export class HrDataStore {
     const orderList = await this.fetchPersonnelBudgetOrderFromDb(year);
     const orderIdx = new Map(orderList.map((o, i) => [o.costCenterId, o.sortOrder]));
     const cells = await this.fetchPersonnelBudgetCellsFromDb(year, month);
+    const companyId = users.find((u) => u.companyId?.trim())?.companyId?.trim() ?? "comp-1";
+    const assumptions = await this.getPersonnelBudgetAssumptions(companyId, year);
 
     const deptMap = new Map<string | null, PersonnelBudgetRow[]>();
     for (const u of users) {
@@ -9409,7 +10476,11 @@ export class HrDataStore {
       const grossFromPayslip = this.payslipGrossAmount(payslip);
       const grossAdjusted = grossFromPayslip ?? base + overtime;
       const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-      const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+      const ratesIt = this.mergeEmployerRatesWithAssumptions(
+        this.italianEmployerRatesForUser(u, ccRow),
+        assumptions
+      );
+      const extrasAct = this.employerExtrasFromAssumptions(grossAdjusted, assumptions);
       const buckets = employerBudgetBucketsFromGrossIt(grossAdjusted, {
         employerInpsRate: ratesIt.employerInpsRate,
         inailRate: ratesIt.inailRate,
@@ -9420,6 +10491,7 @@ export class HrDataStore {
         inailRate: ratesIt.inailRate,
         tfrDivisor: ratesIt.tfrDivisor
       });
+      const extrasSug = this.employerExtrasFromAssumptions(base, assumptions);
       const actual: PersonnelBudgetMoney = {
         ral: Math.round((grossFromPayslip ?? base) * 100) / 100,
         overtime: Math.round(overtime * 100) / 100,
@@ -9427,7 +10499,7 @@ export class HrDataStore {
         inps: buckets.employerInpsLike,
         inail: buckets.employerInailLike,
         tfr: buckets.employerTfrLike,
-        totalCompanyCost: buckets.totalCompanyCost + travel
+        totalCompanyCost: buckets.totalCompanyCost + travel + extrasAct
       };
       const bc = cells.get(u.id);
       const budgetPartial: Partial<PersonnelBudgetMoney> = {
@@ -9462,7 +10534,7 @@ export class HrDataStore {
                 inps: sugB.employerInpsLike,
                 inail: sugB.employerInailLike,
                 tfr: sugB.employerTfrLike,
-                totalCompanyCost: sugB.totalCompanyCost
+                totalCompanyCost: sugB.totalCompanyCost + extrasSug
               }
             }
           : {})
@@ -9483,15 +10555,511 @@ export class HrDataStore {
       return na.localeCompare(nb);
     });
 
+    const plannedByCc = await this.fetchPersonnelBudgetPlannedExtraGrouped(companyId, year, month);
+
     const departments: PersonnelBudgetDepartment[] = sortedDeptKeys.map((ccId) => ({
       costCenterId: ccId,
       costCenterName:
         ccId != null ? ccById.get(ccId)?.name ?? ccId : "— senza centro di costo —",
       sortOrder: ccId != null ? orderIdx.get(ccId) ?? 1_000_000 : 999_999,
-      rows: (deptMap.get(ccId) ?? []).sort((r1, r2) => r1.fullName.localeCompare(r2.fullName))
+      rows: (deptMap.get(ccId) ?? []).sort((r1, r2) => r1.fullName.localeCompare(r2.fullName)),
+      plannedExtraLines: plannedByCc.get(ccId ?? "__none__") ?? []
     }));
 
     return { year, month, period, departments };
+  }
+
+  private pbPlannedExtraMemKey(
+    companyId: string,
+    year: number,
+    month: number,
+    lineId: string
+  ): string {
+    return `${companyId}|${year}|${month}|${lineId}`;
+  }
+
+  private mapPlannedExtraRow(raw: Record<string, unknown>): PersonnelBudgetPlannedExtraLine & {
+    costCenterId: string | null;
+  } {
+    const budgetPartial: Partial<PersonnelBudgetMoney> = {
+      ral: raw.budget_ral != null ? Number(raw.budget_ral) : 0,
+      overtime: raw.budget_overtime != null ? Number(raw.budget_overtime) : 0,
+      travel: raw.budget_travel != null ? Number(raw.budget_travel) : 0,
+      inps: raw.budget_inps != null ? Number(raw.budget_inps) : 0,
+      inail: raw.budget_inail != null ? Number(raw.budget_inail) : 0,
+      tfr: raw.budget_tfr != null ? Number(raw.budget_tfr) : 0
+    };
+    return {
+      id: String(raw.id),
+      label: String(raw.label ?? "Voce pianificata"),
+      costCenterId: raw.cost_center_id != null ? String(raw.cost_center_id) : null,
+      budget: {
+        ...budgetPartial,
+        totalCompanyCost: this.budgetTotal(budgetPartial)
+      }
+    };
+  }
+
+  private async fetchPersonnelBudgetPlannedExtraGrouped(
+    companyId: string,
+    year: number,
+    month: number
+  ): Promise<Map<string, PersonnelBudgetPlannedExtraLine[]>> {
+    const grouped = new Map<string, PersonnelBudgetPlannedExtraLine[]>();
+    const push = (ccKey: string, line: PersonnelBudgetPlannedExtraLine): void => {
+      const list = grouped.get(ccKey) ?? [];
+      list.push(line);
+      grouped.set(ccKey, list);
+    };
+    if (!this.useDb) {
+      for (const [key, row] of this.personnelBudgetPlannedExtraMem) {
+        if (!key.startsWith(`${companyId}|${year}|${month}|`)) {
+          continue;
+        }
+        const ccKey = row.costCenterId ?? "__none__";
+        push(ccKey, { id: row.id, label: row.label, budget: row.budget });
+      }
+      return grouped;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_planned_extra_lines")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("year", year)
+      .eq("month", month)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      throw new BadRequestException(`Lettura righe pianificate extra fallita: ${error.message}`);
+    }
+    for (const raw of data ?? []) {
+      const mapped = this.mapPlannedExtraRow(raw as Record<string, unknown>);
+      push(mapped.costCenterId ?? "__none__", {
+        id: mapped.id,
+        label: mapped.label,
+        budget: mapped.budget
+      });
+    }
+    return grouped;
+  }
+
+  async upsertPersonnelBudgetPlannedExtraLine(
+    companyId: string,
+    input: {
+      id?: string;
+      year: number;
+      month: number;
+      costCenterId: string | null;
+      label: string;
+      budgetRal?: number | null;
+      budgetOvertime?: number | null;
+      budgetTravel?: number | null;
+      budgetInps?: number | null;
+      budgetInail?: number | null;
+      budgetTfr?: number | null;
+    }
+  ): Promise<PersonnelBudgetPlannedExtraLine> {
+    const label = input.label.trim();
+    if (!label) {
+      throw new BadRequestException("Etichetta obbligatoria");
+    }
+    const id = input.id?.trim() || randomUUID();
+    const row = {
+      budgetRal: input.budgetRal ?? 0,
+      budgetOvertime: input.budgetOvertime ?? 0,
+      budgetTravel: input.budgetTravel ?? 0,
+      budgetInps: input.budgetInps ?? 0,
+      budgetInail: input.budgetInail ?? 0,
+      budgetTfr: input.budgetTfr ?? 0
+    };
+    const budgetPartial: Partial<PersonnelBudgetMoney> = {
+      ral: row.budgetRal,
+      overtime: row.budgetOvertime,
+      travel: row.budgetTravel,
+      inps: row.budgetInps,
+      inail: row.budgetInail,
+      tfr: row.budgetTfr
+    };
+    const dto: PersonnelBudgetPlannedExtraLine = {
+      id,
+      label,
+      budget: { ...budgetPartial, totalCompanyCost: this.budgetTotal(budgetPartial) }
+    };
+    if (!this.useDb) {
+      this.personnelBudgetPlannedExtraMem.set(this.pbPlannedExtraMemKey(companyId, input.year, input.month, id), {
+        ...dto,
+        costCenterId: input.costCenterId
+      });
+      return dto;
+    }
+    const { error } = await this.supabase!.from("personnel_budget_planned_extra_lines").upsert(
+      {
+        id,
+        company_id: companyId,
+        year: input.year,
+        month: input.month,
+        cost_center_id: input.costCenterId,
+        label,
+        budget_ral: row.budgetRal,
+        budget_overtime: row.budgetOvertime,
+        budget_travel: row.budgetTravel,
+        budget_inps: row.budgetInps,
+        budget_inail: row.budgetInail,
+        budget_tfr: row.budgetTfr,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+    if (error) {
+      throw new BadRequestException(`Salvataggio riga pianificata fallito: ${error.message}`);
+    }
+    return dto;
+  }
+
+  async deletePersonnelBudgetPlannedExtraLine(companyId: string, lineId: string): Promise<void> {
+    if (!this.useDb) {
+      for (const key of [...this.personnelBudgetPlannedExtraMem.keys()]) {
+        if (key.endsWith(`|${lineId}`) && key.startsWith(`${companyId}|`)) {
+          this.personnelBudgetPlannedExtraMem.delete(key);
+        }
+      }
+      return;
+    }
+    const { error } = await this.supabase!
+      .from("personnel_budget_planned_extra_lines")
+      .delete()
+      .eq("company_id", companyId)
+      .eq("id", lineId);
+    if (error) {
+      throw new BadRequestException(`Eliminazione riga pianificata fallita: ${error.message}`);
+    }
+  }
+
+  private pbAssumptionsMemKey(companyId: string, year: number): string {
+    return `${companyId.trim()}|${year}`;
+  }
+
+  private pbCellNoteMemKey(
+    companyId: string,
+    year: number,
+    month: number | null,
+    fieldKey: string,
+    userId: string | null,
+    plannedLineId: string | null
+  ): string {
+    return `${companyId.trim()}|${year}|${month ?? 0}|${fieldKey}|${userId ?? ""}|${plannedLineId ?? ""}`;
+  }
+
+  async getPersonnelBudgetAssumptions(
+    companyId: string,
+    year: number
+  ): Promise<PersonnelBudgetAssumptionsDto> {
+    const cid = companyId.trim();
+    const defaults: PersonnelBudgetAssumptionsDto = {
+      companyId: cid,
+      year,
+      employerInpsPercent: null,
+      inailPermille: null,
+      tfrDivisor: null,
+      welfarePercent: 0,
+      bonusProvisionPercent: 0,
+      updatedAt: null,
+      updatedByUserId: null
+    };
+    if (!this.useDb) {
+      return this.personnelBudgetAssumptionsMem.get(this.pbAssumptionsMemKey(cid, year)) ?? defaults;
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_assumptions")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(`Assunzioni budget: ${error.message}`);
+    }
+    if (!data) {
+      return defaults;
+    }
+    const row = data as Record<string, unknown>;
+    return {
+      companyId: cid,
+      year,
+      employerInpsPercent:
+        row.employer_inps_percent != null ? Number(row.employer_inps_percent) : null,
+      inailPermille: row.inail_permille != null ? Number(row.inail_permille) : null,
+      tfrDivisor: row.tfr_divisor != null ? Number(row.tfr_divisor) : null,
+      welfarePercent: row.welfare_percent != null ? Number(row.welfare_percent) : 0,
+      bonusProvisionPercent:
+        row.bonus_provision_percent != null ? Number(row.bonus_provision_percent) : 0,
+      updatedAt: row.updated_at != null ? String(row.updated_at) : null,
+      updatedByUserId:
+        row.updated_by_user_id != null ? String(row.updated_by_user_id) : null
+    };
+  }
+
+  async upsertPersonnelBudgetAssumptions(
+    companyId: string,
+    year: number,
+    patch: {
+      employerInpsPercent?: number | null;
+      inailPermille?: number | null;
+      tfrDivisor?: number | null;
+      welfarePercent?: number | null;
+      bonusProvisionPercent?: number | null;
+    },
+    userId: string
+  ): Promise<PersonnelBudgetAssumptionsDto> {
+    const cid = companyId.trim();
+    const prev = await this.getPersonnelBudgetAssumptions(cid, year);
+    const dto: PersonnelBudgetAssumptionsDto = {
+      ...prev,
+      employerInpsPercent:
+        patch.employerInpsPercent !== undefined ? patch.employerInpsPercent : prev.employerInpsPercent,
+      inailPermille: patch.inailPermille !== undefined ? patch.inailPermille : prev.inailPermille,
+      tfrDivisor: patch.tfrDivisor !== undefined ? patch.tfrDivisor : prev.tfrDivisor,
+      welfarePercent:
+        patch.welfarePercent !== undefined && patch.welfarePercent != null
+          ? patch.welfarePercent
+          : prev.welfarePercent,
+      bonusProvisionPercent:
+        patch.bonusProvisionPercent !== undefined && patch.bonusProvisionPercent != null
+          ? patch.bonusProvisionPercent
+          : prev.bonusProvisionPercent,
+      updatedAt: new Date().toISOString(),
+      updatedByUserId: userId
+    };
+    if (!this.useDb) {
+      this.personnelBudgetAssumptionsMem.set(this.pbAssumptionsMemKey(cid, year), dto);
+      return dto;
+    }
+    const { error } = await this.supabase!.from("personnel_budget_assumptions").upsert(
+      {
+        company_id: cid,
+        year,
+        employer_inps_percent: dto.employerInpsPercent,
+        inail_permille: dto.inailPermille,
+        tfr_divisor: dto.tfrDivisor,
+        welfare_percent: dto.welfarePercent,
+        bonus_provision_percent: dto.bonusProvisionPercent,
+        updated_at: dto.updatedAt,
+        updated_by_user_id: userId
+      },
+      { onConflict: "company_id,year" }
+    );
+    if (error) {
+      throw new BadRequestException(`Salvataggio assunzioni budget: ${error.message}`);
+    }
+    return dto;
+  }
+
+  async listPersonnelBudgetCellNotes(
+    companyId: string,
+    year: number,
+    month?: number | null
+  ): Promise<PersonnelBudgetCellNoteDto[]> {
+    const cid = companyId.trim();
+    if (!this.useDb) {
+      return [...this.personnelBudgetCellNotesMem.values()].filter((n) => {
+        if (n.companyId !== cid || n.year !== year) {
+          return false;
+        }
+        if (month != null && n.month !== month) {
+          return false;
+        }
+        return n.note.trim().length > 0;
+      });
+    }
+    let q = this.supabase!
+      .from("personnel_budget_cell_notes")
+      .select("*")
+      .eq("company_id", cid)
+      .eq("year", year);
+    if (month != null) {
+      q = q.eq("month", month);
+    }
+    const { data, error } = await q;
+    if (error) {
+      throw new InternalServerErrorException(`Note celle budget: ${error.message}`);
+    }
+    return (data ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        companyId: cid,
+        year,
+        month: row.month != null ? Number(row.month) : null,
+        userId: row.user_id != null ? String(row.user_id) : null,
+        plannedLineId: row.planned_line_id != null ? String(row.planned_line_id) : null,
+        fieldKey: String(row.field_key),
+        note: String(row.note ?? ""),
+        authorUserId: row.author_user_id != null ? String(row.author_user_id) : null,
+        authorName: row.author_name != null ? String(row.author_name) : null,
+        updatedAt: String(row.updated_at ?? new Date().toISOString())
+      };
+    });
+  }
+
+  async upsertPersonnelBudgetCellNote(
+    companyId: string,
+    input: {
+      year: number;
+      month: number | null;
+      userId: string | null;
+      plannedLineId: string | null;
+      fieldKey: string;
+      note: string;
+    },
+    authorUserId: string,
+    authorName: string | null
+  ): Promise<PersonnelBudgetCellNoteDto | null> {
+    const cid = companyId.trim();
+    const fieldKey = input.fieldKey.trim();
+    if (!fieldKey) {
+      throw new BadRequestException("fieldKey obbligatorio");
+    }
+    if (!input.userId && !input.plannedLineId) {
+      throw new BadRequestException("userId o plannedLineId obbligatorio");
+    }
+    const note = input.note.trim();
+    const memKey = this.pbCellNoteMemKey(
+      cid,
+      input.year,
+      input.month,
+      fieldKey,
+      input.userId,
+      input.plannedLineId
+    );
+    if (!note) {
+      if (!this.useDb) {
+        for (const [k, v] of this.personnelBudgetCellNotesMem) {
+          if (
+            v.companyId === cid &&
+            v.year === input.year &&
+            v.month === input.month &&
+            v.fieldKey === fieldKey &&
+            v.userId === input.userId &&
+            v.plannedLineId === input.plannedLineId
+          ) {
+            this.personnelBudgetCellNotesMem.delete(k);
+          }
+        }
+        return null;
+      }
+      let del = this.supabase!
+        .from("personnel_budget_cell_notes")
+        .delete()
+        .eq("company_id", cid)
+        .eq("year", input.year)
+        .eq("field_key", fieldKey);
+      if (input.month != null) {
+        del = del.eq("month", input.month);
+      } else {
+        del = del.is("month", null);
+      }
+      if (input.userId) {
+        del = del.eq("user_id", input.userId);
+      }
+      if (input.plannedLineId) {
+        del = del.eq("planned_line_id", input.plannedLineId);
+      }
+      const { error } = await del;
+      if (error) {
+        throw new BadRequestException(`Rimozione nota cella: ${error.message}`);
+      }
+      return null;
+    }
+    const id = randomUUID();
+    const dto: PersonnelBudgetCellNoteDto = {
+      id,
+      companyId: cid,
+      year: input.year,
+      month: input.month,
+      userId: input.userId,
+      plannedLineId: input.plannedLineId,
+      fieldKey,
+      note,
+      authorUserId,
+      authorName,
+      updatedAt: new Date().toISOString()
+    };
+    if (!this.useDb) {
+      this.personnelBudgetCellNotesMem.set(memKey, dto);
+      return dto;
+    }
+    const existing = (await this.listPersonnelBudgetCellNotes(cid, input.year, input.month ?? undefined)).find(
+      (n) =>
+        n.fieldKey === fieldKey &&
+        n.userId === input.userId &&
+        n.plannedLineId === input.plannedLineId
+    );
+    const payload = {
+      company_id: cid,
+      year: input.year,
+      month: input.month,
+      user_id: input.userId,
+      planned_line_id: input.plannedLineId,
+      field_key: fieldKey,
+      note,
+      author_user_id: authorUserId,
+      author_name: authorName,
+      updated_at: dto.updatedAt
+    };
+    if (existing) {
+      const { data, error } = await this.supabase!
+        .from("personnel_budget_cell_notes")
+        .update(payload)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (error) {
+        throw new BadRequestException(`Salvataggio nota cella: ${error.message}`);
+      }
+      const row = data as Record<string, unknown>;
+      return { ...dto, id: String(row.id ?? existing.id) };
+    }
+    const { data, error } = await this.supabase!
+      .from("personnel_budget_cell_notes")
+      .insert({ ...payload, id })
+      .select("*")
+      .single();
+    if (error) {
+      throw new BadRequestException(`Salvataggio nota cella: ${error.message}`);
+    }
+    const row = data as Record<string, unknown>;
+    return { ...dto, id: String(row.id ?? id) };
+  }
+
+  async getPersonnelBudgetYearMonthly(
+    companyId: string,
+    year: number
+  ): Promise<PersonnelBudgetYearMonthlyResult> {
+    const cid = companyId.trim();
+    const months: PersonnelBudgetYearMonthlyResult["months"] = [];
+    for (let month = 1; month <= 12; month++) {
+      const snap = await this.getPersonnelBudgetSnapshot(year, month);
+      const forecast = await this.getPersonnelBudgetForecastSnapshot(cid, year, month);
+      const fcByUser = new Map<string, (typeof forecast.departments)[0]["rows"][0]>();
+      for (const d of forecast.departments) {
+        for (const r of d.rows) {
+          fcByUser.set(r.userId, r);
+        }
+      }
+      const departments: PersonnelBudgetYearMonthlyDepartment[] = snap.departments.map((d) => ({
+        costCenterId: d.costCenterId,
+        costCenterName: d.costCenterName,
+        sortOrder: d.sortOrder,
+        plannedExtraLines: d.plannedExtraLines,
+        rows: d.rows.map((r) => {
+          const fr = fcByUser.get(r.userId);
+          return {
+            ...r,
+            forecast: fr?.forecast ?? {}
+          };
+        })
+      }));
+      months.push({ month, departments });
+    }
+    return { year, months };
   }
 
   async getPersonnelBudgetYearStatus(companyId: string, year: number): Promise<PersonnelBudgetYearStatusDto> {
@@ -9784,6 +11352,8 @@ export class HrDataStore {
         costCenterName: ccId ? ccById.get(ccId)?.name : undefined,
         teamId: tid,
         teamName: tid ? teamNameById.get(tid) : undefined,
+        hireDate: u.hireDate?.trim() || null,
+        contractEndDate: u.contractEndDate?.trim() || null,
         months
       });
     }
@@ -9804,6 +11374,7 @@ export class HrDataStore {
     const users = (await this.listUsers()).filter((u) => (u.companyId?.trim() || "") === cid);
     const centers = await this.listCostCenters();
     const ccById = new Map(centers.map((c) => [c.id, c]));
+    const assumptions = await this.getPersonnelBudgetAssumptions(cid, year);
     let monthsPatched = 0;
     for (let month = 1; month <= 12; month++) {
       const cells: Array<{
@@ -9819,7 +11390,10 @@ export class HrDataStore {
         const base = Number(u.baseSalaryMonthly) > 0 ? Number(u.baseSalaryMonthly) : 5800;
         const monthlyRal = Math.round(((base * pim) / 12) * 100) / 100;
         const ccRow = u.costCenterId != null ? ccById.get(u.costCenterId) : undefined;
-        const ratesIt = this.italianEmployerRatesForUser(u, ccRow);
+        const ratesIt = this.mergeEmployerRatesWithAssumptions(
+          this.italianEmployerRatesForUser(u, ccRow),
+          assumptions
+        );
         const buckets = employerBudgetBucketsFromGrossIt(monthlyRal, {
           employerInpsRate: ratesIt.employerInpsRate,
           inailRate: ratesIt.inailRate,

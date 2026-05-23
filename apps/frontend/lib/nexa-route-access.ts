@@ -67,6 +67,9 @@ export function canAccessNexaPortalRoute(
   if (r === "/hr/offboarding" || r.startsWith("/hr/offboarding/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }
+  if (r === "/hr/cowork" || r.startsWith("/hr/cowork/")) {
+    return !hide && hrExtras;
+  }
   if (r === "/hr/formazione" || r.startsWith("/hr/formazione/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);
   }

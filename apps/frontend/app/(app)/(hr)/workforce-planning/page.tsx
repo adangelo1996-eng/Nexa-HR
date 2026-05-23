@@ -19,6 +19,7 @@ import {
 } from "@/lib/workforce-planning-export";
 import { getSessionUser, getToken, sessionCanUseNexaAiOpenAiLlm } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import {
   HebbAiErrorBanner,
@@ -722,9 +723,9 @@ export default function WorkforcePlanningPage(): React.JSX.Element {
                     Raffinamento con AI (solo aggregati)
                   </label>
                 ) : null}
-                <Button type="button" size="sm" variant="outline" disabled={narrativeBusy} onClick={() => void runNarrative()}>
-                  {narrativeBusy ? "Generazione…" : "Genera analisi"}
-                </Button>
+                <LoadingButton type="button" size="sm" variant="outline" loading={narrativeBusy} onClick={() => void runNarrative()}>
+                  Genera analisi
+                </LoadingButton>
               </div>
             </div>
             {narrative ? (

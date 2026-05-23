@@ -35,6 +35,7 @@ const PATH_HEBB_HELP: { prefix: string; key: HebbAiPageKey }[] = [
   { prefix: "/workforce-planning", key: "workforce-planning" },
   { prefix: "/manager-copilot", key: "manager-copilot" },
   { prefix: "/nexa-hr-copilot", key: "nexa-hr-copilot" },
+  { prefix: "/hr/cowork", key: "hr-cowork" },
   { prefix: "/insights", key: "insights" },
   { prefix: "/tools/cost-calculator", key: "cost-calculator" },
   { prefix: "/hr-center/analisi", key: "hr-center-analisi" },

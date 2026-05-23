@@ -143,6 +143,14 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Scrivi envelope.title breve per revisori HR, envelope.rationale in italiano chiaro (cosa succede dopo approvazione, limiti, nessuna promessa legale), envelope.checklist max 4 voci operative. " +
         "Non inventare codici kind fuori da allowedKinds. Se intent contiene token __nexa_ref:...__, copiali identici in rationale o title solo se necessario al senso."
       );
+    case "ai_cowork_plan_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"summary\":\"stringa\"}}. " +
+        "L'ingresso ha envelope.facts (domain, message, scopeCount, filters, aggregates — solo numeri aggregati, nessun nominativo) e envelope.planSeed.summary (bozza). " +
+        "Migliora envelope.summary in italiano professionale per revisori HR: spiega cosa verrà proposto nel piano di massa, quanti dipendenti nel perimetro (usa scopeCount e aggregates), limiti e passo successo (preview + conferma). " +
+        "Non inventare numeri assenti da envelope.facts.aggregates; non introdurre nomi di persone."
+      );
     case "ai_turnover_insights_deep_v1":
       return (
         base +

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { GlassCard } from "@/components/glass-card";
 import {
   fetchCurrentUser,
@@ -293,9 +294,9 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
 
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
           <HebbAiPageHelpButton pageKey="hr-center-analisi" />
-          <Button type="button" size="sm" disabled={loading} onClick={() => void run()}>
-            {loading ? "Generazione in corso…" : "Genera analisi"}
-          </Button>
+          <LoadingButton type="button" size="sm" loading={loading} onClick={() => void run()}>
+            Genera analisi
+          </LoadingButton>
         </div>
         {error ? <p className="text-xs text-rose-600">{error}</p> : null}
         {llm?.refineApplied ? (

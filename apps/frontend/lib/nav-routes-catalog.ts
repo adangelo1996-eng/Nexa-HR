@@ -38,6 +38,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/payslips", label: "Cedolini" },
   { href: "/smartworking", label: "Remote working" },
   { href: "/workflow/approvals", label: "Approvazioni team (manager/HR)" },
+  { href: "/hr/cowork" as Route, label: "Nexa Cowork" },
   { href: "/reports", label: "Report presenze" },
   { href: "/tools/cost-calculator" as Route, label: "Calcolatore costo azienda / netto" },
   { href: "/tools/third-party-licenses" as Route, label: "Utenze e licenze terze" },

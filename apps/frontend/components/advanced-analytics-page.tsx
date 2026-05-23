@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArrowLeft, MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { LlmUsageStatusBanner } from "@/components/llm-usage-status-banner";
@@ -431,26 +432,33 @@ export function AdvancedAnalyticsPage(props: AdvancedAnalyticsPageConfig): React
         </p>
         <div className="flex flex-wrap gap-2">
           {visual.insightChips.map((chip) => (
-            <Button
+            <LoadingButton
               key={chip.id}
               type="button"
               size="sm"
               variant="secondary"
+              loading={chipBusyId === chip.id}
               disabled={insightBusy || loading || chipBusyId != null}
               className={`rounded-full ${visual.accentBorderClass}`}
               onClick={() => void runInsightChip(chip.id, chip.userMessageIt, chip.insightFocus)}
             >
-              {chipBusyId === chip.id ? "…" : chip.labelIt}
-            </Button>
+              {chip.labelIt}
+            </LoadingButton>
           ))}
         </div>
       </section>
 
       <div className="mb-8 flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={insightBusy || loading} onClick={() => void generateInsight()}>
+        <LoadingButton
+          type="button"
+          size="sm"
+          loading={insightBusy}
+          disabled={loading}
+          onClick={() => void generateInsight()}
+        >
           <Sparkles className={`mr-1.5 h-4 w-4 ${visual.accentClass}`} aria-hidden />
-          {insightBusy ? "Generazione…" : "Genera insight AI"}
-        </Button>
+          Genera insight AI
+        </LoadingButton>
       </div>
 
       {insight ? <StructuredInsightBlock insight={insight} profile={visual} /> : null}
