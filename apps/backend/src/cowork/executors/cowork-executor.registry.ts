@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
+import { CoworkGenericExecutor } from "./cowork-generic.executor";
 import { HrStandardContractsExecutor } from "./hr-standard-contracts.executor";
 import { SmartworkingAgreementsExecutor } from "./smartworking-agreements.executor";
 import { SmartworkingRequestsExecutor } from "./smartworking-requests.executor";
@@ -12,7 +13,8 @@ export class CoworkExecutorRegistry {
   constructor(
     agreements: SmartworkingAgreementsExecutor,
     requests: SmartworkingRequestsExecutor,
-    contracts: HrStandardContractsExecutor
+    contracts: HrStandardContractsExecutor,
+    private readonly generic: CoworkGenericExecutor
   ) {
     this.byDomain = new Map<CoworkDomain, CoworkDomainExecutor>([
       [agreements.domain, agreements],
@@ -26,6 +28,9 @@ export class CoworkExecutorRegistry {
   }
 
   async executeRow(ctx: CoworkExecutorContext, domain: CoworkDomain, row: CoworkPlanRow): Promise<CoworkPlanRow> {
+    if (this.generic.supportsRow(row)) {
+      return this.generic.executeRow(ctx, row);
+    }
     const exec = this.get(domain);
     if (!exec) {
       return {
@@ -37,5 +42,3 @@ export class CoworkExecutorRegistry {
     return exec.executeRow(ctx, row);
   }
 }
-
-export { NotFoundException };

@@ -7,6 +7,7 @@ import { HrRecapService } from "./hr-recap.service";
 @Module({
   imports: [PlatformModule, RecruitingModule],
   controllers: [HrRecapController],
-  providers: [HrRecapService]
+  providers: [HrRecapService],
+  exports: [HrRecapService]
 })
 export class HrRecapModule {}

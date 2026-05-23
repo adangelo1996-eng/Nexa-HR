@@ -14,7 +14,7 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { Type } from "class-transformer";
-import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
+import { IsArray, IsIn, IsISO8601, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { sign } from "jsonwebtoken";
 import { getAuthJwtSecret } from "../platform/auth-jwt-secret";
@@ -103,6 +103,13 @@ class TeamEntryDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+}
+
+class TeamEntriesBulkDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamEntryDto)
+  entries!: TeamEntryDto[];
 }
 
 class PatchTimeEntryDto {
@@ -260,6 +267,15 @@ export class AttendanceController {
       geo: dto.geo,
       deviceId: dto.deviceId
     });
+  }
+
+  @Post("team/entries/bulk")
+  @RequireNexaPermissions("nexa.attendance:write")
+  async teamAddEntriesBulk(
+    @CurrentAuth() auth: { userId: string },
+    @Body() dto: TeamEntriesBulkDto
+  ): Promise<ReturnType<AttendanceTeamService["bulkAddTeamEntries"]>> {
+    return this.team.bulkAddTeamEntries(auth.userId, dto.entries ?? []);
   }
 
   @Patch("entries/:entryId")

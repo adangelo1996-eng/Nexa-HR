@@ -1,8 +1,20 @@
 import { Module } from "@nestjs/common";
 import { AiHrModule } from "../ai-hr/ai-hr.module";
 import { AiPrivacyModule } from "../ai-privacy/ai-privacy.module";
+import { CompensationModule } from "../compensation/compensation.module";
+import { HrCenterModule } from "../hr-center/hr-center.module";
 import { HrContractsModule } from "../hr-contracts/hr-contracts.module";
+import { CorporatePoliciesModule } from "../corporate-policies/corporate-policies.module";
+import { HrOffboardingModule } from "../hr-offboarding/hr-offboarding.module";
+import { HrOnboardingModule } from "../hr-onboarding/hr-onboarding.module";
+import { HrRecapModule } from "../hr-recap/hr-recap.module";
 import { PlatformModule } from "../platform/platform.module";
+import { RecruitingModule } from "../recruiting/recruiting.module";
+import { ThirdPartyLicensesModule } from "../third-party-licenses/third-party-licenses.module";
+import { TrainingModule } from "../training/training.module";
+import { WorkforceModule } from "../workforce/workforce.module";
+import { CoworkPermissionsService } from "./cowork-permissions.service";
+import { CoworkGenericExecutor } from "./executors/cowork-generic.executor";
 import { CoworkController } from "./cowork.controller";
 import { CoworkOrchestratorService } from "./cowork-orchestrator.service";
 import { CoworkPlanHydrationService } from "./cowork-plan-hydration.service";
@@ -14,14 +26,31 @@ import { SmartworkingAgreementsExecutor } from "./executors/smartworking-agreeme
 import { SmartworkingRequestsExecutor } from "./executors/smartworking-requests.executor";
 
 @Module({
-  imports: [PlatformModule, AiPrivacyModule, AiHrModule, HrContractsModule],
+  imports: [
+    PlatformModule,
+    AiPrivacyModule,
+    AiHrModule,
+    HrContractsModule,
+    HrOffboardingModule,
+    HrOnboardingModule,
+    TrainingModule,
+    CorporatePoliciesModule,
+    HrCenterModule,
+    HrRecapModule,
+    CompensationModule,
+    RecruitingModule,
+    ThirdPartyLicensesModule,
+    WorkforceModule
+  ],
   controllers: [CoworkController],
   providers: [
     CoworkOrchestratorService,
     CoworkPlanHydrationService,
     CoworkPlannerService,
+    CoworkPermissionsService,
     CoworkPlansStore,
     CoworkExecutorRegistry,
+    CoworkGenericExecutor,
     SmartworkingAgreementsExecutor,
     SmartworkingRequestsExecutor,
     HrStandardContractsExecutor

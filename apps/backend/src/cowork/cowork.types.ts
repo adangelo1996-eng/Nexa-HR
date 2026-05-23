@@ -1,8 +1,47 @@
+export const COWORK_AREAS = [
+  "calendar",
+  "time_off",
+  "lifecycle",
+  "training",
+  "documents",
+  "org",
+  "compensation",
+  "payroll",
+  "personnel_budget",
+  "recruiting",
+  "corporate_policies",
+  "third_party_licenses",
+  "admin",
+  "onboarding",
+  "analytics",
+  "generic",
+  "smartworking_agreements",
+  "smartworking_requests",
+  "employment_contracts"
+] as const;
+
+export type CoworkAreaId = (typeof COWORK_AREAS)[number];
+
 export const COWORK_DOMAINS = [
   "smartworking_agreements",
   "smartworking_requests",
   "employment_contracts",
+  "calendar",
+  "time_off",
+  "lifecycle",
   "training",
+  "documents",
+  "org",
+  "compensation",
+  "payroll",
+  "personnel_budget",
+  "recruiting",
+  "corporate_policies",
+  "third_party_licenses",
+  "admin",
+  "onboarding",
+  "analytics",
+  "generic",
   "unknown"
 ] as const;
 
@@ -14,6 +53,7 @@ export type CoworkPlanRow = {
   id: string;
   sectionId: string;
   domain: CoworkDomain;
+  toolId: string;
   userId: string;
   fullName: string;
   action: string;
@@ -27,6 +67,7 @@ export type CoworkPlanRow = {
 export type CoworkPlanSection = {
   sectionId: string;
   domain: CoworkDomain;
+  toolId: string;
   title: string;
   rows: CoworkPlanRow[];
 };
@@ -86,6 +127,7 @@ export type CoworkApplyResult = {
 export type CoworkPlannerSectionSpec = {
   tool: string;
   domain: CoworkDomain;
+  areaId?: CoworkAreaId;
   title: string;
 };
 
@@ -118,3 +160,26 @@ export type CoworkPlannerInterpretResult =
       llmApplied: boolean;
       tokenCount: number;
     };
+
+export type CoworkToolParamField = {
+  type: "string" | "number" | "boolean" | "date" | "datetime";
+  required?: boolean;
+  descriptionIt?: string;
+};
+
+export type CoworkToolParamSchema = Record<string, CoworkToolParamField>;
+
+export type CoworkToolDef = {
+  id: string;
+  areaId: CoworkAreaId;
+  domain: CoworkDomain;
+  labelIt: string;
+  hintIt: string;
+  executable: boolean;
+  /** Tutti i permessi Nexa richiesti (AND). Vuoto = solo lifecycle Cowork sul controller. */
+  permissions: string[];
+  paramSchema?: CoworkToolParamSchema;
+  disabledMessageIt?: string;
+  /** Operazione ad alto impatto (payroll publish/generate): rationale esplicito in preview HITL. */
+  highRisk?: boolean;
+};

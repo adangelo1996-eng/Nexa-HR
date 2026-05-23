@@ -11,6 +11,7 @@ import { PayrollController } from "./payroll.controller";
 @Module({
   imports: [WorkforceModule, AiPrivacyModule, AiHrModule, RecruitingModule],
   controllers: [PayrollController, CompensationBenchController],
-  providers: [CompensationBenchService, PayslipExplainService]
+  providers: [CompensationBenchService, PayslipExplainService],
+  exports: [CompensationBenchService]
 })
 export class CompensationModule {}

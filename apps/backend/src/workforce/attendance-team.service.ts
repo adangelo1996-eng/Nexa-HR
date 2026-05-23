@@ -232,4 +232,36 @@ export class AttendanceTeamService {
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
+
+  async bulkAddTeamEntries(
+    managerId: string,
+    entries: Array<{
+      userId: string;
+      type: "clock_in" | "clock_out";
+      at?: string;
+      source?: "app" | "web" | "qr";
+      geo?: { lat: number; lon: number; accuracyM?: number; capturedAt?: string };
+      deviceId?: string;
+    }>
+  ): Promise<{ ok: number; errors: Array<{ userId: string; message: string }> }> {
+    await this.assertCanManageTeam(managerId);
+    const capped = entries.slice(0, 100);
+    let ok = 0;
+    const errors: Array<{ userId: string; message: string }> = [];
+    for (const entry of capped) {
+      try {
+        await this.assertCanViewUserAttendance(managerId, entry.userId);
+        await this.store.addTimeEntryAdmin(entry.userId, entry.type, entry.at, {
+          source: entry.source ?? "web",
+          geo: entry.geo,
+          deviceId: entry.deviceId
+        });
+        ok += 1;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        errors.push({ userId: entry.userId, message });
+      }
+    }
+    return { ok, errors };
+  }
 }

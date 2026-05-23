@@ -4951,6 +4951,33 @@ export class HrDataStore {
     return all;
   }
 
+  /** Riepilogo JSON export calendario team (Cowork / integrazioni). */
+  buildTeamWorkCalendarExportSummary(
+    userIds: string[],
+    events: CalendarEvent[],
+    from?: string,
+    to?: string
+  ): {
+    from: string | null;
+    to: string | null;
+    userCount: number;
+    eventCount: number;
+    rows: Array<{ userId: string; eventCount: number; kinds: string[] }>;
+  } {
+    const rows = userIds.map((userId) => {
+      const mine = events.filter((e) => e.userId === userId);
+      const kinds = [...new Set(mine.map((e) => e.kind))].sort();
+      return { userId, eventCount: mine.length, kinds };
+    });
+    return {
+      from: from ?? null,
+      to: to ?? null,
+      userCount: userIds.length,
+      eventCount: events.length,
+      rows
+    };
+  }
+
   /** Calendario aggregato per la vista dipendente: peer da work team, estensione per manager o CDC (vedi resolver). */
   async getCostCenterWorkCalendarForRequester(
     requesterId: string,
@@ -7122,6 +7149,40 @@ export class HrDataStore {
     const b64 = row.bodyBase64;
     if (!b64) throw new NotFoundException("Contenuto non disponibile (solo metadato)");
     return { mimeType: row.mimeType, base64: b64 };
+  }
+
+  /** Promemoria in-app lettura documento vault (HR → dipendente titolare). */
+  async sendEmployeeDocumentVaultReminder(
+    requesterId: string,
+    requesterRole: User["role"],
+    documentId: string
+  ): Promise<{ ok: true }> {
+    let row: EmployeeDocumentRow | undefined;
+    if (!this.useDb) {
+      row = this.employeeDocuments.find((d) => d.id === documentId);
+    } else {
+      const { data } = await this.supabase!.from("employee_documents").select("*").eq("id", documentId).maybeSingle();
+      row = data ? this.mapDocumentRow(data as Record<string, unknown>) : undefined;
+    }
+    if (!row) {
+      throw new NotFoundException("Documento non trovato");
+    }
+    if (
+      row.userId !== requesterId &&
+      requesterRole !== "superuser" &&
+      !(await this.isManagerOf(requesterId, row.userId)) &&
+      !(await this.isUserLeadOfTeamContaining(requesterId, row.userId))
+    ) {
+      throw new BadRequestException("Accesso negato");
+    }
+    await this.notifyUserInApp({
+      userId: row.userId,
+      title: "Documento da leggere",
+      body: `Consulta e conferma la lettura di «${row.title}» nel vault documenti.`,
+      kind: "document_ack_reminder",
+      actionPath: "/percorso/documenti"
+    });
+    return { ok: true };
   }
 
   async listInnovationJobs(userId: string, limit = 50): Promise<InnovationJob[]> {

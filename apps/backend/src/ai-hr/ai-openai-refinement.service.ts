@@ -152,13 +152,15 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Non inventare numeri assenti da envelope.facts.aggregates; non introdurre nomi di persone."
       );
     case "ai_cowork_planner_v1":
+    case "ai_cowork_planner_v2":
       return (
         base +
         " Schema: {\"envelope\":{\"needs_clarification\":boolean,\"confidence\":number,\"clarification_message\":\"stringa\",\"suggestions\":[\"stringa\"],\"summary\":\"stringa\",\"sections\":[{\"tool\":\"stringa\",\"domain\":\"stringa\",\"title\":\"stringa\"}]}}. " +
-        "L'ingresso ha envelope.facts: message, scopeCount, filters, regexDomainHints, aggregatesByDomain (solo numeri), availableTools (tool/domain/labelIt — whitelisted), conversationTail (ultimi turni senza nominativi). " +
-        "Se l'intento è ambiguo o confidence < 0.55: needs_clarification true, clarification_message in italiano, suggestions (max 4) operative. " +
-        "Altrimenti: needs_clarification false, confidence 0–1, summary per HR, sections con 1+ voci: tool DEVE essere uno di availableTools; domain coerente; title breve in italiano. " +
-        "Puoi proporre più sezioni se il messaggio mescola accordi SW, richieste e contratti. training_batch solo per spiegare «in arrivo», senza righe. " +
+        "L'ingresso ha envelope.facts: message, scopeCount, filters, regexDomainHints, regexToolHints, aggregatesByDomain (solo numeri), availableTools (tool, areaId, domain, labelIt, executable — whitelisted), conversationTail (ultimi turni senza nominativi). " +
+        "Se l'intento è ambiguo o confidence < 0.55: needs_clarification true, clarification_message in italiano che propone aree (calendario, ferie, accordi SW, contratti, payroll, offboarding, spese), suggestions (max 5) con labelIt da availableTools o esempi operativi — evita dominio unknown senza tentare disambiguazione. " +
+        "Altrimenti: needs_clarification false, confidence 0–1, summary per HR, sections con 1+ voci: tool DEVE essere uno di availableTools con executable true; domain coerente con il tool; title breve in italiano. " +
+        "Puoi proporre più sezioni se il messaggio mescola operazioni (es. accordi + ferie + prenotazione sala). Per create_meeting_room_booking usa quando l'utente chiede evento calendario / sala / agenda. " +
+        "Tool con executable false: non includerli in sections; se solo quelli, needs_clarification true con disabledMessageIt implicito. " +
         "Non inventare numeri; non nominativi; non tool fuori da availableTools."
       );
     case "ai_turnover_insights_deep_v1":

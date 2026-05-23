@@ -34,13 +34,51 @@ import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
-const DOMAIN_LABELS: Record<string, string> = {
-  smartworking_agreements: "Accordi SW annuali",
-  smartworking_requests: "Estensione richieste SW",
-  employment_contracts: "Contratti (clausola SW)",
+const AREA_LABELS: Record<string, string> = {
+  calendar: "Calendario e sale",
+  time_off: "Assenze e permessi",
+  lifecycle: "Lifecycle HR",
   training: "Formazione",
+  documents: "Documenti",
+  org: "Organizzazione",
+  compensation: "Payroll",
+  onboarding: "Onboarding",
+  analytics: "Analytics",
+  generic: "Generico",
+  smartworking_agreements: "Accordi SW",
+  smartworking_requests: "Richieste SW",
+  employment_contracts: "Contratti",
   unknown: "—"
 };
+
+const TOOL_LABELS: Record<string, string> = {
+  renew_agreements: "Rinnovo accordi SW",
+  extend_approved_requests: "Estensione richieste SW",
+  update_contract_sw_clause: "Clausola SW su contratti",
+  create_meeting_room_booking: "Prenotazione sala / evento calendario",
+  cancel_meeting_room_booking: "Annulla prenotazione sala",
+  create_leave_plan: "Richiesta ferie / ROL",
+  create_smartworking_request: "Richiesta remote working",
+  create_travel_request: "Richiesta trasferta",
+  create_sickness_report: "Comunicazione malattia",
+  approve_pending_leaves: "Approva ferie in attesa",
+  approve_pending_smartworking: "Approva SW in attesa",
+  create_shift_batch: "Assegna turni",
+  start_offboarding: "Avvia offboarding",
+  update_leave_allowance: "Monte ferie",
+  publish_payslips_period: "Pubblica cedolini",
+  create_expense_claim: "Nota spese",
+  approve_pending_expenses: "Approva note spese",
+  create_innovation_job: "Job Innovation",
+  training_batch: "Formazione batch"
+};
+
+function toolLabel(toolId: string | undefined, domain: string): string {
+  if (toolId && TOOL_LABELS[toolId]) {
+    return TOOL_LABELS[toolId]!;
+  }
+  return AREA_LABELS[domain] ?? domain;
+}
 
 const CONVERSATION_HISTORY_MAX = 8;
 
@@ -97,7 +135,7 @@ function PlanRowCard(props: {
             <div className="min-w-0">
               <p className="font-semibold leading-snug text-[var(--prom-text)]">{row.fullName}</p>
               <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">
-                {row.action}
+                {toolLabel(row.toolId, row.domain)} · {row.action}
               </p>
             </div>
             <span
@@ -152,7 +190,7 @@ function SectionBlock(props: {
           <div className="min-w-0">
             <h3 className="font-semibold text-[var(--prom-text)]">{section.title}</h3>
             <p className="text-xs text-[var(--prom-muted)]">
-              {DOMAIN_LABELS[section.domain] ?? section.domain} · {section.rows.length} righe
+              {toolLabel(section.toolId, section.domain)} · {section.rows.length} righe
             </p>
           </div>
         </button>
@@ -226,7 +264,9 @@ function SectionBlock(props: {
                         <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
                         <div>
                           <div className="font-medium leading-snug">{row.fullName}</div>
-                          <div className="mt-0.5 text-xs text-[var(--prom-muted)]">{row.action}</div>
+                          <div className="mt-0.5 text-xs text-[var(--prom-muted)]">
+                            {toolLabel(row.toolId, row.domain)} · {row.action}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -623,7 +663,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
           {plan ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--prom-muted)]">
               <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
-                Dominio principale: {DOMAIN_LABELS[plan.domain] ?? plan.domain}
+                Dominio principale: {AREA_LABELS[plan.domain] ?? plan.domain}
               </span>
               {plan.llmApplied ? (
                 <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">Planner AI</span>

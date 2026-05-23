@@ -33,7 +33,8 @@ export class CoworkPlansStore {
       const legacyRows = rows.map((row) => ({
         ...row,
         sectionId: row.sectionId ?? randomUUID(),
-        domain: row.domain ?? ("unknown" as const)
+        domain: row.domain ?? ("unknown" as const),
+        toolId: row.toolId ?? ""
       }));
       return {
         rows: legacyRows,
@@ -73,6 +74,7 @@ export class CoworkPlansStore {
     const sections: CoworkPlanSection[] = sectionMeta.map((meta) => ({
       sectionId: meta.sectionId,
       domain: meta.domain,
+      toolId: meta.toolId ?? rows.find((r) => r.sectionId === meta.sectionId)?.toolId ?? "",
       title: meta.title,
       rows: rows.filter((r) => r.sectionId === meta.sectionId)
     }));
@@ -109,6 +111,7 @@ export class CoworkPlansStore {
     const sectionMeta: CoworkPlanSectionMeta[] = plan.sections.map((s) => ({
       sectionId: s.sectionId,
       domain: s.domain,
+      toolId: s.toolId,
       title: s.title
     }));
 
@@ -194,6 +197,7 @@ export class CoworkPlansStore {
     cur.sections = cur.sectionMeta.map((meta) => ({
       sectionId: meta.sectionId,
       domain: meta.domain,
+      toolId: meta.toolId ?? rows.find((r) => r.sectionId === meta.sectionId)?.toolId ?? "",
       title: meta.title,
       rows: rows.filter((r) => r.sectionId === meta.sectionId)
     }));

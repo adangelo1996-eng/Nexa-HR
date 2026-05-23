@@ -431,4 +431,34 @@ export class HrOnboardingService {
       steps
     });
   }
+
+  /** Promemoria step wizard onboarding (stesso pattern formazione). */
+  async sendWizardReminder(input: {
+    companyId: string;
+    userId: string;
+    requestedByUserId: string;
+    pendingStepTitle?: string;
+  }): Promise<{ ok: true }> {
+    const wizard = await this.getWizard(input.userId);
+    if (wizard.companyId !== input.companyId) {
+      throw new NotFoundException("Wizard onboarding non trovato");
+    }
+    if (wizard.completedAt) {
+      throw new BadRequestException("Wizard onboarding già completato");
+    }
+    const pending =
+      (input.pendingStepTitle
+        ? HR_ONBOARDING_WIZARD_STEPS.find((s) => s.titleIt === input.pendingStepTitle)
+        : undefined) ??
+      HR_ONBOARDING_WIZARD_STEPS.find((s) => wizard.steps[s.key]?.done !== true);
+    const stepLabel = pending?.titleIt ?? "wizard onboarding";
+    await this.store.notifyUserInApp({
+      userId: input.userId,
+      title: "Promemoria onboarding HR",
+      body: `Completa lo step «${stepLabel}» nel wizard Onboarding.`,
+      kind: "onboarding_reminder",
+      actionPath: "/hr/onboarding"
+    });
+    return { ok: true };
+  }
 }

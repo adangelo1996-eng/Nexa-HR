@@ -87,6 +87,19 @@ export class HrOnboardingController {
     return this.svc.getWizard(userId);
   }
 
+  @Post("wizard/:userId/reminder")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async sendWizardReminder(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string
+  ): Promise<{ ok: true }> {
+    return this.svc.sendWizardReminder({
+      companyId: auth.tenantId ?? "comp-1",
+      userId,
+      requestedByUserId: auth.userId
+    });
+  }
+
   @Patch("wizard/:userId/step")
   @RequireNexaPermissions("nexa.lifecycle:write")
   async saveStep(

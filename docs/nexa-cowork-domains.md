@@ -1,55 +1,93 @@
-# Nexa Cowork — domini e prompt NL
+# Nexa Cowork — catalogo operazioni full-app
 
 Workspace HR per **modifiche di massa** con linguaggio naturale, preview HITL obbligatoria e LLM planner su aggregati pseudonimizzati (`AiPrivacyGateway`).
 
 **Route:** `/hr/cowork` · **API:** `POST /cowork/plan`, `POST /cowork/apply`, `GET /cowork/plans/:id`
 
-**Permessi:** `nexa.lifecycle:read` (meta/plan read), `nexa.lifecycle:write` (plan/apply) — HR esteso / superuser.
+**Permessi controller:** `nexa.lifecycle:read` (meta/plan read), `nexa.lifecycle:write` (plan/apply) — ogni **tool** ha inoltre permessi Nexa dedicati (filtrati prima del planner).
 
-## Planner LLM (`ai_cowork_planner_v1`)
+## Planner LLM (`ai_cowork_planner_v2`)
 
-- Sostituisce l’errore rigido «Intento non riconosciuto» quando il modello è attivo.
-- Output: **più sezioni** (accordi + richieste + contratti nello stesso piano), **summary**, o **chiarimento** (`kind: clarification`, HTTP 200).
-- Tool whitelisted in `COWORK_TOOL_CATALOG`; le righe con nominativi sono generate **solo server-side** (`CoworkPlanHydrationService`).
-- Fallback senza LLM: `classifyDomains` regex → sezioni multiple o chiarimento.
-- `conversationHistory` (ultimi N turni) passato al planner; mai nominativi nel payload modello.
+- Catalogo **37 tool** in `cowork-tool-catalog.ts`, raggruppati per `areaId` — tutti `executable: true`.
+- Output: più **sezioni** (tool + dominio), **summary**, o **chiarimento** (`kind: clarification`, HTTP 200) con suggerimenti per area.
+- Righe con nominativi solo **server-side** (`CoworkPlanHydrationService.buildRowsForTool`).
+- Fallback senza LLM: `classifyToolHints` + `classifyDomains` → sezioni o chiarimento con etichette area.
+- `conversationHistory` (ultimi N turni); mai nominativi nel payload modello.
 
-## Domini operativi
+## Aree (`areaId`)
 
-1. **Accordi smart working annuali** (`smartworking_agreements`) — `renew_agreements`
-2. **Estensione richieste SW** (`smartworking_requests`) — `extend_approved_requests`
-3. **Contratti standard + clausola SW** (`employment_contracts`) — `update_contract_sw_clause`
-4. **Formazione batch** (`training`) — `training_batch`, spiegazione «in arrivo» (nessun executor)
+| Area | Esempi tool |
+|------|-------------|
+| `calendar` | `create_meeting_room_booking`, `create_shift_batch`, `cancel_meeting_room_booking`, `sync_team_calendar_view` |
+| `time_off` | `create_leave_plan`, `create_smartworking_request`, `approve_pending_leaves`, … |
+| `smartworking_agreements` | `renew_agreements` |
+| `smartworking_requests` | `extend_approved_requests` |
+| `employment_contracts` | `update_contract_sw_clause` |
+| `lifecycle` | `start_offboarding` |
+| `payroll` | `publish_payslips_period`, `payroll_batch_generate`, `compensation_benchmark_estimate` |
+| `org` | `update_leave_allowance` |
+| `training` | `training_batch`, `assign_training_course` |
+| `documents` | `upload_employee_document`, `link_document_ack` |
+| `onboarding` | `start_onboarding_from_candidate`, `onboarding_wizard_reminder` |
+| `analytics` | `run_hr_center_recap`, `run_retention_analysis`, `evaluate_hr_alerts` |
+| `personnel_budget` | `personnel_budget_adjust` |
+| `recruiting` | `recruiting_linkedin_sync` |
+| `corporate_policies` | `corporate_policy_publish` |
+| `third_party_licenses` | `third_party_license_assign` |
+| `admin` | `export_employees_preview` |
+| `generic` | `create_expense_claim`, `approve_pending_expenses`, `create_innovation_job`, `hr_recap_reminder`, `attendance_qr_batch` |
+
+## API dedicate (usate da Cowork generic executor)
+
+| Tool Cowork | Endpoint backend |
+|-------------|------------------|
+| `link_document_ack` | `POST /documents/vault/:documentId/reminder` |
+| `onboarding_wizard_reminder` | `POST /hr-onboarding/wizard/:userId/reminder` |
+| `attendance_qr_batch` | `POST /attendance/team/entries/bulk` |
+| `sync_team_calendar_view` | `POST /hr/work-calendar/export` (riepilogo JSON) |
+
+Gli altri tool riusano servizi esistenti (`TrainingService`, `HrOnboardingService`, `HrDataStore`, `HrCenterService`, `CompensationBenchService`, `LinkedInJobSyncService`, ecc.) senza duplicare la logica di business.
+
+## Calendario
+
+- **Evento inseribile da Cowork:** prenotazione **sala riunioni** → `create_meeting_room_booking`.
+- **Export vista team:** `sync_team_calendar_view` (solo lettura, nessuna scrittura evento generico).
+- Ferie/SW/turni/malattia/trasferte usano i tool `time_off` / `calendar` dedicati e compaiono sul calendario aggregato.
 
 ## Esempi prompt
 
-| Prompt (NL) | Effetto |
-|-------------|---------|
-| «Rinnova accordi smart working 2026 per tutti» | Sezione accordi, righe create/renew |
-| «Estendi richieste approvate fino al 31/12/2026» | Sezione richieste |
-| «Accordi 2026 e estendi richieste approvate» | **Due sezioni** nello stesso piano |
-| «Assegna corso formazione a tutti» | Chiarimento (dominio in arrivo), non 400 |
+| Prompt (NL) | Tool tipico |
+|-------------|-------------|
+| «Rinnova accordi smart working 2026 per tutti» | `renew_agreements` |
+| «Prenota sala domani 10-12 titolo Standup» | `create_meeting_room_booking` |
+| «Export calendario team settimana corrente» | `sync_team_calendar_view` |
+| «Timbratura entrata oggi per il team» | `attendance_qr_batch` |
+| «Promemoria lettura documento vault» | `link_document_ack` |
+| «Promemoria step onboarding incompleti» | `onboarding_wizard_reminder` |
+| «Assegna corso formazione a tutti» | `training_batch` |
 | Messaggio ambiguo | Chiarimento + `suggestions` |
 
 ## Flusso HITL
 
 1. HR scrive in chat (+ filtri CC/team opzionali) → `POST /cowork/plan`
-2. Planner + hydration → `sections[]` e `rows[]` con `sectionId`
-3. UI: sezioni collassabili, **Approva sezione**, selezione globale
-4. `POST /cowork/apply` — sempre manuale, per `selectedRowIds`
-5. Piano in `hr_cowork_plans` (`rows_json` v2 con `sectionMeta`), TTL 24h
+2. Permessi → planner LLM (se attivo) → hydration per `toolId` → `sections[]` / `rows[]`
+3. UI: etichetta **tool** + area, sezioni collassabili, approvazione manuale
+4. `POST /cowork/apply` — `CoworkExecutorRegistry` → executor dominio legacy o `CoworkGenericExecutor`
+5. Piano in `hr_cowork_plans` (payload righe v2 + `sectionMeta`), TTL 24h
 
 ## Privacy
 
 - **UI HR:** nominativi in preview
-- **LLM:** `scopeCount`, `aggregatesByDomain`, tool catalog, `conversationTail` — no `fullName`
-- Schema summary legacy: `ai_cowork_plan_v1` (solo refine summary, opzionale)
+- **LLM:** `scopeCount`, `aggregatesByDomain`, `availableTools`, `regexToolHints` — no `fullName`
 
 ## Limiti
 
-- Max **200** righe per piano (`COWORK_MAX_ROWS`)
-- Formazione: nessuna riga applicabile fino a executor dedicato
+- Max **200** righe (`COWORK_MAX_ROWS`)
+- Timbrature batch: max **100** entry per chiamata `POST /attendance/team/entries/bulk`
 
-## Migration
+## File principali
 
-`infra/supabase/migrations/076_smartworking_agreements.sql` — tabelle `smartworking_agreements`, `hr_cowork_plans` + RLS.
+- `apps/backend/src/cowork/cowork-tool-catalog.ts` — catalogo
+- `apps/backend/src/cowork/executors/cowork-generic.executor.ts` — apply tool non-legacy
+- `apps/backend/src/cowork/cowork-permissions.service.ts` — filtro permessi per tool
+- `apps/backend/src/cowork/cowork-plan-hydration.service.ts` — righe HITL per tool

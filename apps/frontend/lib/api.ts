@@ -3504,6 +3504,7 @@ export type CoworkPlanRowDto = {
   id: string;
   sectionId: string;
   domain: string;
+  toolId?: string;
   userId: string;
   fullName: string;
   action: string;
@@ -3517,6 +3518,7 @@ export type CoworkPlanRowDto = {
 export type CoworkPlanSectionDto = {
   sectionId: string;
   domain: string;
+  toolId?: string;
   title: string;
   rows: CoworkPlanRowDto[];
 };

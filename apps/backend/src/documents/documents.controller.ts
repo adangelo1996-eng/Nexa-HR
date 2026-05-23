@@ -83,6 +83,15 @@ export class DocumentsController {
     });
   }
 
+  @Post("vault/:documentId/reminder")
+  @RequireNexaPermissions("nexa.documents:read")
+  async sendReadReminder(
+    @CurrentAuth() auth: AuthContext,
+    @Param("documentId") documentId: string
+  ): Promise<{ ok: true }> {
+    return this.store.sendEmployeeDocumentVaultReminder(auth.userId, auth.role, documentId);
+  }
+
   @Get("vault/:id/file")
   @RequireNexaPermissions("nexa.documents:read")
   async download(

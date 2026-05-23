@@ -8,6 +8,7 @@ import { HrCenterService } from "./hr-center.service";
 @Module({
   imports: [AiPrivacyModule, AiHrModule, HrContractsModule],
   controllers: [HrCenterController],
-  providers: [HrCenterService]
+  providers: [HrCenterService],
+  exports: [HrCenterService]
 })
 export class HrCenterModule {}
