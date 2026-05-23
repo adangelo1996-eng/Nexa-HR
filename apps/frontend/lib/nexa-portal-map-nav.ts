@@ -1,39 +1,9 @@
 import type { Route } from "next";
 import type { LucideIcon } from "lucide-react";
-import {
-  BarChart2,
-  Building2,
-  Calculator,
-  Calendar,
-  CalendarDays,
-  ClipboardList,
-  Clock3,
-  DoorOpen,
-  FileText,
-  GraduationCap,
-  KeyRound,
-  Laptop,
-  MessageCircle,
-  LayoutDashboard,
-  PenLine,
-  PieChart,
-  Receipt,
-  Route as RouteIcon,
-  Settings,
-  Sparkles,
-  UserCog,
-  UserPlus,
-  UserRoundSearch,
-  Users,
-  Wallet2,
-  Wand2,
-  Workflow
-} from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
+import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
+import { buildHrNavPillars } from "@/lib/nexa-hr-nav";
 import { portalAccentCategoryForNavSection } from "@/lib/nav-visual-accents";
-import { buildEmployeePortalHubColumns } from "@/lib/portal-mappa-employee";
-import { buildHrLinearPortalSteps } from "@/lib/portal-mappa-linear";
-import type { PortalTile } from "@/lib/portal-mappa";
 
 export type PortalMapNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
 
@@ -42,107 +12,64 @@ export type PortalMapNavSubgroup = { id: string; title: string; items: PortalMap
 export type PortalMapNavSection = {
   id: string;
   title: string;
-  /** Accento colonna portale (header sidebar + flyout). */
+  /** Accento colonna portale (header sidebar + flyout + mappa). */
   portalCategory?: string;
   subgroups: PortalMapNavSubgroup[];
 };
 
-/** Macro sezioni sidebar HR (stesse del percorso lineare mappa, esclusi link standalone Hebb). */
-const HR_SIDEBAR_LINEAR_STEP_IDS = new Set(["daily", "people", "hire", "grow", "insight", "admin"]);
+/** Link mostrati in sidebar top-level, esclusi dalle sezioni collassabili dipendente. */
+const EMPLOYEE_COLLAPSIBLE_EXCLUDED_HREFS = new Set<string>(["/", "/hebb-ai-support"]);
 
-const HREF_ICON: Record<string, LucideIcon> = {
-  "/": LayoutDashboard,
-  "/attendance": Clock3,
-  "/work-calendar": Calendar,
-  "/sale-riunioni": DoorOpen,
-  "/workflow": Workflow,
-  "/expenses": Receipt,
-  "/payslips": FileText,
-  "/settings": Settings,
-  "/org-chart": Users,
-  "/organigramma": Building2,
-  "/workforce-planning": BarChart2,
-  "/scheduling": CalendarDays,
-  "/smartworking": Laptop,
-  "/manager-copilot": ClipboardList,
-  "/workflow/approvals": ClipboardList,
-  "/reports": PieChart,
-  "/hr-center/recap": ClipboardList,
-  "/hr-center/budget-report": Wallet2,
-  "/analytics": BarChart2,
-  "/analytics/advanced": BarChart2,
-  "/analytics/advanced/retention": BarChart2,
-  "/analytics/competenze": BarChart2,
-  "/recruiting": UserRoundSearch,
-  "/recruiting/onboarding": UserPlus,
-  "/contracts": PenLine,
-  "/corporate-policies": FileText,
-  "/tools/third-party-licenses": KeyRound,
-  "/compensation/bench": BarChart2,
-  "/personnel-budget": Wallet2,
-  "/personnel-budget/simulatore-assunzione": Calculator,
-  "/hr-recap": ClipboardList,
-  "/expenses/org": Receipt,
-  "/payroll-hebb": Sparkles,
-  "/admin": UserCog,
-  "/admin/data-export": FileText,
-  "/admin/cost-centers": Building2,
-  "/hr/formazione": GraduationCap,
-  "/hr/cowork": Sparkles,
-  "/hebb-ai-support": MessageCircle,
-  "/nexa-hr-copilot": Sparkles,
-  "/ai-hub": Wand2,
-  "/hr-center/analisi": BarChart2,
-  "/il-mio-team": Users,
-  "/percorso": RouteIcon,
-  "/percorso/formazione": GraduationCap,
-  "/formazione": GraduationCap,
-  "/lifecycle/offboard": ClipboardList
-};
-
-function portalTileToNavItem(tile: PortalTile): PortalMapNavItem {
-  const key = String(tile.href);
-  const icon = HREF_ICON[key] ?? FileText;
-  const exact = key === "/admin";
-  return { href: tile.href, label: tile.title, icon, ...(exact ? { exact: true } : {}) };
+function navItemToPortalMapNavItem(item: {
+  href: Route;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+}): PortalMapNavItem {
+  return {
+    href: item.href,
+    label: item.label,
+    icon: item.icon,
+    ...(item.exact ? { exact: true } : {})
+  };
 }
 
-/** Sezioni sidebar allineate a `buildHrLinearPortalSteps` (titoli e vetri mappa portale). */
+/** Sezioni sidebar HR — stessa struttura di `buildHrNavPillars` (pilastri + sottogruppi). */
 export function buildHrPortalMapNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): PortalMapNavSection[] {
-  return buildHrLinearPortalSteps(user, hideSensitiveHr)
-    .filter((step) => HR_SIDEBAR_LINEAR_STEP_IDS.has(step.id))
-    .map((step) => ({
-      id: step.id,
-      title: step.title,
-      portalCategory: portalAccentCategoryForNavSection(step.id, step.title),
-      subgroups: [
-        {
-          id: `${step.id}-items`,
-          title: step.subtitle,
-          items: step.tiles.map(portalTileToNavItem)
-        }
-      ]
-    }));
+  return buildHrNavPillars(user, hideSensitiveHr).map((pillar) => ({
+    id: pillar.id,
+    title: pillar.title,
+    portalCategory: pillar.portalCategory,
+    subgroups: pillar.subgroups.map((sg) => ({
+      id: sg.id,
+      title: sg.title,
+      items: sg.items.map(navItemToPortalMapNavItem)
+    }))
+  }));
 }
 
-/** Sezioni sidebar allineate alla mappa portale dipendente (Oggi / Io / Documenti). */
+/** Sezioni sidebar dipendente — stessa struttura di `buildEmployeeNavSections`. */
 export function buildEmployeePortalMapNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): PortalMapNavSection[] {
-  return buildEmployeePortalHubColumns(user, hideSensitiveHr).map((hub) => ({
-    id: hub.id,
-    title: hub.title,
-    portalCategory: hub.title,
-    subgroups: [
-      {
-        id: `${hub.id}-items`,
-        title: hub.subtitle,
-        items: hub.tiles.map(portalTileToNavItem)
-      }
-    ]
-  }));
+  return buildEmployeeNavSections(user, hideSensitiveHr)
+    .map((section) => ({
+      id: section.id,
+      title: section.title,
+      portalCategory: portalAccentCategoryForNavSection(section.id, section.title),
+      subgroups: [
+        {
+          id: `${section.id}-items`,
+          title: "",
+          items: section.items
+            .filter((item) => !EMPLOYEE_COLLAPSIBLE_EXCLUDED_HREFS.has(String(item.href)))
+            .map(navItemToPortalMapNavItem)
+        }
+      ]
+    }))
+    .filter((section) => section.subgroups.some((sg) => sg.items.length > 0));
 }

@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useTrackAsyncLoad } from "@/components/nexa-async-loading-provider";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { fetchCurrentUser } from "@/lib/api";
@@ -19,32 +19,38 @@ import {
   portalAccentCategoryForNavSection,
   portalCategoryGlassColumnHeaderClass,
   portalCategoryTileTopAccentClass,
-  portalMapSectionSurfaceClass
+  portalMapSectionSurfaceClass,
+  portalSubgroupGlassClass
 } from "@/lib/nav-visual-accents";
 import {
-  buildEmployeeLinearPortalSteps,
-  buildHrLinearPortalSteps,
-  type PortalLinearStep
-} from "@/lib/portal-mappa-linear";
+  buildEmployeePortalMapNavSections,
+  buildHrPortalMapNavSections,
+  type PortalMapNavItem,
+  type PortalMapNavSection
+} from "@/lib/nexa-portal-map-nav";
+import { portalBlurbForHref } from "@/lib/portal-tile-blurb";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
 
 function TileCard(props: {
-  href: Route;
-  title: string;
-  blurb: string;
+  item: PortalMapNavItem;
   accentCategory: string;
 }): React.JSX.Element {
-  const { href, title, blurb, accentCategory } = props;
+  const { item, accentCategory } = props;
+  const blurb = portalBlurbForHref(item.href);
+  const Icon = item.icon;
   return (
     <Link
-      href={href}
+      href={item.href}
       scroll={false}
       className={`group flex h-full flex-col rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-[var(--card-shadow)] transition hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,#002D72_28%,var(--prom-line-strong))] hover:shadow-[0_12px_32px_-16px_rgba(0,45,114,0.22)] ${portalCategoryTileTopAccentClass(accentCategory)}`}
     >
       <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] text-[var(--prom-muted)] group-hover:text-[var(--prom-text)]">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-[var(--prom-text)]">{title}</span>
+          <span className="block text-sm font-semibold text-[var(--prom-text)]">{item.label}</span>
           {blurb ? (
             <span className="mt-1.5 block line-clamp-3 text-xs leading-relaxed text-[var(--prom-muted)]">{blurb}</span>
           ) : null}
@@ -55,28 +61,41 @@ function TileCard(props: {
   );
 }
 
-function GridSection(props: { step: PortalLinearStep }): React.JSX.Element {
-  const accent = portalAccentCategoryForNavSection(props.step.id, props.step.title);
+function CollapsibleSection(props: { section: PortalMapNavSection }): React.JSX.Element {
+  const accent =
+    props.section.portalCategory ??
+    portalAccentCategoryForNavSection(props.section.id, props.section.title);
+
   return (
-    <section
-      className={`rounded-2xl border p-4 backdrop-blur-sm sm:p-5 md:p-6 ${portalMapSectionSurfaceClass(accent)}`}
+    <details
+      className={`group/section rounded-2xl border backdrop-blur-sm ${portalMapSectionSurfaceClass(accent)}`}
     >
-      <div className="mb-5 space-y-2">
-        <div className={portalCategoryGlassColumnHeaderClass(accent, "default")}>{props.step.title}</div>
-        <p className="max-w-2xl px-0.5 text-sm leading-relaxed text-[var(--prom-muted)]">{props.step.subtitle}</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {props.step.tiles.map((tile) => (
-          <TileCard
-            key={String(tile.href)}
-            href={tile.href}
-            title={tile.title}
-            blurb={tile.blurb}
-            accentCategory={accent}
+      <summary className="cursor-pointer list-none p-4 sm:p-5 md:p-6 [&::-webkit-details-marker]:hidden">
+        <div className="flex items-center gap-3">
+          <div className={`min-w-0 flex-1 ${portalCategoryGlassColumnHeaderClass(accent, "default")}`}>
+            {props.section.title}
+          </div>
+          <ChevronDown
+            className="h-5 w-5 shrink-0 text-[var(--prom-muted)] transition-transform duration-200 group-open/section:rotate-180"
+            aria-hidden
           />
+        </div>
+      </summary>
+      <div className="space-y-6 border-t border-[color-mix(in_srgb,var(--prom-line)_60%,transparent)] px-4 pb-4 pt-5 sm:px-5 sm:pb-5 md:px-6 md:pb-6">
+        {props.section.subgroups.map((subgroup) => (
+          <div key={subgroup.id}>
+            {subgroup.title ? (
+              <div className={portalSubgroupGlassClass(accent, "default")}>{subgroup.title}</div>
+            ) : null}
+            <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${subgroup.title ? "mt-3" : ""}`}>
+              {subgroup.items.map((item) => (
+                <TileCard key={String(item.href)} item={item} accentCategory={accent} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -104,15 +123,17 @@ export default function MappaPortalePage(): React.JSX.Element {
 
   const hideSensitiveHr = Boolean(employeeView && sessionCanNexaAdmin(user ?? undefined));
   const usesHrNav = sessionUsesHrReorganizedNav(user, hideSensitiveHr);
-  const usesEmployeePortal =
-    hideSensitiveHr || sessionIsPlainEmployee(user ?? undefined) || !usesHrNav;
+  const usesEmployeeNav = hideSensitiveHr || sessionIsPlainEmployee(user ?? undefined);
 
-  const steps = useMemo(() => {
-    if (usesEmployeePortal) {
-      return buildEmployeeLinearPortalSteps(user, hideSensitiveHr);
+  const sections = useMemo((): PortalMapNavSection[] => {
+    if (usesHrNav) {
+      return buildHrPortalMapNavSections(user, hideSensitiveHr);
     }
-    return buildHrLinearPortalSteps(user, hideSensitiveHr);
-  }, [user, hideSensitiveHr, usesEmployeePortal]);
+    if (usesEmployeeNav) {
+      return buildEmployeePortalMapNavSections(user, hideSensitiveHr);
+    }
+    return buildHrPortalMapNavSections(user, hideSensitiveHr);
+  }, [user, hideSensitiveHr, usesHrNav, usesEmployeeNav]);
 
   return (
     <div className="relative isolate min-h-[72vh] overflow-hidden rounded-[2rem] border border-[color-mix(in_srgb,#002D72_14%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-surface)_90%,var(--prom-bg))] px-5 py-10 sm:px-10">
@@ -128,14 +149,14 @@ export default function MappaPortalePage(): React.JSX.Element {
           Mappa del portale
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--prom-muted)]">
-          Sezioni e scorciatoie per il tuo profilo. Ogni blocco raggruppa le funzioni collegate.
+          Stesse sezioni del menu laterale: espandi una categoria per vedere le pagine collegate.
         </p>
         <ProfileChips user={user} hideSensitiveHr={hideSensitiveHr} />
       </header>
 
-      <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-8">
-        {steps.map((step) => (
-          <GridSection key={step.id} step={step} />
+      <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-4">
+        {sections.map((section) => (
+          <CollapsibleSection key={section.id} section={section} />
         ))}
       </div>
     </div>

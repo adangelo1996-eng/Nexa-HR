@@ -297,6 +297,12 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Analisi e pianificazione"
   },
   {
+    href: "/lifecycle/offboard" as Route,
+    title: "Offboarding",
+    blurb: "Checklist e procedure di uscita del collaboratore.",
+    category: "Persone e organizzazione"
+  },
+  {
     href: "/hr/cowork" as Route,
     title: "Hebb AI Mate",
     blurb: "Operazioni di massa in linguaggio naturale su smart working, contratti e formazione. Preview HITL obbligatoria.",

@@ -87,6 +87,10 @@ export function portalSubgroupGlassClass(portalCategory: string, density: "compa
     Oggi: `border-l-4 border-cyan-500 bg-cyan-500/12 text-cyan-900 dark:border-cyan-400 dark:bg-cyan-400/15 dark:text-cyan-100`,
     Io: `border-l-4 border-emerald-500 bg-emerald-500/12 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-400/15 dark:text-emerald-100`,
     Documenti: `border-l-4 border-amber-500 bg-amber-500/12 text-amber-950 dark:border-amber-400 dark:bg-amber-400/15 dark:text-amber-100`,
+    Persone: `border-l-4 border-emerald-500 bg-emerald-500/12 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-400/15 dark:text-emerald-100`,
+    Operazioni: `border-l-4 border-cyan-500 bg-cyan-500/12 text-cyan-900 dark:border-cyan-400 dark:bg-cyan-400/15 dark:text-cyan-100`,
+    Analytics: `border-l-4 border-violet-500 bg-violet-500/12 text-violet-900 dark:border-violet-400 dark:bg-violet-400/15 dark:text-violet-100`,
+    Amministrazione: `border-l-4 border-orange-500 bg-orange-500/12 text-orange-950 dark:border-orange-400 dark:bg-orange-400/15 dark:text-orange-100`,
     Selezione: `border-l-4 border-amber-500 bg-amber-500/12 text-amber-950 dark:border-amber-400 dark:bg-amber-400/15 dark:text-amber-100`,
     Onboarding: `border-l-4 border-lime-500 bg-lime-500/12 text-lime-950 dark:border-lime-400 dark:bg-lime-400/15 dark:text-lime-100`,
     Impiego: `border-l-4 border-cyan-500 bg-cyan-500/12 text-cyan-900 dark:border-cyan-400 dark:bg-cyan-400/15 dark:text-cyan-100`,
@@ -202,7 +206,10 @@ export function portalAccentCategoryForNavSection(sectionId: string, title: stri
     "hr-selezione": "Selezione e documenti",
     "hr-documenti": "Selezione e documenti",
     "hr-analisi": "Analisi e budget",
-    "hr-admin": "Amministrazione"
+    "hr-admin": "Amministrazione",
+    "hr-persone": "Persone",
+    "hr-operazioni": "Operazioni",
+    "hr-analytics": "Analytics"
   };
   return byId[sectionId] ?? title;
 }
@@ -215,6 +222,12 @@ export function portalMapSectionSurfaceClass(category: string): string {
     "Ogni giorno":
       "border-cyan-500/20 bg-[color-mix(in_srgb,cyan-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(34,211,238,0.12)]",
     Oggi: "border-cyan-500/20 bg-[color-mix(in_srgb,cyan-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(34,211,238,0.12)]",
+    Persone:
+      "border-emerald-500/20 bg-[color-mix(in_srgb,emerald-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(52,211,153,0.12)]",
+    Operazioni:
+      "border-cyan-500/20 bg-[color-mix(in_srgb,cyan-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(34,211,238,0.12)]",
+    Analytics:
+      "border-violet-500/20 bg-[color-mix(in_srgb,violet-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(167,139,250,0.12)]",
     Io: "border-emerald-500/20 bg-[color-mix(in_srgb,emerald-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(52,211,153,0.12)]",
     Documenti:
       "border-amber-500/20 bg-[color-mix(in_srgb,amber-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(251,191,36,0.12)]",
@@ -269,7 +282,10 @@ export function navSectionTitleAccentClass(sectionId: string): string {
     "hr-selezione": "text-orange-600 dark:text-orange-300",
     "hr-documenti": "text-lime-600 dark:text-lime-300",
     "hr-analisi": "text-sky-600 dark:text-sky-300",
-    "hr-admin": "text-stone-600 dark:text-stone-300"
+    "hr-admin": "text-stone-600 dark:text-stone-300",
+    "hr-persone": "text-emerald-600 dark:text-emerald-300",
+    "hr-operazioni": "text-cyan-600 dark:text-cyan-300",
+    "hr-analytics": "text-violet-600 dark:text-violet-300"
   };
   return map[sectionId] ?? "text-[var(--prom-text)]";
 }
@@ -297,7 +313,10 @@ export function navSectionSidebarAccentBarClass(sectionId: string): string {
     "hr-selezione": "bg-orange-500 dark:bg-orange-400",
     "hr-documenti": "bg-lime-500 dark:bg-lime-400",
     "hr-analisi": "bg-sky-500 dark:bg-sky-400",
-    "hr-admin": "bg-stone-500 dark:bg-stone-400"
+    "hr-admin": "bg-stone-500 dark:bg-stone-400",
+    "hr-persone": "bg-emerald-500 dark:bg-emerald-400",
+    "hr-operazioni": "bg-cyan-500 dark:bg-cyan-400",
+    "hr-analytics": "bg-violet-500 dark:bg-violet-400"
   };
   return map[sectionId] ?? "bg-[var(--prom-muted)]";
 }
