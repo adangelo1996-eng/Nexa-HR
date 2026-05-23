@@ -1,7 +1,7 @@
--- Document signature workflow, remote work policy (from contract), generated contracts tracking.
+-- Document signature workflow, remote work policy, generated contracts registry (single 080).
 
 -- ---------------------------------------------------------------------------
--- RLS helpers: nexa.documents permissions (company-scoped tables below).
+-- RLS helpers: nexa.documents / standard_contracts permissions
 -- ---------------------------------------------------------------------------
 create or replace function public.nexa_rls_me_has_documents_read()
 returns boolean
@@ -43,11 +43,6 @@ as $$
       )
   );
 $$;
-
-comment on function public.nexa_rls_me_has_documents_read() is
-  'RLS vault/documenti: nexa.documents:read|write, superuser/admin.';
-comment on function public.nexa_rls_me_has_documents_write() is
-  'RLS vault/documenti: nexa.documents:write, superuser/admin.';
 
 create or replace function public.nexa_rls_me_has_standard_contracts_read()
 returns boolean
@@ -91,114 +86,63 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- 1) Document signature workflow (vault → assignee → signed/returned)
+-- 1) Vault document revisions + signature requests (camelCase PostgREST)
 -- ---------------------------------------------------------------------------
+alter table public.employee_documents
+  add column if not exists "parentDocumentId" text null references public.employee_documents (id) on delete set null,
+  add column if not exists "signedAt" text null,
+  add column if not exists "signedByUserId" text null references public.users (id) on delete set null,
+  add column if not exists "signatureMetadata" jsonb null;
+
+comment on column public.employee_documents."parentDocumentId" is 'Scheda precedente in catena versioni vault.';
+comment on column public.employee_documents."signedAt" is 'ISO timestamp firma digitale dipendente.';
+comment on column public.employee_documents."signatureMetadata" is 'Metadati firma (nomi firmatari, metodo, ecc.).';
+
 create table if not exists public.hr_document_signature_requests (
-  id uuid primary key default gen_random_uuid(),
-  company_id text not null,
-  document_id text not null references public.employee_documents (id) on delete restrict,
-  parent_document_id text null references public.employee_documents (id) on delete set null,
-  requested_by text not null references public.users (id) on delete restrict,
-  assignee_user_id text not null references public.users (id) on delete cascade,
-  status text not null default 'pending_signature'
-    check (status in ('pending_signature', 'signed', 'returned', 'cancelled')),
-  message text null,
-  signed_document_id text null references public.employee_documents (id) on delete set null,
-  signed_at timestamptz null,
-  returned_at timestamptz null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  id text primary key,
+  "documentId" text not null references public.employee_documents (id) on delete cascade,
+  "parentDocumentId" text null references public.employee_documents (id) on delete set null,
+  "originSignedDocumentId" text null references public.employee_documents (id) on delete set null,
+  "employeeUserId" text not null references public.users (id) on delete cascade,
+  "requesterUserId" text not null references public.users (id) on delete cascade,
+  status text not null default 'pending_employee_sign'
+    check (status in ('pending_employee_sign', 'signed', 'returned')),
+  "createdAt" text not null,
+  "signedAt" text null,
+  "returnedAt" text null,
+  "signatureMetadata" jsonb null
 );
 
-create index if not exists idx_hr_doc_sig_req_company_status
-  on public.hr_document_signature_requests (company_id, status, created_at desc);
+create index if not exists idx_hr_doc_sig_req_employee_status
+  on public.hr_document_signature_requests ("employeeUserId", status, "createdAt" desc);
 
-create index if not exists idx_hr_doc_sig_req_assignee_pending
-  on public.hr_document_signature_requests (assignee_user_id, created_at desc)
-  where status = 'pending_signature';
+create index if not exists idx_hr_doc_sig_req_requester_status
+  on public.hr_document_signature_requests ("requesterUserId", status, "createdAt" desc);
 
-create index if not exists idx_hr_doc_sig_req_document
-  on public.hr_document_signature_requests (document_id);
-
-comment on table public.hr_document_signature_requests is
-  'Richieste firma documento vault: HR invia, dipendente firma o restituisce.';
+create index if not exists idx_employee_documents_parent
+  on public.employee_documents ("parentDocumentId");
 
 alter table public.hr_document_signature_requests enable row level security;
 
-drop policy if exists "nexa_hr_doc_sig_req_select" on public.hr_document_signature_requests;
-create policy "nexa_hr_doc_sig_req_select"
+drop policy if exists "nexa_hr_doc_sig_req_select_visible" on public.hr_document_signature_requests;
+create policy "nexa_hr_doc_sig_req_select_visible"
 on public.hr_document_signature_requests for select to authenticated
 using (
   exists (
     select 1 from public.users me
     where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-      and (
-        public.nexa_rls_me_has_documents_read()
-        or public.hr_document_signature_requests.assignee_user_id = me.id
-        or public.hr_document_signature_requests.requested_by = me.id
-        or exists (
-          select 1 from public.users sub
-          where sub.id = public.hr_document_signature_requests.assignee_user_id
-            and sub."managerId" = me.id
-        )
+    and (
+      me.role in ('superuser', 'admin')
+      or public.nexa_rls_me_has_documents_read()
+      or public.hr_document_signature_requests."employeeUserId" = me.id
+      or public.hr_document_signature_requests."requesterUserId" = me.id
+      or exists (
+        select 1 from public.users sub
+        where sub.id = public.hr_document_signature_requests."employeeUserId"
+          and sub."managerId" = me.id
       )
+    )
   )
-);
-
-drop policy if exists "nexa_hr_doc_sig_req_insert" on public.hr_document_signature_requests;
-create policy "nexa_hr_doc_sig_req_insert"
-on public.hr_document_signature_requests for insert to authenticated
-with check (
-  public.nexa_rls_me_has_documents_write()
-  and exists (
-    select 1 from public.users me
-    where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-      and me.id = public.hr_document_signature_requests.requested_by
-  )
-);
-
-drop policy if exists "nexa_hr_doc_sig_req_update_hr" on public.hr_document_signature_requests;
-create policy "nexa_hr_doc_sig_req_update_hr"
-on public.hr_document_signature_requests for update to authenticated
-using (
-  public.nexa_rls_me_has_documents_write()
-  and exists (
-    select 1 from public.users me
-    where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-  )
-)
-with check (
-  public.nexa_rls_me_has_documents_write()
-  and exists (
-    select 1 from public.users me
-    where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-  )
-);
-
-drop policy if exists "nexa_hr_doc_sig_req_update_assignee" on public.hr_document_signature_requests;
-create policy "nexa_hr_doc_sig_req_update_assignee"
-on public.hr_document_signature_requests for update to authenticated
-using (
-  exists (
-    select 1 from public.users me
-    where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-      and me.id = public.hr_document_signature_requests.assignee_user_id
-      and public.hr_document_signature_requests.status = 'pending_signature'
-  )
-)
-with check (
-  exists (
-    select 1 from public.users me
-    where me.email = (select auth.email())
-      and me."companyId" = public.hr_document_signature_requests.company_id
-      and me.id = public.hr_document_signature_requests.assignee_user_id
-  )
-  and public.hr_document_signature_requests.status in ('signed', 'returned')
 );
 
 -- ---------------------------------------------------------------------------
@@ -285,57 +229,49 @@ with check (
 );
 
 -- ---------------------------------------------------------------------------
--- 3) Generated contracts (employment / remote working) audit trail
+-- 3) Generated contracts batch registry (idempotency)
 -- ---------------------------------------------------------------------------
 create table if not exists public.hr_generated_contracts (
   id uuid primary key default gen_random_uuid(),
   company_id text not null,
   user_id text not null references public.users (id) on delete cascade,
-  kind text not null check (kind in ('employment', 'remote_working')),
-  contract_id uuid null references public.hr_standard_contracts (id) on delete set null,
-  vault_document_id text null references public.employee_documents (id) on delete set null,
-  generated_at timestamptz not null default now(),
-  pdf_hash text null,
-  created_at timestamptz not null default now()
+  contract_kind text not null
+    check (contract_kind in ('employment', 'remote_working')),
+  batch_key text not null,
+  hr_standard_contract_id uuid null references public.hr_standard_contracts (id) on delete set null,
+  smartworking_agreement_id uuid null references public.smartworking_agreements (id) on delete set null,
+  document_id text null references public.employee_documents (id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, batch_key)
 );
 
 create index if not exists idx_hr_generated_contracts_company_user
-  on public.hr_generated_contracts (company_id, user_id, generated_at desc);
-
-create index if not exists idx_hr_generated_contracts_contract
-  on public.hr_generated_contracts (contract_id)
-  where contract_id is not null;
+  on public.hr_generated_contracts (company_id, user_id, contract_kind);
 
 comment on table public.hr_generated_contracts is
-  'Tracciamento PDF/contratti generati (assunzione, smart working) collegati a vault e hr_standard_contracts.';
+  'Tracciamento generazione batch PDF contratti (chiave idempotente per dipendente e tipo).';
 
 alter table public.hr_generated_contracts enable row level security;
 
-drop policy if exists "nexa_hr_generated_contracts_select" on public.hr_generated_contracts;
-create policy "nexa_hr_generated_contracts_select"
-on public.hr_generated_contracts for select to authenticated
+drop policy if exists "nexa_hr_generated_contracts_hr" on public.hr_generated_contracts;
+create policy "nexa_hr_generated_contracts_hr"
+on public.hr_generated_contracts for all to authenticated
 using (
   exists (
     select 1 from public.users me
     where me.email = (select auth.email())
       and me."companyId" = public.hr_generated_contracts.company_id
-      and (
-        me.role in ('superuser', 'admin')
-        or public.hr_generated_contracts.user_id = me.id
-        or public.nexa_rls_me_has_standard_contracts_read()
-      )
+      and me.role in ('superuser', 'admin')
   )
-);
-
-drop policy if exists "nexa_hr_generated_contracts_write" on public.hr_generated_contracts;
-create policy "nexa_hr_generated_contracts_write"
-on public.hr_generated_contracts for insert to authenticated
+)
 with check (
-  public.nexa_rls_me_has_standard_contracts_write()
-  and exists (
+  exists (
     select 1 from public.users me
     where me.email = (select auth.email())
       and me."companyId" = public.hr_generated_contracts.company_id
+      and me.role in ('superuser', 'admin')
   )
 );
 
