@@ -432,6 +432,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       hrNavSections.map((section) => ({
         id: section.id,
         title: section.title,
+        portalCategory: section.portalCategory,
         subgroups: section.subgroups.map((sg) => ({
           id: sg.id,
           title: sg.title,

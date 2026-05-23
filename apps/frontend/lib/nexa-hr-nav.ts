@@ -4,6 +4,7 @@ import {
   BarChart2,
   BarChart3,
   Building2,
+  Calculator,
   MessageCircle,
   CalendarDays,
   ClipboardList,
@@ -53,13 +54,9 @@ const PILLAR_DEFS: Array<{
     portalCategory: "Persone",
     subgroups: [
       {
-        id: "p-sel",
-        title: "Selezione e onboarding",
-        items: [
-          { href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch },
-          { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus },
-          { href: "/hr/formazione" as Route, label: "Formazione", icon: GraduationCap }
-        ]
+        id: "p-grow",
+        title: "Sviluppo",
+        items: [{ href: "/hr/formazione" as Route, label: "Formazione", icon: GraduationCap }]
       },
       {
         id: "p-org",
@@ -74,6 +71,34 @@ const PILLAR_DEFS: Array<{
         id: "p-exit",
         title: "Uscita",
         items: [{ href: "/lifecycle/offboard" as Route, label: "Offboarding", icon: ClipboardList }]
+      }
+    ]
+  },
+  {
+    id: "hire",
+    title: "Assumere e Onboarding",
+    hubSlug: "hire",
+    portalCategory: "Assumere e Onboarding",
+    subgroups: [
+      {
+        id: "h-sel",
+        title: "Selezione e onboarding",
+        items: [
+          { href: "/recruiting" as Route, label: "Colloqui e selezione", icon: UserRoundSearch },
+          { href: "/recruiting/onboarding" as Route, label: "Onboarding candidati", icon: UserPlus }
+        ]
+      },
+      {
+        id: "h-doc",
+        title: "Contratti e costi",
+        items: [
+          { href: "/contracts" as Route, label: "Contratti standard", icon: PenLine },
+          {
+            href: "/personnel-budget/simulatore-assunzione" as Route,
+            label: "Simulatore costo azienda",
+            icon: Calculator
+          }
+        ]
       }
     ]
   },
@@ -141,7 +166,6 @@ const PILLAR_DEFS: Array<{
         id: "a-doc",
         title: "Documenti e policy",
         items: [
-          { href: "/contracts" as Route, label: "Contratti standard", icon: PenLine },
           { href: "/corporate-policies" as Route, label: "Corporate Policies", icon: FileText },
           { href: "/tools/third-party-licenses" as Route, label: "Licenze terze", icon: KeyRound }
         ]
@@ -159,7 +183,7 @@ const PILLAR_DEFS: Array<{
   }
 ];
 
-/** Tre pilastri HR + Amministrazione compatta. */
+/** Pilastri HR sidebar + mappa portale (incluso Assumere e Onboarding). */
 export function buildHrNavPillars(user: SessionUser | null, hideSensitiveHr: boolean): HrNavPillar[] {
   const pillars: HrNavPillar[] = [];
   for (const def of PILLAR_DEFS) {

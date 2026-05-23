@@ -209,7 +209,8 @@ export function portalAccentCategoryForNavSection(sectionId: string, title: stri
     "hr-admin": "Amministrazione",
     "hr-persone": "Persone",
     "hr-operazioni": "Operazioni",
-    "hr-analytics": "Analytics"
+    "hr-analytics": "Analytics",
+    "hr-hire": "Assumere e Onboarding"
   };
   return byId[sectionId] ?? title;
 }
@@ -285,7 +286,8 @@ export function navSectionTitleAccentClass(sectionId: string): string {
     "hr-admin": "text-stone-600 dark:text-stone-300",
     "hr-persone": "text-emerald-600 dark:text-emerald-300",
     "hr-operazioni": "text-cyan-600 dark:text-cyan-300",
-    "hr-analytics": "text-violet-600 dark:text-violet-300"
+    "hr-analytics": "text-violet-600 dark:text-violet-300",
+    "hr-hire": "text-amber-600 dark:text-amber-300"
   };
   return map[sectionId] ?? "text-[var(--prom-text)]";
 }
@@ -316,7 +318,8 @@ export function navSectionSidebarAccentBarClass(sectionId: string): string {
     "hr-admin": "bg-stone-500 dark:bg-stone-400",
     "hr-persone": "bg-emerald-500 dark:bg-emerald-400",
     "hr-operazioni": "bg-cyan-500 dark:bg-cyan-400",
-    "hr-analytics": "bg-violet-500 dark:bg-violet-400"
+    "hr-analytics": "bg-violet-500 dark:bg-violet-400",
+    "hr-hire": "bg-amber-500 dark:bg-amber-400"
   };
   return map[sectionId] ?? "bg-[var(--prom-muted)]";
 }
