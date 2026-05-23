@@ -1,5 +1,4 @@
 import { Global, Module } from "@nestjs/common";
-import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { AdminController } from "./admin.controller";
 import { AdminEmployeeExcelService } from "./admin-employee-excel.service";
@@ -20,7 +19,6 @@ import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
   controllers: [AuthController, AdminController, ImportController, SearchController],
   providers: [
     HrDataStore,
-    RemoteWorkPolicyService,
     DatabasePoolService,
     AdminEmployeeExcelService,
     ImportService,
@@ -32,7 +30,6 @@ import { SynapseAdminConsoleGuard } from "./synapse-admin-console.guard";
   ],
   exports: [
     HrDataStore,
-    RemoteWorkPolicyService,
     DatabasePoolService,
     AdminEmployeeExcelService,
     ImportService,

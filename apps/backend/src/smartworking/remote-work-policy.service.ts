@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import type { HrStandardContractDto } from "../hr-contracts/hr-contracts.service";
 import { HrDataStore } from "../platform/hr-data.store";
 import {
@@ -35,7 +35,10 @@ const DEFAULT_MONTH = 8;
 export class RemoteWorkPolicyService {
   private readonly log = new Logger(RemoteWorkPolicyService.name);
 
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    @Inject(forwardRef(() => HrDataStore))
+    private readonly store: HrDataStore
+  ) {}
 
   private sb() {
     return this.store.getServiceRoleClient();

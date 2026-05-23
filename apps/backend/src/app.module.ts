@@ -20,6 +20,7 @@ import { PlatformModule } from "./platform/platform.module";
 import { RecruitingModule } from "./recruiting/recruiting.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { SchedulingModule } from "./scheduling/scheduling.module";
+import { SmartworkingModule } from "./smartworking/smartworking.module";
 import { ThirdPartyLicensesModule } from "./third-party-licenses/third-party-licenses.module";
 import { TimeoffModule } from "./timeoff/timeoff.module";
 import { SuiteIntegrationsModule } from "./suite/suite.module";
@@ -29,6 +30,7 @@ import { WorkforceModule } from "./workforce/workforce.module";
   imports: [
     AiPrivacyModule,
     PlatformModule,
+    SmartworkingModule,
     WorkforceModule,
     TimeoffModule,
     PeopleModule,

@@ -9,7 +9,6 @@ import {
   Optional
 } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
-import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   type ApprovalView,
@@ -872,6 +871,7 @@ export class HrDataStore {
       return { weekly: SMARTWORKING_WEEKLY_QUOTA, monthly: SMARTWORKING_MONTHLY_QUOTA };
     }
     try {
+      const { RemoteWorkPolicyService } = await import("../smartworking/remote-work-policy.service");
       const svc = this.moduleRef.get(RemoteWorkPolicyService, { strict: false });
       const limits = await svc.getEffectiveLimitsForUser(userId, monthPrefix);
       return {
