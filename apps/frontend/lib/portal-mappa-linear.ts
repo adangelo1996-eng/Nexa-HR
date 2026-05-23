@@ -57,8 +57,7 @@ const HR_LINEAR_STEPS: Array<{
       "/analytics" as Route,
       "/personnel-budget",
       "/personnel-budget/simulatore-assunzione" as Route,
-      "/analytics/advanced" as Route,
-      "/analytics/advanced/retention" as Route,
+      "/analytics/retention" as Route,
       "/analytics/competenze" as Route,
       "/hr-center/recap"
     ]

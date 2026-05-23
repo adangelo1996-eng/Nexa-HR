@@ -43,7 +43,7 @@ import { NexaGuidePanel } from "@/components/nexa-guide-panel";
 import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import {
-  navSectionTitleAccentClass,
+  portalAccentCategoryForNavSection,
   portalCategoryGlassColumnHeaderClass
 } from "@/lib/nav-visual-accents";
 import { NexaNavSectionFlyout, type NexaNavFlyoutSection } from "@/components/nexa-nav-section-flyout";
@@ -164,27 +164,7 @@ function SidebarMacroSectionButton(props: {
   const active = sectionHasActiveRoute(pathname, section);
   const pc = section.portalCategory;
 
-  if (pc) {
-    return (
-      <button
-        type="button"
-        aria-expanded={flyoutOpen}
-        aria-haspopup="dialog"
-        onClick={() => onToggle(section.id)}
-        className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${portalCategoryGlassColumnHeaderClass(pc, "compact")} ${
-          flyoutOpen || active ? "ring-1 ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]" : ""
-        }`}
-      >
-        <span className="min-w-0 flex-1 pr-1">{section.title}</span>
-        <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 text-white/70 transition-transform duration-200 dark:text-white/60 md:h-4 md:w-4 ${
-            flyoutOpen ? "translate-x-0.5" : ""
-          }`}
-          aria-hidden
-        />
-      </button>
-    );
-  }
+  const accentCategory = pc ?? portalAccentCategoryForNavSection(section.id, section.title);
 
   return (
     <button
@@ -192,17 +172,13 @@ function SidebarMacroSectionButton(props: {
       aria-expanded={flyoutOpen}
       aria-haspopup="dialog"
       onClick={() => onToggle(section.id)}
-      className={`mx-2 flex w-[calc(100%-1rem)] items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-[background,color] duration-200 ${
-        flyoutOpen || active
-          ? "bg-[color-mix(in_srgb,var(--prom-gold)_14%,var(--prom-surface-soft))] text-[var(--prom-text)]"
-          : "text-[var(--prom-muted)] hover:bg-[color-mix(in_srgb,var(--prom-surface)_70%,transparent)] hover:text-[var(--prom-text)]"
+      className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${portalCategoryGlassColumnHeaderClass(accentCategory, "compact")} ${
+        flyoutOpen || active ? "ring-1 ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]" : ""
       }`}
     >
-      <span className={`min-w-0 flex-1 leading-snug ${navSectionTitleAccentClass(section.id)}`}>
-        {section.title}
-      </span>
+      <span className="min-w-0 flex-1 pr-1">{section.title}</span>
       <ChevronRight
-        className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-200 ${
+        className={`h-3.5 w-3.5 shrink-0 text-white/70 transition-transform duration-200 dark:text-white/60 md:h-4 md:w-4 ${
           flyoutOpen ? "translate-x-0.5" : ""
         }`}
         aria-hidden
@@ -432,7 +408,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       hrNavSections.map((section) => ({
         id: section.id,
         title: section.title,
-        portalCategory: section.portalCategory,
         subgroups: section.subgroups.map((sg) => ({
           id: sg.id,
           title: sg.title,
@@ -447,7 +422,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       employeeNavSections.map((section) => ({
         id: section.id,
         title: section.title,
-        portalCategory: section.portalCategory ?? EMPLOYEE_PORTAL_CATEGORY[section.id],
         subgroups: section.subgroups.map((sg) => ({
           id: sg.id,
           title: sg.title,
