@@ -141,6 +141,17 @@ export interface EmployeeCvProfileDto {
   };
 }
 
+/** GET /users/:id/effective-permissions — permessi effettivi (ruolo espanso). */
+export interface UserEffectivePermissionsDto {
+  userId: string;
+  roleId: string | null;
+  roleName: string | null;
+  rolePermissionKeys: string[];
+  effectivePermissionIds: string[];
+  overrides: string[];
+  nexaCatalog: PermissionDefinition[];
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -2364,10 +2375,19 @@ export interface SmartworkingRequestDto {
   createdAt: string;
 }
 
-export async function fetchSmartworkingMe(token: string): Promise<{
+export type SmartworkingMeResponse = {
   balance: { used: number; quota: number };
   items: SmartworkingRequestDto[];
-}> {
+  allowedRemoteDaysPerWeek: number;
+  allowedRemoteDaysPerMonth: number;
+  allowedRemoteDaysPerYear?: number | null;
+  maxRequestRangeDays: number;
+  policyYear: number;
+  limitsSource: "contract" | "vault" | "default";
+  sourceContractId?: string | null;
+};
+
+export async function fetchSmartworkingMe(token: string): Promise<SmartworkingMeResponse> {
   const response = await fetch(buildApiUrl("/smartworking/me"), {
     method: "GET",
     headers: getAuthHeaders(token)
@@ -2375,7 +2395,7 @@ export async function fetchSmartworkingMe(token: string): Promise<{
   if (!response.ok) {
     await parseError(response);
   }
-  return (await response.json()) as { balance: { used: number; quota: number }; items: SmartworkingRequestDto[] };
+  return (await response.json()) as SmartworkingMeResponse;
 }
 
 export async function createSmartworkingRequest(
@@ -2703,6 +2723,31 @@ export interface EmployeeDocumentDto {
   storagePath?: string;
   createdAt: string;
   uploadedBy?: string;
+  parentDocumentId?: string;
+  signedAt?: string;
+  signedByUserId?: string;
+  signatureMetadata?: Record<string, unknown>;
+}
+
+export type HrDocumentSignatureRequestStatusDto =
+  | "pending_employee_sign"
+  | "signed"
+  | "returned";
+
+export interface HrDocumentSignatureRequestDto {
+  id: string;
+  documentId: string;
+  parentDocumentId?: string;
+  originSignedDocumentId?: string;
+  employeeUserId: string;
+  requesterUserId: string;
+  status: HrDocumentSignatureRequestStatusDto;
+  createdAt: string;
+  signedAt?: string;
+  returnedAt?: string;
+  signatureMetadata?: Record<string, unknown>;
+  documentTitle?: string;
+  documentKind?: EmployeeDocumentDto["kind"];
 }
 
 export interface ExpenseClaimDto {
@@ -2816,6 +2861,20 @@ export async function fetchEmployeeCvProfile(token: string, userId: string): Pro
   return (await response.json()) as EmployeeCvProfileDto;
 }
 
+export async function fetchUserEffectivePermissions(
+  token: string,
+  userId: string
+): Promise<UserEffectivePermissionsDto> {
+  const response = await fetch(buildApiUrl(`/users/${encodeURIComponent(userId)}/effective-permissions`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as UserEffectivePermissionsDto;
+}
+
 export async function uploadUserProfilePhoto(token: string, userId: string, file: File): Promise<User> {
   const fd = new FormData();
   fd.append("file", file);
@@ -2900,6 +2959,8 @@ export async function uploadDocumentToVault(
     mimeType?: string;
     bodyBase64?: string;
     targetUserId?: string;
+    parentDocumentId?: string;
+    triggerSignatureWorkflow?: boolean;
   }
 ): Promise<EmployeeDocumentDto> {
   const response = await fetch(buildApiUrl("/documents/vault"), {
@@ -2909,6 +2970,47 @@ export async function uploadDocumentToVault(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<EmployeeDocumentDto>;
+}
+
+export async function fetchVaultSignatureRequests(
+  token: string,
+  params?: {
+    role?: "employee" | "requester";
+    status?: HrDocumentSignatureRequestStatusDto;
+    userId?: string;
+  }
+): Promise<{ items: HrDocumentSignatureRequestDto[] }> {
+  const q = new URLSearchParams();
+  if (params?.role) q.set("role", params.role);
+  if (params?.status) q.set("status", params.status);
+  if (params?.userId?.trim()) q.set("userId", params.userId.trim());
+  const suffix = q.toString() ? `?${q}` : "";
+  const response = await fetch(buildApiUrl(`/documents/vault/signature-requests${suffix}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: HrDocumentSignatureRequestDto[] }>;
+}
+
+export async function signVaultDocument(
+  token: string,
+  documentId: string,
+  payload: { employeeSignerName: string }
+): Promise<{ document: EmployeeDocumentDto; request: HrDocumentSignatureRequestDto }> {
+  const response = await fetch(
+    buildApiUrl(`/documents/vault/${encodeURIComponent(documentId)}/sign`),
+    {
+      method: "POST",
+      headers: getAuthHeaders(token),
+      body: JSON.stringify(payload)
+    }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    document: EmployeeDocumentDto;
+    request: HrDocumentSignatureRequestDto;
+  }>;
 }
 
 export type LinkedInSyncStatusDto = "not_linked" | "pending" | "synced" | "error";
@@ -5600,10 +5702,22 @@ export interface PersonnelBudgetAssumptionsDto {
   companyId: string;
   year: number;
   employerInpsPercent: number | null;
+  employeeInpsPercent: number | null;
   inailPermille: number | null;
   tfrDivisor: number | null;
   welfarePercent: number;
   bonusProvisionPercent: number;
+  inflationPercentAnnual: number;
+  payrollIndexationPercent: number;
+  defaultPayMonthsPerYear: number;
+  defaultWeeklyContractHours: number;
+  plannedNewHires: number;
+  plannedExits: number;
+  avgNewHireRalAnnual: number | null;
+  employerInpsDiscountPercent: number;
+  overtimeBudgetPercentOnGross: number;
+  travelBudgetPerFteMonthly: number;
+  compilationNotes: string;
   updatedAt: string | null;
   updatedByUserId: string | null;
 }
@@ -5776,10 +5890,22 @@ export async function patchPersonnelBudgetAssumptions(
   payload: {
     year: number;
     employerInpsPercent?: number | null;
+    employeeInpsPercent?: number | null;
     inailPermille?: number | null;
     tfrDivisor?: number | null;
     welfarePercent?: number | null;
     bonusProvisionPercent?: number | null;
+    inflationPercentAnnual?: number | null;
+    payrollIndexationPercent?: number | null;
+    defaultPayMonthsPerYear?: number | null;
+    defaultWeeklyContractHours?: number | null;
+    plannedNewHires?: number | null;
+    plannedExits?: number | null;
+    avgNewHireRalAnnual?: number | null;
+    employerInpsDiscountPercent?: number | null;
+    overtimeBudgetPercentOnGross?: number | null;
+    travelBudgetPerFteMonthly?: number | null;
+    compilationNotes?: string | null;
   }
 ): Promise<PersonnelBudgetAssumptionsDto> {
   const response = await fetch(buildApiUrl("/hr/personnel-budget/assumptions"), {

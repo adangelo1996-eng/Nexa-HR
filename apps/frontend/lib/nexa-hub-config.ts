@@ -76,8 +76,8 @@ export const HR_HUB_SECTIONS: HubSectionDef[] = [
   },
   {
     slug: "hire",
-    title: "Assumere e far entrare",
-    subtitle: "Selezione, onboarding assunzioni e contratti.",
+    title: "Assumere e Onboarding",
+    subtitle: "Selezione, onboarding assunzioni, contratti e simulatore costo azienda.",
     portalCategory: "Selezione"
   },
   {

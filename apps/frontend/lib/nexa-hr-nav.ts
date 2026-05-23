@@ -113,10 +113,7 @@ const PILLAR_DEFS: Array<{
       {
         id: "a-assist",
         title: "Assistente AI",
-        items: [
-          { href: "/hebb-ai-support" as Route, label: "Hebb AI Support", icon: MessageCircle },
-          { href: "/nexa-hr-copilot" as Route, label: "NEXA HR Copilot", icon: Sparkles }
-        ]
+        items: [{ href: "/nexa-hr-copilot" as Route, label: "NEXA HR Copilot", icon: Sparkles }]
       },
       {
         id: "a-hub",
@@ -191,6 +188,12 @@ export const HR_NAV_DASHBOARD: HrNavItem = {
   href: "/hr/dashboard" as Route,
   label: "Dashboard",
   icon: LayoutDashboard
+};
+
+export const HR_NAV_HEBB_AI_SUPPORT: HrNavItem = {
+  href: "/hebb-ai-support" as Route,
+  label: "Hebb AI Support",
+  icon: MessageCircle
 };
 
 export const HR_NAV_PORTAL_MAP: HrNavItem = {

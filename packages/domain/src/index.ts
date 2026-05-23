@@ -288,7 +288,7 @@ export interface ExpenseClaim {
   hrApprovedAt?: string | null;
 }
 
-export type EmployeeDocumentKind = "contract" | "payslip" | "personal" | "other";
+export type EmployeeDocumentKind = "contract" | "payslip" | "personal" | "other" | "remote_working";
 
 export interface EmployeeDocument {
   id: string;
@@ -299,6 +299,33 @@ export interface EmployeeDocument {
   storagePath?: string;
   createdAt: string;
   uploadedBy?: string;
+  /** Scheda precedente in catena versioni vault. */
+  parentDocumentId?: string;
+  signedAt?: string;
+  signedByUserId?: string;
+  signatureMetadata?: Record<string, unknown>;
+}
+
+export type HrDocumentSignatureRequestStatus =
+  | "pending_employee_sign"
+  | "signed"
+  | "returned";
+
+export interface HrDocumentSignatureRequest {
+  id: string;
+  documentId: string;
+  parentDocumentId?: string;
+  originSignedDocumentId?: string;
+  employeeUserId: string;
+  requesterUserId: string;
+  status: HrDocumentSignatureRequestStatus;
+  createdAt: string;
+  signedAt?: string;
+  returnedAt?: string;
+  signatureMetadata?: Record<string, unknown>;
+  /** Popolato in list per UI dipendente/HR. */
+  documentTitle?: string;
+  documentKind?: EmployeeDocumentKind;
 }
 
 export interface OnboardingChecklistItem {

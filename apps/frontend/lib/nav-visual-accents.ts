@@ -63,7 +63,7 @@ export function portalCategoryGlassColumnHeaderClass(category: string, density: 
     "Analytics & Intelligence": `border-violet-500/70 bg-gradient-to-br from-violet-400/50 via-violet-600/35 to-violet-950/55 text-violet-950 dark:border-violet-400/55 dark:from-violet-400/40 dark:via-violet-600/28 dark:to-violet-950/50 dark:text-violet-50`,
     Home: `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
     "Ogni giorno": `border-cyan-500/70 bg-gradient-to-br from-cyan-400/55 via-cyan-600/35 to-cyan-950/50 text-cyan-950 dark:border-cyan-400/55 dark:from-cyan-400/40 dark:via-cyan-600/25 dark:to-cyan-950/45 dark:text-cyan-50`,
-    "Assumere e far entrare": `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
+    "Assumere e Onboarding": `border-amber-500/70 bg-gradient-to-br from-amber-400/50 via-amber-500/30 to-amber-950/50 text-amber-950 dark:border-amber-400/55 dark:from-amber-400/38 dark:via-amber-500/22 dark:to-amber-950/45 dark:text-amber-50`,
     "Sviluppare e pianificare": `border-indigo-500/70 bg-gradient-to-br from-indigo-400/50 via-indigo-600/32 to-indigo-950/50 text-indigo-950 dark:border-indigo-400/55 dark:from-indigo-400/38 dark:via-indigo-600/24 dark:to-indigo-950/45 dark:text-indigo-50`,
     "Analisi e budget": `border-sky-500/70 bg-gradient-to-br from-sky-400/50 via-sky-600/30 to-sky-950/50 text-sky-950 dark:border-sky-400/55 dark:from-sky-400/38 dark:via-sky-600/22 dark:to-sky-950/45 dark:text-sky-50`
   };
@@ -122,7 +122,7 @@ export function portalCategoryTileTopAccentClass(category: string): string {
     "Hebb AI Analytics": "border-t-2 border-t-violet-400/85",
     "Hebb AI Mate": "border-t-2 border-t-fuchsia-400/85",
     "Ogni giorno": "border-t-2 border-t-cyan-400/85",
-    "Assumere e far entrare": "border-t-2 border-t-amber-400/85",
+    "Assumere e Onboarding": "border-t-2 border-t-amber-400/85",
     "Sviluppare e pianificare": "border-t-2 border-t-indigo-400/85",
     "Analisi e budget": "border-t-2 border-t-sky-400/85",
     Home: "border-t-2 border-t-cyan-400/85"
@@ -185,7 +185,7 @@ export function portalAccentCategoryForNavSection(sectionId: string, title: stri
   const byId: Record<string, string> = {
     daily: "Ogni giorno",
     people: "Persone e organizzazione",
-    hire: "Assumere e far entrare",
+    hire: "Assumere e Onboarding",
     grow: "Sviluppare e pianificare",
     insight: "Analisi e budget",
     admin: "Amministrazione",
@@ -222,7 +222,7 @@ export function portalMapSectionSurfaceClass(category: string): string {
       "border-emerald-500/20 bg-[color-mix(in_srgb,emerald-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(52,211,153,0.12)]",
     "Selezione e documenti":
       "border-amber-500/20 bg-[color-mix(in_srgb,amber-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(251,191,36,0.12)]",
-    "Assumere e far entrare":
+    "Assumere e Onboarding":
       "border-amber-500/20 bg-[color-mix(in_srgb,amber-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(251,191,36,0.12)]",
     "Sviluppare e pianificare":
       "border-indigo-500/20 bg-[color-mix(in_srgb,indigo-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(129,140,248,0.12)]",
@@ -321,7 +321,7 @@ export function portalCategoryFlyoutAccentBarClass(category: string): string {
     "Analisi e pianificazione": "border-l-sky-500 dark:border-l-sky-400",
     "Amministrazione e dati": "border-l-orange-500 dark:border-l-orange-400",
     "Ogni giorno": "border-l-cyan-500 dark:border-l-cyan-400",
-    "Assumere e far entrare": "border-l-amber-500 dark:border-l-amber-400",
+    "Assumere e Onboarding": "border-l-amber-500 dark:border-l-amber-400",
     "Sviluppare e pianificare": "border-l-indigo-500 dark:border-l-indigo-400",
     "Analisi e budget": "border-l-sky-500 dark:border-l-sky-400"
   };

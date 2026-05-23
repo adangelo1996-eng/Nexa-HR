@@ -40,6 +40,35 @@ export class PermissionsService {
     return this.expandRolePermissions(role.permissions ?? []);
   }
 
+  async getEffectivePermissionsDetail(userId: string): Promise<{
+    userId: string;
+    roleId: string | null;
+    roleName: string | null;
+    rolePermissionKeys: string[];
+    effectivePermissionIds: string[];
+    overrides: string[];
+  }> {
+    const user = await this.store.getUser(userId);
+    let roleId: string | null = null;
+    let roleName: string | null = null;
+    let rolePermissionKeys: string[] = [];
+    if (user.roleId?.trim()) {
+      roleId = user.roleId.trim();
+      const role = await this.store.getRoleById(roleId);
+      roleName = role?.name?.trim() ?? null;
+      rolePermissionKeys = [...(role?.permissions ?? [])];
+    }
+    const expanded = await this.getExpandedPermissionsForUserId(userId);
+    return {
+      userId,
+      roleId,
+      roleName,
+      rolePermissionKeys,
+      effectivePermissionIds: Array.from(expanded).sort(),
+      overrides: []
+    };
+  }
+
   hasKey(expanded: Set<string>, key: string): boolean {
     if (expanded.has(key)) {
       return true;

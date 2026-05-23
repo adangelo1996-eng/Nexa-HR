@@ -4,6 +4,9 @@ import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platfo
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { PermissionsService } from "../platform/permissions.service";
+import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
+
+const SMARTWORKING_MAX_RANGE_DAYS = 14;
 
 class CreateSwDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
@@ -29,17 +32,30 @@ class CreateSwDto {
 export class SmartworkingController {
   constructor(
     private readonly store: HrDataStore,
-    private readonly permissions: PermissionsService
+    private readonly permissions: PermissionsService,
+    private readonly remoteWorkPolicy: RemoteWorkPolicyService
   ) {}
 
   @Get("me")
   @RequireNexaPermissions("nexa.attendance:read")
   async me(@CurrentAuth() auth: { userId: string }): Promise<unknown> {
-    const [balance, items] = await Promise.all([
+    const month = new Date().toISOString().slice(0, 7);
+    const [balance, items, limits] = await Promise.all([
       this.store.getSmartworkingMonthlyBalance(auth.userId),
-      this.store.listMySmartworking(auth.userId)
+      this.store.listMySmartworking(auth.userId),
+      this.remoteWorkPolicy.getEffectiveLimitsForUser(auth.userId, month)
     ]);
-    return { balance, items };
+    return {
+      balance,
+      items,
+      allowedRemoteDaysPerWeek: limits.allowedRemoteDaysPerWeek,
+      allowedRemoteDaysPerMonth: limits.allowedRemoteDaysPerMonth,
+      allowedRemoteDaysPerYear: limits.allowedRemoteDaysPerYear,
+      maxRequestRangeDays: SMARTWORKING_MAX_RANGE_DAYS,
+      policyYear: limits.policyYear,
+      limitsSource: limits.source,
+      sourceContractId: limits.sourceContractId ?? null
+    };
   }
 
   @Post("request")

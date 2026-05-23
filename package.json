@@ -33,6 +33,7 @@
     "supabase:apply-049-privacy": "node scripts/apply-recruit-privacy-columns-049.mjs",
     "supabase:verify": "node scripts/verify-render-supabase-alignment.mjs",
     "supabase:verify:strict": "node scripts/verify-render-supabase-alignment.mjs --strict",
+    "hr-contracts:generate-all": "node scripts/generate-hr-contracts-batch.mjs",
     "supabase:db:reset": "corepack pnpm dlx supabase db reset --workdir infra/supabase",
     "backend:env:pull-render": "node scripts/render-pull-backend-env.mjs",
     "render:frontend:start-command": "node scripts/render-update-frontend-start.mjs",

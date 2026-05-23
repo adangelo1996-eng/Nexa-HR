@@ -180,7 +180,7 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "hiring-simulator": {
-    title: "Simulatore assunzione",
+    title: "Simulatore costo azienda",
     summary:
       "Consulente AI su criteri contrattuali, agevolazioni e benefit; il motore calcola costo azienda e netto in tempo reale.",
     howToUse: [

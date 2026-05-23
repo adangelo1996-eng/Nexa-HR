@@ -8,6 +8,7 @@ import {
   fetchSmartworkingMe,
   formatSmartworkingPeriod,
   updateSmartworkingRequest,
+  type SmartworkingMeResponse,
   type SmartworkingRequestDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
@@ -53,7 +54,7 @@ function statusStyles(status: SmartworkingRequestDto["status"]): string {
 }
 
 export default function SmartworkingPage(): React.JSX.Element {
-  const [balance, setBalance] = useState<{ used: number; quota: number } | null>(null);
+  const [me, setMe] = useState<SmartworkingMeResponse | null>(null);
   const [items, setItems] = useState<SmartworkingRequestDto[]>([]);
   const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [endDay, setEndDay] = useState(() => new Date().toISOString().slice(0, 10));
@@ -69,7 +70,7 @@ export default function SmartworkingPage(): React.JSX.Element {
       return;
     }
     const data = await fetchSmartworkingMe(token);
-    setBalance(data.balance);
+    setMe(data);
     setItems(data.items);
   }, []);
 
@@ -77,10 +78,34 @@ export default function SmartworkingPage(): React.JSX.Element {
     void load();
   }, [load]);
 
+  const balance = me?.balance ?? null;
+  const limits = me
+    ? {
+        week: me.allowedRemoteDaysPerWeek,
+        month: me.allowedRemoteDaysPerMonth,
+        maxRange: me.maxRequestRangeDays
+      }
+    : null;
+
   const quotaPct = useMemo(() => {
     if (!balance || balance.quota <= 0) return 0;
     return Math.min(100, Math.round((balance.used / balance.quota) * 100));
   }, [balance]);
+
+  function countCalendarDaysInclusive(start: string, end: string): number {
+    const s = start.slice(0, 10);
+    const e = end.slice(0, 10);
+    let n = 0;
+    let cur = s;
+    while (cur <= e) {
+      n += 1;
+      if (cur === e) break;
+      const d = new Date(`${cur}T12:00:00.000Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      cur = d.toISOString().slice(0, 10);
+    }
+    return n;
+  }
 
   async function onSavePending(r: SmartworkingRequestDto): Promise<void> {
     setErr(null);
@@ -141,6 +166,17 @@ export default function SmartworkingPage(): React.JSX.Element {
       setErr("La data fine non può essere precedente alla data inizio");
       return;
     }
+    if (limits) {
+      const rangeDays = countCalendarDaysInclusive(dayNorm, endNorm);
+      if (rangeDays > limits.maxRange) {
+        setErr(`Il periodo non può superare ${limits.maxRange} giorni per richiesta`);
+        return;
+      }
+      if (balance && balance.used + rangeDays > limits.month) {
+        setErr(`Quota mensile da contratto esaurita (max ${limits.month} giorni, incluso il periodo richiesto)`);
+        return;
+      }
+    }
     setBusy(true);
     try {
       await createSmartworkingRequest(token, {
@@ -173,7 +209,7 @@ export default function SmartworkingPage(): React.JSX.Element {
         <NexaPageHelpButton pageKey="smartworking" />
       </header>
 
-      {balance ? (
+      {balance && limits ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <HebbAiGlassTile className="!p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--prom-muted)]">Saldo mese corrente</p>
@@ -181,7 +217,10 @@ export default function SmartworkingPage(): React.JSX.Element {
               {balance.used}
               <span className="text-lg font-normal text-[var(--prom-muted)]"> / {balance.quota}</span>
             </p>
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">giorni utilizzati sulla quota</p>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Limite da contratto: {limits.week} gg/settimana · max {limits.maxRange} gg per richiesta
+              {me?.limitsSource === "contract" ? " · accordo in piattaforma" : null}
+            </p>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--prom-line)_80%,transparent)]">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-[#002D72] to-[var(--prom-gold)] transition-[width] duration-500"

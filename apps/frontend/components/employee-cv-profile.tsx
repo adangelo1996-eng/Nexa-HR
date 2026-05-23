@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import type { JSX, ReactNode } from "react";
-import { Building2, Mail, Phone, UserCircle, Users } from "lucide-react";
+import { Building2, KeyRound, Mail, Phone, UserCircle, Users } from "lucide-react";
 import { EmployeeLink } from "@/components/nexa-entity-links";
 import { HrOffboardStartAction } from "@/components/hr-offboard-start-action";
 import type { EmployeeCvProfileDto } from "@/lib/api";
@@ -301,6 +301,13 @@ export function EmployeeCvProfile(props: EmployeeCvProfileProps): JSX.Element {
       ) : null}
 
       <footer className="flex flex-wrap items-center gap-3 border-t border-[var(--prom-line)] pt-6 text-xs text-[var(--prom-muted)]">
+        <Link
+          href={`/employee/${userId}/autorizzazioni` as Route}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_88%,transparent)] px-4 py-2 text-sm font-medium text-[var(--prom-text)] transition hover:border-[color-mix(in_srgb,var(--prom-gold)_35%,var(--prom-line))]"
+        >
+          <KeyRound className="h-4 w-4 opacity-80" aria-hidden />
+          Autorizzazioni
+        </Link>
         {profile.flags.isSelf ? (
           <Link
             href={"/settings" as Route}

@@ -39,9 +39,14 @@ const HR_LINEAR_STEPS: Array<{
   },
   {
     id: "hire",
-    title: "Assumere e far entrare",
-    subtitle: "Selezione, onboarding assunzioni e contratti.",
-    hrefs: ["/recruiting", "/recruiting/onboarding", "/contracts"]
+    title: "Assumere e Onboarding",
+    subtitle: "Selezione, onboarding assunzioni, contratti e simulatore costo azienda.",
+    hrefs: [
+      "/recruiting",
+      "/recruiting/onboarding",
+      "/contracts",
+      "/personnel-budget/simulatore-assunzione" as Route
+    ]
   },
   {
     id: "grow",
@@ -56,7 +61,6 @@ const HR_LINEAR_STEPS: Array<{
     hrefs: [
       "/analytics" as Route,
       "/personnel-budget",
-      "/personnel-budget/simulatore-assunzione" as Route,
       "/analytics/advanced" as Route,
       "/analytics/advanced/retention" as Route,
       "/analytics/competenze" as Route,
@@ -74,7 +78,6 @@ const HR_LINEAR_STEPS: Array<{
     title: "HEBB AI for HR",
     subtitle: "Support assistente, copilot HR, hub analytics e centro HR.",
     hrefs: [
-      "/hebb-ai-support" as Route,
       "/nexa-hr-copilot" as Route,
       "/analytics" as Route,
       "/hr-center/recap",

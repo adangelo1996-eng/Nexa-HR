@@ -96,12 +96,18 @@ export default function PercorsoPage(): React.JSX.Element {
           <p className="text-sm text-[var(--prom-muted)]">
             Profilo: <span className="font-medium text-[var(--prom-text)]">{user?.fullName ?? "—"}</span>
           </p>
-          <p className="text-sm">
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link
               href={"/percorso/formazione" as Route}
               className="font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
             >
               Vai alla formazione assegnata →
+            </Link>
+            <Link
+              href={"/percorso/documenti" as Route}
+              className="font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+            >
+              Documenti da firmare →
             </Link>
           </p>
           <ol className="space-y-3">

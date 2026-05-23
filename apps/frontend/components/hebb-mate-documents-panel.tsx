@@ -15,8 +15,10 @@ import {
   fetchAiAssistantScopeOptions,
   fetchDocumentVault,
   fetchUsers,
+  fetchVaultSignatureRequests,
   uploadDocumentToVault,
-  type EmployeeDocumentDto
+  type EmployeeDocumentDto,
+  type HrDocumentSignatureRequestDto
 } from "@/lib/api";
 import {
   getSessionUser,
@@ -101,6 +103,8 @@ export function HebbMateDocumentsPanel({
   const [applyBusy, setApplyBusy] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applySuccess, setApplySuccess] = useState<string | null>(null);
+  const [hrReturns, setHrReturns] = useState<HrDocumentSignatureRequestDto[]>([]);
+  const [hrReturnsLoading, setHrReturnsLoading] = useState(false);
 
   const canWriteGuess = useMemo(() => {
     if (!me) return false;
@@ -193,6 +197,27 @@ export function HebbMateDocumentsPanel({
     void loadDocuments();
   }, [loadDocuments]);
 
+  const loadHrReturns = useCallback(async () => {
+    const token = getToken();
+    if (!token || !canWriteGuess) return;
+    setHrReturnsLoading(true);
+    try {
+      const [returned, pendingHr] = await Promise.all([
+        fetchVaultSignatureRequests(token, { role: "requester", status: "returned" }),
+        fetchVaultSignatureRequests(token, { role: "requester", status: "pending_employee_sign" })
+      ]);
+      setHrReturns([...returned.items, ...pendingHr.items]);
+    } catch {
+      setHrReturns([]);
+    } finally {
+      setHrReturnsLoading(false);
+    }
+  }, [canWriteGuess]);
+
+  useEffect(() => {
+    void loadHrReturns();
+  }, [loadHrReturns]);
+
   const startEdit = useCallback((doc: EmployeeDocumentDto) => {
     setSelectedDocId(doc.id);
     setProposedTitle(doc.title);
@@ -250,19 +275,27 @@ export function HebbMateDocumentsPanel({
         kind: proposedKind,
         mimeType,
         bodyBase64,
-        targetUserId: targetUserId.trim()
+        targetUserId: targetUserId.trim(),
+        parentDocumentId: selectedDoc.id,
+        triggerSignatureWorkflow: true
       });
       setHitlPreviewOpen(false);
       setConfirmPublishOpen(false);
-      setApplySuccess(`Nuova versione registrata: «${created.title}».`);
+      setApplySuccess(
+        `Nuova versione registrata: «${created.title}».` +
+          (proposedKind === "contract"
+            ? " Richiesta firma inviata al dipendente."
+            : " Se richiesto, è stata avviata la richiesta di firma.")
+      );
       setSelectedDocId(null);
       await loadDocuments();
+      await loadHrReturns();
     } catch (e) {
       setApplyError(e instanceof Error ? e.message : "Pubblicazione non riuscita");
     } finally {
       setApplyBusy(false);
     }
-  }, [selectedDoc, proposedTitle, proposedKind, targetUserId, loadDocuments]);
+  }, [selectedDoc, proposedTitle, proposedKind, targetUserId, loadDocuments, loadHrReturns]);
 
   const partialForm = useMemo(
     () => ({ title: proposedTitle, kind: proposedKind }),
@@ -364,6 +397,46 @@ export function HebbMateDocumentsPanel({
         <p className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
           {applySuccess}
         </p>
+      ) : null}
+
+      {canWriteGuess ? (
+        <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              Firme vault (mittente HR)
+            </p>
+            <Button type="button" variant="outline" size="sm" disabled={hrReturnsLoading} onClick={() => void loadHrReturns()}>
+              Aggiorna
+            </Button>
+          </div>
+          {hrReturnsLoading ? (
+            <p className="mt-2 text-xs text-[var(--prom-muted)]">Caricamento stato firme…</p>
+          ) : hrReturns.length === 0 ? (
+            <p className="mt-2 text-xs text-[var(--prom-muted)]">Nessuna richiesta firma attiva o restituita.</p>
+          ) : (
+            <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto text-sm">
+              {hrReturns.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--prom-line)] px-3 py-2"
+                >
+                  <span className="font-medium text-[var(--prom-text)]">
+                    {r.documentTitle ?? r.documentId}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold uppercase ${
+                      r.status === "returned"
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-amber-700 dark:text-amber-300"
+                    }`}
+                  >
+                    {r.status === "returned" ? "Restituito" : "In attesa dipendente"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : null}
 
       {docsLoading ? (

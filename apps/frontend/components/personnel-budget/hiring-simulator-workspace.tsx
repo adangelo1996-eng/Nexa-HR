@@ -259,7 +259,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
   return (
     <HebbAiExperienceShell
       contentMax="wide"
-      title="Simulatore assunzione"
+      title="Simulatore costo azienda"
       subtitle="Definisci criteri contrattuali, verifica agevolazioni e benefit con il consulente AI; il motore calcola costo azienda e netto in tempo reale."
       headerTrailing={<HebbAiPageHelpButton pageKey="hiring-simulator" />}
     >

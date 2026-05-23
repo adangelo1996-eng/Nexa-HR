@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { PersonnelBudgetAssumptionsForm } from "@/components/personnel-budget/personnel-budget-assumptions-form";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import {
   fetchCurrentUser,
@@ -67,10 +67,22 @@ export default function PersonnelBudgetAssumptionsPage(): React.JSX.Element | nu
       const next = await patchPersonnelBudgetAssumptions(t, {
         year,
         employerInpsPercent: form.employerInpsPercent,
+        employeeInpsPercent: form.employeeInpsPercent,
         inailPermille: form.inailPermille,
         tfrDivisor: form.tfrDivisor,
         welfarePercent: form.welfarePercent,
-        bonusProvisionPercent: form.bonusProvisionPercent
+        bonusProvisionPercent: form.bonusProvisionPercent,
+        inflationPercentAnnual: form.inflationPercentAnnual,
+        payrollIndexationPercent: form.payrollIndexationPercent,
+        defaultPayMonthsPerYear: form.defaultPayMonthsPerYear,
+        defaultWeeklyContractHours: form.defaultWeeklyContractHours,
+        plannedNewHires: form.plannedNewHires,
+        plannedExits: form.plannedExits,
+        avgNewHireRalAnnual: form.avgNewHireRalAnnual,
+        employerInpsDiscountPercent: form.employerInpsDiscountPercent,
+        overtimeBudgetPercentOnGross: form.overtimeBudgetPercentOnGross,
+        travelBudgetPerFteMonthly: form.travelBudgetPerFteMonthly,
+        compilationNotes: form.compilationNotes
       });
       setForm(next);
     } catch (e) {
@@ -81,21 +93,20 @@ export default function PersonnelBudgetAssumptionsPage(): React.JSX.Element | nu
   }
 
   if (loading) {
-    return <p className="text-sm text-[var(--prom-muted)]">Caricamento assunzioni…</p>;
+    return <p className="text-sm text-[var(--prom-muted)]">Caricamento assumptions…</p>;
   }
   if (!user || !sessionCanNexaAdmin(user) || !form) {
     return null;
   }
 
-  const num = (v: number | null): string => (v != null && Number.isFinite(v) ? String(v) : "");
-
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Assunzioni budget</h1>
+          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Assumptions</h1>
           <p className="text-sm text-[var(--prom-muted)]">
-            Aliquote usate per stime INPS, INAIL, TFR e accantonamenti nel budget e nel forecast.
+            Parametri per stime INPS, INAIL, TFR, inflazione e ipotesi di assunzione/uscita usati nel budget e nel
+            forecast. Ogni campo supporta il suggerimento HEBB (icona ✨).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -116,89 +127,14 @@ export default function PersonnelBudgetAssumptionsPage(): React.JSX.Element | nu
 
       {err ? <p className="text-sm text-rose-500">{err}</p> : null}
 
-      <div className="grid gap-4 rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,#0d1219_90%,var(--prom-surface-soft))] p-4">
-        <label className="block text-sm">
-          <span className="text-[var(--prom-muted)]">INPS datore (%)</span>
-          <input
-            type="number"
-            step="0.01"
-            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
-            value={num(form.employerInpsPercent)}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                employerInpsPercent: e.target.value === "" ? null : Number(e.target.value)
-              })
-            }
-            placeholder="Vuoto = profilo dipendente / default"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="text-[var(--prom-muted)]">INAIL (‰ permille)</span>
-          <input
-            type="number"
-            step="0.1"
-            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
-            value={num(form.inailPermille)}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                inailPermille: e.target.value === "" ? null : Number(e.target.value)
-              })
-            }
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="text-[var(--prom-muted)]">Divisore TFR</span>
-          <input
-            type="number"
-            step="0.01"
-            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
-            value={num(form.tfrDivisor)}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                tfrDivisor: e.target.value === "" ? null : Number(e.target.value)
-              })
-            }
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="text-[var(--prom-muted)]">Welfare (% su lordo)</span>
-          <input
-            type="number"
-            step="0.01"
-            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
-            value={String(form.welfarePercent ?? 0)}
-            onChange={(e) =>
-              setForm({ ...form, welfarePercent: Number(e.target.value) || 0 })
-            }
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="text-[var(--prom-muted)]">Accantonamento bonus (% su lordo)</span>
-          <input
-            type="number"
-            step="0.01"
-            className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-transparent px-3 py-2"
-            value={String(form.bonusProvisionPercent ?? 0)}
-            onChange={(e) =>
-              setForm({ ...form, bonusProvisionPercent: Number(e.target.value) || 0 })
-            }
-          />
-        </label>
-      </div>
-
-      <div className="flex gap-2">
-        <Button type="button" onClick={() => void save()} disabled={saving}>
-          {saving ? "Salvataggio…" : "Salva assunzioni"}
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => void load()}>
-          Annulla modifiche
-        </Button>
-      </div>
+      <PersonnelBudgetAssumptionsForm
+        form={form}
+        year={year}
+        saving={saving}
+        onChange={setForm}
+        onSave={() => void save()}
+        onReload={() => void load()}
+      />
     </div>
   );
 }
-
-

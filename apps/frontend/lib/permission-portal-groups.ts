@@ -39,6 +39,7 @@ const HREF_TO_RESOURCE_KEY: Partial<Record<string, string>> = {
   "/forecast": "reports_hr",
   "/compensation/bench": "reports_hr",
   "/personnel-budget": "personnel_budget",
+  "/personnel-budget/simulatore-assunzione": "personnel_budget",
   "/hr-recap": "reports_hr",
   "/expenses/org": "expenses",
   "/payroll-hebb": "payroll",

@@ -239,7 +239,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
     summary: "Budget mensile per CDC con righe pianificate extra incluse nei totali.",
     howToUse: [
       "Espandi un centro di costo per editare le celle budget.",
-      "Definisci assunzioni/uscite per mese nelle assunzioni.",
+      "Imposta prima Assumptions (aliquote, inflazione, assunzioni pianificate).",
       "Apri Analisi per confronto actual/budget/forecast."
     ]
   },

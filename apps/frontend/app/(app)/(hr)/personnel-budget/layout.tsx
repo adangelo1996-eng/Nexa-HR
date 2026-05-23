@@ -6,12 +6,12 @@ import { usePathname } from "next/navigation";
 import { PersonnelBudgetAccessGate } from "@/components/personnel-budget-access-gate";
 
 const TABS: { href: Route; label: string }[] = [
+  { href: "/personnel-budget/assumptions" as Route, label: "Assumptions" },
   { href: "/personnel-budget", label: "Mensile" },
   { href: "/personnel-budget/annual", label: "Annuale" },
   { href: "/personnel-budget/forecast", label: "Forecast" },
   { href: "/personnel-budget/analysis", label: "Analysis" },
-  { href: "/personnel-budget/assumptions" as Route, label: "Assunzioni" },
-  { href: "/personnel-budget/simulatore-assunzione" as Route, label: "Simulatore assunzione" }
+  { href: "/personnel-budget/simulatore-assunzione" as Route, label: "Simulatore costo azienda" }
 ];
 
 export default function PersonnelBudgetSectionLayout({

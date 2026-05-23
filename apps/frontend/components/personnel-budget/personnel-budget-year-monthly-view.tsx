@@ -10,6 +10,8 @@ import {
   PersonnelBudgetCellNoteMenu,
   usePersonnelBudgetCellNotesMap
 } from "@/components/personnel-budget/cell-note-menu";
+import { PersonnelBudgetForecastCellAssist } from "@/components/personnel-budget/personnel-budget-forecast-cell-assist";
+import type { PersonnelBudgetForecastMetricKey } from "@/lib/personnel-budget-assumptions";
 import {
   MONTH_LABELS,
   PB_METRICS,
@@ -517,13 +519,31 @@ function DeptYearBlock({
                               notesMap={notesMap}
                               onSaved={onNotesRefresh}
                             >
-                              <input
-                                className="w-[5.5rem] rounded border border-[color-mix(in_srgb,var(--prom-line)_80%,#3d9a6a)] bg-[color-mix(in_srgb,#1a2f28_40%,transparent)] px-1 py-0.5 text-xs tabular-nums"
-                                value={fcDraft[fcKey] ?? ""}
-                                onChange={(e) =>
-                                  setFcDraft((p) => ({ ...p, [fcKey]: e.target.value }))
-                                }
-                              />
+                              <div className="flex items-center gap-0.5">
+                                <input
+                                  className="w-[4.75rem] rounded border border-[color-mix(in_srgb,var(--prom-line)_80%,#3d9a6a)] bg-[color-mix(in_srgb,#1a2f28_40%,transparent)] px-1 py-0.5 text-xs tabular-nums"
+                                  value={fcDraft[fcKey] ?? ""}
+                                  onChange={(e) =>
+                                    setFcDraft((p) => ({ ...p, [fcKey]: e.target.value }))
+                                  }
+                                />
+                                <PersonnelBudgetForecastCellAssist
+                                  metricKey={met.key as PersonnelBudgetForecastMetricKey}
+                                  year={year}
+                                  month={mo.month}
+                                  userId={row.userId}
+                                  partialForm={{
+                                    budgetRalMonthly: monthRow.budget.ral,
+                                    budgetRalAnnual:
+                                      monthRow.budget.ral != null
+                                        ? Number(monthRow.budget.ral) * 13
+                                        : undefined
+                                  }}
+                                  onSuggestValue={(v) =>
+                                    setFcDraft((p) => ({ ...p, [fcKey]: v }))
+                                  }
+                                />
+                              </div>
                             </PersonnelBudgetCellNoteMenu>
                           )}
                         </td>
@@ -579,6 +599,7 @@ function DeptYearBlock({
 
 function PlannedExtraYearRow({
   line,
+  year,
   highlight,
   onDelete,
   visibleMetrics,
@@ -632,16 +653,34 @@ function PlannedExtraYearRow({
             {met.key === "total" ? (
               init("total")
             ) : (
-              <input
-                className="w-[5.5rem] rounded border border-[var(--prom-line)] bg-transparent px-1 text-xs tabular-nums"
-                defaultValue={init(met.key)}
-                onChange={(e) =>
-                  setLineDrafts((p) => ({
-                    ...p,
-                    [line.id]: { ...p[line.id], [met.key]: e.target.value }
-                  }))
-                }
-              />
+              <div className="flex items-center gap-0.5">
+                <input
+                  className="w-[4.75rem] rounded border border-[var(--prom-line)] bg-transparent px-1 text-xs tabular-nums"
+                  defaultValue={init(met.key)}
+                  onChange={(e) =>
+                    setLineDrafts((p) => ({
+                      ...p,
+                      [line.id]: { ...p[line.id], [met.key]: e.target.value }
+                    }))
+                  }
+                />
+                <PersonnelBudgetForecastCellAssist
+                  metricKey={met.key as PersonnelBudgetForecastMetricKey}
+                  year={year}
+                  month={mi + 1}
+                  plannedLineId={line.id}
+                  partialForm={{
+                    budgetRalMonthly: line.budget.ral,
+                    label: line.label
+                  }}
+                  onSuggestValue={(v) =>
+                    setLineDrafts((p) => ({
+                      ...p,
+                      [line.id]: { ...p[line.id], [met.key]: v }
+                    }))
+                  }
+                />
+              </div>
             )}
           </td>
         ])

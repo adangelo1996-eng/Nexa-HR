@@ -20,17 +20,35 @@ export class HrStandardContractsExecutor implements CoworkDomainExecutor {
         const cur = await this.contracts.getById(ctx.companyId, contractId);
         const party = { ...cur.party, smartWorkingEnabled: true, smartWorkingRenewalYear: payload.policyYear ?? new Date().getFullYear() };
         const blocks = Array.isArray(cur.blocks) ? cur.blocks : [];
-        const hasSwBlock = blocks.some(
-          (b) => typeof b === "object" && b != null && (b as { type?: string }).type === "smartworking_clause"
+        const week =
+          typeof payload.maxRemoteDaysPerWeek === "number"
+            ? payload.maxRemoteDaysPerWeek
+            : typeof payload.allowedDaysPerWeek === "number"
+              ? payload.allowedDaysPerWeek
+              : 2;
+        const month =
+          typeof payload.maxRemoteDaysPerMonth === "number"
+            ? payload.maxRemoteDaysPerMonth
+            : typeof payload.allowedDaysPerMonth === "number"
+              ? payload.allowedDaysPerMonth
+              : 8;
+        const hasLimitsBlock = blocks.some(
+          (b) =>
+            typeof b === "object" &&
+            b != null &&
+            ((b as { type?: string }).type === "remote_work_limits" ||
+              (b as { type?: string }).type === "smartworking_clause")
         );
-        const nextBlocks = hasSwBlock
+        const nextBlocks = hasLimitsBlock
           ? blocks
           : [
               ...blocks,
               {
-                type: "smartworking_clause",
-                title: "Clausola smart working",
-                body: "Il dipendente può svolgere attività in modalità agile secondo accordo annuale e policy aziendale."
+                type: "remote_work_limits",
+                title: "Limiti lavoro agile",
+                allowedDaysPerWeek: week,
+                allowedDaysPerMonth: month,
+                body: `Fino a ${week} giorni a settimana e ${month} al mese, salvo deroga HR.`
               }
             ];
         await this.contracts.update(ctx.companyId, contractId, {
@@ -55,9 +73,13 @@ export class HrStandardContractsExecutor implements CoworkDomainExecutor {
         },
         blocks: [
           {
-            type: "smartworking_clause",
-            title: "Clausola smart working",
-            body: "Modalità agile secondo accordo annuale e policy aziendale."
+            type: "remote_work_limits",
+            title: "Limiti lavoro agile",
+            allowedDaysPerWeek:
+              typeof payload.maxRemoteDaysPerWeek === "number" ? payload.maxRemoteDaysPerWeek : 2,
+            allowedDaysPerMonth:
+              typeof payload.maxRemoteDaysPerMonth === "number" ? payload.maxRemoteDaysPerMonth : 8,
+            body: "Limiti da accordo annuale Nexa HR."
           }
         ],
         createdByUserId: ctx.auth.userId

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
-import PDFDocument from "pdfkit";
+import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
+import { renderSynapseContractPdf } from "./hr-contract-pdf.renderer";
 
 export type HrStandardContractStatus = "draft" | "approved" | "exported";
 
@@ -86,7 +87,33 @@ function recordToRow(r: Record<string, unknown>): ContractRow {
 
 @Injectable()
 export class HrContractsService {
-  constructor(private readonly store: HrDataStore) {}
+  constructor(
+    private readonly store: HrDataStore,
+    private readonly remoteWorkPolicy: RemoteWorkPolicyService
+  ) {}
+
+  private shouldSyncRemoteWorkPolicy(party: Record<string, unknown>, blocks: unknown[]): boolean {
+    if (String(party.contractKind ?? "") === "remote_working") {
+      return true;
+    }
+    if (!Array.isArray(blocks)) {
+      return false;
+    }
+    return blocks.some((raw) => {
+      if (!raw || typeof raw !== "object") {
+        return false;
+      }
+      const t = String((raw as { type?: string }).type ?? "");
+      return t === "remote_work_limits" || t === "remote_working_quota" || t === "smartworking_clause";
+    });
+  }
+
+  private async syncRemoteWorkPolicyIfNeeded(companyId: string, dto: HrStandardContractDto): Promise<void> {
+    if (!this.shouldSyncRemoteWorkPolicy(dto.party, dto.blocks)) {
+      return;
+    }
+    await this.remoteWorkPolicy.syncFromContract(companyId, dto);
+  }
 
   private sb() {
     return this.store.getServiceRoleClient();
@@ -181,7 +208,9 @@ export class HrContractsService {
     if (error || !data) {
       throw new InternalServerErrorException(`Creazione contratto: ${error?.message ?? "nessun dato"}`);
     }
-    return rowToDto(recordToRow(data as Record<string, unknown>));
+    const created = rowToDto(recordToRow(data as Record<string, unknown>));
+    await this.syncRemoteWorkPolicyIfNeeded(input.companyId, created);
+    return created;
   }
 
   async update(
@@ -255,7 +284,9 @@ export class HrContractsService {
     if (!data) {
       throw new NotFoundException("Contratto non trovato");
     }
-    return rowToDto(recordToRow(data as Record<string, unknown>));
+    const updated = rowToDto(recordToRow(data as Record<string, unknown>));
+    await this.syncRemoteWorkPolicyIfNeeded(companyId, updated);
+    return updated;
   }
 
   async delete(companyId: string, id: string): Promise<void> {
@@ -355,37 +386,22 @@ export class HrContractsService {
   }
 
   private async renderPdfBase64(doc: HrStandardContractDto): Promise<string> {
-    const out: Buffer[] = [];
-    const pdf = new PDFDocument({ size: "A4", margin: 48 });
-    pdf.on("data", (chunk) => out.push(chunk as Buffer));
-    const done = new Promise<Buffer>((resolve, reject) => {
-      pdf.on("end", () => resolve(Buffer.concat(out)));
-      pdf.on("error", reject);
-    });
-
-    pdf.font("Times-Roman").fontSize(16).text(doc.title || "Contratto di lavoro", { align: "left" });
-    pdf.moveDown(0.6);
-    pdf.font("Times-Roman").fontSize(10).fillColor("#444").text(`Stato: ${doc.status.toUpperCase()}`);
-    if (doc.signedAt) {
-      pdf.text(`Firmato: ${String(doc.signedAt).slice(0, 10)}`);
-    }
-    pdf.fillColor("#000");
-    pdf.moveDown(0.6);
-
     const blocks = Array.isArray(doc.blocks) ? (doc.blocks as Array<Record<string, unknown>>) : [];
-    for (const b of blocks) {
-      const title = String(b.title ?? "");
-      const content = String(b.content ?? "");
-      if (title.trim()) {
-        pdf.font("Times-Bold").fontSize(12).text(title.trim());
-      }
-      pdf.moveDown(0.2);
-      pdf.font("Times-Roman").fontSize(11).text(content || "", { align: "left" });
-      pdf.moveDown(0.8);
+    const metaLines = [`Stato: ${doc.status.toUpperCase()}`];
+    if (doc.signedAt) {
+      metaLines.push(`Firmato: ${String(doc.signedAt).slice(0, 10)}`);
     }
-
-    pdf.end();
-    const buf = await done;
+    const buf = await renderSynapseContractPdf({
+      documentTitle: doc.title || "Contratto di lavoro",
+      subtitle: "Contratto standard HR",
+      metaLines,
+      blocks: blocks.map((b) => ({
+        title: String(b.title ?? ""),
+        content: String(b.content ?? b.body ?? ""),
+        key: String(b.key ?? "")
+      })),
+      footerNote: "Documento generato da Nexa HR · SYNAPSE"
+    });
     return buf.toString("base64");
   }
 

@@ -1,8 +1,21 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, StreamableFile, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  StreamableFile,
+  UseGuards
+} from "@nestjs/common";
 import { Type } from "class-transformer";
-import { IsArray, IsIn, IsNumber, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
+import { HrContractsBatchService } from "./hr-contracts-batch.service";
 import { HrContractsService, type HrStandardContractStatus } from "./hr-contracts.service";
 
 const MAX_SIGNED_SCAN_B64 = 1_800_000;
@@ -148,6 +161,38 @@ class SignContractDto {
   employeeSignerName!: string;
 }
 
+class GenerateAllContractsDto {
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  companyId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  maxRemoteDaysPerWeek?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(31)
+  maxRemoteDaysPerMonth?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  policyVersion?: string;
+}
+
 class UploadSignedScanDto {
   @IsString()
   bodyBase64!: string;
@@ -166,7 +211,10 @@ class UploadSignedScanDto {
 @Controller("hr-contracts")
 @UseGuards(NexaPermissionGuard)
 export class HrContractsController {
-  constructor(private readonly svc: HrContractsService) {}
+  constructor(
+    private readonly svc: HrContractsService,
+    private readonly batch: HrContractsBatchService
+  ) {}
 
   @Get()
   @RequireNexaPermissions("nexa.standard_contracts:read")
@@ -180,6 +228,27 @@ export class HrContractsController {
   async listPresets(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {
     const items = await this.svc.listPresetsForCompany(auth.tenantId ?? "comp-1");
     return { items };
+  }
+
+  @Post("generate-all")
+  @RequireNexaPermissions("nexa.standard_contracts:write")
+  async generateAll(@CurrentAuth() auth: AuthContext, @Body() dto: GenerateAllContractsDto): Promise<unknown> {
+    if (auth.role !== "superuser") {
+      throw new ForbiddenException("Generazione batch riservata ai superuser Synapse");
+    }
+    const tenantId = auth.tenantId ?? "comp-1";
+    if (dto.companyId?.trim() && dto.companyId.trim() !== tenantId) {
+      throw new BadRequestException("companyId non coerente con il tenant della sessione");
+    }
+    return this.batch.generateAll({
+      companyId: tenantId,
+      actorUserId: auth.userId,
+      dryRun: dto.dryRun,
+      force: dto.force,
+      maxRemoteDaysPerWeek: dto.maxRemoteDaysPerWeek,
+      maxRemoteDaysPerMonth: dto.maxRemoteDaysPerMonth,
+      policyVersion: dto.policyVersion
+    });
   }
 
   @Get(":id/linked-file/:documentId")

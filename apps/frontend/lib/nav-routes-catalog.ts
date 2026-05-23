@@ -40,7 +40,10 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/workflow/approvals", label: "Approvazioni team (manager/HR)" },
   { href: "/hr/cowork" as Route, label: "Hebb AI Mate" },
   { href: "/reports", label: "Report presenze" },
-  { href: "/tools/cost-calculator" as Route, label: "Calcolatore costo azienda / netto" },
+  {
+    href: "/tools/cost-calculator" as Route,
+    label: "Simulatore costo azienda (alias storico)"
+  },
   { href: "/tools/third-party-licenses" as Route, label: "Utenze e licenze terze" },
   { href: "/recruiting" as Route, label: "Colloqui e selezione" },
   { href: "/recruiting/onboarding" as Route, label: "Onboarding assunzioni (candidati)" },
@@ -62,6 +65,10 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/forecast", label: "Forecast costi" },
   { href: "/workforce-planning" as Route, label: "Workforce planning" },
   { href: "/personnel-budget", label: "Budget personale" },
+  {
+    href: "/personnel-budget/simulatore-assunzione" as Route,
+    label: "Simulatore costo azienda"
+  },
   { href: "/personnel-budget/analysis" as Route, label: "Budget personale — Analisi" },
   { href: "/personnel-budget/forecast" as Route, label: "Budget personale — Forecast" },
   { href: "/personnel-budget/annual" as Route, label: "Budget personale — Annuale" },

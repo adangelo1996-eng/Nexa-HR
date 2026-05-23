@@ -221,7 +221,7 @@ export const PORTAL_TILES: PortalTile[] = [
     href: "/hebb-ai-support" as Route,
     title: "Hebb AI Support",
     blurb: "Assistente HR, domande in linguaggio naturale, controlli e triage — permesso assistente AI.",
-    category: "HEBB AI for HR"
+    category: "Quotidiano"
   },
   {
     href: "/nexa-hr-copilot" as Route,
@@ -239,6 +239,13 @@ export const PORTAL_TILES: PortalTile[] = [
     href: "/recruiting/onboarding" as Route,
     title: "Onboarding candidati",
     blurb: "Percorsi post-offerta e stato assunzioni.",
+    category: "Selezione e documenti"
+  },
+  {
+    href: "/personnel-budget/simulatore-assunzione" as Route,
+    title: "Simulatore costo azienda",
+    blurb:
+      "Criteri contrattuali, agevolazioni e benefit: costo azienda e netto in tempo reale con consulente AI.",
     category: "Selezione e documenti"
   },
   {

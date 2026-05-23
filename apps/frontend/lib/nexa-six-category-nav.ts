@@ -79,6 +79,7 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/forecast": TrendingUp,
   "/compensation/bench": BarChart2,
   "/personnel-budget": Wallet2,
+  "/personnel-budget/simulatore-assunzione": Calculator,
   "/hr-recap": ClipboardList,
   "/expenses/org": Receipt,
   "/payroll-hebb": Sparkles,

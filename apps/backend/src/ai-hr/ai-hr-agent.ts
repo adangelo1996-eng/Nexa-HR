@@ -89,6 +89,11 @@ export const NEXA_HR_PLATFORM_NAV: readonly { path: string; labelIt: string; top
   { path: "/lifecycle/offboard", labelIt: "Offboarding", topicsIt: "uscita, dimissioni, offboarding" },
   { path: "/personnel-budget", labelIt: "Budget personale", topicsIt: "budget, personale, costi fte" },
   {
+    path: "/personnel-budget/simulatore-assunzione",
+    labelIt: "Simulatore costo azienda",
+    topicsIt: "simulazione assunzione, costo azienda, netto, ral, benefit"
+  },
+  {
     path: "/personnel-budget/analysis",
     labelIt: "Budget personale — analisi",
     topicsIt: "analisi budget, costi, fte, confronti"

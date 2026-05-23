@@ -11,7 +11,14 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "q-presenza",
       title: "Presenza e pianificazione",
-      hrefs: ["/", "/attendance", "/work-calendar", "/sale-riunioni" as Route, "/workflow"]
+      hrefs: [
+        "/",
+        "/hebb-ai-support" as Route,
+        "/attendance",
+        "/work-calendar",
+        "/sale-riunioni" as Route,
+        "/workflow"
+      ]
     },
     {
       id: "q-retrib",
@@ -47,17 +54,16 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "h-ai",
       title: "Assistente e sintesi AI",
-      hrefs: [
-        "/hebb-ai-support" as Route,
-        "/nexa-hr-copilot" as Route,
-        "/analytics" as Route,
-        "/analytics/advanced" as Route
-      ]
+      hrefs: ["/nexa-hr-copilot" as Route, "/analytics" as Route, "/analytics/advanced" as Route]
     }
   ],
   "Selezione e documenti": [
     { id: "s-sel", title: "Selezione personale", hrefs: ["/recruiting" as Route] },
-    { id: "s-onb", title: "Sintesi e assunzioni", hrefs: ["/recruiting/onboarding" as Route] },
+    {
+      id: "s-onb",
+      title: "Sintesi e assunzioni",
+      hrefs: ["/recruiting/onboarding" as Route, "/personnel-budget/simulatore-assunzione" as Route]
+    },
     {
       id: "s-doc",
       title: "Contratti e policy",
@@ -68,7 +74,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "a-analisi",
       title: "Analisi HR",
-      hrefs: ["/tools/cost-calculator" as Route, "/forecast", "/compensation/bench" as Route]
+      hrefs: ["/forecast", "/compensation/bench" as Route]
     },
     {
       id: "a-budget",

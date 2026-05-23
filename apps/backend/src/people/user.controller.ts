@@ -32,6 +32,7 @@ import { HrDataStore } from "../platform/hr-data.store";
 import { isNexaAiOpenAiLlmEnabled } from "../platform/nexa-ai-llm-env";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AttendanceTeamService } from "../workforce/attendance-team.service";
+import { NEXA_HR_PERMISSIONS } from "../platform/permission-catalog";
 import { PermissionsService } from "../platform/permissions.service";
 
 const PAYROLL_IT_SECTORS = [
@@ -843,6 +844,28 @@ export class UserController {
       throw new BadRequestException("File mancante");
     }
     return this.store.uploadEmployeeProfilePhoto(userId, file.buffer, file.mimetype || "image/jpeg");
+  }
+
+  @Get(":userId/effective-permissions")
+  @UseGuards(RoleGuard)
+  @RequireRole("user")
+  async effectivePermissions(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string
+  ): Promise<unknown> {
+    const targetId = userId.trim();
+    const viewer = await this.store.getUser(auth.userId);
+    await this.store.assertCanViewEmployeeCvProfile(
+      auth.userId,
+      auth.role,
+      viewer.email ?? "",
+      targetId
+    );
+    const detail = await this.permissions.getEffectivePermissionsDetail(targetId);
+    return {
+      ...detail,
+      nexaCatalog: NEXA_HR_PERMISSIONS
+    };
   }
 
   @Get(":userId/cv-profile")

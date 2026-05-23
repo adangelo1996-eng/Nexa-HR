@@ -5,8 +5,11 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
+import { ModuleRef } from "@nestjs/core";
+import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   type ApprovalView,
@@ -14,6 +17,8 @@ import {
   type CompanyHoliday,
   type EmployeeDocument,
   type EmployeeDocumentKind,
+  type HrDocumentSignatureRequest,
+  type HrDocumentSignatureRequestStatus,
   type ExpenseClaim,
   type InnovationJob,
   type InnovationJobStatus,
@@ -61,6 +66,11 @@ import {
 } from "./admin-export.catalog";
 import { ALL_CATALOG_PERMISSION_IDS, LEGACY_TO_NEW_KEYS } from "./permission-catalog";
 import { isSynapseSuperuserEmail } from "./synapse-superuser";
+import {
+  findSignedAncestorId,
+  isVaultDocumentSigned,
+  shouldCreateVaultSignatureRequest
+} from "../documents/document-signature-workflow.util";
 
 export interface ExpenseWorkflowRow {
   claim: ExpenseClaim;
@@ -245,13 +255,45 @@ export type PersonnelBudgetAssumptionsDto = {
   companyId: string;
   year: number;
   employerInpsPercent: number | null;
+  employeeInpsPercent: number | null;
   inailPermille: number | null;
   tfrDivisor: number | null;
   welfarePercent: number;
   bonusProvisionPercent: number;
+  inflationPercentAnnual: number;
+  payrollIndexationPercent: number;
+  defaultPayMonthsPerYear: number;
+  defaultWeeklyContractHours: number;
+  plannedNewHires: number;
+  plannedExits: number;
+  avgNewHireRalAnnual: number | null;
+  employerInpsDiscountPercent: number;
+  overtimeBudgetPercentOnGross: number;
+  travelBudgetPerFteMonthly: number;
+  compilationNotes: string;
   updatedAt: string | null;
   updatedByUserId: string | null;
 };
+
+export type PersonnelBudgetAssumptionsPatch = Partial<{
+  employerInpsPercent: number | null;
+  employeeInpsPercent: number | null;
+  inailPermille: number | null;
+  tfrDivisor: number | null;
+  welfarePercent: number | null;
+  bonusProvisionPercent: number | null;
+  inflationPercentAnnual: number | null;
+  payrollIndexationPercent: number | null;
+  defaultPayMonthsPerYear: number | null;
+  defaultWeeklyContractHours: number | null;
+  plannedNewHires: number | null;
+  plannedExits: number | null;
+  avgNewHireRalAnnual: number | null;
+  employerInpsDiscountPercent: number | null;
+  overtimeBudgetPercentOnGross: number | null;
+  travelBudgetPerFteMonthly: number | null;
+  compilationNotes: string | null;
+}>;
 
 export type PersonnelBudgetCellNoteDto = {
   id: string;
@@ -694,6 +736,9 @@ export class HrDataStore {
     { id: "dh-26-12-25", companyId: "comp-1", day: "2026-12-25", name: "Natale" }
   ];
   private readonly employeeDocuments: EmployeeDocumentRow[] = [];
+  private readonly documentSignatureRequestsMem: HrDocumentSignatureRequest[] = [];
+  /** `false` se tabella migration 080 non ancora applicata su Supabase. */
+  private documentSignatureDbEnabled: boolean | null = null;
   private readonly onboardingByUser = new Map<string, OnboardingStatus>();
   private readonly innovationJobs: InnovationJob[] = [];
   private readonly userNotifications: UserNotification[] = [];
@@ -809,13 +854,32 @@ export class HrDataStore {
     }
   ];
 
-  constructor() {
+  constructor(@Optional() private readonly moduleRef?: ModuleRef) {
     const url = process.env.SUPABASE_URL;
     const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (url && serviceRole) {
       this.supabase = createClient(url, serviceRole, {
         auth: { persistSession: false, autoRefreshToken: false }
       });
+    }
+  }
+
+  private async resolveSmartworkingQuotas(
+    userId: string,
+    monthPrefix?: string
+  ): Promise<{ weekly: number; monthly: number }> {
+    if (!this.moduleRef) {
+      return { weekly: SMARTWORKING_WEEKLY_QUOTA, monthly: SMARTWORKING_MONTHLY_QUOTA };
+    }
+    try {
+      const svc = this.moduleRef.get(RemoteWorkPolicyService, { strict: false });
+      const limits = await svc.getEffectiveLimitsForUser(userId, monthPrefix);
+      return {
+        weekly: limits.allowedRemoteDaysPerWeek,
+        monthly: limits.allowedRemoteDaysPerMonth
+      };
+    } catch {
+      return { weekly: SMARTWORKING_WEEKLY_QUOTA, monthly: SMARTWORKING_MONTHLY_QUOTA };
     }
   }
 
@@ -4218,9 +4282,10 @@ export class HrDataStore {
           requestedCalendarDays = 1;
         }
         note = sw.note ?? null;
-        smartworkingWeekQuota = SMARTWORKING_WEEKLY_QUOTA;
+        const swQuotas = await this.resolveSmartworkingQuotas(sw.userId, sw.day.slice(0, 7));
+        smartworkingWeekQuota = swQuotas.weekly;
         smartworkingWeekUsed = await this.countSmartworkingBookedDaysInWeek(sw.userId, sw.day);
-        smartworkingMonthQuota = SMARTWORKING_MONTHLY_QUOTA;
+        smartworkingMonthQuota = swQuotas.monthly;
         smartworkingMonthUsed = await this.countNonRejectedSmartworkingDaysInMonth(
           sw.userId,
           sw.day.slice(0, 7)
@@ -5588,7 +5653,7 @@ export class HrDataStore {
     };
   }
 
-  private async assertCanViewEmployeeCvProfile(
+  async assertCanViewEmployeeCvProfile(
     requesterId: string,
     requesterRole: User["role"],
     requesterEmail: string,
@@ -7041,6 +7106,7 @@ export class HrDataStore {
   }
 
   private mapDocumentRow(r: Record<string, unknown>): EmployeeDocumentRow {
+    const signatureMetadata = r.signatureMetadata;
     return {
       id: String(r.id),
       userId: String(r.userId),
@@ -7050,8 +7116,185 @@ export class HrDataStore {
       storagePath: r.storagePath ? String(r.storagePath) : undefined,
       createdAt: String(r.createdAt),
       uploadedBy: r.uploadedBy ? String(r.uploadedBy) : undefined,
+      parentDocumentId: r.parentDocumentId ? String(r.parentDocumentId) : undefined,
+      signedAt: r.signedAt ? String(r.signedAt) : undefined,
+      signedByUserId: r.signedByUserId ? String(r.signedByUserId) : undefined,
+      signatureMetadata:
+        signatureMetadata && typeof signatureMetadata === "object"
+          ? (signatureMetadata as Record<string, unknown>)
+          : undefined,
       bodyBase64: r.bodyBase64 ? String(r.bodyBase64) : null
     };
+  }
+
+  private employeeDocumentsByIdMap(): Map<string, EmployeeDocument> {
+    const map = new Map<string, EmployeeDocument>();
+    for (const d of this.employeeDocuments) {
+      const { bodyBase64: _b, ...pub } = d;
+      map.set(pub.id, pub);
+    }
+    return map;
+  }
+
+  private async loadEmployeeDocumentsByIdMapForUser(userId: string): Promise<Map<string, EmployeeDocument>> {
+    const map = new Map<string, EmployeeDocument>();
+    if (!this.useDb) {
+      for (const d of this.employeeDocuments) {
+        if (d.userId !== userId) continue;
+        const { bodyBase64: _b, ...pub } = d;
+        map.set(pub.id, pub);
+      }
+      return map;
+    }
+    const { data, error } = await this.supabase!
+      .from("employee_documents")
+      .select(
+        "id, userId, kind, title, mimeType, storagePath, createdAt, uploadedBy, parentDocumentId, signedAt, signedByUserId, signatureMetadata"
+      )
+      .eq("userId", userId);
+    if (error) {
+      throw new BadRequestException(`Lettura documenti fallita: ${error.message}`);
+    }
+    for (const r of data ?? []) {
+      const row = this.mapDocumentRow(r as Record<string, unknown>);
+      const { bodyBase64: _b, ...pub } = row;
+      map.set(pub.id, pub);
+    }
+    return map;
+  }
+
+  private mapSignatureRequestRow(
+    r: Record<string, unknown>,
+    doc?: Pick<EmployeeDocument, "title" | "kind">
+  ): HrDocumentSignatureRequest {
+    const signatureMetadata = r.signatureMetadata;
+    return {
+      id: String(r.id),
+      documentId: String(r.documentId),
+      parentDocumentId: r.parentDocumentId ? String(r.parentDocumentId) : undefined,
+      originSignedDocumentId: r.originSignedDocumentId ? String(r.originSignedDocumentId) : undefined,
+      employeeUserId: String(r.employeeUserId),
+      requesterUserId: String(r.requesterUserId),
+      status: r.status as HrDocumentSignatureRequestStatus,
+      createdAt: String(r.createdAt),
+      signedAt: r.signedAt ? String(r.signedAt) : undefined,
+      returnedAt: r.returnedAt ? String(r.returnedAt) : undefined,
+      signatureMetadata:
+        signatureMetadata && typeof signatureMetadata === "object"
+          ? (signatureMetadata as Record<string, unknown>)
+          : undefined,
+      documentTitle: doc?.title,
+      documentKind: doc?.kind
+    };
+  }
+
+  private async signatureRequestsDbAvailable(): Promise<boolean> {
+    if (!this.useDb) return false;
+    if (this.documentSignatureDbEnabled !== null) {
+      return this.documentSignatureDbEnabled;
+    }
+    const { error } = await this.supabase!.from("hr_document_signature_requests").select("id").limit(1);
+    this.documentSignatureDbEnabled = !error;
+    if (error) {
+      this.logger.warn(
+        `[hr_document_signature_requests] tabella non disponibile (${error.message}); fallback in-memory`
+      );
+    }
+    return this.documentSignatureDbEnabled;
+  }
+
+  private async insertSignatureRequestRow(row: HrDocumentSignatureRequest): Promise<void> {
+    if (await this.signatureRequestsDbAvailable()) {
+      const { error } = await this.supabase!.from("hr_document_signature_requests").insert({
+        id: row.id,
+        documentId: row.documentId,
+        parentDocumentId: row.parentDocumentId ?? null,
+        originSignedDocumentId: row.originSignedDocumentId ?? null,
+        employeeUserId: row.employeeUserId,
+        requesterUserId: row.requesterUserId,
+        status: row.status,
+        createdAt: row.createdAt,
+        signedAt: row.signedAt ?? null,
+        returnedAt: row.returnedAt ?? null,
+        signatureMetadata: row.signatureMetadata ?? null
+      });
+      if (error) {
+        this.logger.warn(`[hr_document_signature_requests] insert fallito: ${error.message}`);
+        this.documentSignatureRequestsMem.unshift(row);
+      }
+      return;
+    }
+    this.documentSignatureRequestsMem.unshift(row);
+  }
+
+  private async updateSignatureRequestRow(
+    id: string,
+    patch: Partial<
+      Pick<HrDocumentSignatureRequest, "status" | "signedAt" | "returnedAt" | "signatureMetadata">
+    >
+  ): Promise<HrDocumentSignatureRequest | undefined> {
+    if (await this.signatureRequestsDbAvailable()) {
+      const { data, error } = await this.supabase!
+        .from("hr_document_signature_requests")
+        .update({
+          status: patch.status,
+          signedAt: patch.signedAt ?? undefined,
+          returnedAt: patch.returnedAt ?? undefined,
+          signatureMetadata: patch.signatureMetadata ?? undefined
+        })
+        .eq("id", id)
+        .select("*")
+        .maybeSingle();
+      if (error || !data) {
+        const mem = this.documentSignatureRequestsMem.find((r) => r.id === id);
+        if (!mem) return undefined;
+        Object.assign(mem, patch);
+        return mem;
+      }
+      return this.mapSignatureRequestRow(data as Record<string, unknown>);
+    }
+    const mem = this.documentSignatureRequestsMem.find((r) => r.id === id);
+    if (!mem) return undefined;
+    Object.assign(mem, patch);
+    return mem;
+  }
+
+  private async findSignatureRequestById(id: string): Promise<HrDocumentSignatureRequest | undefined> {
+    if (await this.signatureRequestsDbAvailable()) {
+      const { data } = await this.supabase!
+        .from("hr_document_signature_requests")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      return data ? this.mapSignatureRequestRow(data as Record<string, unknown>) : undefined;
+    }
+    return this.documentSignatureRequestsMem.find((r) => r.id === id);
+  }
+
+  private async findSignatureRequestByDocumentId(
+    documentId: string
+  ): Promise<HrDocumentSignatureRequest | undefined> {
+    if (await this.signatureRequestsDbAvailable()) {
+      const { data } = await this.supabase!
+        .from("hr_document_signature_requests")
+        .select("*")
+        .eq("documentId", documentId)
+        .maybeSingle();
+      return data ? this.mapSignatureRequestRow(data as Record<string, unknown>) : undefined;
+    }
+    return this.documentSignatureRequestsMem.find((r) => r.documentId === documentId);
+  }
+
+  /** Hook opzionale email (nessun provider configurato di default). */
+  private async maybeNotifyDocumentSignatureEmail(
+    userId: string,
+    subject: string,
+    _body: string
+  ): Promise<void> {
+    if (process.env.NEXA_DOCUMENT_SIGNATURE_EMAIL_HOOK !== "1") return;
+    const user = await this.findUserById(userId);
+    if (!user?.email) return;
+    this.logger.log(`[document-signature-email] ${subject} → ${user.email}`);
   }
 
   async listDocumentsForRequester(
@@ -7090,10 +7333,25 @@ export class HrDataStore {
     title: string;
     mimeType?: string;
     bodyBase64?: string;
+    parentDocumentId?: string;
+    /** Se true (default con parent), valuta richiesta firma dipendente dopo publish HITL. */
+    triggerSignatureWorkflow?: boolean;
   }): Promise<EmployeeDocument> {
-    const id = `doc-${Date.now()}`;
+    const id = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const createdAt = new Date().toISOString();
     const storagePath = input.bodyBase64 ? `inline:${id}` : undefined;
+    let parentDoc: EmployeeDocument | undefined;
+    if (input.parentDocumentId) {
+      const parentRow = await this.getEmployeeDocumentRowById(input.parentDocumentId);
+      if (!parentRow) {
+        throw new NotFoundException("Documento origine non trovato");
+      }
+      if (parentRow.userId !== input.userId) {
+        throw new BadRequestException("parentDocumentId non appartiene al titolare del documento");
+      }
+      const { bodyBase64: _pb, ...parentPub } = parentRow;
+      parentDoc = parentPub;
+    }
     const row: EmployeeDocumentRow = {
       id,
       userId: input.userId,
@@ -7103,10 +7361,11 @@ export class HrDataStore {
       storagePath,
       createdAt,
       uploadedBy: input.uploadedBy,
+      parentDocumentId: input.parentDocumentId,
       bodyBase64: input.bodyBase64
     };
     if (this.useDb) {
-      const { error } = await this.supabase!.from("employee_documents").insert({
+      const insertPayload: Record<string, unknown> = {
         id: row.id,
         userId: row.userId,
         kind: row.kind,
@@ -7116,13 +7375,237 @@ export class HrDataStore {
         storagePath: row.storagePath ?? null,
         createdAt: row.createdAt,
         uploadedBy: row.uploadedBy ?? null
-      });
-      if (error) throw new InternalServerErrorException(`Upload documento fallito: ${error.message}`);
+      };
+      if (input.parentDocumentId) {
+        insertPayload.parentDocumentId = input.parentDocumentId;
+      }
+      const { error } = await this.supabase!.from("employee_documents").insert(insertPayload);
+      if (error) {
+        if (input.parentDocumentId && /parentDocumentId|column/i.test(error.message)) {
+          delete insertPayload.parentDocumentId;
+          const retry = await this.supabase!.from("employee_documents").insert(insertPayload);
+          if (retry.error) {
+            throw new InternalServerErrorException(`Upload documento fallito: ${retry.error.message}`);
+          }
+        } else {
+          throw new InternalServerErrorException(`Upload documento fallito: ${error.message}`);
+        }
+      }
     } else {
       this.employeeDocuments.unshift(row);
     }
     const { bodyBase64: _b, ...pub } = row;
+    const triggerWorkflow = input.triggerSignatureWorkflow !== false && Boolean(input.parentDocumentId);
+    if (triggerWorkflow && parentDoc) {
+      await this.maybeCreateVaultSignatureRequestAfterPublish({
+        requesterUserId: input.uploadedBy,
+        newDocument: pub,
+        parentDocument: parentDoc
+      });
+    }
     return pub;
+  }
+
+  private async getEmployeeDocumentRowById(docId: string): Promise<EmployeeDocumentRow | undefined> {
+    if (!this.useDb) {
+      return this.employeeDocuments.find((d) => d.id === docId);
+    }
+    const { data } = await this.supabase!.from("employee_documents").select("*").eq("id", docId).maybeSingle();
+    return data ? this.mapDocumentRow(data as Record<string, unknown>) : undefined;
+  }
+
+  async maybeCreateVaultSignatureRequestAfterPublish(input: {
+    requesterUserId: string;
+    newDocument: EmployeeDocument;
+    parentDocument: EmployeeDocument;
+  }): Promise<HrDocumentSignatureRequest | null> {
+    const documentsById = this.useDb
+      ? await this.loadEmployeeDocumentsByIdMapForUser(input.newDocument.userId)
+      : this.employeeDocumentsByIdMap();
+    documentsById.set(input.newDocument.id, input.newDocument);
+    if (!documentsById.has(input.parentDocument.id)) {
+      documentsById.set(input.parentDocument.id, input.parentDocument);
+    }
+    if (
+      !shouldCreateVaultSignatureRequest({
+        newDocumentKind: input.newDocument.kind,
+        parentDocument: input.parentDocument,
+        documentsById
+      })
+    ) {
+      return null;
+    }
+    const originSignedDocumentId =
+      findSignedAncestorId(input.parentDocument.id, documentsById) ??
+      (isVaultDocumentSigned(input.parentDocument) ? input.parentDocument.id : undefined);
+    const existing = await this.findSignatureRequestByDocumentId(input.newDocument.id);
+    if (existing) return existing;
+
+    const createdAt = new Date().toISOString();
+    const req: HrDocumentSignatureRequest = {
+      id: `dsr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      documentId: input.newDocument.id,
+      parentDocumentId: input.parentDocument.id,
+      originSignedDocumentId,
+      employeeUserId: input.newDocument.userId,
+      requesterUserId: input.requesterUserId,
+      status: "pending_employee_sign",
+      createdAt,
+      documentTitle: input.newDocument.title,
+      documentKind: input.newDocument.kind
+    };
+    await this.insertSignatureRequestRow(req);
+    await this.notifyUserInApp({
+      userId: input.newDocument.userId,
+      title: "Documento da firmare",
+      body: `HR ha aggiornato «${input.newDocument.title}»: apri il vault e applica la firma digitale.`,
+      kind: "document_signature_pending",
+      actionPath: `/percorso/documenti?sign=${encodeURIComponent(input.newDocument.id)}`
+    });
+    await this.maybeNotifyDocumentSignatureEmail(
+      input.newDocument.userId,
+      "Documento da firmare",
+      req.documentTitle ?? input.newDocument.title
+    );
+    return req;
+  }
+
+  async listVaultSignatureRequestsForEmployee(
+    employeeUserId: string,
+    status?: HrDocumentSignatureRequestStatus
+  ): Promise<HrDocumentSignatureRequest[]> {
+    return this.listVaultSignatureRequests({ employeeUserId, status });
+  }
+
+  async listVaultSignatureRequestsForRequester(
+    requesterUserId: string,
+    status?: HrDocumentSignatureRequestStatus
+  ): Promise<HrDocumentSignatureRequest[]> {
+    return this.listVaultSignatureRequests({ requesterUserId, status });
+  }
+
+  private async listVaultSignatureRequests(filter: {
+    employeeUserId?: string;
+    requesterUserId?: string;
+    status?: HrDocumentSignatureRequestStatus;
+  }): Promise<HrDocumentSignatureRequest[]> {
+    const cap = 100;
+    if (await this.signatureRequestsDbAvailable()) {
+      let q = this.supabase!.from("hr_document_signature_requests").select("*");
+      if (filter.employeeUserId) q = q.eq("employeeUserId", filter.employeeUserId);
+      if (filter.requesterUserId) q = q.eq("requesterUserId", filter.requesterUserId);
+      if (filter.status) q = q.eq("status", filter.status);
+      const { data, error } = await q.order("createdAt", { ascending: false }).limit(cap);
+      if (error) throw new BadRequestException(`Lettura richieste firma fallita: ${error.message}`);
+      const mapped = (data ?? []).map((r) => this.mapSignatureRequestRow(r as Record<string, unknown>));
+      return this.enrichSignatureRequestsWithDocumentMeta(mapped);
+    }
+    let rows = [...this.documentSignatureRequestsMem];
+    if (filter.employeeUserId) {
+      rows = rows.filter((r) => r.employeeUserId === filter.employeeUserId);
+    }
+    if (filter.requesterUserId) {
+      rows = rows.filter((r) => r.requesterUserId === filter.requesterUserId);
+    }
+    if (filter.status) {
+      rows = rows.filter((r) => r.status === filter.status);
+    }
+    return this.enrichSignatureRequestsWithDocumentMeta(rows.slice(0, cap));
+  }
+
+  private async enrichSignatureRequestsWithDocumentMeta(
+    rows: HrDocumentSignatureRequest[]
+  ): Promise<HrDocumentSignatureRequest[]> {
+    const out: HrDocumentSignatureRequest[] = [];
+    for (const r of rows) {
+      if (r.documentTitle) {
+        out.push(r);
+        continue;
+      }
+      const doc = await this.getEmployeeDocumentRowById(r.documentId);
+      if (!doc) {
+        out.push(r);
+        continue;
+      }
+      out.push({
+        ...r,
+        documentTitle: doc.title,
+        documentKind: doc.kind
+      });
+    }
+    return out;
+  }
+
+  async signVaultDocument(input: {
+    documentId: string;
+    actorUserId: string;
+    employeeSignerName: string;
+  }): Promise<{ document: EmployeeDocument; request: HrDocumentSignatureRequest }> {
+    const req = await this.findSignatureRequestByDocumentId(input.documentId);
+    if (!req) {
+      throw new NotFoundException("Richiesta firma non trovata per questo documento");
+    }
+    if (req.employeeUserId !== input.actorUserId) {
+      throw new ForbiddenException("Solo il dipendente titolare può firmare");
+    }
+    if (req.status !== "pending_employee_sign") {
+      throw new BadRequestException("Richiesta firma non in attesa");
+    }
+    const signedAt = new Date().toISOString();
+    const signatureMetadata = {
+      employeeSignerName: input.employeeSignerName.trim(),
+      signedAt,
+      method: "digital_ack"
+    };
+    let row: EmployeeDocumentRow | undefined;
+    if (!this.useDb) {
+      row = this.employeeDocuments.find((d) => d.id === input.documentId);
+    } else {
+      const { data, error } = await this.supabase!
+        .from("employee_documents")
+        .update({
+          signedAt,
+          signedByUserId: input.actorUserId,
+          signatureMetadata
+        })
+        .eq("id", input.documentId)
+        .select("*")
+        .maybeSingle();
+      if (error && /signedAt|signatureMetadata|column/i.test(error.message)) {
+        throw new BadRequestException(
+          "Firma vault non disponibile: applicare migration 080 su Supabase"
+        );
+      }
+      if (error) throw new InternalServerErrorException(`Aggiornamento documento fallito: ${error.message}`);
+      row = data ? this.mapDocumentRow(data as Record<string, unknown>) : undefined;
+    }
+    if (!this.useDb && row) {
+      row.signedAt = signedAt;
+      row.signedByUserId = input.actorUserId;
+      row.signatureMetadata = signatureMetadata;
+    }
+    if (!row) throw new NotFoundException("Documento non trovato");
+    const returnedAt = new Date().toISOString();
+    await this.updateSignatureRequestRow(req.id, {
+      status: "signed",
+      signedAt,
+      signatureMetadata
+    });
+    const updatedReq = await this.updateSignatureRequestRow(req.id, {
+      status: "returned",
+      returnedAt,
+      signatureMetadata
+    });
+    if (!updatedReq) throw new NotFoundException("Richiesta firma non trovata");
+    await this.notifyUserInApp({
+      userId: req.requesterUserId,
+      title: "Documento firmato dal dipendente",
+      body: `«${row.title}» è stato firmato ed è disponibile per la restituzione HR.`,
+      kind: "document_signature_returned",
+      actionPath: "/hr/cowork?panel=documents"
+    });
+    const { bodyBase64: _b, ...pub } = row;
+    return { document: pub, request: { ...updatedReq, documentTitle: row.title, documentKind: row.kind } };
   }
 
   async getEmployeeDocumentFile(
@@ -7268,9 +7751,12 @@ export class HrDataStore {
     const skipSwQuota = actorRole === "superuser";
     if (!skipSwQuota) {
       const monthPrefix = dayNorm.slice(0, 7);
+      const quotas = await this.resolveSmartworkingQuotas(userId, monthPrefix);
       const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(userId, monthPrefix);
-      if (monthBooked + rangeDays.length > SMARTWORKING_MONTHLY_QUOTA) {
-        throw new BadRequestException("Quota mensile remote working esaurita (richieste in attesa incluso)");
+      if (monthBooked + rangeDays.length > quotas.monthly) {
+        throw new BadRequestException(
+          `Quota mensile remote working esaurita (max ${quotas.monthly} giorni da contratto, richieste in attesa incluso)`
+        );
       }
       const weekIds = new Set<string>();
       for (const d of rangeDays) {
@@ -7279,9 +7765,9 @@ export class HrDataStore {
       for (const mon of weekIds) {
         const weekBooked = await this.countSmartworkingBookedDaysInWeek(userId, mon);
         const addInWeek = rangeDays.filter((d) => this.mondayOfWeekUtcContaining(d) === mon).length;
-        if (weekBooked + addInWeek > SMARTWORKING_WEEKLY_QUOTA) {
+        if (weekBooked + addInWeek > quotas.weekly) {
           throw new BadRequestException(
-            `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni, richieste in attesa incluso)`
+            `Quota settimanale remote working esaurita (max ${quotas.weekly} giorni da contratto, richieste in attesa incluso)`
           );
         }
       }
@@ -7393,17 +7879,20 @@ export class HrDataStore {
       !isApprovedSwCorrection
     ) {
       const monthPrefix = nextDay.slice(0, 7);
+      const quotas = await this.resolveSmartworkingQuotas(subjectId, monthPrefix);
       const monthBooked = await this.countNonRejectedSmartworkingDaysInMonth(subjectId, monthPrefix, requestId);
-      if (monthBooked + nextRangeDays.length > SMARTWORKING_MONTHLY_QUOTA) {
-        throw new BadRequestException("Quota mensile remote working esaurita per il mese selezionato");
+      if (monthBooked + nextRangeDays.length > quotas.monthly) {
+        throw new BadRequestException(
+          `Quota mensile remote working esaurita per il mese selezionato (max ${quotas.monthly} giorni da contratto)`
+        );
       }
       const weekIds = new Set(nextRangeDays.map((d) => this.mondayOfWeekUtcContaining(d)));
       for (const mon of weekIds) {
         const weekBooked = await this.countSmartworkingBookedDaysInWeek(subjectId, mon, requestId);
         const addInWeek = nextRangeDays.filter((d) => this.mondayOfWeekUtcContaining(d) === mon).length;
-        if (weekBooked + addInWeek > SMARTWORKING_WEEKLY_QUOTA) {
+        if (weekBooked + addInWeek > quotas.weekly) {
           throw new BadRequestException(
-            `Quota settimanale remote working esaurita (max ${SMARTWORKING_WEEKLY_QUOTA} giorni)`
+            `Quota settimanale remote working esaurita (max ${quotas.weekly} giorni da contratto)`
           );
         }
       }
@@ -7947,7 +8436,8 @@ export class HrDataStore {
   async getSmartworkingMonthlyBalance(userId: string, month?: string): Promise<{ used: number; quota: number }> {
     const m = month ?? new Date().toISOString().slice(0, 7);
     const used = await this.countNonRejectedSmartworkingDaysInMonth(userId, m);
-    return { used, quota: SMARTWORKING_MONTHLY_QUOTA };
+    const quotas = await this.resolveSmartworkingQuotas(userId, m);
+    return { used, quota: quotas.monthly };
   }
 
   private mondayOfWeekUtcContaining(dayIso: string): string {
@@ -10819,10 +11309,22 @@ export class HrDataStore {
       companyId: cid,
       year,
       employerInpsPercent: null,
+      employeeInpsPercent: null,
       inailPermille: null,
       tfrDivisor: null,
       welfarePercent: 0,
       bonusProvisionPercent: 0,
+      inflationPercentAnnual: 2.5,
+      payrollIndexationPercent: 2,
+      defaultPayMonthsPerYear: 13,
+      defaultWeeklyContractHours: 40,
+      plannedNewHires: 0,
+      plannedExits: 0,
+      avgNewHireRalAnnual: null,
+      employerInpsDiscountPercent: 0,
+      overtimeBudgetPercentOnGross: 3,
+      travelBudgetPerFteMonthly: 150,
+      compilationNotes: "",
       updatedAt: null,
       updatedByUserId: null
     };
@@ -10847,11 +11349,35 @@ export class HrDataStore {
       year,
       employerInpsPercent:
         row.employer_inps_percent != null ? Number(row.employer_inps_percent) : null,
+      employeeInpsPercent:
+        row.employee_inps_percent != null ? Number(row.employee_inps_percent) : null,
       inailPermille: row.inail_permille != null ? Number(row.inail_permille) : null,
       tfrDivisor: row.tfr_divisor != null ? Number(row.tfr_divisor) : null,
       welfarePercent: row.welfare_percent != null ? Number(row.welfare_percent) : 0,
       bonusProvisionPercent:
         row.bonus_provision_percent != null ? Number(row.bonus_provision_percent) : 0,
+      inflationPercentAnnual:
+        row.inflation_percent_annual != null ? Number(row.inflation_percent_annual) : 2.5,
+      payrollIndexationPercent:
+        row.payroll_indexation_percent != null ? Number(row.payroll_indexation_percent) : 2,
+      defaultPayMonthsPerYear:
+        row.default_pay_months_per_year != null ? Number(row.default_pay_months_per_year) : 13,
+      defaultWeeklyContractHours:
+        row.default_weekly_contract_hours != null ? Number(row.default_weekly_contract_hours) : 40,
+      plannedNewHires: row.planned_new_hires != null ? Number(row.planned_new_hires) : 0,
+      plannedExits: row.planned_exits != null ? Number(row.planned_exits) : 0,
+      avgNewHireRalAnnual:
+        row.avg_new_hire_ral_annual != null ? Number(row.avg_new_hire_ral_annual) : null,
+      employerInpsDiscountPercent:
+        row.employer_inps_discount_percent != null ? Number(row.employer_inps_discount_percent) : 0,
+      overtimeBudgetPercentOnGross:
+        row.overtime_budget_percent_on_gross != null
+          ? Number(row.overtime_budget_percent_on_gross)
+          : 3,
+      travelBudgetPerFteMonthly:
+        row.travel_budget_per_fte_monthly != null ? Number(row.travel_budget_per_fte_monthly) : 150,
+      compilationNotes:
+        row.compilation_notes != null ? String(row.compilation_notes) : "",
       updatedAt: row.updated_at != null ? String(row.updated_at) : null,
       updatedByUserId:
         row.updated_by_user_id != null ? String(row.updated_by_user_id) : null
@@ -10861,31 +11387,53 @@ export class HrDataStore {
   async upsertPersonnelBudgetAssumptions(
     companyId: string,
     year: number,
-    patch: {
-      employerInpsPercent?: number | null;
-      inailPermille?: number | null;
-      tfrDivisor?: number | null;
-      welfarePercent?: number | null;
-      bonusProvisionPercent?: number | null;
-    },
+    patch: PersonnelBudgetAssumptionsPatch,
     userId: string
   ): Promise<PersonnelBudgetAssumptionsDto> {
     const cid = companyId.trim();
     const prev = await this.getPersonnelBudgetAssumptions(cid, year);
+    const pickNum = (
+      key: keyof PersonnelBudgetAssumptionsPatch,
+      fallback: number
+    ): number => {
+      if (patch[key] === undefined || patch[key] == null) return fallback;
+      return Number(patch[key]);
+    };
     const dto: PersonnelBudgetAssumptionsDto = {
       ...prev,
       employerInpsPercent:
         patch.employerInpsPercent !== undefined ? patch.employerInpsPercent : prev.employerInpsPercent,
+      employeeInpsPercent:
+        patch.employeeInpsPercent !== undefined ? patch.employeeInpsPercent : prev.employeeInpsPercent,
       inailPermille: patch.inailPermille !== undefined ? patch.inailPermille : prev.inailPermille,
       tfrDivisor: patch.tfrDivisor !== undefined ? patch.tfrDivisor : prev.tfrDivisor,
-      welfarePercent:
-        patch.welfarePercent !== undefined && patch.welfarePercent != null
-          ? patch.welfarePercent
-          : prev.welfarePercent,
-      bonusProvisionPercent:
-        patch.bonusProvisionPercent !== undefined && patch.bonusProvisionPercent != null
-          ? patch.bonusProvisionPercent
-          : prev.bonusProvisionPercent,
+      welfarePercent: pickNum("welfarePercent", prev.welfarePercent),
+      bonusProvisionPercent: pickNum("bonusProvisionPercent", prev.bonusProvisionPercent),
+      inflationPercentAnnual: pickNum("inflationPercentAnnual", prev.inflationPercentAnnual),
+      payrollIndexationPercent: pickNum("payrollIndexationPercent", prev.payrollIndexationPercent),
+      defaultPayMonthsPerYear: pickNum("defaultPayMonthsPerYear", prev.defaultPayMonthsPerYear),
+      defaultWeeklyContractHours: pickNum(
+        "defaultWeeklyContractHours",
+        prev.defaultWeeklyContractHours
+      ),
+      plannedNewHires: pickNum("plannedNewHires", prev.plannedNewHires),
+      plannedExits: pickNum("plannedExits", prev.plannedExits),
+      avgNewHireRalAnnual:
+        patch.avgNewHireRalAnnual !== undefined ? patch.avgNewHireRalAnnual : prev.avgNewHireRalAnnual,
+      employerInpsDiscountPercent: pickNum(
+        "employerInpsDiscountPercent",
+        prev.employerInpsDiscountPercent
+      ),
+      overtimeBudgetPercentOnGross: pickNum(
+        "overtimeBudgetPercentOnGross",
+        prev.overtimeBudgetPercentOnGross
+      ),
+      travelBudgetPerFteMonthly: pickNum(
+        "travelBudgetPerFteMonthly",
+        prev.travelBudgetPerFteMonthly
+      ),
+      compilationNotes:
+        patch.compilationNotes !== undefined ? String(patch.compilationNotes) : prev.compilationNotes,
       updatedAt: new Date().toISOString(),
       updatedByUserId: userId
     };
@@ -10898,10 +11446,22 @@ export class HrDataStore {
         company_id: cid,
         year,
         employer_inps_percent: dto.employerInpsPercent,
+        employee_inps_percent: dto.employeeInpsPercent,
         inail_permille: dto.inailPermille,
         tfr_divisor: dto.tfrDivisor,
         welfare_percent: dto.welfarePercent,
         bonus_provision_percent: dto.bonusProvisionPercent,
+        inflation_percent_annual: dto.inflationPercentAnnual,
+        payroll_indexation_percent: dto.payrollIndexationPercent,
+        default_pay_months_per_year: dto.defaultPayMonthsPerYear,
+        default_weekly_contract_hours: dto.defaultWeeklyContractHours,
+        planned_new_hires: dto.plannedNewHires,
+        planned_exits: dto.plannedExits,
+        avg_new_hire_ral_annual: dto.avgNewHireRalAnnual,
+        employer_inps_discount_percent: dto.employerInpsDiscountPercent,
+        overtime_budget_percent_on_gross: dto.overtimeBudgetPercentOnGross,
+        travel_budget_per_fte_monthly: dto.travelBudgetPerFteMonthly,
+        compilation_notes: dto.compilationNotes,
         updated_at: dto.updatedAt,
         updated_by_user_id: userId
       },

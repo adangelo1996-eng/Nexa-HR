@@ -275,17 +275,20 @@ export default function HebbAiSupportPage(): React.JSX.Element {
     setError(null);
     try {
       const me = await fetchCurrentUser(t);
-      if (
-        !sessionCanUseNexaAiOpenAiLlm(me) ||
-        !sessionCanAccessNexaAiAssistant(me)
-      ) {
+      if (!sessionCanAccessNexaAiAssistant(me)) {
         router.replace("/mappa-portale");
         return;
       }
-      const pack = await fetchAiNlQueryCatalog(t);
-      setCatalog(pack.queries);
-      setLlmActive(pack.capabilities.llmActive);
-      if (pack.queries[0]) setSelectedQueryId(pack.queries[0].id);
+      setLlmActive(sessionCanUseNexaAiOpenAiLlm(me));
+      try {
+        const pack = await fetchAiNlQueryCatalog(t);
+        setCatalog(pack.queries);
+        setLlmActive(pack.capabilities.llmActive);
+        if (pack.queries[0]) setSelectedQueryId(pack.queries[0].id);
+      } catch {
+        setCatalog([]);
+        setSelectedQueryId("");
+      }
       try {
         const scope = await fetchAiAssistantScopeOptions(t);
         setScopeOptions(scope);

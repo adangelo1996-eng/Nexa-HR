@@ -198,6 +198,10 @@ class PatchAssumptionsDto {
 
   @IsOptional()
   @IsNumber()
+  employeeInpsPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
   inailPermille?: number | null;
 
   @IsOptional()
@@ -211,6 +215,54 @@ class PatchAssumptionsDto {
   @IsOptional()
   @IsNumber()
   bonusProvisionPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  inflationPercentAnnual?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  payrollIndexationPercent?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(12)
+  @Max(14)
+  defaultPayMonthsPerYear?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  defaultWeeklyContractHours?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  plannedNewHires?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  plannedExits?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  avgNewHireRalAnnual?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  employerInpsDiscountPercent?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  overtimeBudgetPercentOnGross?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  travelBudgetPerFteMonthly?: number | null;
+
+  @IsOptional()
+  @IsString()
+  compilationNotes?: string | null;
 }
 
 class PatchCellNoteDto {
@@ -509,10 +561,22 @@ export class PersonnelBudgetController {
       dto.year,
       {
         employerInpsPercent: dto.employerInpsPercent,
+        employeeInpsPercent: dto.employeeInpsPercent,
         inailPermille: dto.inailPermille,
         tfrDivisor: dto.tfrDivisor,
         welfarePercent: dto.welfarePercent,
-        bonusProvisionPercent: dto.bonusProvisionPercent
+        bonusProvisionPercent: dto.bonusProvisionPercent,
+        inflationPercentAnnual: dto.inflationPercentAnnual,
+        payrollIndexationPercent: dto.payrollIndexationPercent,
+        defaultPayMonthsPerYear: dto.defaultPayMonthsPerYear,
+        defaultWeeklyContractHours: dto.defaultWeeklyContractHours,
+        plannedNewHires: dto.plannedNewHires,
+        plannedExits: dto.plannedExits,
+        avgNewHireRalAnnual: dto.avgNewHireRalAnnual,
+        employerInpsDiscountPercent: dto.employerInpsDiscountPercent,
+        overtimeBudgetPercentOnGross: dto.overtimeBudgetPercentOnGross,
+        travelBudgetPerFteMonthly: dto.travelBudgetPerFteMonthly,
+        compilationNotes: dto.compilationNotes ?? undefined
       },
       auth.userId
     );

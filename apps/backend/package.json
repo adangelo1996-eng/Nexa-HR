@@ -17,6 +17,7 @@
     "@payday/payroll-adapters-it": "workspace:*",
     "@payday/payroll-core": "workspace:*",
     "@payday/user-pii-crypto": "workspace:*",
+    "@fontsource/montserrat": "^5.2.5",
     "@supabase/supabase-js": "^2.49.4",
     "archiver": "^7.0.1",
     "class-transformer": "^0.5.1",

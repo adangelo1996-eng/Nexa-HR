@@ -449,7 +449,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         subgroups: section.subgroups.map((sg) => ({
           id: sg.id,
           title: sg.title,
-          items: sg.items.filter((item) => String(item.href) !== "/")
+          items: sg.items.filter(
+            (item) => String(item.href) !== "/" && String(item.href) !== "/hebb-ai-support"
+          )
         }))
       })).filter((section) => section.subgroups.some((sg) => sg.items.length > 0)),
     [employeeNavSections]
@@ -583,6 +585,14 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
+      {sessionCanAccessNexaAiAssistant(user ?? undefined) ? (
+        <SidebarNavLink
+          item={NAV_HEBB_AI_SUPPORT}
+          pathname={pathname}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ) : null}
       {showTopPinsBlock ? (
         <SidebarPillarNav
           availableTiles={allPinTiles}
@@ -617,15 +627,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           {sessionCanAccessNexaLifecycleHr(user ?? undefined) ? (
             <SidebarNavLink
               item={NAV_HEBB_AI_MATE}
-              pathname={pathname}
-              onNavigate={closeMobile}
-              beforeNavigate={persistSidebarScrollPositions}
-            />
-          ) : null}
-          {sessionCanAccessNexaAiAssistant(user ?? undefined) &&
-          sessionCanUseNexaAiOpenAiLlm(user ?? undefined) ? (
-            <SidebarNavLink
-              item={NAV_HEBB_AI_SUPPORT}
               pathname={pathname}
               onNavigate={closeMobile}
               beforeNavigate={persistSidebarScrollPositions}

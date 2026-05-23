@@ -1,3 +1,4 @@
+import { ITALY_EMPLOYEE_COST_ASSUMPTIONS_2026_MVP } from "@payday/domain";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { AuthRole } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
@@ -5,6 +6,8 @@ import { HrDataStore } from "../platform/hr-data.store";
 import { TrainingService } from "../training/training.service";
 import { isHebbFieldSensitive, stripSensitiveFromPartialForm } from "./hebb-field-sensitivity";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
+
+const IT = ITALY_EMPLOYEE_COST_ASSUMPTIONS_2026_MVP;
 
 const SCHEMA_FIELD_SUGGEST = "ai_field_suggest_v1";
 
@@ -320,6 +323,179 @@ export class FieldSuggestService {
         return { value: existing, confidence: 0.9, reason: "Tipologia invariata rispetto al documento di origine." };
       }
       return { value: "other", confidence: 0.75, reason: "Tipologia generica per documenti non classificati." };
+    }
+
+    if (formId === "hr.personnel-budget.assumptions") {
+      const year =
+        typeof context.year === "number"
+          ? context.year
+          : typeof partial.year === "number"
+            ? partial.year
+            : new Date().getFullYear();
+      const assumptions = await this.store.getPersonnelBudgetAssumptions(me.companyId, year);
+      const rules: Record<string, { value: string | number; confidence: number; reason: string }> = {
+        employerinpspercent: {
+          value: assumptions.employerInpsPercent ?? IT.employerInpsPercent,
+          confidence: 0.88,
+          reason: "Aliquota INPS datore da assunzioni anno o default Italia 2026."
+        },
+        employeeinpspercent: {
+          value: assumptions.employeeInpsPercent ?? IT.employeeInpsPercent,
+          confidence: 0.86,
+          reason: "Aliquota INPS dipendente da assunzioni o default Italia 2026."
+        },
+        inailpermille: {
+          value: assumptions.inailPermille ?? IT.inailPercent * 10,
+          confidence: 0.85,
+          reason: "INAIL in permille (default ~0,6% lordo)."
+        },
+        tfrdivisor: {
+          value: assumptions.tfrDivisor ?? IT.tfrDivisor,
+          confidence: 0.9,
+          reason: "Divisore TFR standard 13,5."
+        },
+        welfarepercent: {
+          value: assumptions.welfarePercent || 1.5,
+          confidence: 0.7,
+          reason: "Welfare aziendale tipico % su lordo."
+        },
+        bonusprovisionpercent: {
+          value: assumptions.bonusProvisionPercent || 5,
+          confidence: 0.72,
+          reason: "Accantonamento premi/variable % su lordo."
+        },
+        inflationpercentannual: {
+          value: assumptions.inflationPercentAnnual,
+          confidence: 0.75,
+          reason: "Inflazione annua per indicizzazione costi personale."
+        },
+        payrollindexationpercent: {
+          value: assumptions.payrollIndexationPercent,
+          confidence: 0.74,
+          reason: "Aumento medio retributivo annuo oltre inflazione."
+        },
+        defaultpaymonthsperyear: {
+          value: assumptions.defaultPayMonthsPerYear,
+          confidence: 0.92,
+          reason: "Mensilità standard (13 o 14) per nuove assunzioni."
+        },
+        defaultweeklycontracthours: {
+          value: assumptions.defaultWeeklyContractHours,
+          confidence: 0.9,
+          reason: "Ore settimanali contratto full-time standard."
+        },
+        plannednewhires: {
+          value: assumptions.plannedNewHires,
+          confidence: 0.55,
+          reason: "Conteggio assunzioni pianificate (verificare con HR)."
+        },
+        plannedexits: {
+          value: assumptions.plannedExits,
+          confidence: 0.55,
+          reason: "Conteggio uscite pianificate (verificare con HR)."
+        },
+        avgnewhireralannual: {
+          value: assumptions.avgNewHireRalAnnual ?? 32000,
+          confidence: 0.6,
+          reason: "RAL media indicativa nuove assunzioni (aggregato)."
+        },
+        employerinpsdiscountpercent: {
+          value: assumptions.employerInpsDiscountPercent,
+          confidence: 0.65,
+          reason: "Sconto contributivo datore aggregato da agevolazioni."
+        },
+        overtimebudgetpercentongross: {
+          value: assumptions.overtimeBudgetPercentOnGross,
+          confidence: 0.7,
+          reason: "Budget straordinari % sul lordo mensile."
+        },
+        travelbudgetperftemonthly: {
+          value: assumptions.travelBudgetPerFteMonthly,
+          confidence: 0.68,
+          reason: "Trasferte medie €/mese per FTE."
+        },
+        compilationnotes: {
+          value:
+            assumptions.compilationNotes.trim() ||
+            `Budget ${year}: allineare forecast a assunzioni/uscite pianificate e indici retributivi.`,
+          confidence: 0.65,
+          reason: "Note operative per compilazione budget assistita."
+        }
+      };
+      const hit = rules[fk];
+      if (hit) return hit;
+    }
+
+    if (formId === "hr.personnel-budget.forecast-cell") {
+      const year =
+        typeof context.year === "number" ? context.year : new Date().getFullYear();
+      const assumptions = await this.store.getPersonnelBudgetAssumptions(me.companyId, year);
+      const metric =
+        typeof context.metricKey === "string"
+          ? context.metricKey.replace(/[^a-z]/gi, "").toLowerCase()
+          : fk.replace(/^forecast/, "");
+      const grossHint =
+        typeof partial.budgetRalMonthly === "number" && partial.budgetRalMonthly > 0
+          ? partial.budgetRalMonthly / 12
+          : 3500;
+      if (metric === "ral") {
+        const ralAnnual =
+          typeof partial.budgetRalAnnual === "number"
+            ? partial.budgetRalAnnual
+            : grossHint * (assumptions.defaultPayMonthsPerYear || 13);
+        return {
+          value: Math.round(ralAnnual),
+          confidence: 0.62,
+          reason: "RAL annua stimata da lordo mensile e mensilità standard."
+        };
+      }
+      if (metric === "overtime") {
+        const pct = assumptions.overtimeBudgetPercentOnGross / 100;
+        return {
+          value: Math.round(grossHint * pct),
+          confidence: 0.7,
+          reason: "Straordinari da % assunzioni sul lordo mensile."
+        };
+      }
+      if (metric === "travel") {
+        return {
+          value: Math.round(assumptions.travelBudgetPerFteMonthly),
+          confidence: 0.72,
+          reason: "Trasferte da budget medio per FTE nelle assunzioni."
+        };
+      }
+      const rates = {
+        employerInpsRate:
+          assumptions.employerInpsPercent != null
+            ? (assumptions.employerInpsPercent - assumptions.employerInpsDiscountPercent) / 100
+            : IT.employerInpsPercent / 100,
+        inailRate:
+          assumptions.inailPermille != null
+            ? assumptions.inailPermille / 1000
+            : IT.inailPercent / 100,
+        tfrDivisor: assumptions.tfrDivisor ?? IT.tfrDivisor
+      };
+      if (metric === "inps") {
+        return {
+          value: Math.round(grossHint * rates.employerInpsRate),
+          confidence: 0.75,
+          reason: "Quota INPS datore da aliquota assunzioni."
+        };
+      }
+      if (metric === "inail") {
+        return {
+          value: Math.round(grossHint * rates.inailRate),
+          confidence: 0.75,
+          reason: "INAIL da permille assunzioni."
+        };
+      }
+      if (metric === "tfr") {
+        return {
+          value: Math.round(grossHint / rates.tfrDivisor),
+          confidence: 0.78,
+          reason: "TFR mensile da divisore assunzioni."
+        };
+      }
     }
 
     if (formId === "settings.profile" && (fk === "jobtitle" || fk === "department")) {

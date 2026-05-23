@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PersonnelBudgetForecastCellAssist } from "@/components/personnel-budget/personnel-budget-forecast-cell-assist";
 import { PB_TABLE, PB_TABLE_WRAP, PB_TD, PB_TD_ZEBRA, PB_TH } from "@/components/personnel-budget/table-theme";
+import type { PersonnelBudgetForecastMetricKey } from "@/lib/personnel-budget-assumptions";
 import {
   fetchPersonnelBudgetForecastSnapshot,
   fetchCurrentUser,
@@ -305,15 +307,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.ral)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="ral"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.ral ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "ral", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "ral", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "ral", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -321,15 +326,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.overtime)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="overtime"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.overtime ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "overtime", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "overtime", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "overtime", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -337,15 +345,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.travel)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="travel"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.travel ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "travel", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "travel", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "travel", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -353,15 +364,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.inps)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="inps"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.inps ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "inps", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "inps", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "inps", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -369,15 +383,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.inail)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="inail"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.inail ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "inail", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "inail", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "inail", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -385,15 +402,18 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>{formatPersonnelBudgetAmount(b.tfr)}</td>
                         <td className={td}>
-                          <input
-                            className="w-16 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-20"
+                          <ForecastMetricInput
+                            metricKey="tfr"
+                            year={year}
+                            month={month}
+                            userId={row.userId}
                             value={dr.tfr ?? ""}
-                            onChange={(e) => updateDraft(row.userId, "tfr", e.target.value)}
-                            onBlur={(e) => {
-                              const p = parsePersonnelBudgetMoneyInput(e.target.value);
+                            budgetRal={b.ral}
+                            onChange={(v) => updateDraft(row.userId, "tfr", v)}
+                            onBlurFormat={(v) => {
+                              const p = parsePersonnelBudgetMoneyInput(v);
                               if (p != null) updateDraft(row.userId, "tfr", formatPersonnelBudgetAmount(p));
                             }}
-                            inputMode="decimal"
                           />
                         </td>
                         <td className={`${td} text-[var(--prom-muted)]`}>
@@ -411,6 +431,49 @@ export default function PersonnelBudgetForecastPage(): React.JSX.Element | null 
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ForecastMetricInput({
+  metricKey,
+  year,
+  month,
+  userId,
+  value,
+  budgetRal,
+  onChange,
+  onBlurFormat
+}: {
+  metricKey: PersonnelBudgetForecastMetricKey;
+  year: number;
+  month: number;
+  userId: string;
+  value: string;
+  budgetRal?: number;
+  onChange: (value: string) => void;
+  onBlurFormat: (value: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-0.5">
+      <input
+        className="w-14 rounded border border-[var(--prom-line)] bg-transparent px-0.5 py-0.5 sm:w-16"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => onBlurFormat(e.target.value)}
+        inputMode="decimal"
+      />
+      <PersonnelBudgetForecastCellAssist
+        metricKey={metricKey}
+        year={year}
+        month={month}
+        userId={userId}
+        partialForm={{
+          budgetRalMonthly: budgetRal,
+          budgetRalAnnual: budgetRal != null ? budgetRal * 13 : undefined
+        }}
+        onSuggestValue={onChange}
+      />
     </div>
   );
 }
