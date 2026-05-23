@@ -29,7 +29,11 @@ import {
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
 import { buildEmployeePortalHubColumns } from "@/lib/portal-mappa-employee";
-import { buildAnalyticsPortalRow, buildLifecyclePortalColumns } from "@/lib/portal-mappa-lifecycle";
+import {
+  buildAnalyticsPortalRow,
+  buildLifecyclePortalColumns,
+  lifecycleColumnAccentCategory
+} from "@/lib/portal-mappa-lifecycle";
 import type { PortalTile } from "@/lib/portal-mappa";
 
 export type PortalMapNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
@@ -105,7 +109,7 @@ export function buildHrPortalMapNavSections(
   const sections: PortalMapNavSection[] = lifecycle.map((col) => ({
     id: col.id,
     title: col.title,
-    portalCategory: "Persone",
+    portalCategory: col.accentCategory ?? lifecycleColumnAccentCategory(col.id),
     subgroups: [
       {
         id: `${col.id}-items`,

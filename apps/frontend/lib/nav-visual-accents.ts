@@ -16,7 +16,14 @@ export function portalCategoryAccentClass(category: string): string {
     "HEBB AI for HR": "text-violet-600 dark:text-violet-300",
     "Selezione e documenti": "text-amber-600 dark:text-amber-300",
     "Analisi e pianificazione": "text-sky-600 dark:text-sky-300",
-    "Amministrazione e dati": "text-orange-600 dark:text-orange-300"
+    "Amministrazione e dati": "text-orange-600 dark:text-orange-300",
+    Selezione: "text-amber-600 dark:text-amber-300",
+    Onboarding: "text-lime-600 dark:text-lime-300",
+    Impiego: "text-cyan-600 dark:text-cyan-300",
+    Sviluppo: "text-sky-600 dark:text-sky-300",
+    Uscita: "text-orange-600 dark:text-orange-300",
+    "Analytics & Intelligence": "text-violet-600 dark:text-violet-300",
+    Home: "text-cyan-600 dark:text-cyan-300",
   };
   return map[category] ?? "text-slate-600 dark:text-sky-200/90";
 }
@@ -87,6 +94,13 @@ export function portalCategoryTileTopAccentClass(category: string): string {
     "Selezione e documenti": "border-t-2 border-t-amber-400/85",
     "Analisi e pianificazione": "border-t-2 border-t-sky-400/85",
     "Amministrazione e dati": "border-t-2 border-t-orange-400/85",
+    Selezione: "border-t-2 border-t-amber-400/85",
+    Onboarding: "border-t-2 border-t-lime-400/85",
+    Impiego: "border-t-2 border-t-cyan-400/85",
+    Sviluppo: "border-t-2 border-t-sky-400/85",
+    Uscita: "border-t-2 border-t-orange-400/85",
+    "Analytics & Intelligence": "border-t-2 border-t-violet-400/85",
+    Home: "border-t-2 border-t-cyan-400/85",
     "Ogni giorno": "border-t-2 border-t-cyan-400/85",
     "Assumere e far entrare": "border-t-2 border-t-amber-400/85",
     "Sviluppare e pianificare": "border-t-2 border-t-indigo-400/85",
@@ -167,6 +181,13 @@ export function portalAccentCategoryForNavSection(sectionId: string, title: stri
     "hr-selezione": "Selezione e documenti",
     "hr-documenti": "Selezione e documenti",
     "hr-analisi": "Analisi e pianificazione",
+
+    selezione: "Selezione",
+    onboarding: "Onboarding",
+    impiego: "Impiego",
+    sviluppo: "Sviluppo",
+    exit: "Uscita",
+    analytics: "HEBB AI for HR",
     "hr-admin": "Amministrazione e dati"
   };
   return byId[sectionId] ?? title;
@@ -282,7 +303,14 @@ export function portalCategoryFlyoutAccentBarClass(category: string): string {
     "Ogni giorno": "border-l-cyan-500 dark:border-l-cyan-400",
     "Assumere e far entrare": "border-l-amber-500 dark:border-l-amber-400",
     "Sviluppare e pianificare": "border-l-indigo-500 dark:border-l-indigo-400",
-    "Analisi e budget": "border-l-sky-500 dark:border-l-sky-400"
+    "Analisi e budget": "border-l-sky-500 dark:border-l-sky-400",
+    Selezione: "border-l-amber-500 dark:border-l-amber-400",
+    Onboarding: "border-l-lime-500 dark:border-l-lime-400",
+    Impiego: "border-l-cyan-500 dark:border-l-cyan-400",
+    Sviluppo: "border-l-sky-500 dark:border-l-sky-400",
+    Uscita: "border-l-orange-500 dark:border-l-orange-400",
+    "Analytics & Intelligence": "border-l-violet-500 dark:border-l-violet-400",
+    Home: "border-l-cyan-500 dark:border-l-cyan-400"
   };
   return map[category] ?? "border-l-slate-400 dark:border-l-slate-500";
 }
