@@ -151,6 +151,16 @@ function systemPromptForSchema(schemaVersion: string): string {
         "Migliora envelope.summary in italiano professionale per revisori HR: spiega cosa verrà proposto nel piano di massa, quanti dipendenti nel perimetro (usa scopeCount e aggregates), limiti e passo successo (preview + conferma). " +
         "Non inventare numeri assenti da envelope.facts.aggregates; non introdurre nomi di persone."
       );
+    case "ai_cowork_planner_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"needs_clarification\":boolean,\"confidence\":number,\"clarification_message\":\"stringa\",\"suggestions\":[\"stringa\"],\"summary\":\"stringa\",\"sections\":[{\"tool\":\"stringa\",\"domain\":\"stringa\",\"title\":\"stringa\"}]}}. " +
+        "L'ingresso ha envelope.facts: message, scopeCount, filters, regexDomainHints, aggregatesByDomain (solo numeri), availableTools (tool/domain/labelIt — whitelisted), conversationTail (ultimi turni senza nominativi). " +
+        "Se l'intento è ambiguo o confidence < 0.55: needs_clarification true, clarification_message in italiano, suggestions (max 4) operative. " +
+        "Altrimenti: needs_clarification false, confidence 0–1, summary per HR, sections con 1+ voci: tool DEVE essere uno di availableTools; domain coerente; title breve in italiano. " +
+        "Puoi proporre più sezioni se il messaggio mescola accordi SW, richieste e contratti. training_batch solo per spiegare «in arrivo», senza righe. " +
+        "Non inventare numeri; non nominativi; non tool fuori da availableTools."
+      );
     case "ai_turnover_insights_deep_v1":
       return (
         base +

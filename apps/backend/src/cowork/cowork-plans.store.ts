@@ -2,9 +2,20 @@ import { randomUUID } from "node:crypto";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
 import { COWORK_PLAN_TTL_MS } from "./cowork.constants";
-import type { CoworkPlanDto, CoworkPlanRow, CoworkPlanStatus } from "./cowork.types";
+import type { CoworkPlanDto, CoworkPlanRow, CoworkPlanSection, CoworkPlanStatus } from "./cowork.types";
+import type { CoworkPlanSectionMeta } from "./cowork-plan-hydration.service";
 
-type StoredPlan = CoworkPlanDto & { companyId: string; actorUserId: string };
+type StoredRowsPayloadV2 = {
+  v: 2;
+  sectionMeta: CoworkPlanSectionMeta[];
+  rows: CoworkPlanRow[];
+};
+
+type StoredPlan = CoworkPlanDto & {
+  companyId: string;
+  actorUserId: string;
+  sectionMeta: CoworkPlanSectionMeta[];
+};
 
 @Injectable()
 export class CoworkPlansStore {
@@ -16,15 +27,65 @@ export class CoworkPlansStore {
     return this.store.getServiceRoleClient();
   }
 
+  private parseRowsPayload(rowsJson: unknown): { rows: CoworkPlanRow[]; sectionMeta: CoworkPlanSectionMeta[] } {
+    if (Array.isArray(rowsJson)) {
+      const rows = rowsJson as CoworkPlanRow[];
+      const legacyRows = rows.map((row) => ({
+        ...row,
+        sectionId: row.sectionId ?? randomUUID(),
+        domain: row.domain ?? ("unknown" as const)
+      }));
+      return {
+        rows: legacyRows,
+        sectionMeta: this.inferSectionMeta(legacyRows)
+      };
+    }
+    if (rowsJson && typeof rowsJson === "object" && (rowsJson as StoredRowsPayloadV2).v === 2) {
+      const payload = rowsJson as StoredRowsPayloadV2;
+      return {
+        rows: payload.rows ?? [],
+        sectionMeta: payload.sectionMeta ?? []
+      };
+    }
+    return { rows: [], sectionMeta: [] };
+  }
+
+  private inferSectionMeta(rows: CoworkPlanRow[]): CoworkPlanSectionMeta[] {
+    const seen = new Map<string, CoworkPlanSectionMeta>();
+    for (const row of rows) {
+      if (!seen.has(row.sectionId)) {
+        seen.set(row.sectionId, {
+          sectionId: row.sectionId,
+          domain: row.domain,
+          title: row.domain
+        });
+      }
+    }
+    return [...seen.values()];
+  }
+
+  private serializeRowsPayload(rows: CoworkPlanRow[], sectionMeta: CoworkPlanSectionMeta[]): StoredRowsPayloadV2 {
+    return { v: 2, sectionMeta, rows };
+  }
+
   private mapRow(row: Record<string, unknown>): StoredPlan {
-    const rows = Array.isArray(row.rows_json) ? (row.rows_json as CoworkPlanRow[]) : [];
+    const { rows, sectionMeta } = this.parseRowsPayload(row.rows_json);
+    const sections: CoworkPlanSection[] = sectionMeta.map((meta) => ({
+      sectionId: meta.sectionId,
+      domain: meta.domain,
+      title: meta.title,
+      rows: rows.filter((r) => r.sectionId === meta.sectionId)
+    }));
+
     return {
       planId: String(row.id),
       companyId: String(row.company_id),
       actorUserId: String(row.actor_user_id),
       domain: row.domain as StoredPlan["domain"],
       summary: String(row.summary ?? ""),
+      sections,
       rows,
+      sectionMeta,
       status: row.status as CoworkPlanStatus,
       createdAt: String(row.created_at),
       expiresAt: String(row.expires_at),
@@ -34,14 +95,22 @@ export class CoworkPlansStore {
     };
   }
 
-  async save(plan: Omit<StoredPlan, "createdAt" | "expiresAt" | "status" | "appliedAt"> & {
-    status?: CoworkPlanStatus;
-    appliedAt?: string | null;
-  }): Promise<CoworkPlanDto> {
+  async save(
+    plan: Omit<StoredPlan, "createdAt" | "expiresAt" | "status" | "appliedAt" | "sectionMeta"> & {
+      status?: CoworkPlanStatus;
+      appliedAt?: string | null;
+      sections: CoworkPlanSection[];
+    }
+  ): Promise<CoworkPlanDto> {
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + COWORK_PLAN_TTL_MS).toISOString();
     const planId = plan.planId || randomUUID();
     const status = plan.status ?? "pending";
+    const sectionMeta: CoworkPlanSectionMeta[] = plan.sections.map((s) => ({
+      sectionId: s.sectionId,
+      domain: s.domain,
+      title: s.title
+    }));
 
     const sb = this.sb();
     const { error } = await sb.from("hr_cowork_plans").insert({
@@ -50,34 +119,28 @@ export class CoworkPlansStore {
       actor_user_id: plan.actorUserId,
       domain: plan.domain,
       summary: plan.summary,
-      rows_json: plan.rows,
+      rows_json: this.serializeRowsPayload(plan.rows, sectionMeta),
       status,
       created_at: createdAt,
       expires_at: expiresAt,
       applied_at: plan.appliedAt ?? null
     });
 
-    if (error) {
-      const stored: StoredPlan = {
-        ...plan,
-        planId,
-        status,
-        createdAt,
-        expiresAt,
-        appliedAt: plan.appliedAt ?? null
-      };
-      this.mem.set(planId, stored);
-      return this.toDto(stored);
-    }
-
     const stored: StoredPlan = {
       ...plan,
       planId,
+      sectionMeta,
       status,
       createdAt,
       expiresAt,
       appliedAt: plan.appliedAt ?? null
     };
+
+    if (error) {
+      this.mem.set(planId, stored);
+      return this.toDto(stored);
+    }
+
     this.mem.set(planId, stored);
     return this.toDto(stored);
   }
@@ -116,7 +179,8 @@ export class CoworkPlansStore {
     companyId: string,
     rows: CoworkPlanRow[],
     status: CoworkPlanStatus,
-    appliedAt?: string | null
+    appliedAt?: string | null,
+    sectionMeta?: CoworkPlanSectionMeta[]
   ): Promise<CoworkPlanDto> {
     const cur = await this.get(planId, companyId);
     cur.rows = rows;
@@ -124,13 +188,22 @@ export class CoworkPlansStore {
     if (appliedAt !== undefined) {
       cur.appliedAt = appliedAt;
     }
+    if (sectionMeta) {
+      cur.sectionMeta = sectionMeta;
+    }
+    cur.sections = cur.sectionMeta.map((meta) => ({
+      sectionId: meta.sectionId,
+      domain: meta.domain,
+      title: meta.title,
+      rows: rows.filter((r) => r.sectionId === meta.sectionId)
+    }));
     this.mem.set(planId, cur);
 
     const sb = this.sb();
     await sb
       .from("hr_cowork_plans")
       .update({
-        rows_json: rows,
+        rows_json: this.serializeRowsPayload(rows, cur.sectionMeta),
         status,
         applied_at: cur.appliedAt ?? null
       })
@@ -145,6 +218,7 @@ export class CoworkPlansStore {
       planId: stored.planId,
       domain: stored.domain,
       summary: stored.summary,
+      sections: stored.sections,
       rows: stored.rows,
       status: stored.status,
       createdAt: stored.createdAt,

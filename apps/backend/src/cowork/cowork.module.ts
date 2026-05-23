@@ -5,6 +5,8 @@ import { HrContractsModule } from "../hr-contracts/hr-contracts.module";
 import { PlatformModule } from "../platform/platform.module";
 import { CoworkController } from "./cowork.controller";
 import { CoworkOrchestratorService } from "./cowork-orchestrator.service";
+import { CoworkPlanHydrationService } from "./cowork-plan-hydration.service";
+import { CoworkPlannerService } from "./cowork-planner.service";
 import { CoworkPlansStore } from "./cowork-plans.store";
 import { CoworkExecutorRegistry } from "./executors/cowork-executor.registry";
 import { HrStandardContractsExecutor } from "./executors/hr-standard-contracts.executor";
@@ -16,6 +18,8 @@ import { SmartworkingRequestsExecutor } from "./executors/smartworking-requests.
   controllers: [CoworkController],
   providers: [
     CoworkOrchestratorService,
+    CoworkPlanHydrationService,
+    CoworkPlannerService,
     CoworkPlansStore,
     CoworkExecutorRegistry,
     SmartworkingAgreementsExecutor,

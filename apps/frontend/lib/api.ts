@@ -3502,6 +3502,8 @@ export async function cancelHrOffboarding(token: string, userId: string): Promis
 
 export type CoworkPlanRowDto = {
   id: string;
+  sectionId: string;
+  domain: string;
   userId: string;
   fullName: string;
   action: string;
@@ -3512,10 +3514,18 @@ export type CoworkPlanRowDto = {
   payload: Record<string, unknown>;
 };
 
+export type CoworkPlanSectionDto = {
+  sectionId: string;
+  domain: string;
+  title: string;
+  rows: CoworkPlanRowDto[];
+};
+
 export type CoworkPlanDto = {
   planId: string;
   domain: string;
   summary: string;
+  sections: CoworkPlanSectionDto[];
   rows: CoworkPlanRowDto[];
   status: string;
   createdAt: string;
@@ -3525,6 +3535,21 @@ export type CoworkPlanDto = {
   privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
 };
 
+export type CoworkClarificationDto = {
+  kind: "clarification";
+  message: string;
+  suggestions: string[];
+  confidence: number;
+};
+
+export type CoworkPlanResponseDto = CoworkPlanDto | CoworkClarificationDto;
+
+export function isCoworkClarificationDto(
+  response: CoworkPlanResponseDto
+): response is CoworkClarificationDto {
+  return "kind" in response && response.kind === "clarification";
+}
+
 export async function fetchCoworkMeta(token: string): Promise<{ examplePrompts: string[] }> {
   const response = await fetch(buildApiUrl("/cowork/meta"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
@@ -3533,21 +3558,32 @@ export async function fetchCoworkMeta(token: string): Promise<{ examplePrompts: 
 
 export async function postCoworkPlan(
   token: string,
-  body: { message: string; costCenterId?: string; teamId?: string }
-): Promise<CoworkPlanDto> {
+  body: {
+    message: string;
+    costCenterId?: string;
+    teamId?: string;
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  }
+): Promise<CoworkPlanResponseDto> {
   const response = await fetch(buildApiUrl("/cowork/plan"), {
     method: "POST",
     headers: getAuthHeaders(token),
     body: JSON.stringify(body)
   });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<CoworkPlanDto>;
+  return response.json() as Promise<CoworkPlanResponseDto>;
 }
 
 export async function postCoworkApply(
   token: string,
   body: { planId: string; selectedRowIds: string[] }
-): Promise<{ planId: string; rows: CoworkPlanRowDto[]; appliedCount: number; errorCount: number }> {
+): Promise<{
+  planId: string;
+  rows: CoworkPlanRowDto[];
+  sections: CoworkPlanSectionDto[];
+  appliedCount: number;
+  errorCount: number;
+}> {
   const response = await fetch(buildApiUrl("/cowork/apply"), {
     method: "POST",
     headers: getAuthHeaders(token),
@@ -3557,6 +3593,7 @@ export async function postCoworkApply(
   return response.json() as Promise<{
     planId: string;
     rows: CoworkPlanRowDto[];
+    sections: CoworkPlanSectionDto[];
     appliedCount: number;
     errorCount: number;
   }>;

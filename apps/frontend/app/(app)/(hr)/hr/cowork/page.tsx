@@ -1,13 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, CircleDashed, Loader2, ShieldCheck, UserRound } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleDashed,
+  Loader2,
+  MessageCircleQuestion,
+  ShieldCheck,
+  UserRound
+} from "lucide-react";
 import {
   fetchCoworkMeta,
+  fetchUsers,
+  isCoworkClarificationDto,
   postCoworkApply,
   postCoworkPlan,
   type CoworkPlanDto,
-  type CoworkPlanRowDto
+  type CoworkPlanRowDto,
+  type CoworkPlanSectionDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
@@ -28,6 +41,8 @@ const DOMAIN_LABELS: Record<string, string> = {
   training: "Formazione",
   unknown: "—"
 };
+
+const CONVERSATION_HISTORY_MAX = 8;
 
 function rowStatusLabel(status: CoworkPlanRowDto["status"]): string {
   if (status === "applied") return "Applicata";
@@ -104,12 +119,150 @@ function PlanRowCard(props: {
   );
 }
 
+function SectionBlock(props: {
+  section: CoworkPlanSectionDto;
+  expanded: boolean;
+  selected: Set<string>;
+  applying: boolean;
+  onToggleExpand: (sectionId: string) => void;
+  onToggleRow: (id: string) => void;
+  onApproveSection: (sectionId: string) => void;
+  onSelectSection: (sectionId: string) => void;
+}): React.JSX.Element {
+  const { section, expanded, selected, applying, onToggleExpand, onToggleRow, onApproveSection, onSelectSection } =
+    props;
+  const proposedInSection = section.rows.filter((r) => r.status === "proposed");
+  const allProposedSelected =
+    proposedInSection.length > 0 && proposedInSection.every((r) => selected.has(r.id));
+
+  return (
+    <section className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)]">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--prom-line)] px-4 py-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={() => onToggleExpand(section.sectionId)}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          )}
+          <div className="min-w-0">
+            <h3 className="font-semibold text-[var(--prom-text)]">{section.title}</h3>
+            <p className="text-xs text-[var(--prom-muted)]">
+              {DOMAIN_LABELS[section.domain] ?? section.domain} · {section.rows.length} righe
+            </p>
+          </div>
+        </button>
+        <div className="flex flex-wrap gap-2">
+          {proposedInSection.length > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelectSection(section.sectionId)}>
+              {allProposedSelected ? "Deseleziona sezione" : "Seleziona sezione"}
+            </Button>
+          ) : null}
+          <LoadingButton
+            size="sm"
+            loading={applying}
+            disabled={proposedInSection.filter((r) => selected.has(r.id)).length === 0}
+            onClick={() => onApproveSection(section.sectionId)}
+          >
+            Approva sezione
+          </LoadingButton>
+        </div>
+      </header>
+      {expanded ? (
+        <div className="space-y-2 p-3 md:hidden">
+          {section.rows.map((row) => (
+            <PlanRowCard
+              key={row.id}
+              row={row}
+              selected={selected.has(row.id)}
+              applying={applying}
+              onToggle={onToggleRow}
+            />
+          ))}
+        </div>
+      ) : null}
+      {expanded ? (
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[480px] text-left text-sm">
+            <thead className="border-b border-[var(--prom-line)] bg-[var(--prom-surface-soft)] text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              <tr>
+                <th className="w-10 p-3" scope="col">
+                  <span className="sr-only">Seleziona</span>
+                </th>
+                <th className="p-3" scope="col">
+                  Dipendente
+                </th>
+                <th className="p-3" scope="col">
+                  Dettaglio
+                </th>
+                <th className="w-28 p-3" scope="col">
+                  Stato
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--prom-line)]">
+              {section.rows.map((row) => {
+                const canSelect = row.status === "proposed";
+                return (
+                  <tr
+                    key={row.id}
+                    className={`text-[var(--prom-text)] ${selected.has(row.id) ? "bg-[color-mix(in_srgb,var(--prom-accent)_6%,transparent)]" : ""}`}
+                  >
+                    <td className="p-3 align-top">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        disabled={!canSelect || applying}
+                        onChange={() => onToggleRow(row.id)}
+                        aria-label={`Seleziona ${row.fullName}`}
+                      />
+                    </td>
+                    <td className="p-3 align-top">
+                      <div className="flex items-start gap-2">
+                        <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+                        <div>
+                          <div className="font-medium leading-snug">{row.fullName}</div>
+                          <div className="mt-0.5 text-xs text-[var(--prom-muted)]">{row.action}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 align-top text-[var(--prom-muted)]">
+                      <p className="leading-relaxed">{row.detail}</p>
+                    </td>
+                    <td className="p-3 align-top">
+                      <span
+                        className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${rowStatusClass(row.status)}`}
+                      >
+                        {rowStatusLabel(row.status)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function NexaCoworkPage(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [examples, setExamples] = useState<string[]>([]);
   const [plan, setPlan] = useState<CoworkPlanDto | null>(null);
+  const [clarification, setClarification] = useState<{ message: string; suggestions: string[] } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [costCenterId, setCostCenterId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [costCenterOptions, setCostCenterOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [teamOptions, setTeamOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +275,27 @@ export default function NexaCoworkPage(): React.JSX.Element {
       .catch(() => {
         /* meta opzionale */
       });
+    void fetchUsers(t)
+      .then((users) => {
+        const cc = new Map<string, string>();
+        const teams = new Map<string, string>();
+        for (const u of users) {
+          if (u.costCenterId) {
+            cc.set(u.costCenterId, u.costCenterId);
+          }
+          if (u.teamId) {
+            teams.set(u.teamId, u.teamId);
+          }
+        }
+        setCostCenterOptions([...cc.keys()].sort().map((id) => ({ id, label: id })));
+        setTeamOptions([...teams.keys()].sort().map((id) => ({ id, label: id })));
+      })
+      .catch(() => {
+        /* scope opzionale */
+      });
   }, []);
+
+  const sections = plan?.sections ?? [];
 
   const proposedRows = useMemo(
     () => (plan?.rows ?? []).filter((r) => r.status === "proposed" || r.status === "error"),
@@ -136,9 +309,10 @@ export default function NexaCoworkPage(): React.JSX.Element {
       total: rows.length,
       proposed: rows.filter((r) => r.status === "proposed").length,
       applied: rows.filter((r) => r.status === "applied").length,
-      errors: rows.filter((r) => r.status === "error").length
+      errors: rows.filter((r) => r.status === "error").length,
+      sectionCount: sections.length
     };
-  }, [plan]);
+  }, [plan, sections.length]);
 
   const toggleRow = useCallback((id: string) => {
     setSelected((prev) => {
@@ -157,49 +331,124 @@ export default function NexaCoworkPage(): React.JSX.Element {
     });
   }, [proposedRows]);
 
-  const runPlan = useCallback(async (message: string) => {
-    const t = getToken();
-    if (!t || !message.trim()) return;
-    setPlanning(true);
-    setError(null);
-    setMessages((m) => [...m, { role: "user", content: message.trim() }]);
-    setInput("");
-    try {
-      const result = await postCoworkPlan(t, { message: message.trim() });
-      setPlan(result);
-      setSelected(new Set(result.rows.filter((r) => r.status === "proposed").map((r) => r.id)));
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: result.summary
-        }
-      ]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore generazione piano");
-    } finally {
-      setPlanning(false);
-    }
+  const toggleSectionExpand = useCallback((sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
   }, []);
 
-  const runApply = useCallback(async () => {
-    const t = getToken();
-    if (!t || !plan || selected.size === 0) return;
-    setApplying(true);
-    setError(null);
-    try {
-      const result = await postCoworkApply(t, {
-        planId: plan.planId,
-        selectedRowIds: [...selected]
+  const selectSection = useCallback(
+    (sectionId: string) => {
+      const section = sections.find((s) => s.sectionId === sectionId);
+      if (!section) return;
+      const ids = section.rows.filter((r) => r.status === "proposed").map((r) => r.id);
+      setSelected((prev) => {
+        const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+        const next = new Set(prev);
+        if (allSelected) {
+          for (const id of ids) next.delete(id);
+        } else {
+          for (const id of ids) next.add(id);
+        }
+        return next;
       });
-      setPlan((p) => (p ? { ...p, rows: result.rows, status: result.errorCount > 0 ? "partial" : "applied" } : p));
-      setSelected(new Set());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore applicazione");
-    } finally {
-      setApplying(false);
-    }
-  }, [plan, selected]);
+    },
+    [sections]
+  );
+
+  const runPlan = useCallback(
+    async (message: string) => {
+      const t = getToken();
+      if (!t || !message.trim()) return;
+      setPlanning(true);
+      setError(null);
+      setClarification(null);
+      const userMsg = message.trim();
+      setMessages((m) => [...m, { role: "user", content: userMsg }]);
+      setInput("");
+      try {
+        const history = [...messages, { role: "user" as const, content: userMsg }].slice(-CONVERSATION_HISTORY_MAX);
+        const result = await postCoworkPlan(t, {
+          message: userMsg,
+          conversationHistory: history,
+          costCenterId: costCenterId.trim() || undefined,
+          teamId: teamId.trim() || undefined
+        });
+
+        if (isCoworkClarificationDto(result)) {
+          setPlan(null);
+          setSelected(new Set());
+          setClarification({ message: result.message, suggestions: result.suggestions });
+          setMessages((m) => [...m, { role: "assistant", content: result.message }]);
+          return;
+        }
+
+        setPlan(result);
+        setSelected(new Set(result.rows.filter((r) => r.status === "proposed").map((r) => r.id)));
+        setExpandedSections(new Set(result.sections.map((s) => s.sectionId)));
+        setMessages((m) => [...m, { role: "assistant", content: result.summary }]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Errore generazione piano");
+      } finally {
+        setPlanning(false);
+      }
+    },
+    [messages, costCenterId, teamId]
+  );
+
+  const runApply = useCallback(
+    async (rowIds?: string[]) => {
+      const t = getToken();
+      const ids = rowIds ?? [...selected];
+      if (!t || !plan || ids.length === 0) return;
+      setApplying(true);
+      setError(null);
+      try {
+        const result = await postCoworkApply(t, {
+          planId: plan.planId,
+          selectedRowIds: ids
+        });
+        setPlan((p) =>
+          p
+            ? {
+                ...p,
+                rows: result.rows,
+                sections: result.sections,
+                status: result.errorCount > 0 ? "partial" : "applied"
+              }
+            : p
+        );
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of ids) next.delete(id);
+          return next;
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Errore applicazione");
+      } finally {
+        setApplying(false);
+      }
+    },
+    [plan, selected]
+  );
+
+  const approveSection = useCallback(
+    (sectionId: string) => {
+      const section = sections.find((s) => s.sectionId === sectionId);
+      if (!section) return;
+      const ids = section.rows.filter((r) => r.status === "proposed" && selected.has(r.id)).map((r) => r.id);
+      if (ids.length === 0) {
+        const auto = section.rows.filter((r) => r.status === "proposed").map((r) => r.id);
+        void runApply(auto);
+        return;
+      }
+      void runApply(ids);
+    },
+    [sections, selected, runApply]
+  );
 
   return (
     <HebbAiExperienceShell
@@ -221,6 +470,45 @@ export default function NexaCoworkPage(): React.JSX.Element {
           I nominativi compaiono solo in questa preview HR autorizzata. Il modello AI vede conteggi e aggregati, mai
           nomi o email in chiaro.
         </p>
+      </HebbAiGlassPanel>
+
+      <HebbAiGlassPanel className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[160px] flex-1">
+          <label htmlFor="cowork-cc" className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+            Centro di costo
+          </label>
+          <select
+            id="cowork-cc"
+            value={costCenterId}
+            onChange={(e) => setCostCenterId(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm text-[var(--prom-text)]"
+          >
+            <option value="">Tutti</option>
+            {costCenterOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[160px] flex-1">
+          <label htmlFor="cowork-team" className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+            Team
+          </label>
+          <select
+            id="cowork-team"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm text-[var(--prom-text)]"
+          >
+            <option value="">Tutti</option>
+            {teamOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </HebbAiGlassPanel>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -297,7 +585,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
             <div>
               <h2 className="text-lg font-semibold text-[var(--prom-text)]">Preview operazioni (HITL)</h2>
               <p className="mt-1 text-xs text-[var(--prom-muted)]">
-                Seleziona le righe da applicare dopo aver verificato nominativi e dettaglio.
+                Sezioni per area funzionale: approva un&apos;intera sezione o seleziona righe singole.
               </p>
             </div>
             {plan && proposedRows.some((r) => r.status === "proposed") ? (
@@ -308,7 +596,11 @@ export default function NexaCoworkPage(): React.JSX.Element {
           </div>
 
           {plan && planStats ? (
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Sezioni</p>
+                <p className="mt-0.5 text-lg font-semibold text-[var(--prom-text)]">{planStats.sectionCount}</p>
+              </div>
               <div className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Righe</p>
                 <p className="mt-0.5 text-lg font-semibold text-[var(--prom-text)]">{planStats.total}</p>
@@ -331,101 +623,64 @@ export default function NexaCoworkPage(): React.JSX.Element {
           {plan ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--prom-muted)]">
               <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
-                Dominio: {DOMAIN_LABELS[plan.domain] ?? plan.domain}
+                Dominio principale: {DOMAIN_LABELS[plan.domain] ?? plan.domain}
               </span>
               {plan.llmApplied ? (
-                <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">Sintesi AI</span>
+                <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">Planner AI</span>
               ) : null}
             </div>
           ) : null}
 
-          {!plan ? (
+          {clarification && !plan ? (
+            <div className="mt-6 flex flex-1 flex-col rounded-xl border border-[color-mix(in_srgb,var(--prom-accent)_30%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-accent)_5%,transparent)] p-5">
+              <div className="flex items-start gap-3">
+                <MessageCircleQuestion className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-accent)]" aria-hidden />
+                <div className="space-y-3">
+                  <p className="text-sm leading-relaxed text-[var(--prom-text)]">{clarification.message}</p>
+                  {clarification.suggestions.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {clarification.suggestions.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          disabled={planning}
+                          onClick={() => void runPlan(s)}
+                          className="rounded-full border border-[var(--prom-line)] px-3 py-1.5 text-xs text-[var(--prom-muted)] transition hover:border-[var(--prom-accent)] hover:text-[var(--prom-text)]"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {!plan && !clarification ? (
             <div className="mt-8 flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--prom-line)] px-6 py-10 text-center">
               <CircleDashed className="mb-3 h-10 w-10 text-[var(--prom-muted)] opacity-50" aria-hidden />
               <p className="text-sm text-[var(--prom-muted)]">Il piano comparirà qui dopo la generazione.</p>
             </div>
-          ) : (
-            <>
-              <div className="mt-4 hidden flex-1 overflow-auto rounded-xl border border-[var(--prom-line)] md:block">
-                <table className="w-full min-w-[520px] text-left text-sm">
-                  <thead className="sticky top-0 z-[1] border-b border-[var(--prom-line)] bg-[var(--prom-surface-soft)] text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                    <tr>
-                      <th className="w-10 p-3" scope="col">
-                        <span className="sr-only">Seleziona</span>
-                      </th>
-                      <th className="p-3" scope="col">
-                        Dipendente
-                      </th>
-                      <th className="p-3" scope="col">
-                        Dettaglio
-                      </th>
-                      <th className="w-28 p-3" scope="col">
-                        Stato
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--prom-line)]">
-                    {plan.rows.map((row) => {
-                      const canSelect = row.status === "proposed";
-                      return (
-                        <tr
-                          key={row.id}
-                          className={`text-[var(--prom-text)] ${selected.has(row.id) ? "bg-[color-mix(in_srgb,var(--prom-accent)_6%,transparent)]" : ""}`}
-                        >
-                          <td className="p-3 align-top">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(row.id)}
-                              disabled={!canSelect || applying}
-                              onChange={() => toggleRow(row.id)}
-                              aria-label={`Seleziona ${row.fullName}`}
-                            />
-                          </td>
-                          <td className="p-3 align-top">
-                            <div className="flex items-start gap-2">
-                              <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
-                              <div>
-                                <div className="font-medium leading-snug">{row.fullName}</div>
-                                <div className="mt-0.5 text-xs text-[var(--prom-muted)]">{row.action}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-3 align-top text-[var(--prom-muted)]">
-                            <p className="leading-relaxed">{row.detail}</p>
-                            {row.errorMessage ? (
-                              <p className="mt-1.5 flex items-start gap-1 text-xs text-red-600 dark:text-red-400">
-                                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                                {row.errorMessage}
-                              </p>
-                            ) : null}
-                          </td>
-                          <td className="p-3 align-top">
-                            <span
-                              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${rowStatusClass(row.status)}`}
-                            >
-                              {rowStatusLabel(row.status)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          ) : null}
 
-              <div className="mt-4 flex flex-1 flex-col gap-2 overflow-y-auto md:hidden">
-                {plan.rows.map((row) => (
-                  <PlanRowCard
-                    key={row.id}
-                    row={row}
-                    selected={selected.has(row.id)}
-                    applying={applying}
-                    onToggle={toggleRow}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+          {plan && sections.length > 0 ? (
+            <div className="mt-4 flex flex-1 flex-col gap-3 overflow-y-auto">
+              {sections.map((section) => (
+                <SectionBlock
+                  key={section.sectionId}
+                  section={section}
+                  expanded={expandedSections.has(section.sectionId)}
+                  selected={selected}
+                  applying={applying}
+                  onToggleExpand={toggleSectionExpand}
+                  onToggleRow={toggleRow}
+                  onApproveSection={approveSection}
+                  onSelectSection={selectSection}
+                />
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--prom-line)] pt-4">
             <p className="text-xs text-[var(--prom-muted)]">
