@@ -14,21 +14,6 @@ export const PORTAL_LIFECYCLE_COLUMNS = [
   { id: "exit", title: "Uscita", subtitle: "Offboarding" }
 ] as const;
 
-/** Chiavi cromatiche condivise tra sidebar, flyout e mappa portale HR. */
-export const LIFECYCLE_COLUMN_ACCENT: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], string> = {
-  selezione: "Selezione",
-  onboarding: "Onboarding",
-  impiego: "Impiego",
-  sviluppo: "Sviluppo",
-  exit: "Uscita"
-};
-
-export function lifecycleColumnAccentCategory(
-  columnId: (typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"]
-): string {
-  return LIFECYCLE_COLUMN_ACCENT[columnId];
-}
-
 const LIFECYCLE_HREFS: Record<(typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"], Route[]> = {
   selezione: ["/recruiting" as Route, "/recruiting/onboarding" as Route],
   onboarding: ["/recruiting/onboarding" as Route, "/contracts" as Route],
@@ -69,7 +54,6 @@ export type LifecycleColumnModel = {
   id: (typeof PORTAL_LIFECYCLE_COLUMNS)[number]["id"];
   title: string;
   subtitle: string;
-  accentCategory: string;
   tiles: PortalTile[];
 };
 
@@ -93,7 +77,6 @@ export function buildLifecyclePortalColumns(
       id: col.id,
       title: col.title,
       subtitle: col.subtitle,
-      accentCategory: lifecycleColumnAccentCategory(col.id),
       tiles
     };
   }).filter((c) => c.tiles.length > 0);

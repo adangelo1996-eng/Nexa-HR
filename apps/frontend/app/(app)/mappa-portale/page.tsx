@@ -172,12 +172,10 @@ export default function MappaPortalePage(): React.JSX.Element {
                     key={col.id}
                     className="min-w-[200px] flex-1 rounded-2xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)] p-3 md:min-w-0"
                   >
-                    <div className="mb-3">
-                      <span className={portalCategoryGlassColumnHeaderClass(col.accentCategory, "compact")}>
-                        {col.title}
-                      </span>
-                      <p className="mt-2 px-0.5 text-[10px] text-[var(--prom-muted)]">{col.subtitle}</p>
-                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">
+                      {col.title}
+                    </p>
+                    <p className="mb-3 text-[10px] text-[var(--prom-muted)]">{col.subtitle}</p>
                     <div className="space-y-2">
                       {col.tiles.map((tile) => (
                         <TileCard
@@ -185,7 +183,7 @@ export default function MappaPortalePage(): React.JSX.Element {
                           href={tile.href}
                           title={tile.title}
                           blurb={tile.blurb}
-                          accentCategory={col.accentCategory}
+                          accentCategory="Persone"
                         />
                       ))}
                     </div>
