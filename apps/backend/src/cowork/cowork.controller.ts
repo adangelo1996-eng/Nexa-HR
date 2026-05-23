@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
-import { IsArray, IsOptional, IsString, ArrayNotEmpty } from "class-validator";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { IsArray, IsInt, IsOptional, IsString, ArrayNotEmpty, Min, ValidateIf } from "class-validator";
+import { Type } from "class-transformer";
 import { CurrentAuth, type AuthContext } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { COWORK_EXAMPLE_PROMPTS } from "./cowork.constants";
 import { CoworkOrchestratorService } from "./cowork-orchestrator.service";
-import type { CoworkApplyRequest, CoworkPlanRequest } from "./cowork.types";
+import type { CoworkApplyRequest, CoworkCancelRequest, CoworkPlanRequest, CoworkUndoRequest } from "./cowork.types";
 
 class CoworkPlanDtoBody implements CoworkPlanRequest {
   @IsString()
@@ -30,6 +31,39 @@ class CoworkApplyDtoBody implements CoworkApplyRequest {
   @ArrayNotEmpty()
   @IsString({ each: true })
   selectedRowIds!: string[];
+}
+
+class CoworkUndoDtoBody {
+  @ValidateIf((o: CoworkUndoDtoBody) => !o.planId && !o.rowId)
+  @IsString()
+  logId?: string;
+
+  @ValidateIf((o: CoworkUndoDtoBody) => !o.logId)
+  @IsString()
+  planId?: string;
+
+  @ValidateIf((o: CoworkUndoDtoBody) => !o.logId)
+  @IsString()
+  rowId?: string;
+}
+
+class CoworkHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pageSize?: number;
+}
+
+class CoworkCancelDtoBody implements CoworkCancelRequest {
+  @IsString()
+  planId!: string;
 }
 
 @Controller("cowork")
@@ -59,5 +93,29 @@ export class CoworkController {
   @RequireNexaPermissions("nexa.lifecycle:write")
   async apply(@CurrentAuth() auth: AuthContext, @Body() body: CoworkApplyDtoBody): Promise<unknown> {
     return this.orchestrator.apply(auth, body);
+  }
+
+  @Get("history")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async history(@CurrentAuth() auth: AuthContext, @Query() query: CoworkHistoryQueryDto): Promise<unknown> {
+    return this.orchestrator.history(auth, query);
+  }
+
+  @Post("undo")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async undo(@CurrentAuth() auth: AuthContext, @Body() body: CoworkUndoDtoBody): Promise<unknown> {
+    if (body.logId) {
+      return this.orchestrator.undo(auth, { logId: body.logId });
+    }
+    if (body.planId && body.rowId) {
+      return this.orchestrator.undo(auth, { planId: body.planId, rowId: body.rowId });
+    }
+    return this.orchestrator.undo(auth, body as CoworkUndoRequest);
+  }
+
+  @Post("cancel")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async cancel(@CurrentAuth() auth: AuthContext, @Body() body: CoworkCancelDtoBody): Promise<unknown> {
+    return this.orchestrator.cancel(auth, body);
   }
 }

@@ -21,6 +21,14 @@ export class SmartworkingRequestsExecutor implements CoworkDomainExecutor {
     }
 
     try {
+      const existing = await this.store.findSmartworkingRequestById(requestId);
+      const previousState = existing
+        ? {
+            day: existing.day,
+            endDay: existing.endDay ?? existing.day,
+            note: existing.note
+          }
+        : null;
       const updated = await this.store.updateSmartworkingRequest(
         ctx.auth.userId,
         requestId,
@@ -32,7 +40,12 @@ export class SmartworkingRequestsExecutor implements CoworkDomainExecutor {
       return {
         ...row,
         status: "applied",
-        detail: `Periodo esteso fino al ${updated.endDay ?? newEndDay}`
+        detail: `Periodo esteso fino al ${updated.endDay ?? newEndDay}`,
+        payload: {
+          ...row.payload,
+          requestId,
+          _coworkPreviousState: previousState
+        }
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Errore estensione richiesta";

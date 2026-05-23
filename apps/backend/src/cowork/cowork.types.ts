@@ -72,7 +72,7 @@ export type CoworkPlanSection = {
   rows: CoworkPlanRow[];
 };
 
-export type CoworkPlanStatus = "pending" | "partial" | "applied" | "expired";
+export type CoworkPlanStatus = "pending" | "partial" | "applied" | "expired" | "cancelled";
 
 export type CoworkPlanDto = {
   planId: string;
@@ -117,10 +117,66 @@ export type CoworkApplyRequest = {
 
 export type CoworkApplyResult = {
   planId: string;
+  batchId: string;
   rows: CoworkPlanRow[];
   sections: CoworkPlanSection[];
   appliedCount: number;
   errorCount: number;
+  logIds: string[];
+};
+
+export type CoworkHistoryQuery = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type CoworkHistorySectionSummary = {
+  sectionId: string;
+  domain: CoworkDomain;
+  toolId: string;
+  title: string;
+  appliedCount: number;
+};
+
+export type CoworkHistoryBatch = {
+  planId: string;
+  batchId: string;
+  summary: string;
+  domain: CoworkDomain;
+  actorUserId: string;
+  appliedAt: string;
+  sections: CoworkHistorySectionSummary[];
+  entries: Array<{
+    logId: string;
+    rowId: string;
+    toolId: string;
+    subjectFullName: string;
+    detail: string;
+    undoStatus: string;
+    undoBlockedReason?: string | null;
+  }>;
+};
+
+export type CoworkHistoryMonth = {
+  month: string;
+  label: string;
+  batches: CoworkHistoryBatch[];
+};
+
+export type CoworkHistoryResult = {
+  from: string;
+  to: string;
+  page: number;
+  pageSize: number;
+  totalMonths: number;
+  totalBatches: number;
+  months: CoworkHistoryMonth[];
+};
+
+export type CoworkUndoRequest = { logId: string } | { planId: string; rowId: string };
+
+export type CoworkCancelRequest = {
+  planId: string;
 };
 
 /** Sezione proposta dal planner LLM prima dell'hydration server-side. */

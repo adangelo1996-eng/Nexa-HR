@@ -54,8 +54,9 @@ export class SmartworkingAgreementsExecutor implements CoworkDomainExecutor {
       };
     }
 
+    const newAgreementId = randomUUID();
     const { error } = await sb.from("smartworking_agreements").insert({
-      id: randomUUID(),
+      id: newAgreementId,
       company_id: ctx.companyId,
       user_id: userId,
       policy_version: policyVersion,
@@ -73,7 +74,8 @@ export class SmartworkingAgreementsExecutor implements CoworkDomainExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Nuovo accordo ${validFrom} → ${validTo} (${policyVersion})`
+      detail: `Nuovo accordo ${validFrom} → ${validTo} (${policyVersion})`,
+      payload: { ...payload, agreementId: newAgreementId }
     };
   }
 }

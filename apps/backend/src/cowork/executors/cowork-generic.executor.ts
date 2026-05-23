@@ -149,10 +149,12 @@ export class CoworkGenericExecutor {
       endsAt,
       title
     });
+    const bookingId = String(event.meta?.bookingId ?? "");
     return {
       ...row,
       status: "applied",
-      detail: `${event.title} ${startsAt.slice(0, 16)} → ${endsAt.slice(0, 16)}`
+      detail: `${event.title} ${startsAt.slice(0, 16)} → ${endsAt.slice(0, 16)}`,
+      payload: { ...row.payload, bookingId }
     };
   }
 
@@ -176,7 +178,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Ferie ${leave.startDate} → ${leave.endDate} (${leave.status})`
+      detail: `Ferie ${leave.startDate} → ${leave.endDate} (${leave.status})`,
+      payload: { ...row.payload, leaveId: leave.id }
     };
   }
 
@@ -192,7 +195,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `SW ${sw.day.slice(0, 10)}${sw.endDay ? ` → ${sw.endDay.slice(0, 10)}` : ""} (${sw.status})`
+      detail: `SW ${sw.day.slice(0, 10)}${sw.endDay ? ` → ${sw.endDay.slice(0, 10)}` : ""} (${sw.status})`,
+      payload: { ...row.payload, requestId: sw.id }
     };
   }
 
@@ -204,7 +208,12 @@ export class CoworkGenericExecutor {
       row.payload.note != null ? String(row.payload.note) : undefined,
       ctx.auth.role
     );
-    return { ...row, status: "applied", detail: `Trasferta ${tr.day.slice(0, 10)} (${tr.status})` };
+    return {
+      ...row,
+      status: "applied",
+      detail: `Trasferta ${tr.day.slice(0, 10)} (${tr.status})`,
+      payload: { ...row.payload, travelId: tr.id, requestId: tr.id }
+    };
   }
 
   private async applySicknessReport(ctx: CoworkExecutorContext, row: CoworkPlanRow): Promise<CoworkPlanRow> {
@@ -218,20 +227,31 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Malattia ${sk.fromDate} → ${sk.toDate} (${sk.status})`
+      detail: `Malattia ${sk.fromDate} → ${sk.toDate} (${sk.status})`,
+      payload: { ...row.payload, sicknessId: sk.id }
     };
   }
 
   private async applyApproveLeave(ctx: CoworkExecutorContext, row: CoworkPlanRow): Promise<CoworkPlanRow> {
     const leaveId = String(row.payload.leaveId ?? "");
     const leave = await this.store.approveLeave(leaveId, ctx.auth.userId);
-    return { ...row, status: "applied", detail: `Ferie approvate ${leave.startDate} → ${leave.endDate}` };
+    return {
+      ...row,
+      status: "applied",
+      detail: `Ferie approvate ${leave.startDate} → ${leave.endDate}`,
+      payload: { ...row.payload, leaveId: leave.id }
+    };
   }
 
   private async applyApproveSmartworking(ctx: CoworkExecutorContext, row: CoworkPlanRow): Promise<CoworkPlanRow> {
     const requestId = String(row.payload.requestId ?? "");
     await this.store.decideSmartworkingRequest(requestId, ctx.auth.userId, true);
-    return { ...row, status: "applied", detail: `Remote working approvato (${requestId})` };
+    return {
+      ...row,
+      status: "applied",
+      detail: `Remote working approvato (${requestId})`,
+      payload: { ...row.payload, requestId }
+    };
   }
 
   private async applyCreateShift(ctx: CoworkExecutorContext, row: CoworkPlanRow): Promise<CoworkPlanRow> {
@@ -246,7 +266,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Turno ${shift.startAt.slice(0, 16)} → ${shift.endAt.slice(0, 16)}`
+      detail: `Turno ${shift.startAt.slice(0, 16)} → ${shift.endAt.slice(0, 16)}`,
+      payload: { ...row.payload, shiftId: shift.id }
     };
   }
 
@@ -263,11 +284,17 @@ export class CoworkGenericExecutor {
   private async applyLeaveAllowance(ctx: CoworkExecutorContext, row: CoworkPlanRow): Promise<CoworkPlanRow> {
     const userId = String(row.payload.userId ?? row.userId);
     const allocatedDays = Number(row.payload.allocatedDays);
+    const year = Number(row.payload.year ?? new Date().getFullYear());
+    const previous = await this.store.getLeaveBalance(userId, year);
     const bal = await this.store.setLeaveAllowance(userId, allocatedDays);
     return {
       ...row,
       status: "applied",
-      detail: `Monte ferie ${bal.allocatedDays} gg (residuo ${bal.residualDays})`
+      detail: `Monte ferie ${bal.allocatedDays} gg (residuo ${bal.residualDays})`,
+      payload: {
+        ...row.payload,
+        _coworkPreviousState: { allocatedDays: previous.allocatedDays, year }
+      }
     };
   }
 
@@ -294,7 +321,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Nota spese ${(claim.amountCents / 100).toFixed(2)} EUR (${claim.status})`
+      detail: `Nota spese ${(claim.amountCents / 100).toFixed(2)} EUR (${claim.status})`,
+      payload: { ...row.payload, claimId: claim.id }
     };
   }
 
@@ -304,7 +332,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Spesa approvata ${(claim.amountCents / 100).toFixed(2)} EUR`
+      detail: `Spesa approvata ${(claim.amountCents / 100).toFixed(2)} EUR`,
+      payload: { ...row.payload, claimId: claim.id }
     };
   }
 
@@ -362,13 +391,20 @@ export class CoworkGenericExecutor {
     const year = Number(row.payload.year);
     const month = Number(row.payload.month);
     const budgetRal = Number(row.payload.budgetRal);
+    const matrix = await this.store.getPersonnelBudgetAnnualMatrix(ctx.companyId, year);
+    const matrixRow = matrix.rows.find((r) => r.userId === userId);
+    const prevBudgetRal = matrixRow?.months.find((m) => m.month === month)?.budget.ral ?? 0;
     await this.store.upsertPersonnelBudgetCells(ctx.companyId, year, month, [
       { userId, budgetRal: Math.round(budgetRal * 100) / 100 }
     ]);
     return {
       ...row,
       status: "applied",
-      detail: `Budget RAL ${budgetRal.toFixed(0)} EUR (${year}-${String(month).padStart(2, "0")})`
+      detail: `Budget RAL ${budgetRal.toFixed(0)} EUR (${year}-${String(month).padStart(2, "0")})`,
+      payload: {
+        ...row.payload,
+        _coworkPreviousState: { year, month, budgetRal: prevBudgetRal }
+      }
     };
   }
 
@@ -590,7 +626,8 @@ export class CoworkGenericExecutor {
     return {
       ...row,
       status: "applied",
-      detail: `Scheda documento «${doc.title}» (${doc.kind}) — allega file da vault se necessario`
+      detail: `Scheda documento «${doc.title}» (${doc.kind}) — allega file da vault se necessario`,
+      payload: { ...row.payload, documentId: doc.id }
     };
   }
 

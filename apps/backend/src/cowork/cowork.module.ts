@@ -13,7 +13,10 @@ import { RecruitingModule } from "../recruiting/recruiting.module";
 import { ThirdPartyLicensesModule } from "../third-party-licenses/third-party-licenses.module";
 import { TrainingModule } from "../training/training.module";
 import { WorkforceModule } from "../workforce/workforce.module";
+import { CoworkApplyLogStore } from "./cowork-apply-log.store";
+import { CoworkRequestsStore } from "./cowork-requests.store";
 import { CoworkPermissionsService } from "./cowork-permissions.service";
+import { CoworkUndoService } from "./cowork-undo.service";
 import { CoworkGenericExecutor } from "./executors/cowork-generic.executor";
 import { CoworkController } from "./cowork.controller";
 import { CoworkOrchestratorService } from "./cowork-orchestrator.service";
@@ -49,6 +52,9 @@ import { SmartworkingRequestsExecutor } from "./executors/smartworking-requests.
     CoworkPlannerService,
     CoworkPermissionsService,
     CoworkPlansStore,
+    CoworkApplyLogStore,
+    CoworkRequestsStore,
+    CoworkUndoService,
     CoworkExecutorRegistry,
     CoworkGenericExecutor,
     SmartworkingAgreementsExecutor,

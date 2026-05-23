@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
 import { COWORK_PLAN_TTL_MS } from "./cowork.constants";
 import type { CoworkPlanDto, CoworkPlanRow, CoworkPlanSection, CoworkPlanStatus } from "./cowork.types";
@@ -217,6 +217,38 @@ export class CoworkPlansStore {
     return this.toDto(cur);
   }
 
+  async cancelPlan(planId: string, companyId: string): Promise<CoworkPlanDto> {
+    const cur = await this.get(planId, companyId);
+    if (cur.status === "applied") {
+      throw new BadRequestException("Piano già applicato: non annullabile");
+    }
+    if (cur.status === "cancelled") {
+      return this.toDto(cur);
+    }
+    const pendingOnly = cur.rows.filter((r) => r.status === "proposed");
+    if (pendingOnly.length === 0 && cur.rows.some((r) => r.status === "applied")) {
+      throw new BadRequestException("Piano con righe già applicate: usa undo sulle singole operazioni");
+    }
+    cur.rows = [];
+    cur.sections = [];
+    cur.sectionMeta = [];
+    cur.status = "cancelled";
+    this.mem.set(planId, cur);
+
+    const sb = this.sb();
+    await sb
+      .from("hr_cowork_plans")
+      .update({
+        rows_json: this.serializeRowsPayload([], []),
+        status: "cancelled",
+        applied_at: null
+      })
+      .eq("id", planId)
+      .eq("company_id", companyId);
+
+    return this.toDto(cur);
+  }
+
   toDto(stored: StoredPlan): CoworkPlanDto {
     return {
       planId: stored.planId,
@@ -232,4 +264,5 @@ export class CoworkPlansStore {
       privacy: stored.privacy
     };
   }
+
 }

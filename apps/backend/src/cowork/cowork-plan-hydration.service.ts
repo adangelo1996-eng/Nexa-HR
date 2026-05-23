@@ -270,6 +270,147 @@ export class CoworkPlanHydrationService {
     return [...message.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((m) => m[1]!);
   }
 
+  /** JavaScript UTC weekday (0 = Sunday … 6 = Saturday). */
+  parseWeekdaysFromMessage(message: string): number[] {
+    const m = message
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "");
+    const found = new Set<number>();
+    const rules: Array<[RegExp, number]> = [
+      [/\bluned[iì]\b/, 1],
+      [/\bmarted[iì]\b/, 2],
+      [/\bmercoled[iì]\b/, 3],
+      [/\bgioved[iì]\b/, 4],
+      [/\bvenerd[iì]\b/, 5],
+      [/\bsabato\b/, 6],
+      [/\bdomenica\b/, 0],
+      [/\bmonday\b/, 1],
+      [/\btuesday\b/, 2],
+      [/\bwednesday\b/, 3],
+      [/\bthursday\b/, 4],
+      [/\bfriday\b/, 5],
+      [/\bsaturday\b/, 6],
+      [/\bsunday\b/, 0]
+    ];
+    for (const [re, wd] of rules) {
+      if (re.test(m)) {
+        found.add(wd);
+      }
+    }
+    return [...found].sort((a, b) => a - b);
+  }
+
+  parseMonthFromMessage(message: string): number | null {
+    const m = message
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "");
+    const named: Array<[RegExp, number]> = [
+      [/\b(gennaio|january|jan)\b/, 1],
+      [/\b(febbraio|february|feb)\b/, 2],
+      [/\b(marzo|march|mar)\b/, 3],
+      [/\b(aprile|april|apr)\b/, 4],
+      [/\b(maggio|may)\b/, 5],
+      [/\b(giugno|june|jun)\b/, 6],
+      [/\b(luglio|july|jul)\b/, 7],
+      [/\b(agosto|august|aug)\b/, 8],
+      [/\b(settembre|september|sep|sept)\b/, 9],
+      [/\b(ottobre|october|oct)\b/, 10],
+      [/\b(novembre|november|nov)\b/, 11],
+      [/\b(dicembre|december|dec)\b/, 12]
+    ];
+    for (const [re, month] of named) {
+      if (re.test(m)) {
+        return month;
+      }
+    }
+    const ym = message.match(/\b(20\d{2})-(\d{2})(?:-\d{2})?\b/);
+    if (ym) {
+      const month = Number(ym[2]);
+      if (month >= 1 && month <= 12) {
+        return month;
+      }
+    }
+    return null;
+  }
+
+  private monthIsoRange(year: number, month: number): { from: string; to: string } {
+    const mm = String(month).padStart(2, "0");
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${String(last).padStart(2, "0")}` };
+  }
+
+  private addCalendarDayUtc(iso: string, delta: number): string {
+    const d = new Date(`${iso.slice(0, 10)}T12:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + delta);
+    return d.toISOString().slice(0, 10);
+  }
+
+  private enumerateDaysInclusive(from: string, to: string): string[] {
+    const out: string[] = [];
+    let cur = from.slice(0, 10);
+    const end = to.slice(0, 10);
+    while (cur <= end) {
+      out.push(cur);
+      if (cur === end) {
+        break;
+      }
+      cur = this.addCalendarDayUtc(cur, 1);
+    }
+    return out;
+  }
+
+  /**
+   * Espande pattern NL tipo «ogni lunedì di maggio 2026» in date ISO (una richiesta SW per giorno).
+   * Vuoto se il messaggio non descrive ricorrenza per weekday.
+   */
+  expandSmartworkingDaysFromMessage(message: string): string[] {
+    const weekdays = this.parseWeekdaysFromMessage(message);
+    if (weekdays.length === 0) {
+      return [];
+    }
+
+    const year = this.parseYear(message);
+    const month = this.parseMonthFromMessage(message);
+    const isoDates = this.parseIsoDatesFromMessage(message);
+
+    let from: string;
+    let to: string;
+    if (isoDates.length >= 2) {
+      const sorted = [...isoDates].sort();
+      from = sorted[0]!;
+      to = sorted[sorted.length - 1]!;
+    } else if (month != null) {
+      ({ from, to } = this.monthIsoRange(year, month));
+    } else {
+      return [];
+    }
+
+    const norm = message
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "");
+    const recurringCue =
+      /\b(ogni|tutti i|tutte le|every|each)\b/.test(norm) ||
+      month != null ||
+      /\b(luned|marted|mercoled|gioved|venerd|sabato|domenica|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(di|in|del|da|for|of)\b/.test(
+        norm
+      );
+    if (!recurringCue) {
+      return [];
+    }
+
+    const days: string[] = [];
+    for (const d of this.enumerateDaysInclusive(from, to)) {
+      const wd = new Date(`${d}T12:00:00.000Z`).getUTCDay();
+      if (weekdays.includes(wd)) {
+        days.push(d);
+      }
+    }
+    return days;
+  }
+
   private defaultCalendarRange(message: string): { from: string; to: string } {
     const dates = this.parseIsoDatesFromMessage(message);
     if (dates.length >= 2) {
@@ -765,8 +906,40 @@ export class CoworkPlanHydrationService {
     users: ScopeUser[],
     message: string
   ): CoworkPlanRow[] {
-    const day = this.parseIsoDateFromMessage(message, new Date().toISOString().slice(0, 10));
-    const endDay = this.parseEndDate(message, this.parseYear(message));
+    const expanded = this.expandSmartworkingDaysFromMessage(message);
+    if (expanded.length > 0) {
+      const rows: CoworkPlanRow[] = [];
+      for (const u of users) {
+        for (const day of expanded) {
+          rows.push({
+            id: randomUUID(),
+            sectionId,
+            domain: "time_off",
+            toolId,
+            userId: u.id,
+            fullName: u.fullName,
+            action: "create_smartworking_request",
+            detail: `Remote ${day} (in attesa)`,
+            rationale: `${expanded.length} giorni ricorrenti nel periodo (una richiesta per giorno, visibile su calendario lavoro)`,
+            status: "proposed",
+            payload: { userId: u.id, day, endDay: day, toolId }
+          });
+        }
+      }
+      return rows;
+    }
+
+    const isoDates = this.parseIsoDatesFromMessage(message);
+    let day: string;
+    let endDay: string;
+    if (isoDates.length >= 2) {
+      const sorted = [...isoDates].sort();
+      day = sorted[0]!;
+      endDay = sorted[sorted.length - 1]!;
+    } else {
+      day = this.parseIsoDateFromMessage(message, new Date().toISOString().slice(0, 10));
+      endDay = day;
+    }
     return users.map((u) => ({
       id: randomUUID(),
       sectionId,
@@ -776,6 +949,7 @@ export class CoworkPlanHydrationService {
       fullName: u.fullName,
       action: "create_smartworking_request",
       detail: `Remote ${day}${endDay !== day ? ` → ${endDay}` : ""} (in attesa)`,
+      rationale: "Richiesta remote working su calendario lavoro",
       status: "proposed" as const,
       payload: { userId: u.id, day, endDay, toolId }
     }));

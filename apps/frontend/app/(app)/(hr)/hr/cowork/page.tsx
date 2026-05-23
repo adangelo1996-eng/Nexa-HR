@@ -7,22 +7,30 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDashed,
+  History,
   Loader2,
   MessageCircleQuestion,
   ShieldCheck,
   UserRound
 } from "lucide-react";
 import {
+  fetchCoworkHistory,
   fetchCoworkMeta,
   fetchUsers,
   isCoworkClarificationDto,
   postCoworkApply,
+  postCoworkCancel,
   postCoworkPlan,
+  postCoworkUndo,
+  type CoworkHistoryEntryDto,
+  type CoworkHistoryBatchDto,
+  type CoworkHistoryMonthDto,
   type CoworkPlanDto,
   type CoworkPlanRowDto,
   type CoworkPlanSectionDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
+import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
 import {
@@ -87,6 +95,39 @@ function rowStatusLabel(status: CoworkPlanRowDto["status"]): string {
   if (status === "error") return "Errore";
   if (status === "skipped") return "Saltata";
   return "Proposta";
+}
+
+function formatCoworkWhen(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("it-IT", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function historyBatchKey(batch: CoworkHistoryBatchDto): string {
+  return `${batch.planId}:${batch.batchId}`;
+}
+
+function historyUndoStatusLabel(entry: CoworkHistoryEntryDto): string {
+  if (entry.undoStatus === "undone") return "Annullata";
+  if (entry.undoStatus === "available") return "Applicata";
+  if (entry.undoStatus === "blocked") return "Non reversibile";
+  if (entry.undoStatus === "failed") return "Undo fallito";
+  return entry.undoStatus;
+}
+
+function historyUndoStatusClass(undoStatus: string): string {
+  if (undoStatus === "available") {
+    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200";
+  }
+  if (undoStatus === "undone") {
+    return "border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_90%,transparent)] text-[var(--prom-muted)]";
+  }
+  if (undoStatus === "blocked" || undoStatus === "failed") {
+    return "border-red-500/35 bg-red-500/10 text-red-800 dark:text-red-200";
+  }
+  return "border-[color-mix(in_srgb,var(--prom-accent)_35%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-accent)_8%,transparent)] text-[var(--prom-text)]";
 }
 
 function rowStatusClass(status: CoworkPlanRowDto["status"]): string {
@@ -291,6 +332,142 @@ function SectionBlock(props: {
   );
 }
 
+function HistoryMonthBlock(props: {
+  month: CoworkHistoryMonthDto;
+  expanded: boolean;
+  expandedBatches: Set<string>;
+  busy: boolean;
+  onToggleMonth: (monthKey: string) => void;
+  onToggleBatch: (batchKey: string) => void;
+  onUndo: (entry: CoworkHistoryEntryDto) => void;
+}): React.JSX.Element {
+  const { month, expanded, expandedBatches, busy, onToggleMonth, onToggleBatch, onUndo } = props;
+  const batchCount = month.batches.length;
+
+  return (
+    <section className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface)_96%,transparent)]">
+      <header className="border-b border-[var(--prom-line)] px-4 py-3">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 text-left"
+          onClick={() => onToggleMonth(month.month)}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          )}
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-[var(--prom-text)]">{month.label}</h3>
+            <p className="mt-0.5 text-xs text-[var(--prom-muted)]">
+              {batchCount} {batchCount === 1 ? "batch" : "batch"}
+            </p>
+          </div>
+        </button>
+      </header>
+      {expanded ? (
+        <div className="flex flex-col gap-3 p-3">
+          {month.batches.map((batch) => (
+            <HistoryBatchBlock
+              key={historyBatchKey(batch)}
+              batch={batch}
+              expanded={expandedBatches.has(historyBatchKey(batch))}
+              busy={busy}
+              onToggleExpand={onToggleBatch}
+              onUndo={onUndo}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function HistoryBatchBlock(props: {
+  batch: CoworkHistoryBatchDto;
+  expanded: boolean;
+  busy: boolean;
+  onToggleExpand: (key: string) => void;
+  onUndo: (entry: CoworkHistoryEntryDto) => void;
+}): React.JSX.Element {
+  const { batch, expanded, busy, onToggleExpand, onUndo } = props;
+  const batchKey = historyBatchKey(batch);
+  const appliedCount = batch.entries.length;
+  const areaLabels = batch.sections
+    .map((s) => toolLabel(s.toolId, s.domain))
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .slice(0, 3)
+    .join(" · ");
+
+  return (
+    <section className="rounded-xl border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_92%,transparent)]">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--prom-line)] px-4 py-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={() => onToggleExpand(batchKey)}
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+          )}
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--prom-muted)]">{formatCoworkWhen(batch.appliedAt)}</p>
+            <h3 className="font-semibold leading-snug text-[var(--prom-text)]">{batch.summary}</h3>
+            <p className="mt-0.5 text-xs text-[var(--prom-muted)]">
+              {AREA_LABELS[batch.domain] ?? batch.domain}
+              {areaLabels ? ` · ${areaLabels}` : ""} · {appliedCount} applicate
+            </p>
+          </div>
+        </button>
+      </header>
+      {expanded ? (
+        <ul className="divide-y divide-[var(--prom-line)] p-3">
+          {batch.entries.length === 0 ? (
+            <li className="px-2 py-3 text-sm text-[var(--prom-muted)]">Nessuna operazione registrata.</li>
+          ) : (
+            batch.entries.map((entry) => (
+              <li key={entry.logId} className="flex flex-wrap items-start justify-between gap-2 px-2 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-[var(--prom-text)]">{entry.subjectFullName}</p>
+                  <p className="mt-0.5 text-xs text-[var(--prom-muted)]">
+                    {toolLabel(entry.toolId, batch.domain)}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{entry.detail}</p>
+                  {entry.undoBlockedReason ? (
+                    <p className="mt-1 text-xs text-[var(--prom-muted)]">{entry.undoBlockedReason}</p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${historyUndoStatusClass(entry.undoStatus)}`}
+                  >
+                    {historyUndoStatusLabel(entry)}
+                  </span>
+                  {entry.undoStatus === "available" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => onUndo(entry)}
+                    >
+                      Annulla
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export default function NexaCoworkPage(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -306,6 +483,18 @@ export default function NexaCoworkPage(): React.JSX.Element {
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyMonths, setHistoryMonths] = useState<CoworkHistoryMonthDto[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [expandedHistoryMonths, setExpandedHistoryMonths] = useState<Set<string>>(new Set());
+  const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
+  const [undoTarget, setUndoTarget] = useState<{
+    logId: string;
+    subjectFullName: string;
+  } | null>(null);
+  const [cancelTargetPlanId, setCancelTargetPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = getToken();
@@ -333,6 +522,56 @@ export default function NexaCoworkPage(): React.JSX.Element {
       .catch(() => {
         /* scope opzionale */
       });
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    const t = getToken();
+    if (!t) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetchCoworkHistory(t);
+      setHistoryMonths(res.months);
+      if (res.months.length > 0) {
+        setExpandedHistoryMonths((prev) => {
+          if (prev.size > 0) return prev;
+          return new Set([res.months[0]!.month]);
+        });
+        const firstBatch = res.months[0]?.batches[0];
+        if (firstBatch) {
+          setExpandedHistory((prev) => {
+            if (prev.size > 0) return prev;
+            return new Set([historyBatchKey(firstBatch)]);
+          });
+        }
+      }
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "Errore caricamento storico");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  const toggleHistoryMonthExpand = useCallback((monthKey: string) => {
+    setExpandedHistoryMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) next.delete(monthKey);
+      else next.add(monthKey);
+      return next;
+    });
+  }, []);
+
+  const toggleHistoryExpand = useCallback((batchKey: string) => {
+    setExpandedHistory((prev) => {
+      const next = new Set(prev);
+      if (next.has(batchKey)) next.delete(batchKey);
+      else next.add(batchKey);
+      return next;
+    });
   }, []);
 
   const sections = plan?.sections ?? [];
@@ -466,14 +705,61 @@ export default function NexaCoworkPage(): React.JSX.Element {
           for (const id of ids) next.delete(id);
           return next;
         });
+        if (result.appliedCount > 0) {
+          void loadHistory();
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Errore applicazione");
       } finally {
         setApplying(false);
       }
     },
-    [plan, selected]
+    [plan, selected, loadHistory]
   );
+
+  const runUndo = useCallback(async () => {
+    const t = getToken();
+    if (!t || !undoTarget) return;
+    setHistoryBusy(true);
+    setError(null);
+    try {
+      await postCoworkUndo(t, { logId: undoTarget.logId });
+      setUndoTarget(null);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Annullamento non riuscito");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [undoTarget, loadHistory]);
+
+  const runCancel = useCallback(async () => {
+    const t = getToken();
+    if (!t || !cancelTargetPlanId) return;
+    setHistoryBusy(true);
+    setError(null);
+    try {
+      await postCoworkCancel(t, { planId: cancelTargetPlanId });
+      if (plan?.planId === cancelTargetPlanId) {
+        setPlan(null);
+        setSelected(new Set());
+        setExpandedSections(new Set());
+      }
+      setCancelTargetPlanId(null);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Annullamento richiesta non riuscito");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [cancelTargetPlanId, plan?.planId, loadHistory]);
+
+  const currentPlanCanCancel =
+    plan != null &&
+    plan.status !== "applied" &&
+    plan.status !== "cancelled" &&
+    plan.status !== "expired" &&
+    !plan.rows.some((r) => r.status === "applied");
 
   const approveSection = useCallback(
     (sectionId: string) => {
@@ -551,10 +837,12 @@ export default function NexaCoworkPage(): React.JSX.Element {
         </div>
       </HebbAiGlassPanel>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <HebbAiGlassPanel className="flex min-h-[440px] flex-col">
+      <div className="flex w-full flex-col gap-6">
+        <HebbAiGlassPanel className="flex min-h-[360px] w-full flex-col">
           <h2 className="text-lg font-semibold text-[var(--prom-text)]">Conversazione</h2>
-          <p className="mt-1 text-xs text-[var(--prom-muted)]">Descrivi l&apos;operazione; il riepilogo compare a destra.</p>
+          <p className="mt-1 text-xs text-[var(--prom-muted)]">
+            Descrivi l&apos;operazione; la preview HITL compare sotto.
+          </p>
           <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
             {messages.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-6 text-center text-sm text-[var(--prom-muted)]">
@@ -620,7 +908,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
           </form>
         </HebbAiGlassPanel>
 
-        <HebbAiGlassPanel className="flex min-h-[440px] flex-col">
+        <HebbAiGlassPanel className="flex min-h-[360px] w-full flex-col">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-[var(--prom-text)]">Preview operazioni (HITL)</h2>
@@ -733,16 +1021,137 @@ export default function NexaCoworkPage(): React.JSX.Element {
                 "Nessuna selezione"
               )}
             </p>
-            <LoadingButton
-              loading={applying}
-              disabled={!plan || selected.size === 0}
-              onClick={() => void runApply()}
-            >
-              Applica selezionati ({selected.size})
-            </LoadingButton>
+            <div className="flex flex-wrap items-center gap-2">
+              {currentPlanCanCancel ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={applying || historyBusy}
+                  onClick={() => setCancelTargetPlanId(plan.planId)}
+                >
+                  Cancella richiesta
+                </Button>
+              ) : null}
+              <LoadingButton
+                loading={applying}
+                disabled={!plan || selected.size === 0}
+                onClick={() => void runApply()}
+              >
+                Applica selezionati ({selected.size})
+              </LoadingButton>
+            </div>
           </div>
         </HebbAiGlassPanel>
+
+        <HebbAiGlassPanel className="flex w-full flex-col">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setHistoryOpen((o) => !o)}
+            aria-expanded={historyOpen}
+          >
+            <div className="flex items-start gap-3">
+              <History className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-accent)]" aria-hidden />
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--prom-text)]">Storico</h2>
+                <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                  Batch applicati e richieste in sospeso. Annulla singole operazioni o cancella piani non ancora eseguiti.
+                </p>
+              </div>
+            </div>
+            {historyOpen ? (
+              <ChevronDown className="h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+            ) : (
+              <ChevronRight className="h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
+            )}
+          </button>
+
+          {historyOpen ? (
+            <div className="mt-4 border-t border-[var(--prom-line)] pt-4">
+              {historyError ? (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-800 dark:text-red-200">
+                  <span>{historyError}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void loadHistory()}>
+                    Riprova
+                  </Button>
+                </div>
+              ) : null}
+
+              {historyLoading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--prom-muted)]">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Caricamento storico…
+                </div>
+              ) : historyMonths.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-[var(--prom-line)] px-6 py-10 text-center text-sm text-[var(--prom-muted)]">
+                  Nessun batch ancora. Dopo la prima applicazione compariranno qui raggruppati per mese.
+                </div>
+              ) : (
+                <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
+                  {historyMonths.map((month) => (
+                    <HistoryMonthBlock
+                      key={month.month}
+                      month={month}
+                      expanded={expandedHistoryMonths.has(month.month)}
+                      expandedBatches={expandedHistory}
+                      busy={historyBusy}
+                      onToggleMonth={toggleHistoryMonthExpand}
+                      onToggleBatch={toggleHistoryExpand}
+                      onUndo={(entry) =>
+                        setUndoTarget({
+                          logId: entry.logId,
+                          subjectFullName: entry.subjectFullName
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+
+              {!historyLoading && historyMonths.length > 0 ? (
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" variant="outline" size="sm" disabled={historyBusy} onClick={() => void loadHistory()}>
+                    Aggiorna
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </HebbAiGlassPanel>
       </div>
+
+      <GlassConfirmDialog
+        open={undoTarget !== null}
+        title="Annullare l'operazione?"
+        message={
+          undoTarget
+            ? `L'operazione su ${undoTarget.subjectFullName} verrà annullata dove il tool lo consente. Per operazioni non reversibili compare già un messaggio in elenco.`
+            : ""
+        }
+        confirmLabel="Annulla operazione"
+        cancelLabel="Chiudi"
+        variant="danger"
+        busy={historyBusy}
+        onCancel={() => {
+          if (!historyBusy) setUndoTarget(null);
+        }}
+        onConfirm={() => void runUndo()}
+      />
+
+      <GlassConfirmDialog
+        open={cancelTargetPlanId !== null}
+        title="Cancellare la richiesta?"
+        message="Il piano Cowork verrà chiuso senza applicare le righe ancora in stato proposta. L'operazione non è reversibile."
+        confirmLabel="Cancella richiesta"
+        cancelLabel="Indietro"
+        variant="danger"
+        busy={historyBusy}
+        onCancel={() => {
+          if (!historyBusy) setCancelTargetPlanId(null);
+        }}
+        onConfirm={() => void runCancel()}
+      />
     </HebbAiExperienceShell>
   );
 }

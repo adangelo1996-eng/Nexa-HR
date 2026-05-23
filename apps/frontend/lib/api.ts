@@ -3601,6 +3601,96 @@ export async function postCoworkApply(
   }>;
 }
 
+export type CoworkHistoryEntryDto = {
+  logId: string;
+  rowId: string;
+  toolId: string;
+  subjectFullName: string;
+  detail: string;
+  undoStatus: string;
+  undoBlockedReason?: string | null;
+};
+
+export type CoworkHistorySectionSummaryDto = {
+  sectionId: string;
+  domain: string;
+  toolId: string;
+  title: string;
+  appliedCount: number;
+};
+
+export type CoworkHistoryBatchDto = {
+  planId: string;
+  batchId: string;
+  summary: string;
+  domain: string;
+  actorUserId: string;
+  appliedAt: string;
+  sections: CoworkHistorySectionSummaryDto[];
+  entries: CoworkHistoryEntryDto[];
+};
+
+export type CoworkHistoryMonthDto = {
+  month: string;
+  label: string;
+  batches: CoworkHistoryBatchDto[];
+};
+
+export type CoworkHistoryResponseDto = {
+  from: string;
+  to: string;
+  page: number;
+  pageSize: number;
+  totalMonths: number;
+  totalBatches: number;
+  months: CoworkHistoryMonthDto[];
+};
+
+export type CoworkUndoResultDto = {
+  ok: boolean;
+  logId: string;
+  message: string;
+  reversible: boolean;
+};
+
+export async function fetchCoworkHistory(
+  token: string,
+  query?: { page?: number; pageSize?: number }
+): Promise<CoworkHistoryResponseDto> {
+  const params = new URLSearchParams();
+  if (query?.page != null) params.set("page", String(query.page));
+  if (query?.pageSize != null) params.set("pageSize", String(query.pageSize));
+  const qs = params.toString();
+  const response = await fetch(buildApiUrl(`/cowork/history${qs ? `?${qs}` : ""}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<CoworkHistoryResponseDto>;
+}
+
+export async function postCoworkUndo(
+  token: string,
+  body: { logId: string } | { planId: string; rowId: string }
+): Promise<CoworkUndoResultDto> {
+  const response = await fetch(buildApiUrl("/cowork/undo"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<CoworkUndoResultDto>;
+}
+
+export async function postCoworkCancel(token: string, body: { planId: string }): Promise<CoworkPlanDto> {
+  const response = await fetch(buildApiUrl("/cowork/cancel"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<CoworkPlanDto>;
+}
+
 export type TrainingCourseModuleDto = {
   id: string;
   title: string;

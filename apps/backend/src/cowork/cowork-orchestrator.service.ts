@@ -15,18 +15,30 @@ import { getCoworkTool } from "./cowork-tool-catalog";
 import { CoworkPlanHydrationService } from "./cowork-plan-hydration.service";
 import { CoworkPermissionsService } from "./cowork-permissions.service";
 import { CoworkPlannerService } from "./cowork-planner.service";
+import { CoworkApplyLogStore } from "./cowork-apply-log.store";
+import {
+  groupCoworkHistoryBatchesByMonth,
+  paginateCoworkHistoryMonths
+} from "./cowork-history.util";
 import { CoworkPlansStore } from "./cowork-plans.store";
+import { CoworkRequestsStore } from "./cowork-requests.store";
+import { CoworkUndoService, type CoworkUndoResult } from "./cowork-undo.service";
 import { CoworkExecutorRegistry } from "./executors/cowork-executor.registry";
 import type {
   CoworkApplyRequest,
   CoworkApplyResult,
+  CoworkCancelRequest,
   CoworkClarificationResponse,
   CoworkDomain,
+  CoworkHistoryQuery,
+  CoworkHistoryBatch,
+  CoworkHistoryResult,
   CoworkPlanDto,
   CoworkPlanRequest,
   CoworkPlanResponse,
   CoworkPlanRow,
-  CoworkPlanSection
+  CoworkPlanSection,
+  CoworkUndoRequest
 } from "./cowork.types";
 
 @Injectable()
@@ -38,7 +50,10 @@ export class CoworkOrchestratorService {
     private readonly executors: CoworkExecutorRegistry,
     private readonly hydration: CoworkPlanHydrationService,
     private readonly planner: CoworkPlannerService,
-    private readonly coworkPermissions: CoworkPermissionsService
+    private readonly coworkPermissions: CoworkPermissionsService,
+    private readonly applyLog: CoworkApplyLogStore,
+    private readonly coworkRequests: CoworkRequestsStore,
+    private readonly undoService: CoworkUndoService
   ) {}
 
   async plan(auth: AuthContext, body: CoworkPlanRequest): Promise<CoworkPlanResponse> {
@@ -51,6 +66,15 @@ export class CoworkOrchestratorService {
 
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === companyId);
     assertHebbUserMessageAllowed(message, companyUsers);
+
+    const draftRequest = await this.coworkRequests.upsertDraft({
+      companyId,
+      actorUserId: auth.userId,
+      message,
+      conversationHistory: body.conversationHistory,
+      costCenterId: body.costCenterId,
+      teamId: body.teamId
+    });
 
     const regexDomains = this.classifyDomains(message);
     const regexToolHints = this.classifyToolHints(message);
@@ -153,6 +177,8 @@ export class CoworkOrchestratorService {
       privacy: { pseudonymizedTokenCount: interpret.tokenCount, schemaVersion }
     });
 
+    await this.coworkRequests.markPlanned(draftRequest.id, companyId, saved.planId);
+
     await this.audit.append({
       companyId,
       userId: auth.userId,
@@ -200,6 +226,8 @@ export class CoworkOrchestratorService {
 
     const ctx = { auth, companyId };
     const nextRows: CoworkPlanRow[] = [];
+    const batchId = randomUUID();
+    const logIds: string[] = [];
 
     for (const row of stored.rows) {
       if (!selected.has(row.id)) {
@@ -222,6 +250,18 @@ export class CoworkOrchestratorService {
       const rowDomain = row.domain ?? stored.domain;
       const result = await this.executors.executeRow(ctx, rowDomain, row);
       nextRows.push(result);
+      if (result.status === "applied") {
+        const logged = await this.persistApplyLog({
+          companyId,
+          planId: body.planId,
+          batchId,
+          actorUserId: auth.userId,
+          row: result,
+          planSummary: stored.summary,
+          sectionMeta: stored.sectionMeta
+        });
+        logIds.push(logged.id);
+      }
     }
 
     const appliedCount = nextRows.filter((r) => selected.has(r.id) && r.status === "applied").length;
@@ -231,6 +271,9 @@ export class CoworkOrchestratorService {
       .every((r) => r.status === "applied" || r.status === "skipped");
 
     const status = allSelectedDone && errorCount === 0 ? "applied" : "partial";
+    if (status === "applied") {
+      await this.coworkRequests.markAppliedByPlanId(body.planId, companyId);
+    }
     const updated = await this.plans.updateRows(
       body.planId,
       companyId,
@@ -253,11 +296,236 @@ export class CoworkOrchestratorService {
 
     return {
       planId: updated.planId,
+      batchId,
       rows: nextRows,
       sections,
       appliedCount,
-      errorCount
+      errorCount,
+      logIds
     };
+  }
+
+  async history(auth: AuthContext, query: CoworkHistoryQuery = {}): Promise<CoworkHistoryResult> {
+    const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId;
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(Math.max(query.pageSize ?? 12, 1), 24);
+    const to = new Date();
+    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const fromIso = from.toISOString();
+    const toIso = to.toISOString();
+
+    const { items, total } = await this.applyLog.listSince(companyId, fromIso, {
+      limit: 500,
+      offset: 0
+    });
+
+    const batchMap = new Map<
+      string,
+      {
+        planId: string;
+        batchId: string;
+        appliedAt: string;
+        entries: typeof items;
+      }
+    >();
+    for (const entry of items) {
+      const key = `${entry.planId}:${entry.batchId}`;
+      const cur = batchMap.get(key);
+      if (!cur) {
+        batchMap.set(key, {
+          planId: entry.planId,
+          batchId: entry.batchId,
+          appliedAt: entry.appliedAt,
+          entries: [entry]
+        });
+      } else {
+        cur.entries.push(entry);
+        if (entry.appliedAt > cur.appliedAt) {
+          cur.appliedAt = entry.appliedAt;
+        }
+      }
+    }
+
+    const planCache = new Map<string, { summary: string; domain: CoworkDomain; sectionMeta: StoredPlan["sectionMeta"] }>();
+    type StoredPlan = Awaited<ReturnType<CoworkPlansStore["get"]>>;
+
+    const allBatchesSorted = [...batchMap.values()].sort((a, b) => b.appliedAt.localeCompare(a.appliedAt));
+
+    const resultBatches: CoworkHistoryBatch[] = [];
+    for (const batch of allBatchesSorted) {
+      let planMeta = planCache.get(batch.planId);
+      if (!planMeta) {
+        try {
+          const plan = await this.plans.get(batch.planId, companyId);
+          planMeta = { summary: plan.summary, domain: plan.domain, sectionMeta: plan.sectionMeta };
+        } catch {
+          planMeta = {
+            summary: batch.entries[0]?.detail ?? "Cowork",
+            domain: batch.entries[0]?.domain ?? "unknown",
+            sectionMeta: []
+          };
+        }
+        planCache.set(batch.planId, planMeta);
+      }
+
+      const sectionCounts = new Map<string, CoworkHistoryBatch["sections"][0]>();
+      for (const entry of batch.entries) {
+        const sectionId = String(entry.appliedPayload.sectionId ?? entry.rowId);
+        const meta = planMeta.sectionMeta.find((s) => s.sectionId === sectionId);
+        const existing = sectionCounts.get(sectionId);
+        if (existing) {
+          existing.appliedCount += 1;
+        } else {
+          sectionCounts.set(sectionId, {
+            sectionId,
+            domain: entry.domain,
+            toolId: entry.toolId,
+            title: meta?.title ?? entry.toolId,
+            appliedCount: 1
+          });
+        }
+      }
+
+      resultBatches.push({
+        planId: batch.planId,
+        batchId: batch.batchId,
+        summary: planMeta.summary,
+        domain: planMeta.domain,
+        actorUserId: batch.entries[0]?.actorUserId ?? auth.userId,
+        appliedAt: batch.appliedAt,
+        sections: [...sectionCounts.values()],
+        entries: batch.entries.map((e) => ({
+          logId: e.id,
+          rowId: e.rowId,
+          toolId: e.toolId,
+          subjectFullName: e.subjectFullName,
+          detail: e.detail,
+          undoStatus: e.undoStatus,
+          undoBlockedReason: e.undoBlockedReason
+        }))
+      });
+    }
+
+    const totalBatches = batchMap.size;
+    const grouped = groupCoworkHistoryBatchesByMonth(resultBatches);
+    const { months, totalMonths } = paginateCoworkHistoryMonths(grouped, page, pageSize);
+
+    return {
+      from: fromIso,
+      to: toIso,
+      page,
+      pageSize,
+      totalMonths,
+      totalBatches,
+      months
+    };
+  }
+
+  async undo(auth: AuthContext, body: CoworkUndoRequest): Promise<CoworkUndoResult> {
+    return this.undoService.undo(auth, body);
+  }
+
+  async cancel(auth: AuthContext, body: CoworkCancelRequest): Promise<CoworkPlanDto> {
+    const me = await this.store.getUser(auth.userId);
+    const cancelled = await this.plans.cancelPlan(body.planId, me.companyId);
+    await this.coworkRequests.markCancelledByPlanId(body.planId, me.companyId, auth.userId);
+    await this.audit.append({
+      companyId: me.companyId,
+      userId: auth.userId,
+      roleSnapshot: auth.role,
+      feature: "cowork_cancel",
+      inputForFingerprint: { planId: body.planId },
+      outcome: "ok"
+    });
+    return cancelled;
+  }
+
+  private async persistApplyLog(input: {
+    companyId: string;
+    planId: string;
+    batchId: string;
+    actorUserId: string;
+    row: CoworkPlanRow;
+    planSummary: string;
+    sectionMeta: Array<{ sectionId: string; domain: CoworkDomain; toolId?: string; title: string }>;
+  }) {
+    const undoMeta = this.undoService.buildLogUndoMeta(input.row.toolId);
+    const entity = this.resolveEntityFromRow(input.row);
+    return this.applyLog.append({
+      companyId: input.companyId,
+      planId: input.planId,
+      batchId: input.batchId,
+      rowId: input.row.id,
+      actorUserId: input.actorUserId,
+      toolId: input.row.toolId,
+      domain: input.row.domain,
+      subjectUserId: input.row.userId || null,
+      subjectFullName: input.row.fullName,
+      entityType: entity.type,
+      entityId: entity.id,
+      previousState: entity.previousState,
+      appliedPayload: {
+        ...input.row.payload,
+        sectionId: input.row.sectionId,
+        planSummary: input.planSummary
+      },
+      detail: input.row.detail,
+      undoStatus: undoMeta.undoStatus,
+      undoBlockedReason: undoMeta.undoBlockedReason
+    });
+  }
+
+  private resolveEntityFromRow(row: CoworkPlanRow): {
+    type: string | null;
+    id: string | null;
+    previousState: Record<string, unknown> | null;
+  } {
+    const p = row.payload;
+    const previousState =
+      p._coworkPreviousState && typeof p._coworkPreviousState === "object"
+        ? (p._coworkPreviousState as Record<string, unknown>)
+        : p.previousState && typeof p.previousState === "object"
+          ? (p.previousState as Record<string, unknown>)
+          : null;
+
+    const pick = (...keys: string[]) => {
+      for (const k of keys) {
+        if (p[k] != null && String(p[k]).trim()) {
+          return String(p[k]);
+        }
+      }
+      return null;
+    };
+
+    switch (row.toolId) {
+      case "create_leave_plan":
+        return { type: "leave_plan", id: pick("leaveId"), previousState };
+      case "create_smartworking_request":
+        return { type: "smartworking_request", id: pick("requestId"), previousState };
+      case "create_travel_request":
+        return { type: "travel_request", id: pick("travelId", "requestId"), previousState };
+      case "create_sickness_report":
+        return { type: "sickness_event", id: pick("sicknessId"), previousState };
+      case "create_meeting_room_booking":
+        return { type: "meeting_room_booking", id: pick("bookingId"), previousState };
+      case "approve_pending_leaves":
+        return { type: "leave_plan", id: pick("leaveId"), previousState };
+      case "approve_pending_smartworking":
+        return { type: "smartworking_request", id: pick("requestId"), previousState };
+      case "extend_approved_requests":
+        return { type: "smartworking_request", id: pick("requestId"), previousState };
+      case "create_shift_batch":
+        return { type: "shift", id: pick("shiftId"), previousState };
+      case "create_expense_claim":
+        return { type: "expense_claim", id: pick("claimId"), previousState };
+      case "approve_pending_expenses":
+        return { type: "expense_claim", id: pick("claimId"), previousState };
+      case "update_contract_sw_clause":
+        return { type: "hr_contract", id: pick("contractId"), previousState };
+      default:
+        return { type: row.toolId || null, id: pick("entityId"), previousState };
+    }
   }
 
   /** Retrocompat: singolo dominio con priorità accordi > richieste > contratti. */
