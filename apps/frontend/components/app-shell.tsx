@@ -17,6 +17,7 @@ import {
   Sun,
   User,
   UserCog,
+  Wand2,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,12 @@ function portalSectionToHubTiles(section: PortalMapNavSection): HubTile[] {
     }))
   );
 }
+
+const NAV_HEBB_AI: NavItem = {
+  href: "/ai-hub" as Route,
+  label: "HEBB AI for HR",
+  icon: Wand2
+};
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
   id: "profile",
@@ -588,6 +595,14 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           onToggle={toggleFlyoutSection}
         />
       ))}
+      {usesHrNav ? (
+        <SidebarNavLink
+          item={NAV_HEBB_AI}
+          pathname={pathname}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ) : null}
       {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink

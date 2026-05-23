@@ -25,11 +25,12 @@ import {
   UserRoundSearch,
   Users,
   Wallet2,
+  Wand2,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
-import { buildEmployeeNavSections, type EmployeeNavItem } from "@/lib/nexa-employee-nav";
-import { buildHrLinearPortalSteps } from "@/lib/portal-mappa-linear";
+import { buildEmployeePortalHubColumns } from "@/lib/portal-mappa-employee";
+import { buildAnalyticsPortalRow, buildLifecyclePortalColumns } from "@/lib/portal-mappa-lifecycle";
 import type { PortalTile } from "@/lib/portal-mappa";
 
 export type PortalMapNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
@@ -39,6 +40,8 @@ export type PortalMapNavSubgroup = { id: string; title: string; items: PortalMap
 export type PortalMapNavSection = {
   id: string;
   title: string;
+  /** Accento colonna portale (header sidebar + flyout). */
+  portalCategory?: string;
   subgroups: PortalMapNavSubgroup[];
 };
 
@@ -62,7 +65,8 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/hr-center/recap": ClipboardList,
   "/hr-center/budget-report": Wallet2,
   "/analytics": BarChart2,
-  "/analytics/retention": BarChart2,
+  "/analytics/advanced": BarChart2,
+  "/analytics/advanced/retention": BarChart2,
   "/analytics/competenze": BarChart2,
   "/recruiting": UserRoundSearch,
   "/recruiting/onboarding": UserPlus,
@@ -79,6 +83,9 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/admin/data-export": FileText,
   "/admin/cost-centers": Building2,
   "/hr/formazione": GraduationCap,
+  "/hr/cowork": Sparkles,
+  "/ai-hub": Wand2,
+  "/hr-center/analisi": BarChart2,
   "/il-mio-team": Users,
   "/percorso": RouteIcon,
   "/percorso/formazione": GraduationCap,
@@ -93,41 +100,58 @@ function portalTileToNavItem(tile: PortalTile): PortalMapNavItem {
   return { href: tile.href, label: tile.title, icon, ...(exact ? { exact: true } : {}) };
 }
 
-function employeeItemToNavItem(item: EmployeeNavItem): PortalMapNavItem {
-  return { href: item.href, label: item.label, icon: item.icon, exact: item.exact };
-}
-
-/** Sezioni sidebar allineate alla mappa portale HR (passi lineari). */
+/** Sezioni sidebar allineate alla mappa portale HR (colonne lifecycle + analytics). */
 export function buildHrPortalMapNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): PortalMapNavSection[] {
-  return buildHrLinearPortalSteps(user, hideSensitiveHr).map((step) => ({
-    id: step.id,
-    title: step.title,
+  const lifecycle = buildLifecyclePortalColumns(user, hideSensitiveHr);
+  const sections: PortalMapNavSection[] = lifecycle.map((col) => ({
+    id: col.id,
+    title: col.title,
+    portalCategory: "Persone",
     subgroups: [
       {
-        id: `${step.id}-items`,
-        title: "",
-        items: step.tiles.map(portalTileToNavItem)
+        id: `${col.id}-items`,
+        title: col.subtitle,
+        items: col.tiles.map(portalTileToNavItem)
       }
     ]
   }));
+
+  const analytics = buildAnalyticsPortalRow(user, hideSensitiveHr);
+  if (analytics.length > 0) {
+    sections.push({
+      id: "analytics",
+      title: "Analytics & Intelligence",
+      portalCategory: "HEBB AI for HR",
+      subgroups: [
+        {
+          id: "analytics-items",
+          title: "Budget, retention e competenze",
+          items: analytics.map(portalTileToNavItem)
+        }
+      ]
+    });
+  }
+
+  return sections;
 }
 
-/** Sezioni sidebar allineate alla mappa portale dipendente (Home / Io / Documenti). */
+/** Sezioni sidebar allineate alla mappa portale dipendente (Oggi / Io / Documenti). */
 export function buildEmployeePortalMapNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): PortalMapNavSection[] {
-  return buildEmployeeNavSections(user, hideSensitiveHr).map((section) => ({
-    id: section.id,
-    title: section.title,
+  return buildEmployeePortalHubColumns(user, hideSensitiveHr).map((hub) => ({
+    id: hub.id,
+    title: hub.title,
+    portalCategory: hub.title,
     subgroups: [
       {
-        id: `${section.id}-items`,
-        title: "",
-        items: section.items.map(employeeItemToNavItem)
+        id: `${hub.id}-items`,
+        title: hub.subtitle,
+        items: hub.tiles.map(portalTileToNavItem)
       }
     ]
   }));

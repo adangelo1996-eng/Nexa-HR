@@ -57,7 +57,8 @@ const HR_LINEAR_STEPS: Array<{
       "/analytics" as Route,
       "/personnel-budget",
       "/personnel-budget/simulatore-assunzione" as Route,
-      "/analytics/retention" as Route,
+      "/analytics/advanced" as Route,
+      "/analytics/advanced/retention" as Route,
       "/analytics/competenze" as Route,
       "/hr-center/recap"
     ]
@@ -66,7 +67,24 @@ const HR_LINEAR_STEPS: Array<{
     id: "admin",
     title: "Amministrazione",
     subtitle: "Payroll, policy, export e console utenti.",
-    hrefs: ["/payroll-hebb", "/corporate-policies", "/admin", "/expenses/org"]
+    hrefs: [
+      "/hr/cowork" as Route,
+      "/payroll-hebb",
+      "/corporate-policies",
+      "/admin",
+      "/expenses/org"
+    ]
+  },
+  {
+    id: "hebb-ai-hr",
+    title: "HEBB AI for HR",
+    subtitle: "Intelligenza artificiale applicata alle risorse umane.",
+    hrefs: [
+      "/ai-hub" as Route,
+      "/hr-center/recap",
+      "/hr-center/analisi" as Route,
+      "/hr-center/budget-report" as Route
+    ]
   }
 ];
 

@@ -284,6 +284,12 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Analisi e pianificazione"
   },
   {
+    href: "/hr/cowork" as Route,
+    title: "Nexa Cowork",
+    blurb: "Operazioni di massa in linguaggio naturale su smart working, contratti e formazione. Preview HITL obbligatoria.",
+    category: "Amministrazione e dati"
+  },
+  {
     href: "/expenses/org" as Route,
     title: "Note spese (organico)",
     blurb: "Approvazione spese dei dipendenti nel perimetro HR.",
