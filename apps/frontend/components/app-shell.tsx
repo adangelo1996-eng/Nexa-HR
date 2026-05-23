@@ -17,6 +17,7 @@ import {
   Sun,
   User,
   UserCog,
+  Sparkles,
   Wand2,
   X
 } from "lucide-react";
@@ -96,9 +97,15 @@ function portalSectionToHubTiles(section: PortalMapNavSection): HubTile[] {
   );
 }
 
-const NAV_HEBB_AI: NavItem = {
+const NAV_HEBB_AI_MATE: NavItem = {
+  href: "/hr/cowork" as Route,
+  label: "Hebb AI Mate",
+  icon: Sparkles
+};
+
+const NAV_HEBB_AI_ANALYTICS: NavItem = {
   href: "/ai-hub" as Route,
-  label: "HEBB AI for HR",
+  label: "Hebb AI Analytics",
   icon: Wand2
 };
 
@@ -596,12 +603,20 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         />
       ))}
       {usesHrNav ? (
-        <SidebarNavLink
-          item={NAV_HEBB_AI}
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
+        <>
+          <SidebarNavLink
+            item={NAV_HEBB_AI_MATE}
+            pathname={pathname}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+          <SidebarNavLink
+            item={NAV_HEBB_AI_ANALYTICS}
+            pathname={pathname}
+            onNavigate={closeMobile}
+            beforeNavigate={persistSidebarScrollPositions}
+          />
+        </>
       ) : null}
       {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (

@@ -29,8 +29,9 @@ import {
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
+import { portalAccentCategoryForNavSection } from "@/lib/nav-visual-accents";
 import { buildEmployeePortalHubColumns } from "@/lib/portal-mappa-employee";
-import { buildAnalyticsPortalRow, buildLifecyclePortalColumns } from "@/lib/portal-mappa-lifecycle";
+import { buildHrLinearPortalSteps } from "@/lib/portal-mappa-linear";
 import type { PortalTile } from "@/lib/portal-mappa";
 
 export type PortalMapNavItem = { href: Route; label: string; icon: LucideIcon; exact?: boolean };
@@ -44,6 +45,9 @@ export type PortalMapNavSection = {
   portalCategory?: string;
   subgroups: PortalMapNavSubgroup[];
 };
+
+/** Macro sezioni sidebar HR (stesse del percorso lineare mappa, esclusi link standalone Hebb). */
+const HR_SIDEBAR_LINEAR_STEP_IDS = new Set(["daily", "people", "hire", "grow", "insight", "admin"]);
 
 const HREF_ICON: Record<string, LucideIcon> = {
   "/": LayoutDashboard,
@@ -100,42 +104,25 @@ function portalTileToNavItem(tile: PortalTile): PortalMapNavItem {
   return { href: tile.href, label: tile.title, icon, ...(exact ? { exact: true } : {}) };
 }
 
-/** Sezioni sidebar allineate alla mappa portale HR (colonne lifecycle + analytics). */
+/** Sezioni sidebar allineate a `buildHrLinearPortalSteps` (titoli e vetri mappa portale). */
 export function buildHrPortalMapNavSections(
   user: SessionUser | null,
   hideSensitiveHr: boolean
 ): PortalMapNavSection[] {
-  const lifecycle = buildLifecyclePortalColumns(user, hideSensitiveHr);
-  const sections: PortalMapNavSection[] = lifecycle.map((col) => ({
-    id: col.id,
-    title: col.title,
-    portalCategory: "Persone",
-    subgroups: [
-      {
-        id: `${col.id}-items`,
-        title: col.subtitle,
-        items: col.tiles.map(portalTileToNavItem)
-      }
-    ]
-  }));
-
-  const analytics = buildAnalyticsPortalRow(user, hideSensitiveHr);
-  if (analytics.length > 0) {
-    sections.push({
-      id: "analytics",
-      title: "Analytics & Intelligence",
-      portalCategory: "HEBB AI for HR",
+  return buildHrLinearPortalSteps(user, hideSensitiveHr)
+    .filter((step) => HR_SIDEBAR_LINEAR_STEP_IDS.has(step.id))
+    .map((step) => ({
+      id: step.id,
+      title: step.title,
+      portalCategory: portalAccentCategoryForNavSection(step.id, step.title),
       subgroups: [
         {
-          id: "analytics-items",
-          title: "Budget, retention e competenze",
-          items: analytics.map(portalTileToNavItem)
+          id: `${step.id}-items`,
+          title: step.subtitle,
+          items: step.tiles.map(portalTileToNavItem)
         }
       ]
-    });
-  }
-
-  return sections;
+    }));
 }
 
 /** Sezioni sidebar allineate alla mappa portale dipendente (Oggi / Io / Documenti). */

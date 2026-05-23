@@ -67,18 +67,12 @@ const HR_LINEAR_STEPS: Array<{
     id: "admin",
     title: "Amministrazione",
     subtitle: "Payroll, policy, export e console utenti.",
-    hrefs: [
-      "/hr/cowork" as Route,
-      "/payroll-hebb",
-      "/corporate-policies",
-      "/admin",
-      "/expenses/org"
-    ]
+    hrefs: ["/payroll-hebb", "/corporate-policies", "/admin", "/expenses/org"]
   },
   {
     id: "hebb-ai-hr",
-    title: "HEBB AI for HR",
-    subtitle: "Intelligenza artificiale applicata alle risorse umane.",
+    title: "Hebb AI Analytics",
+    subtitle: "Hub analisi, sintesi AI e report HR con contesto pseudonimizzato.",
     hrefs: [
       "/ai-hub" as Route,
       "/hr-center/recap",

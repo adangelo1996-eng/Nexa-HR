@@ -29,7 +29,7 @@ export type HebbAiPageHelpContent = {
 
 const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "ai-hub": {
-    title: "HEBB AI for HR",
+    title: "Hebb AI Analytics",
     summary:
       "Assistente e analisi per area Nexa (economico, retention, competenze, operativo, budget, turnover): chat, insight strutturati e controlli con pseudonimizzazione obbligatoria prima del modello.",
     howToUse: [
@@ -94,7 +94,7 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
     ]
   },
   "hr-cowork": {
-    title: "Nexa Cowork",
+    title: "Hebb AI Mate",
     summary:
       "Batch HR con linguaggio naturale e conferma obbligatoria (HITL). I nominativi compaiono solo in preview autorizzata; verso OpenAI transitano conteggi e aggregati.",
     howToUse: [

@@ -203,7 +203,7 @@ const HELP: Record<NexaPageHelpKey, NexaPageHelpContent> = {
     ]
   },
   "hr-cowork": {
-    title: "Nexa Cowork",
+    title: "Hebb AI Mate",
     summary:
       "Workspace per operazioni di massa guidate da linguaggio naturale: accordi SW, estensioni richieste, clausole contrattuali. Preview HITL con nominativi; il modello vede solo aggregati pseudonimizzati.",
     howToUse: [

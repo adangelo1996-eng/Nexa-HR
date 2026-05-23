@@ -51,13 +51,13 @@ const RESOURCE_MACRO_FALLBACK: Partial<Record<string, (typeof PORTAL_CATEGORY_OR
   sickness: "Quotidiano",
   documents: "Selezione e documenti",
   benefits: "Persone e organizzazione",
-  innovation: "HEBB AI for HR",
+  innovation: "Hebb AI Analytics",
   consultant: "Amministrazione e dati",
-  ai_assistant_scope_managed: "HEBB AI for HR",
-  ai_assistant_scope_org: "HEBB AI for HR",
-  ai_nl_query: "HEBB AI for HR",
-  ai_anomalies: "HEBB AI for HR",
-  ai_triage: "HEBB AI for HR"
+  ai_assistant_scope_managed: "Hebb AI Analytics",
+  ai_assistant_scope_org: "Hebb AI Analytics",
+  ai_nl_query: "Hebb AI Analytics",
+  ai_anomalies: "Hebb AI Analytics",
+  ai_triage: "Hebb AI Analytics"
 };
 
 export type PermissionResourceGroup = {

@@ -219,7 +219,7 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/ai-hub" as Route,
-    title: "HEBB AI for HR",
+    title: "Hebb AI Analytics",
     blurb: "Conversazione con modello linguistico su policy, ferie e dati consentiti dal tuo ruolo.",
     category: "HEBB AI for HR"
   },
@@ -285,7 +285,7 @@ export const PORTAL_TILES: PortalTile[] = [
   },
   {
     href: "/hr/cowork" as Route,
-    title: "Nexa Cowork",
+    title: "Hebb AI Mate",
     blurb: "Operazioni di massa in linguaggio naturale su smart working, contratti e formazione. Preview HITL obbligatoria.",
     category: "Amministrazione e dati"
   },

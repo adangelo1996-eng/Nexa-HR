@@ -519,14 +519,14 @@ export default function AiHubPage(): React.JSX.Element {
   const hubEyebrow = (
     <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface)_78%,transparent)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--prom-muted)] shadow-sm backdrop-blur-md">
       <Activity className="h-3.5 w-3.5 text-[var(--prom-gold)]" aria-hidden />
-      HEBB AI for HR · <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
+      Hebb AI Analytics · <span className="nexa-wordmark-face text-[var(--prom-text)]">NEXA</span> HR
     </p>
   );
 
   return (
     <HebbAiExperienceShell
       eyebrow={hubEyebrow}
-      title="HEBB AI for HR"
+      title="Hebb AI Analytics"
       subtitle={
         <>
           Assistente e analisi su aree Nexa (economico, retention, competenze, operativo, budget, turnover): conversazione,
