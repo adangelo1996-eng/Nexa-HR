@@ -18,15 +18,25 @@ function namePatterns(user: User): string[] {
   return patterns;
 }
 
+export type HebbMateScopeKind = "self" | "employees" | "company";
+
 export type HebbMateResolvedScope = {
   subjectUserIds: string[];
-  scopeKind: "self" | "employees";
+  scopeKind: HebbMateScopeKind;
   resolvedNames: string[];
 };
 
+/** Richieste generiche HR (automazioni, timbrature, ecc.) senza nominativi → perimetro aziendale. */
+export function isGenericCompanyWideRequest(message: string): boolean {
+  return /\bautomat|schedul|pianifica|ricorrent|frequenz|cron|timbratur|presenz|tutti\s+i\s+dipendenti|tutta\s+l['']azienda|company.?wide|per\s+tutti\b/i.test(
+    message
+  );
+}
+
 /**
  * Risolve il perimetro HR citando i nominativi nel messaggio chat.
- * Se nessun nome è riconosciuto, default su self (utente corrente).
+ * Se nessun nome è riconosciuto e la richiesta è generica → company (tutti i dipendenti visibili).
+ * Altrimenti default su self (utente corrente).
  */
 export function resolveEmployeesFromMessage(
   message: string,
@@ -53,15 +63,24 @@ export function resolveEmployeesFromMessage(
     }
   }
 
-  if (matched.length === 0) {
-    return { subjectUserIds: [actorUserId], scopeKind: "self", resolvedNames: [] };
+  if (matched.length > 0) {
+    return {
+      subjectUserIds: matched.map((m) => m.id),
+      scopeKind: "employees",
+      resolvedNames: matched.map((m) => m.name)
+    };
   }
 
-  return {
-    subjectUserIds: matched.map((m) => m.id),
-    scopeKind: "employees",
-    resolvedNames: matched.map((m) => m.name)
-  };
+  if (isGenericCompanyWideRequest(message)) {
+    const companyWideIds = companyUsers.filter((u) => canView(u.id)).map((u) => u.id);
+    return {
+      subjectUserIds: companyWideIds.length ? companyWideIds : [actorUserId],
+      scopeKind: "company",
+      resolvedNames: []
+    };
+  }
+
+  return { subjectUserIds: [actorUserId], scopeKind: "self", resolvedNames: [] };
 }
 
 export function assistantScopeFromResolved(resolved: HebbMateResolvedScope): {

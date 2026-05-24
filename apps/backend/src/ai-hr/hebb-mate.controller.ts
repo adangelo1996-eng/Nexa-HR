@@ -212,6 +212,12 @@ export class HebbMateController {
     return this.mate.listHistory(auth);
   }
 
+  @Get("automations")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  getAutomations(@CurrentAuth() auth: AuthContext) {
+    return this.mate.listAutomations(auth);
+  }
+
   @Post("contracts/generate")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postGenerateContracts(@CurrentAuth() auth: AuthContext, @Body() body: MateContractDto) {

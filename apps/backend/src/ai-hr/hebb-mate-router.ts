@@ -41,7 +41,15 @@ const ROUTE_RULES: Array<{ intent: HebbMateRoutedIntent; patterns: RegExp[] }> =
   },
   {
     intent: "automation_proposals",
-    patterns: [/\bautomat/i, /\bschedul/i, /\bpianifica/i, /\bricorrent/i, /\bfrequenz/i, /\bcron/i]
+    patterns: [
+      /\bautomat/i,
+      /\bschedul/i,
+      /\bpianifica/i,
+      /\bricorrent/i,
+      /\bfrequenz/i,
+      /\bcron/i,
+      /\btimbratur/i
+    ]
   },
   {
     intent: "cowork_batch",

@@ -10,6 +10,7 @@ import { AiHrService } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import { FieldSuggestService } from "./field-suggest.service";
 import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
+import { HebbMateAutomationsStore } from "./hebb-mate-automations.store";
 import { HebbMateController } from "./hebb-mate.controller";
 import { HebbMateProposalsStore } from "./hebb-mate-proposals.store";
 import { HebbMateService } from "./hebb-mate.service";
@@ -28,6 +29,7 @@ import { NexaPlatformAgentService } from "./nexa-platform-agent.service";
     HebbMateService,
     HebbMateProposalsStore,
     HebbMateApplyLogStore,
+    HebbMateAutomationsStore,
     HebbMateUndoService
   ],
   exports: [AiAuditService, AiOpenAiRefinementService, NexaPlatformAgentService, FieldSuggestService, HebbMateService]

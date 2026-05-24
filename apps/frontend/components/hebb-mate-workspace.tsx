@@ -16,6 +16,7 @@ import {
   UserSearch
 } from "lucide-react";
 import {
+  fetchHebbMateAutomations,
   fetchHebbMateCapabilities,
   fetchHebbMateHistory,
   postHebbMateApply,
@@ -23,6 +24,7 @@ import {
   postHebbMateChat,
   postHebbMateUndo,
   type HebbMateActionDto,
+  type HebbMateAutomationDto,
   type HebbMateCapabilityCardDto,
   type HebbMateChatResponseDto,
   type HebbMateHistoryEntryDto
@@ -35,6 +37,21 @@ import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
 
 type ChatTurn = { role: "user" | "assistant"; text: string; response?: HebbMateChatResponseDto };
+
+const FREQUENCY_LABELS: Record<string, string> = {
+  daily: "Giornaliera",
+  weekly: "Settimanale",
+  monthly: "Mensile",
+  quarterly: "Trimestrale",
+  yearly: "Annuale",
+  on_demand: "Su richiesta"
+};
+
+const SCOPE_LABELS: Record<string, string> = {
+  self: "Personale",
+  employees: "Dipendenti selezionati",
+  company: "Tutta l'azienda"
+};
 
 const CAPABILITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "file-signature": FileSignature,
@@ -62,6 +79,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HebbMateHistoryEntryDto[]>([]);
+  const [automations, setAutomations] = useState<HebbMateAutomationDto[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HebbMateHistoryEntryDto | null>(null);
 
@@ -72,6 +90,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       .then((r) => setCapabilities(r.capabilities))
       .catch(() => setCapabilities([]));
     void loadHistory();
+    void loadAutomations();
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -82,6 +101,17 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       setHistory(res.entries);
     } catch {
       setHistory([]);
+    }
+  }, []);
+
+  const loadAutomations = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetchHebbMateAutomations(token);
+      setAutomations(res.automations);
+    } catch {
+      setAutomations([]);
     }
   }, []);
 
@@ -146,12 +176,13 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       );
       setThread((prev) => [...prev, { role: "assistant", text: applied.reply }]);
       await loadHistory();
+      await loadAutomations();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Conferma non riuscita");
     } finally {
       setApplying(false);
     }
-  }, [loadHistory, preview]);
+  }, [loadAutomations, loadHistory, preview]);
 
   const cancelPreview = useCallback(async () => {
     const token = getToken();
@@ -337,6 +368,10 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
                 <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
                   {preview.scope.resolvedNames.join(", ")}
                 </span>
+              ) : preview.scope.scopeKind === "company" ? (
+                <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                  {SCOPE_LABELS.company}
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -375,6 +410,61 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
               ) : null}
             </div>
           </div>
+        )}
+      </HebbAiGlassPanel>
+
+      <HebbAiGlassPanel className="flex w-full flex-col">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--prom-text)]">Automazioni attive</h3>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Automazioni HR in corso: frequenza, area di lavoro e azioni programmate.
+            </p>
+          </div>
+          <CalendarClock className="h-5 w-5 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden />
+        </div>
+        {automations.length === 0 ? (
+          <p className="mt-6 rounded-xl border border-dashed border-[var(--prom-line)] px-6 py-10 text-center text-sm text-[var(--prom-muted)]">
+            Nessuna automazione attiva. Chiedi a Mate di pianificare un&apos;automazione (es. timbrature giornaliere).
+          </p>
+        ) : (
+          <ul className="mt-4 divide-y divide-[var(--prom-line)]">
+            {automations.map((auto) => (
+              <li key={auto.id} className="py-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-[var(--prom-text)]">{auto.title}</p>
+                    <p className="mt-1 text-sm text-[var(--prom-muted)]">{auto.description}</p>
+                  </div>
+                  <span className="rounded-full border border-[var(--prom-line)] px-2 py-0.5 text-[10px] font-semibold uppercase">
+                    {auto.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--prom-muted)]">
+                  <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                    {FREQUENCY_LABELS[auto.frequency] ?? auto.frequency}
+                    {auto.scheduleHint ? ` · ${auto.scheduleHint}` : ""}
+                  </span>
+                  <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                    Area: {auto.workArea === "all" ? "Tutta l'app" : auto.workArea}
+                  </span>
+                  <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                    {SCOPE_LABELS[auto.scopeKind] ?? auto.scopeKind} ({auto.subjectCount})
+                  </span>
+                </div>
+                {auto.actions.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-xs text-[var(--prom-muted)]">
+                    {auto.actions.map((action, idx) => (
+                      <li key={`${auto.id}-action-${idx}`}>
+                        • {action.label}
+                        {action.toolId ? ` (${action.toolId})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         )}
       </HebbAiGlassPanel>
 

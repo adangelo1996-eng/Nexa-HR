@@ -43,7 +43,7 @@ export interface HebbMateChatTurn {
 }
 
 export interface HebbMateScopeSummary {
-  scopeKind: "self" | "employees";
+  scopeKind: "self" | "employees" | "company";
   subjectCount: number;
   resolvedNames: string[];
 }
@@ -164,6 +164,31 @@ export interface HebbMateAutomationProposal {
   toolId?: string;
   permissions: string[];
   estimatedImpact: string;
+  actions?: Array<{ type: string; label: string; toolId?: string }>;
+}
+
+export interface HebbMateAutomationDto {
+  id: string;
+  title: string;
+  description: string;
+  workArea: string;
+  frequency: HebbMateAutomationProposal["frequency"];
+  scheduleHint: string;
+  actions: Array<{ type: string; label: string; toolId?: string }>;
+  scopeKind: "self" | "employees" | "company";
+  subjectCount: number;
+  status: "active" | "paused" | "archived";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HebbMateAutomationsListResponse {
+  automations: HebbMateAutomationDto[];
+}
+
+export interface HebbMateActivateAutomationsResult {
+  created: number;
+  automations: HebbMateAutomationDto[];
 }
 
 export interface HebbMateDocumentEmailResult {

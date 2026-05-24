@@ -1,4 +1,4 @@
-import { resolveEmployeesFromMessage } from "./hebb-mate-scope.util";
+import { isGenericCompanyWideRequest, resolveEmployeesFromMessage } from "./hebb-mate-scope.util";
 
 describe("hebb-mate-scope.util", () => {
   const users = [
@@ -46,5 +46,12 @@ describe("hebb-mate-scope.util", () => {
     );
     expect(r.subjectUserIds).toEqual(["u1", "u2"]);
     expect(r.resolvedNames).toHaveLength(2);
+  });
+
+  it("uses company scope for generic automation requests", () => {
+    expect(isGenericCompanyWideRequest("Automatizza le timbrature giornaliere")).toBe(true);
+    const r = resolveEmployeesFromMessage("Automatizza le timbrature giornaliere", users as never, "actor", () => true);
+    expect(r.scopeKind).toBe("company");
+    expect(r.subjectUserIds).toEqual(["u1", "u2"]);
   });
 });

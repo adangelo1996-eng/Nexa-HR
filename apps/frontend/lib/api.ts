@@ -6643,9 +6643,24 @@ export interface HebbMateActionDto {
 }
 
 export interface HebbMateScopeSummaryDto {
-  scopeKind: "self" | "employees";
+  scopeKind: "self" | "employees" | "company";
   subjectCount: number;
   resolvedNames: string[];
+}
+
+export interface HebbMateAutomationDto {
+  id: string;
+  title: string;
+  description: string;
+  workArea: string;
+  frequency: "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "on_demand";
+  scheduleHint: string;
+  actions: Array<{ type: string; label: string; toolId?: string }>;
+  scopeKind: "self" | "employees" | "company";
+  subjectCount: number;
+  status: "active" | "paused" | "archived";
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HebbMateHitlPreviewDto {
@@ -6757,4 +6772,12 @@ export async function fetchHebbMateHistory(token: string): Promise<{ entries: He
   const response = await fetch(buildApiUrl("/ai/hr/mate/history"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<{ entries: HebbMateHistoryEntryDto[] }>;
+}
+
+export async function fetchHebbMateAutomations(
+  token: string
+): Promise<{ automations: HebbMateAutomationDto[] }> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/automations"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ automations: HebbMateAutomationDto[] }>;
 }

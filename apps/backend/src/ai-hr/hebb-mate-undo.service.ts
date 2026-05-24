@@ -5,7 +5,7 @@ import { HrContractsService } from "../hr-contracts/hr-contracts.service";
 import type { HebbMateApplyLogEntry } from "./hebb-mate-apply-log.store";
 import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
 
-const NON_REVERSIBLE_CAPABILITIES = new Set(["document_email", "cv_screening"]);
+const NON_REVERSIBLE_CAPABILITIES = new Set(["document_email", "cv_screening", "automation_proposals"]);
 
 @Injectable()
 export class HebbMateUndoService {
