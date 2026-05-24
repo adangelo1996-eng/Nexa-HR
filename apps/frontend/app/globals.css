@@ -59,6 +59,7 @@
   /* Accento blu di Prussia / grigio (sostituisce l’oro suite) */
   --prom-gold: #3a5466;
   --prom-gold-soft: #2a3f4d;
+  --prom-accent: #0d9488;
   --page-gradient: radial-gradient(1100px 640px at 100% -18%, rgba(255, 255, 255, 0.95), transparent 60%),
     radial-gradient(900px 520px at 0% 108%, rgba(120, 120, 120, 0.18), transparent 65%),
     linear-gradient(165deg, #f7f7f7, #e1e1e1 52%, var(--prom-bg) 100%);
@@ -85,6 +86,7 @@ html.dark {
   --prom-muted: #b4c9dc;
   --prom-gold: #6eb0e0;
   --prom-gold-soft: #3d85b5;
+  --prom-accent: #2dd4bf;
   --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(0, 45, 114, 0.22), transparent 62%),
     radial-gradient(900px 520px at 0% 110%, rgba(0, 35, 90, 0.18), transparent 64%),
     linear-gradient(165deg, #000a18, #031b36 45%, var(--prom-bg) 85%);

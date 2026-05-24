@@ -224,12 +224,6 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Quotidiano"
   },
   {
-    href: "/nexa-hr-copilot" as Route,
-    title: "NEXA HR Copilot",
-    blurb: "Brief giornaliero HR con pannelli operativi e follow-up conversazionale pseudonimizzato.",
-    category: "HEBB AI for HR"
-  },
-  {
     href: "/recruiting" as Route,
     title: "Colloqui e selezione",
     blurb: "Pipeline candidati e colloqui.",

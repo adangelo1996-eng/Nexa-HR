@@ -12,7 +12,6 @@ function routeDefinesOwnShell(pathname: string): boolean {
   }
   const own = new Set([
     "/hebb-ai-support",
-    "/nexa-hr-copilot",
     "/ai-hub",
     "/analytics",
     "/analytics/advanced",

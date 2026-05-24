@@ -10,6 +10,7 @@ import {
   fetchApprovals,
   fetchCurrentUser,
   fetchExpenseWorkflow,
+  invalidateApprovalsCache,
   rejectApproval,
   rejectExpenseClaim,
   type ApprovalItem,
@@ -37,6 +38,25 @@ import {
   leaveApprovalHasPreConfirmWarnings,
   leaveBalanceShortfallDays
 } from "@/lib/leave-approval-alerts";
+
+function ApprovalsLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div className="space-y-10" aria-busy="true" aria-label="Caricamento approvazioni">
+      <div className="h-7 w-40 animate-pulse rounded bg-[color-mix(in_srgb,var(--prom-muted)_20%,transparent)]" />
+      <div className="space-y-3">
+        <div className="h-6 w-28 animate-pulse rounded bg-[color-mix(in_srgb,var(--prom-muted)_18%,transparent)]" />
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-28 animate-pulse rounded-lg border border-[var(--prom-line)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)]"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function requestTypeLabel(item: ApprovalItem): string {
   if (item.type === "leave") {
@@ -278,16 +298,21 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (): Promise<void> => {
+  const load = useCallback(async (opts?: { silent?: boolean; fresh?: boolean }): Promise<void> => {
     const token = getToken();
     if (!token) {
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) {
+      setLoading(true);
+    }
+    if (opts?.fresh) {
+      invalidateApprovalsCache();
+    }
     try {
       const [me, a, ew] = await Promise.all([
         fetchCurrentUser(token),
-        fetchApprovals(token),
+        fetchApprovals(token, undefined, opts?.fresh ? { fresh: true } : undefined),
         fetchExpenseWorkflow(token).catch(() => null)
       ]);
       setCurrentUserId(me.id);
@@ -300,7 +325,9 @@ function WorkflowApprovalsContent(): React.JSX.Element {
         }
       );
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -334,14 +361,14 @@ function WorkflowApprovalsContent(): React.JSX.Element {
   }, [approvals, currentUserId, expenseWf]);
 
   useEffect(() => {
-    void load();
+    void load({ fresh: true });
   }, [load]);
 
   useEffect(() => {
-    const a = subscribePostgresTable("approvals", () => void load());
-    const s = subscribePostgresTable("smartworking_requests", () => void load());
-    const t = subscribePostgresTable("travel_requests", () => void load());
-    const e = subscribePostgresTable("expense_claims", () => void load());
+    const a = subscribePostgresTable("approvals", () => void load({ silent: true, fresh: true }));
+    const s = subscribePostgresTable("smartworking_requests", () => void load({ silent: true, fresh: true }));
+    const t = subscribePostgresTable("travel_requests", () => void load({ silent: true, fresh: true }));
+    const e = subscribePostgresTable("expense_claims", () => void load({ silent: true, fresh: true }));
     return (): void => {
       a.unsubscribe();
       s.unsubscribe();
@@ -366,7 +393,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       return;
     }
     await approveApproval(token, id);
-    void load();
+    void load({ fresh: true });
   }
 
   async function onRejectA(id: string): Promise<void> {
@@ -375,7 +402,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       return;
     }
     await rejectApproval(token, id, { reason: reasons[id] || undefined });
-    void load();
+    void load({ fresh: true });
   }
 
   async function onBulkApproveCategory(categoryKey: string, approvalIds: string[]): Promise<void> {
@@ -392,7 +419,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
           `${result.succeeded.length} approvate, ${result.failed.length} non riuscite. ${result.failed[0]?.message ?? ""}`
         );
       }
-      await load();
+      await load({ fresh: true });
     } finally {
       setBulkBusyCategory(null);
     }
@@ -412,7 +439,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
           `${result.succeeded.length} approvate, ${result.failed.length} non riuscite. ${result.failed[0]?.message ?? ""}`
         );
       }
-      await load();
+      await load({ fresh: true });
     } finally {
       setBulkBusyCategory(null);
     }
@@ -430,7 +457,7 @@ function WorkflowApprovalsContent(): React.JSX.Element {
       } else {
         await rejectExpenseClaim(token, claimId);
       }
-      await load();
+      await load({ fresh: true });
     } finally {
       setExpenseBusyId(null);
     }
@@ -444,12 +471,22 @@ function WorkflowApprovalsContent(): React.JSX.Element {
     [toApprove]
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-10">
+        <header>
+          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni</h1>
+        </header>
+        <ApprovalsLoadingSkeleton />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--prom-text)]">Approvazioni</h1>
       </header>
-      {loading ? <p className="text-sm text-[var(--prom-muted)]">Caricamento…</p> : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--prom-text)]">In sospeso</h2>

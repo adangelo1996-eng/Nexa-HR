@@ -556,6 +556,8 @@ export interface NexaImportEventRow {
 export interface CompanySettingsStored {
   fiscalYearStartMonth: number;
   companyLegalName: string;
+  /** Sede legale / indirizzo operativo (prefill contratti). */
+  companyAddress: string;
   companyVatNumber: string;
   companyRegistrationInfo: string;
   /** Contratto nazionale di riferimento per l’azienda (testo o codice). */
@@ -1122,6 +1124,29 @@ export class HrDataStore {
       return ((data as User[]) ?? []).map((u) => this.mapUserRowFromDatabase(u));
     }
     return this.users.map((u) => ({ ...u, role: coercePlatformRole(u.role) }));
+  }
+
+  /** Lookup utenti per id (evita `listUsers()` completo su liste scoped). */
+  private async mapUsersByIds(userIds: string[]): Promise<Map<string, User>> {
+    const unique = [...new Set(userIds.filter(Boolean))];
+    if (unique.length === 0) {
+      return new Map();
+    }
+    if (this.useDb) {
+      const { data, error } = await this.supabase!.from("users").select("*").in("id", unique);
+      if (error) {
+        throw new BadRequestException(`Lettura utenti fallita: ${error.message}`);
+      }
+      return new Map(
+        ((data ?? []) as User[]).map((row) => [row.id, this.mapUserRowFromDatabase(row)])
+      );
+    }
+    const idSet = new Set(unique);
+    return new Map(
+      this.users
+        .filter((item) => idSet.has(item.id))
+        .map((item) => [item.id, { ...item, role: coercePlatformRole(item.role) }])
+    );
   }
 
   async getUser(userId: string): Promise<User> {
@@ -4136,13 +4161,30 @@ export class HrDataStore {
   ): Promise<ApprovalView[]> {
     const requester = await this.getUser(requesterId);
     const visibleUserIds = await this.listManagedMemberIdsForApprover(requesterId);
-    const allApprovals = this.useDb
-      ? (((await this.supabase!.from("approvals").select("*")).data ?? []) as ApprovalRecord[])
-      : this.approvals;
-    let approvals = allApprovals
-      .filter((item) => requester.role === "superuser" || visibleUserIds.has(item.requestedBy))
-      .filter((item) => (status ? item.status === status : true))
-      .sort((a, b) => b.at.localeCompare(a.at));
+    let approvals: ApprovalRecord[];
+    if (this.useDb) {
+      let query = this.supabase!.from("approvals").select("*");
+      if (requester.role !== "superuser") {
+        const scopedIds = [...visibleUserIds];
+        if (scopedIds.length === 0) {
+          return [];
+        }
+        query = query.in("requested_by", scopedIds);
+      }
+      if (status) {
+        query = query.eq("status", status);
+      }
+      const { data, error } = await query.order("at", { ascending: false });
+      if (error) {
+        throw new BadRequestException(`Lettura approvazioni fallita: ${error.message}`);
+      }
+      approvals = (data ?? []) as ApprovalRecord[];
+    } else {
+      approvals = this.approvals
+        .filter((item) => requester.role === "superuser" || visibleUserIds.has(item.requestedBy))
+        .filter((item) => (status ? item.status === status : true))
+        .sort((a, b) => b.at.localeCompare(a.at));
+    }
 
     const leavesById = new Map<string, LeavePlan>();
     const sicknessById = new Map<string, SicknessEvent>();
@@ -4155,32 +4197,32 @@ export class HrDataStore {
       const swIds = approvals.filter((item) => item.type === "smartworking").map((item) => item.entityId);
       const travelIds = approvals.filter((item) => item.type === "travel").map((item) => item.entityId);
 
-      if (leaveIds.length > 0) {
-        const { data } = await this.supabase!.from("leave_plans").select("*").in("id", leaveIds);
-        for (const row of (data ?? []) as LeavePlan[]) {
-          leavesById.set(row.id, row);
-        }
-      }
+      const [leaveRes, sicknessRes, swRes, travelRes] = await Promise.all([
+        leaveIds.length > 0
+          ? this.supabase!.from("leave_plans").select("*").in("id", leaveIds)
+          : Promise.resolve({ data: [] as LeavePlan[] }),
+        sicknessIds.length > 0
+          ? this.supabase!.from("sickness_events").select("*").in("id", sicknessIds)
+          : Promise.resolve({ data: [] as SicknessEvent[] }),
+        swIds.length > 0
+          ? this.supabase!.from("smartworking_requests").select("*").in("id", swIds)
+          : Promise.resolve({ data: [] as SmartworkingRequestRow[] }),
+        travelIds.length > 0
+          ? this.supabase!.from("travel_requests").select("*").in("id", travelIds)
+          : Promise.resolve({ data: [] as TravelRequestRow[] })
+      ]);
 
-      if (sicknessIds.length > 0) {
-        const { data } = await this.supabase!.from("sickness_events").select("*").in("id", sicknessIds);
-        for (const row of (data ?? []) as SicknessEvent[]) {
-          sicknessById.set(row.id, row);
-        }
+      for (const row of (leaveRes.data ?? []) as LeavePlan[]) {
+        leavesById.set(row.id, row);
       }
-
-      if (swIds.length > 0) {
-        const { data } = await this.supabase!.from("smartworking_requests").select("*").in("id", swIds);
-        for (const row of (data ?? []) as SmartworkingRequestRow[]) {
-          swById.set(row.id, row);
-        }
+      for (const row of (sicknessRes.data ?? []) as SicknessEvent[]) {
+        sicknessById.set(row.id, row);
       }
-
-      if (travelIds.length > 0) {
-        const { data } = await this.supabase!.from("travel_requests").select("*").in("id", travelIds);
-        for (const row of (data ?? []) as TravelRequestRow[]) {
-          travelById.set(row.id, row);
-        }
+      for (const row of (swRes.data ?? []) as SmartworkingRequestRow[]) {
+        swById.set(row.id, row);
+      }
+      for (const row of (travelRes.data ?? []) as TravelRequestRow[]) {
+        travelById.set(row.id, row);
       }
     } else {
       for (const leave of this.leavePlans) {
@@ -4223,8 +4265,14 @@ export class HrDataStore {
       return sw?.status === "pending";
     });
 
-    const users = await this.listUsers();
-    const usersById = new Map(users.map((user) => [user.id, user]));
+    const neededUserIds = new Set<string>();
+    for (const item of approvals) {
+      neededUserIds.add(item.requestedBy);
+      if (item.approverId) {
+        neededUserIds.add(item.approverId);
+      }
+    }
+    const usersById = await this.mapUsersByIds([...neededUserIds]);
     const photoCache = new Map<string, string | null>();
     const loadPhoto = async (uid: string): Promise<string | null> => {
       if (photoCache.has(uid)) {
@@ -4239,6 +4287,25 @@ export class HrDataStore {
         return null;
       }
     };
+    await Promise.all([...neededUserIds].map((uid) => loadPhoto(uid)));
+
+    const leaveBalanceCache = new Map<string, LeaveBalance>();
+    const smartworkingMetricsCache = new Map<
+      string,
+      {
+        smartworkingWeekUsed: number;
+        smartworkingWeekQuota: number;
+        smartworkingMonthUsed: number;
+        smartworkingMonthQuota: number;
+      }
+    >();
+    const teamCoverageCache = new Map<
+      string,
+      Awaited<ReturnType<HrDataStore["computeLeaveTeamCoverage"]>>
+    >();
+
+    const needsApproverMetrics = (item: ApprovalRecord): boolean =>
+      item.status === "pending" && item.requestedBy !== requesterId;
 
     const out: ApprovalView[] = [];
     for (const item of approvals) {
@@ -4247,7 +4314,8 @@ export class HrDataStore {
       const sickness = item.type === "sickness" ? sicknessById.get(item.entityId) : undefined;
       const sw = item.type === "smartworking" ? swById.get(item.entityId) : undefined;
       const tr = item.type === "travel" ? travelById.get(item.entityId) : undefined;
-      const requesterPhotoUrl = await loadPhoto(item.requestedBy);
+      const requesterPhotoUrl = photoCache.get(item.requestedBy) ?? null;
+      const enrichMetrics = needsApproverMetrics(item);
 
       let leaveKind: "annual" | "rol" | undefined;
       let residualAnnualLeaveDays: number | undefined;
@@ -4267,9 +4335,13 @@ export class HrDataStore {
         } catch {
           requestedCalendarDays = undefined;
         }
-        if (leaveKind === "annual") {
+        if (enrichMetrics && leaveKind === "annual") {
           const year = Number(leave.startDate.slice(0, 4));
-          const bal = await this.getLeaveBalance(leave.userId, year);
+          const balanceKey = `${leave.userId}:${year}`;
+          if (!leaveBalanceCache.has(balanceKey)) {
+            leaveBalanceCache.set(balanceKey, await this.getLeaveBalance(leave.userId, year));
+          }
+          const bal = leaveBalanceCache.get(balanceKey)!;
           residualAnnualLeaveDays = bal.residualDays;
           if (requestedCalendarDays != null && residualAnnualLeaveDays < requestedCalendarDays) {
             insufficientAnnualLeaveBalance = true;
@@ -4291,14 +4363,29 @@ export class HrDataStore {
           requestedCalendarDays = 1;
         }
         note = sw.note ?? null;
-        const swQuotas = await this.resolveSmartworkingQuotas(sw.userId, sw.day.slice(0, 7));
-        smartworkingWeekQuota = swQuotas.weekly;
-        smartworkingWeekUsed = await this.countSmartworkingBookedDaysInWeek(sw.userId, sw.day);
-        smartworkingMonthQuota = swQuotas.monthly;
-        smartworkingMonthUsed = await this.countNonRejectedSmartworkingDaysInMonth(
-          sw.userId,
-          sw.day.slice(0, 7)
-        );
+        if (enrichMetrics) {
+          const monthPrefix = sw.day.slice(0, 7);
+          const weekMon = this.mondayOfWeekUtcContaining(sw.day);
+          const swKey = `${sw.userId}:${monthPrefix}:${weekMon}`;
+          if (!smartworkingMetricsCache.has(swKey)) {
+            const swQuotas = await this.resolveSmartworkingQuotas(sw.userId, monthPrefix);
+            const [weekUsed, monthUsed] = await Promise.all([
+              this.countSmartworkingBookedDaysInWeek(sw.userId, sw.day),
+              this.countNonRejectedSmartworkingDaysInMonth(sw.userId, monthPrefix)
+            ]);
+            smartworkingMetricsCache.set(swKey, {
+              smartworkingWeekUsed: weekUsed,
+              smartworkingWeekQuota: swQuotas.weekly,
+              smartworkingMonthUsed: monthUsed,
+              smartworkingMonthQuota: swQuotas.monthly
+            });
+          }
+          const swMetrics = smartworkingMetricsCache.get(swKey)!;
+          smartworkingWeekUsed = swMetrics.smartworkingWeekUsed;
+          smartworkingWeekQuota = swMetrics.smartworkingWeekQuota;
+          smartworkingMonthUsed = swMetrics.smartworkingMonthUsed;
+          smartworkingMonthQuota = swMetrics.smartworkingMonthQuota;
+        }
       } else if (tr) {
         requestedCalendarDays = 1;
         note = tr.note ?? null;
@@ -4312,8 +4399,15 @@ export class HrDataStore {
         teamCoverageMinAvailable?: number;
         teamCoverageZeroDays?: number;
       } = {};
-      if (leave && item.status === "pending" && user) {
-        const coverage = await this.computeLeaveTeamCoverage(user, leave.startDate, leave.endDate);
+      if (enrichMetrics && leave && user) {
+        const coverageKey = `${user.id}:${leave.startDate}:${leave.endDate}`;
+        if (!teamCoverageCache.has(coverageKey)) {
+          teamCoverageCache.set(
+            coverageKey,
+            await this.computeLeaveTeamCoverage(user, leave.startDate, leave.endDate)
+          );
+        }
+        const coverage = teamCoverageCache.get(coverageKey);
         if (coverage) {
           teamCoverageFields = coverage;
         }
@@ -5335,7 +5429,14 @@ export class HrDataStore {
       throw new BadRequestException("Orario non valido");
     }
     if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
-      throw new BadRequestException("Orario non valido");
+      throw new BadRequestException("Orario non valido: la fine deve essere dopo l'inizio.");
+    }
+    const durationMs = new Date(endsAt).getTime() - new Date(startsAt).getTime();
+    if (durationMs < 15 * 60 * 1000) {
+      throw new BadRequestException("Durata minima prenotazione: 15 minuti.");
+    }
+    if (durationMs > 12 * 60 * 60 * 1000) {
+      throw new BadRequestException("Durata massima prenotazione: 12 ore.");
     }
     const title = input.title?.trim() || "";
     const { data, error } = await this.supabase!
@@ -12791,13 +12892,14 @@ export class HrDataStore {
   private defaultCompanySettingsStored(): CompanySettingsStored {
     return {
       fiscalYearStartMonth: 1,
-      companyLegalName: "",
-      companyVatNumber: "",
-      companyRegistrationInfo: "",
-      companyCcnl: "",
+      companyLegalName: "CASA DAMIANI S.P.A.",
+      companyAddress: "Via Synapse 1, 20121 Milano (MI), Italia",
+      companyVatNumber: "IT01234567890",
+      companyRegistrationInfo: "REA MI-1234567 · CCIAA Milano · Cap. soc. € 100.000 i.v.",
+      companyCcnl: "Commercio — Terziario distribuito e servizi",
       defaultCurrency: "EUR",
       weeklyFullTimeHours: 40,
-      payrollInstallmentMonths: 12,
+      payrollInstallmentMonths: 13,
       customVariables: {}
     };
   }
@@ -12814,6 +12916,9 @@ export class HrDataStore {
     }
     if (typeof o.companyLegalName === "string") {
       d.companyLegalName = o.companyLegalName.slice(0, 240);
+    }
+    if (typeof o.companyAddress === "string") {
+      d.companyAddress = o.companyAddress.slice(0, 400);
     }
     if (typeof o.companyVatNumber === "string") {
       d.companyVatNumber = o.companyVatNumber.slice(0, 64);
@@ -12861,6 +12966,9 @@ export class HrDataStore {
     }
     if (patch.companyLegalName !== undefined) {
       next.companyLegalName = patch.companyLegalName.trim().slice(0, 240);
+    }
+    if (patch.companyAddress !== undefined) {
+      next.companyAddress = patch.companyAddress.trim().slice(0, 400);
     }
     if (patch.companyVatNumber !== undefined) {
       next.companyVatNumber = patch.companyVatNumber.trim().slice(0, 64);

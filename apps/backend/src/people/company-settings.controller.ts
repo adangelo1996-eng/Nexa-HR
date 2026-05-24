@@ -19,6 +19,11 @@ class PatchCompanySettingsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(400)
+  companyAddress?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(64)
   companyVatNumber?: string;
 

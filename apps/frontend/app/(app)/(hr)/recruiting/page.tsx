@@ -14,8 +14,6 @@ import {
   createRecruitPosition,
   deleteRecruitPosition,
   fetchRecruitPositions,
-  publishRecruitPositionToLinkedIn,
-  syncRecruitPositionLinkedIn,
   type RecruitPositionDto
 } from "@/lib/api";
 
@@ -31,8 +29,6 @@ export default function RecruitingHomePage(): React.JSX.Element {
   const [jd, setJd] = useState("");
   const [dueDate, setDueDate] = useState<string>("");
   const [location, setLocation] = useState("");
-  const [publishToLinkedIn, setPublishToLinkedIn] = useState(false);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
   const canCreate = title.trim().length > 0 && jd.trim().length > 0;
 
   useEffect(() => {
@@ -60,15 +56,13 @@ export default function RecruitingHomePage(): React.JSX.Element {
         title: title.trim(),
         jobDescription: jd.trim(),
         dueDate: dueDate.trim() ? dueDate.trim() : null,
-        location: location.trim() ? location.trim() : null,
-        publishToLinkedIn
+        location: location.trim() ? location.trim() : null
       });
       setPositions((prev) => [created, ...prev]);
       setTitle("");
       setJd("");
       setDueDate("");
       setLocation("");
-      setPublishToLinkedIn(false);
       setShowCreateForm(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore creazione posizione");
@@ -113,18 +107,23 @@ export default function RecruitingHomePage(): React.JSX.Element {
             </span>
           </span>
         </Link>
-        <Link
-          href="/recruiting/integrations"
-          className="flex items-start gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--prom-surface)] p-4 transition hover:border-[color-mix(in_srgb,#002D72_30%,var(--card-border))] sm:col-span-3"
+        <div
+          aria-disabled
+          className="relative flex cursor-not-allowed items-start gap-3 rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--prom-surface)]/60 p-4 opacity-70 sm:col-span-3"
         >
-          <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[#002D72] dark:text-sky-200" aria-hidden />
+          <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-muted)]" aria-hidden />
           <span>
-            <span className="block text-sm font-semibold text-synapse-text dark:text-white">Integrazioni LinkedIn</span>
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="block text-sm font-semibold text-synapse-text dark:text-white">Integrazioni LinkedIn</span>
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                WIP
+              </span>
+            </span>
             <span className="mt-1 block text-xs text-synapse-muted dark:text-[#b4c9dc]">
-              Sync bidirezionale posizioni, webhook e variabili ambiente.
+              Sync bidirezionale posizioni e webhook — in sviluppo, non ancora selezionabile.
             </span>
           </span>
-        </Link>
+        </div>
         <div className="rounded-xl border border-dashed border-[var(--card-border)] bg-white/40 p-4 dark:bg-[#052642]/40">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#002D72] dark:text-sky-200">Come funziona</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-synapse-muted dark:text-[#b4c9dc]">
@@ -209,14 +208,19 @@ export default function RecruitingHomePage(): React.JSX.Element {
                     autoComplete="off"
                   />
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm opacity-60">
                   <input
                     type="checkbox"
-                    checked={publishToLinkedIn}
-                    onChange={(e) => setPublishToLinkedIn(e.target.checked)}
+                    checked={false}
+                    disabled
                     className="h-4 w-4 rounded border-slate-300"
                   />
-                  <span className="text-synapse-muted dark:text-[#b4c9dc]">Pubblica su LinkedIn alla creazione</span>
+                  <span className="text-synapse-muted dark:text-[#b4c9dc]">
+                    Pubblica su LinkedIn alla creazione
+                    <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                      WIP
+                    </span>
+                  </span>
                 </label>
                 <label className="space-y-1 text-sm">
                   <span className="text-synapse-muted dark:text-[#b4c9dc]">Job description *</span>
@@ -274,22 +278,8 @@ export default function RecruitingHomePage(): React.JSX.Element {
                       type="button"
                       variant="secondary"
                       size="sm"
-                      disabled={!token || syncingId === p.id}
-                      onClick={() => {
-                        if (!token) return;
-                        setSyncingId(p.id);
-                        setError(null);
-                        const action =
-                          p.linkedin_sync_status === "synced"
-                            ? syncRecruitPositionLinkedIn(token, p.id)
-                            : publishRecruitPositionToLinkedIn(token, p.id);
-                        void action
-                          .then((updated) =>
-                            setPositions((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-                          )
-                          .catch((e) => setError(e instanceof Error ? e.message : "Errore sync LinkedIn"))
-                          .finally(() => setSyncingId(null));
-                      }}
+                      disabled
+                      title="Integrazione LinkedIn in sviluppo (WIP)"
                     >
                       {p.linkedin_sync_status === "synced" ? "Sincronizza ora" : "Pubblica su LinkedIn"}
                     </Button>

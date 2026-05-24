@@ -13,10 +13,12 @@ import { getToken } from "@/lib/auth-session";
 import {
   createHrStandardContract,
   deleteHrStandardContract,
+  fetchHrContractCompanyPartyDefaults,
   fetchHrContractPresets,
   fetchHrStandardContracts,
   type HrContractPresetDto
 } from "@/lib/api";
+import { mergeContractPartyDefaults } from "@/lib/company-party-defaults";
 import {
   CONTRACT_TEMPLATE_FORM,
   contractPartyPassesTemplateValidation,
@@ -32,8 +34,8 @@ function shortIso(iso: string): string {
   return iso.slice(0, 10);
 }
 
-const DEFAULT_PARTY: ContractPartyInfo = {
-  companyLegalName: "Azienda",
+const EMPTY_PARTY: ContractPartyInfo = {
+  companyLegalName: "",
   companyAddress: "",
   employeeFirstName: "",
   employeeLastName: "",
@@ -92,7 +94,8 @@ export default function ContractsListPage(): React.JSX.Element {
   const [showNewForm, setShowNewForm] = useState(false);
 
   const [template, setTemplate] = useState<HrContractTemplateKey>("indeterminato");
-  const [party, setParty] = useState<ContractPartyInfo>(DEFAULT_PARTY);
+  const [companyPartyBase, setCompanyPartyBase] = useState<ContractPartyInfo>(EMPTY_PARTY);
+  const [party, setParty] = useState<ContractPartyInfo>(EMPTY_PARTY);
 
   const formCfg = useMemo(() => CONTRACT_TEMPLATE_FORM[template], [template]);
 
@@ -130,20 +133,23 @@ export default function ContractsListPage(): React.JSX.Element {
     }));
   };
 
-  const openNewForm = useCallback((templateKey: HrContractTemplateKey, presetDefaults?: Record<string, unknown>): void => {
-    const nextCfg = CONTRACT_TEMPLATE_FORM[templateKey];
-    const merged = mergePartyDefaults(DEFAULT_PARTY, presetDefaults ?? {});
-    setTemplate(templateKey);
-    setParty({
-      ...merged,
-      endDateIso: nextCfg.showEndDate ? merged.endDateIso : "",
-      fixedTermReason: nextCfg.showFixedTermReason ? merged.fixedTermReason : "",
-      weeklyHours: nextCfg.showWeeklyHours ? merged.weeklyHours : undefined,
-      intermittentWorkDescription: nextCfg.showIntermittentDescription ? merged.intermittentWorkDescription : "",
-      projectScopeSummary: nextCfg.showProjectScope ? merged.projectScopeSummary : ""
-    });
-    setShowNewForm(true);
-  }, []);
+  const openNewForm = useCallback(
+    (templateKey: HrContractTemplateKey, presetDefaults?: Record<string, unknown>): void => {
+      const nextCfg = CONTRACT_TEMPLATE_FORM[templateKey];
+      const merged = mergePartyDefaults(companyPartyBase, presetDefaults ?? {});
+      setTemplate(templateKey);
+      setParty({
+        ...merged,
+        endDateIso: nextCfg.showEndDate ? merged.endDateIso : "",
+        fixedTermReason: nextCfg.showFixedTermReason ? merged.fixedTermReason : "",
+        weeklyHours: nextCfg.showWeeklyHours ? merged.weeklyHours : undefined,
+        intermittentWorkDescription: nextCfg.showIntermittentDescription ? merged.intermittentWorkDescription : "",
+        projectScopeSummary: nextCfg.showProjectScope ? merged.projectScopeSummary : ""
+      });
+      setShowNewForm(true);
+    },
+    [companyPartyBase]
+  );
 
   const reload = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -154,10 +160,16 @@ export default function ContractsListPage(): React.JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const [rows, presetRows] = await Promise.all([
+      const [rows, presetRows, companyPartyApi] = await Promise.all([
         fetchHrStandardContracts(token),
-        fetchHrContractPresets(token).catch(() => [] as HrContractPresetDto[])
+        fetchHrContractPresets(token).catch(() => [] as HrContractPresetDto[]),
+        fetchHrContractCompanyPartyDefaults(token).catch(() => ({} as Record<string, unknown>))
       ]);
+      const companyDefaults = mergeContractPartyDefaults(
+        EMPTY_PARTY,
+        companyPartyApi as Partial<ContractPartyInfo>
+      );
+      setCompanyPartyBase(companyDefaults);
       setPresets(presetRows);
       setContracts(
         rows.map((r) => ({
@@ -279,23 +291,27 @@ export default function ContractsListPage(): React.JSX.Element {
                         >
                           Apri editor
                         </Link>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => {
-                            if (!window.confirm("Eliminare il contratto?")) return;
-                            const token = getToken();
-                            if (!token) {
-                              router.replace("/login");
-                              return;
-                            }
-                            void deleteHrStandardContract(token, c.id)
-                              .then(() => void reload())
-                              .catch((e) => setError(e instanceof Error ? e.message : "Errore eliminazione"));
-                          }}
-                        >
-                          Elimina
-                        </Button>
+                        {c.status === "draft" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              if (!window.confirm("Eliminare la bozza di contratto? L'operazione non è reversibile.")) {
+                                return;
+                              }
+                              const token = getToken();
+                              if (!token) {
+                                router.replace("/login");
+                                return;
+                              }
+                              void deleteHrStandardContract(token, c.id)
+                                .then(() => void reload())
+                                .catch((e) => setError(e instanceof Error ? e.message : "Errore eliminazione"));
+                            }}
+                          >
+                            Elimina bozza
+                          </Button>
+                        ) : null}
                       </div>
                     </li>
                   ))}

@@ -227,7 +227,10 @@ export function buildPartyFromUser(
 
   return {
     companyLegalName: company.companyLegalName?.trim() || "Datore di lavoro",
-    companyAddress: company.companyRegistrationInfo?.trim() || undefined,
+    companyAddress:
+      company.companyAddress?.trim() ||
+      company.companyRegistrationInfo?.trim() ||
+      undefined,
     employeeFirstName: first,
     employeeLastName: last,
     employeeAddress: user.address?.trim() || undefined,

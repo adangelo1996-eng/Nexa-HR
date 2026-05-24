@@ -8,6 +8,7 @@ import { FileText, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  deleteHrStandardContract,
   fetchHrContractsByCategory,
   type HrContractCatalogItemDto,
   type HrContractCategoryGroupDto
@@ -39,6 +40,7 @@ export default function AdminContrattiPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [filterKey, setFilterKey] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const reload = useCallback(async (): Promise<void> => {
     const token = getToken();
@@ -134,6 +136,12 @@ export default function AdminContrattiPage(): React.JSX.Element {
         >
           Editor contratti standard →
         </Link>
+        <Link
+          href="/admin/dati-azienda"
+          className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-synapse-text hover:bg-[color-mix(in_srgb,var(--prom-gold)_10%,transparent)] dark:text-white"
+        >
+          Dati azienda →
+        </Link>
       </div>
 
       {error ? (
@@ -200,6 +208,40 @@ export default function AdminContrattiPage(): React.JSX.Element {
                           >
                             Documento
                           </Link>
+                        ) : null}
+                        {item.source === "standard" &&
+                        item.status === "draft" &&
+                        item.contractId ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="h-auto px-2.5 py-1.5 text-xs"
+                            disabled={deletingId === item.contractId}
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `Eliminare la bozza «${item.title}»? L'operazione non è reversibile.`
+                                )
+                              ) {
+                                return;
+                              }
+                              const token = getToken();
+                              if (!token) {
+                                router.replace("/login");
+                                return;
+                              }
+                              setDeletingId(item.contractId);
+                              void deleteHrStandardContract(token, item.contractId!)
+                                .then(() => void reload())
+                                .catch((e) =>
+                                  setError(e instanceof Error ? e.message : "Errore eliminazione bozza")
+                                )
+                                .finally(() => setDeletingId(null));
+                            }}
+                          >
+                            {deletingId === item.contractId ? "Elimino…" : "Elimina bozza"}
+                          </Button>
                         ) : null}
                       </div>
                     </li>

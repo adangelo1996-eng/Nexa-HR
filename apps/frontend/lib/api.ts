@@ -225,6 +225,8 @@ export interface CompanySettingsDto {
   /** 1–12: mese di inizio anno di riferimento (es. 4 = anno societario da aprile). */
   fiscalYearStartMonth: number;
   companyLegalName: string;
+  /** Sede legale / indirizzo (prefill contratti). */
+  companyAddress: string;
   companyVatNumber: string;
   companyRegistrationInfo: string;
   /** CCNL di riferimento per il tenant (testo o codice). */
@@ -2343,19 +2345,57 @@ export async function setLeaveAllowance(token: string, userId: string, allocated
   return (await response.json()) as LeaveBalance;
 }
 
+const APPROVALS_CACHE_TTL_MS = 30_000;
+let approvalsCache: { key: string; items: ApprovalItem[]; at: number } | null = null;
+let approvalsInFlight: { key: string; promise: Promise<ApprovalItem[]> } | null = null;
+
 export async function fetchApprovals(
   token: string,
-  status?: "pending" | "approved" | "rejected"
+  status?: "pending" | "approved" | "rejected",
+  opts?: { fresh?: boolean }
 ): Promise<ApprovalItem[]> {
   const search = status ? `?status=${status}` : "";
-  const response = await fetch(buildApiUrl(`/approvals${search}`), {
-    method: "GET",
-    headers: getAuthHeaders(token)
-  });
-  if (!response.ok) {
-    await parseError(response);
+  const cacheKey = `${token}:${search}`;
+  const now = Date.now();
+  if (
+    !opts?.fresh &&
+    approvalsCache &&
+    approvalsCache.key === cacheKey &&
+    now - approvalsCache.at < APPROVALS_CACHE_TTL_MS
+  ) {
+    return approvalsCache.items;
   }
-  return (await response.json()) as ApprovalItem[];
+  if (approvalsInFlight && approvalsInFlight.key === cacheKey) {
+    return approvalsInFlight.promise;
+  }
+
+  const promise = (async (): Promise<ApprovalItem[]> => {
+    const response = await fetch(buildApiUrl(`/approvals${search}`), {
+      method: "GET",
+      headers: getAuthHeaders(token)
+    });
+    if (!response.ok) {
+      await parseError(response);
+    }
+    const items = (await response.json()) as ApprovalItem[];
+    approvalsCache = { key: cacheKey, items, at: Date.now() };
+    return items;
+  })();
+
+  approvalsInFlight = { key: cacheKey, promise };
+  try {
+    return await promise;
+  } finally {
+    if (approvalsInFlight?.promise === promise) {
+      approvalsInFlight = null;
+    }
+  }
+}
+
+/** Invalida cache approvazioni (dopo approve/reject o refresh realtime). */
+export function invalidateApprovalsCache(): void {
+  approvalsCache = null;
+  approvalsInFlight = null;
 }
 
 export async function approveApproval(token: string, approvalId: string): Promise<ApprovalItem> {
@@ -2366,6 +2406,7 @@ export async function approveApproval(token: string, approvalId: string): Promis
   if (!response.ok) {
     await parseError(response);
   }
+  invalidateApprovalsCache();
   return (await response.json()) as ApprovalItem;
 }
 
@@ -2382,6 +2423,7 @@ export async function rejectApproval(
   if (!response.ok) {
     await parseError(response);
   }
+  invalidateApprovalsCache();
   return (await response.json()) as ApprovalItem;
 }
 
@@ -4420,6 +4462,16 @@ export async function fetchHrContractPresets(token: string): Promise<HrContractP
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { items: HrContractPresetDto[] };
   return body.items ?? [];
+}
+
+export async function fetchHrContractCompanyPartyDefaults(
+  token: string
+): Promise<Record<string, unknown>> {
+  const response = await fetch(buildApiUrl("/hr-contracts/company-party-defaults"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as Record<string, unknown>;
 }
 
 export async function fetchHrStandardContracts(token: string): Promise<HrStandardContractDto[]> {
@@ -6816,6 +6868,27 @@ export interface HebbMateApplyResponseDto {
   applyLogIds: string[];
 }
 
+export interface HebbMateAutomationDryRunSampleDto {
+  label: string;
+  count: number;
+  detail?: string;
+}
+
+export interface HebbMateAutomationTestResultDto {
+  dryRun: true;
+  automationId: string;
+  title: string;
+  workArea: string;
+  frequency: HebbMateAutomationDto["frequency"];
+  scheduleHint: string;
+  scopeKind: "self" | "employees" | "company";
+  subjectCount: number;
+  plannedActions: Array<{ type: string; label: string; toolId?: string }>;
+  summary: string;
+  samples: HebbMateAutomationDryRunSampleDto[];
+  wouldPersist: false;
+}
+
 export interface HebbMateHistoryEntryDto {
   logId: string;
   proposalId: string;
@@ -6830,10 +6903,15 @@ export interface HebbMateHistoryEntryDto {
 export async function fetchHebbMateCapabilities(token: string): Promise<{
   capabilities: HebbMateCapabilityCardDto[];
   llmActive: boolean;
+  canManageAutomations: boolean;
 }> {
   const response = await fetch(buildApiUrl("/ai/hr/mate/capabilities"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{ capabilities: HebbMateCapabilityCardDto[]; llmActive: boolean }>;
+  return response.json() as Promise<{
+    capabilities: HebbMateCapabilityCardDto[];
+    llmActive: boolean;
+    canManageAutomations: boolean;
+  }>;
 }
 
 export async function postHebbMateChat(
@@ -6860,15 +6938,33 @@ export async function postHebbMateChat(
 
 export async function postHebbMateApply(
   token: string,
-  proposalId: string
+  proposalId: string,
+  selectedProposalIds?: string[]
 ): Promise<HebbMateApplyResponseDto> {
   const response = await fetch(buildApiUrl("/ai/hr/mate/apply"), {
     method: "POST",
     headers: getAuthHeaders(token),
-    body: JSON.stringify({ proposalId })
+    body: JSON.stringify({
+      proposalId,
+      ...(selectedProposalIds?.length ? { selectedProposalIds } : {})
+    })
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<HebbMateApplyResponseDto>;
+}
+
+export async function postHebbMateAutomationTest(
+  token: string,
+  automationId: string,
+  dryRun = true
+): Promise<HebbMateAutomationTestResultDto> {
+  const response = await fetch(buildApiUrl(`/ai/hr/mate/automations/${encodeURIComponent(automationId)}/test`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ dryRun })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HebbMateAutomationTestResultDto>;
 }
 
 export async function postHebbMateCancel(token: string, proposalId: string): Promise<{ ok: boolean }> {
@@ -6902,8 +6998,8 @@ export async function fetchHebbMateHistory(token: string): Promise<{ entries: He
 
 export async function fetchHebbMateAutomations(
   token: string
-): Promise<{ automations: HebbMateAutomationDto[] }> {
+): Promise<{ automations: HebbMateAutomationDto[]; canManage: boolean }> {
   const response = await fetch(buildApiUrl("/ai/hr/mate/automations"), { headers: getAuthHeaders(token) });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{ automations: HebbMateAutomationDto[] }>;
+  return response.json() as Promise<{ automations: HebbMateAutomationDto[]; canManage: boolean }>;
 }

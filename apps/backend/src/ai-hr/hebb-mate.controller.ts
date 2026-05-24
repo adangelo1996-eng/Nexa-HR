@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsIn,
   IsOptional,
@@ -61,6 +63,19 @@ class MateChatDto {
 class MateApplyDto {
   @IsString()
   proposalId!: string;
+
+  /** Per `automation_proposals`: id proposte catalogo (`catalog-*` o `id` preview) da attivare. */
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  selectedProposalIds?: string[];
+}
+
+class MateAutomationTestDto {
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
 }
 
 class MateUndoDto {
@@ -179,7 +194,7 @@ export class HebbMateController {
   @Get("capabilities")
   @RequireNexaPermissions("nexa.lifecycle:read")
   getCapabilities(@CurrentAuth() auth: AuthContext) {
-    return this.mate.listCapabilities({ userId: auth.userId, role: auth.role as AuthRole });
+    return this.mate.listCapabilities(auth);
   }
 
   @Post("chat")
@@ -191,7 +206,7 @@ export class HebbMateController {
   @Post("apply")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postApply(@CurrentAuth() auth: AuthContext, @Body() body: MateApplyDto) {
-    return this.mate.apply(auth, body.proposalId);
+    return this.mate.apply(auth, body.proposalId, body.selectedProposalIds);
   }
 
   @Post("cancel")
@@ -216,6 +231,16 @@ export class HebbMateController {
   @RequireNexaPermissions("nexa.lifecycle:read")
   getAutomations(@CurrentAuth() auth: AuthContext) {
     return this.mate.listAutomations(auth);
+  }
+
+  @Post("automations/:id/test")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  postTestAutomation(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Body() body: MateAutomationTestDto
+  ) {
+    return this.mate.testAutomation(auth, id, body.dryRun !== false);
   }
 
   @Post("contracts/generate")

@@ -5,7 +5,8 @@ export const adminStrings = {
     costCenters: "Centri di costo",
     approvals: "Approvazioni",
     expenseClaimsOrg: "Note spese (dipendenti)",
-    payslipImport: "Import cedolini PDF"
+    payslipImport: "Import cedolini PDF",
+    companyProfile: "Dati azienda"
   },
   users: {
     title: "Amministrazione utenti",

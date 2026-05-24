@@ -28,8 +28,6 @@ import {
   getToken,
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
-  sessionCanOpenEmployeeRecapPage,
-  sessionCanViewOrgExpenseClaims,
   sessionIsPlainEmployee,
   sessionUsesHrReorganizedNav,
   type SessionUser
@@ -39,7 +37,8 @@ import { SidebarPillarNav } from "@/components/sidebar-pillar-nav";
 import { SessionIdleGuard } from "@/components/session-idle-guard";
 import { HeaderNotifications } from "@/components/header-notifications";
 import { NexaGuidePanel } from "@/components/nexa-guide-panel";
-import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
+import { fetchAdminCostCenters, fetchCurrentUser } from "@/lib/api";
+import { searchPortalEmployeeDirectory, type PortalGlobalSearchHit } from "@/lib/portal-global-search";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import {
   portalAccentCategoryForNavSection,
@@ -55,7 +54,6 @@ import {
   buildHrPortalMapNavSections,
   type PortalMapNavSection
 } from "@/lib/nexa-portal-map-nav";
-import { HR_NAV_DASHBOARD } from "@/lib/nexa-hr-nav";
 import {
   addTopSidebarPin,
   NEXA_SIDEBAR_PINS_CHANGED_EVENT,
@@ -75,7 +73,7 @@ const SIDEBAR_SCROLL_MOBILE_KEY = "nexa_hr_sidebar_scroll_mobile_v1";
 
 type NavItem = SixCatNavItem;
 
-type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
+type GlobalSearchHit = PortalGlobalSearchHit;
 
 const NAV_EMPLOYEE_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa del portale", icon: Home };
@@ -323,8 +321,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   }, [searchQ, user, hideSensitiveHrBecausePreview]);
 
   useEffect(() => {
-    const q = searchQ.trim().toLowerCase();
-    if (!q || q.length < 3 || !user || !sessionCanOpenEmployeeRecapPage(user)) {
+    const q = searchQ.trim();
+    if (!q || q.length < 2 || !user) {
       setDirectorySearchHits([]);
       return;
     }
@@ -336,36 +334,24 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     let cancelled = false;
     const tmr = setTimeout(() => {
       void (async () => {
-        const hits: GlobalSearchHit[] = [];
         try {
-          const allUsers = await fetchUsers(token);
+          const peopleHits = await searchPortalEmployeeDirectory(token, user, q, 8);
           if (cancelled) {
             return;
           }
-          for (const u of allUsers) {
-            if (hits.length >= 6) {
-              break;
-            }
-            const hay = `${u.fullName} ${u.email ?? ""}`.toLowerCase();
-            if (hay.includes(q)) {
-              hits.push({
-                href: `/employee/${encodeURIComponent(u.id)}` as Route,
-                label: `Dipendente · ${u.fullName}`,
-                subtitle: u.email
-              });
-            }
-          }
+          const hits: GlobalSearchHit[] = [...peopleHits];
           if (sessionCanNexaAdmin(user)) {
             const ccs = await fetchAdminCostCenters(token);
             if (cancelled) {
               return;
             }
+            const needle = q.toLowerCase();
             for (const c of ccs) {
-              if (hits.length >= 10) {
+              if (hits.length >= 12) {
                 break;
               }
               const hay = `${c.name} ${c.code}`.toLowerCase();
-              if (hay.includes(q)) {
+              if (hay.includes(needle)) {
                 hits.push({
                   href: `/admin/cost-centers?cc=${encodeURIComponent(c.id)}` as Route,
                   label: `Centro di costo · ${c.code} — ${c.name}`
@@ -373,17 +359,16 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
               }
             }
           }
+          if (!cancelled) {
+            setDirectorySearchHits(hits.slice(0, 10));
+          }
         } catch {
           if (!cancelled) {
             setDirectorySearchHits([]);
           }
-          return;
-        }
-        if (!cancelled) {
-          setDirectorySearchHits(hits);
         }
       })();
-    }, 400);
+    }, 280);
     return () => {
       cancelled = true;
       clearTimeout(tmr);
@@ -496,7 +481,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     );
   }, [usesHrNav, usesEmployeeNav, hrNavSections, employeeNavSections, legacySixNavSections]);
 
-  const dashboardNavItem = usesHrNav ? HR_NAV_DASHBOARD : NAV_EMPLOYEE_DASHBOARD;
+  const dashboardNavItem = NAV_EMPLOYEE_DASHBOARD;
 
   const [flyoutSectionId, setFlyoutSectionId] = useState<string | null>(null);
 

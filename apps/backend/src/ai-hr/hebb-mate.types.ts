@@ -189,11 +189,34 @@ export interface HebbMateAutomationDto {
 
 export interface HebbMateAutomationsListResponse {
   automations: HebbMateAutomationDto[];
+  canManage?: boolean;
 }
 
 export interface HebbMateActivateAutomationsResult {
   created: number;
   automations: HebbMateAutomationDto[];
+  skipped?: number;
+}
+
+export interface HebbMateAutomationDryRunSample {
+  label: string;
+  count: number;
+  detail?: string;
+}
+
+export interface HebbMateAutomationTestResult {
+  dryRun: true;
+  automationId: string;
+  title: string;
+  workArea: string;
+  frequency: HebbMateAutomationProposal["frequency"];
+  scheduleHint: string;
+  scopeKind: "self" | "employees" | "company";
+  subjectCount: number;
+  plannedActions: Array<{ type: string; label: string; toolId?: string }>;
+  summary: string;
+  samples: HebbMateAutomationDryRunSample[];
+  wouldPersist: false;
 }
 
 export interface HebbMateDocumentEmailResult {

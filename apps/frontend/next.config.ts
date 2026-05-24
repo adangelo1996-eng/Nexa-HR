@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/payroll-calc", destination: "/payroll-hebb", permanent: true },
       { source: "/payroll-batch", destination: "/payroll-hebb", permanent: true },
+      { source: "/hub/analisi", destination: "/hub/insight", permanent: true },
       { source: "/insights", destination: "/analytics/advanced/retention", permanent: true },
       { source: "/insights/:path*", destination: "/analytics/advanced/retention", permanent: true },
       { source: "/analytics/economico", destination: "/analytics/advanced/economico", permanent: true },

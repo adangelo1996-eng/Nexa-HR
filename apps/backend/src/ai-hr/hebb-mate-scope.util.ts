@@ -26,10 +26,45 @@ export type HebbMateResolvedScope = {
   resolvedNames: string[];
 };
 
+function isActiveEmployee(user: User): boolean {
+  return user.employmentState !== "offboarding";
+}
+
+/**
+ * Richieste esplicite su tutti i dipendenti / perimetro aziendale
+ * (es. «genera contratto smartworking per tutti i dipendenti»).
+ */
+export function isCompanyWideEmployeeRequest(message: string): boolean {
+  return (
+    /\btutti(?:\s+e|\s+a|\s+)(?:i\s+|gli\s+|le\s+)?(?:dipendent|collaborat|person|membr|risors)\w*\b/i.test(
+      message
+    ) ||
+    /\btutti\s+i\s+dipendenti\b/i.test(message) ||
+    /\bogni\s+(?:dipendent|collaborat|person)\w*\b/i.test(message) ||
+    /\btutta\s+l['']?\s*azienda\b/i.test(message) ||
+    /\binter[ao]\s+(?:l['']?\s*)?(?:azienda|organico|company)\b/i.test(message) ||
+    /\btutto\s+l['']?\s*organico\b/i.test(message) ||
+    /\bcompany.?wide\b/i.test(message) ||
+    /\bper\s+tutt(?:i|e)\b/i.test(message) ||
+    /\bper\s+ciascun(?:e)?\s+(?:dipendent|collaborat)\w*\b/i.test(message) ||
+    /\bin\s+batch\b/i.test(message) ||
+    /\bmassiv(?:o|a|i|e)?\b/i.test(message)
+  );
+}
+
 /** Richieste generiche HR (automazioni, timbrature, ecc.) senza nominativi → perimetro aziendale. */
 export function isGenericCompanyWideRequest(message: string): boolean {
-  return /\bautomaz|automat\b|schedul|pianifica|ricorrent|frequenz|cron|timbratur|presenz|tutti\s+i\s+dipendenti|tutta\s+l['']azienda|company.?wide|per\s+tutti\b/i.test(
-    message
+  return (
+    isCompanyWideEmployeeRequest(message) ||
+    /\bautomaz/i.test(message) ||
+    /\bautomat\b/i.test(message) ||
+    /\bschedul/i.test(message) ||
+    /\bpianifica/i.test(message) ||
+    /\bricorrent/i.test(message) ||
+    /\bfrequenz/i.test(message) ||
+    /\bcron\b/i.test(message) ||
+    /\btimbratur/i.test(message) ||
+    /\bpresenz/i.test(message)
   );
 }
 
@@ -48,7 +83,7 @@ export function resolveEmployeesFromMessage(
   const seen = new Set<string>();
 
   for (const user of companyUsers) {
-    if (!canView(user.id)) {
+    if (!canView(user.id) || !isActiveEmployee(user)) {
       continue;
     }
     for (const pattern of namePatterns(user)) {
@@ -72,7 +107,9 @@ export function resolveEmployeesFromMessage(
   }
 
   if (isGenericCompanyWideRequest(message)) {
-    const companyWideIds = companyUsers.filter((u) => canView(u.id)).map((u) => u.id);
+    const companyWideIds = companyUsers
+      .filter((u) => isActiveEmployee(u) && canView(u.id))
+      .map((u) => u.id);
     return {
       subjectUserIds: companyWideIds.length ? companyWideIds : [actorUserId],
       scopeKind: "company",

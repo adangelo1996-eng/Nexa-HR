@@ -77,7 +77,7 @@ export function canAccessNexaPortalRoute(
     return true;
   }
   if (r === "/nexa-hr-copilot" || r.startsWith("/nexa-hr-copilot/")) {
-    return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaAiAssistant(user);
+    return !hide && sessionCanAccessNexaReportsHr(user);
   }
   if (r === "/hr/formazione" || r.startsWith("/hr/formazione/")) {
     return !hide && sessionCanAccessHrRecapDashboard(user);

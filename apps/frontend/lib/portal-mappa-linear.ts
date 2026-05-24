@@ -63,7 +63,9 @@ const HR_LINEAR_STEPS: Array<{
       "/personnel-budget",
       "/analytics/advanced" as Route,
       "/analytics/advanced/retention" as Route,
-      "/analytics/competenze" as Route,
+      "/analytics/advanced/competenze" as Route,
+      "/hr-center/analisi" as Route,
+      "/hr-center/budget-report" as Route,
       "/hr-center/recap"
     ]
   },
@@ -78,7 +80,6 @@ const HR_LINEAR_STEPS: Array<{
     title: "HEBB AI for HR",
     subtitle: "Support assistente, copilot HR, hub analytics e centro HR.",
     hrefs: [
-      "/nexa-hr-copilot" as Route,
       "/analytics" as Route,
       "/hr-center/recap",
       "/hr-center/analisi" as Route,

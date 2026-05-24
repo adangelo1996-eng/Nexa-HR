@@ -14,6 +14,7 @@ const NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin", label: adminStrings.sidebar.users },
   { href: "/admin/roles", label: adminStrings.sidebar.roles },
   { href: "/admin/cost-centers", label: adminStrings.sidebar.costCenters },
+  { href: "/admin/dati-azienda" as Route, label: adminStrings.sidebar.companyProfile },
   { href: "/admin/data-export" as Route, label: "Export Excel dipendenti" },
   { href: "/admin/data-import" as Route, label: "Import Excel dipendenti" },
   { href: "/admin/payslip-import" as Route, label: adminStrings.sidebar.payslipImport },

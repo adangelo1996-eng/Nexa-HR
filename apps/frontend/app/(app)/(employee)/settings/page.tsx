@@ -290,6 +290,7 @@ export default function SettingsPage(): React.JSX.Element {
       const updated = await patchCompanySettings(token, {
         fiscalYearStartMonth: companyDraft.fiscalYearStartMonth,
         companyLegalName: companyDraft.companyLegalName,
+        companyAddress: companyDraft.companyAddress,
         companyVatNumber: companyDraft.companyVatNumber,
         companyRegistrationInfo: companyDraft.companyRegistrationInfo,
         companyCcnl: companyDraft.companyCcnl,
@@ -926,6 +927,19 @@ export default function SettingsPage(): React.JSX.Element {
                 className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
                 maxLength={240}
                 autoComplete="organization"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-slate-700 dark:text-slate-300">Indirizzo sede legale</span>
+              <input
+                type="text"
+                value={companyDraft.companyAddress ?? ""}
+                onChange={(e) =>
+                  setCompanyDraft({ ...companyDraft, companyAddress: e.target.value })
+                }
+                className="rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-slate-100"
+                maxLength={400}
               />
             </label>
 

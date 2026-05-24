@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { HrDataStore } from "../platform/hr-data.store";
 import { RemoteWorkPolicyService } from "../smartworking/remote-work-policy.service";
+import {
+  companySettingsToContractPartyDefaults,
+  mergeContractPartyDefaults
+} from "./company-party-defaults.util";
 import { renderSynapseContractPdf } from "./hr-contract-pdf.renderer";
 
 export type HrStandardContractStatus = "draft" | "approved" | "exported";
@@ -137,6 +141,8 @@ export class HrContractsService {
 
   async listPresetsForCompany(companyId: string): Promise<HrContractPresetDto[]> {
     const sb = this.sb();
+    const company = await this.store.getCompanySettings(companyId);
+    const companyPartyDefaults = companySettingsToContractPartyDefaults(company);
     const { data, error } = await sb
       .from("hr_contract_presets")
       .select("id, template_key, label, description, default_party_json, sort_order")
@@ -148,15 +154,22 @@ export class HrContractsService {
     }
     return (data ?? []).map((r) => {
       const row = r as Record<string, unknown>;
+      const presetParty = (row.default_party_json as Record<string, unknown>) ?? {};
       return {
         id: String(row.id),
         templateKey: String(row.template_key),
         label: String(row.label),
         description: row.description != null ? String(row.description) : null,
-        defaultParty: (row.default_party_json as Record<string, unknown>) ?? {},
+        defaultParty: mergeContractPartyDefaults(presetParty, companyPartyDefaults),
         sortOrder: Number(row.sort_order ?? 0)
       };
     });
+  }
+
+  /** Valori party azienda per prefill editor / nuovo contratto. */
+  async getCompanyPartyDefaults(companyId: string): Promise<Record<string, unknown>> {
+    const company = await this.store.getCompanySettings(companyId);
+    return companySettingsToContractPartyDefaults(company);
   }
 
   async getById(companyId: string, id: string): Promise<HrStandardContractDto> {
@@ -187,6 +200,8 @@ export class HrContractsService {
     recruitCandidateId?: string | null;
     recruitPositionId?: string | null;
   }): Promise<HrStandardContractDto> {
+    const companyDefaults = await this.getCompanyPartyDefaults(input.companyId);
+    const party = mergeContractPartyDefaults(input.party, companyDefaults);
     const sb = this.sb();
     const { data, error } = await sb
       .from("hr_standard_contracts")
@@ -194,7 +209,7 @@ export class HrContractsService {
         company_id: input.companyId,
         title: input.title,
         status: "draft" as const,
-        party: input.party,
+        party,
         blocks: input.blocks,
         signatures: {},
         created_by_user_id: input.createdByUserId,
@@ -290,6 +305,10 @@ export class HrContractsService {
   }
 
   async delete(companyId: string, id: string): Promise<void> {
+    const cur = await this.getById(companyId, id);
+    if (cur.status !== "draft") {
+      throw new BadRequestException("È possibile eliminare solo contratti in bozza");
+    }
     const sb = this.sb();
     const { data, error } = await sb
       .from("hr_standard_contracts")

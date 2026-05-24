@@ -11,7 +11,7 @@ export const HEBB_MATE_CAPABILITY_CARDS: HebbMateCapabilityCard[] = [
     requiredPermissions: ["nexa.lifecycle:read"],
     examplePrompts: [
       "Genera contratto di lavoro per il team Marketing",
-      "Crea accordo smart working 2026 per tutti nel CDC Vendite"
+      "Genera accordo smart working 2026 per tutti i dipendenti",
     ]
   },
   {
@@ -66,7 +66,7 @@ export const HEBB_MATE_CAPABILITY_CARDS: HebbMateCapabilityCard[] = [
     description:
       "Catalogo di automazioni aziendali (timbrature, contratti determinati, formazione, firme documenti, onboarding) con anteprima HITL.",
     icon: "calendar-clock",
-    requiredPermissions: ["nexa.lifecycle:read"],
+    requiredPermissions: ["nexa.lifecycle:read", "nexa.lifecycle:write"],
     examplePrompts: getAutomationQuickExamplePrompts()
   }
 ];

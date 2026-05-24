@@ -83,6 +83,21 @@ export class HebbMateAutomationsStore {
     };
   }
 
+  async getById(id: string, companyId: string): Promise<HebbMateAutomationRecord | null> {
+    const { data, error } = await this.sb()
+      .from("hr_hebb_mate_automations")
+      .select("*")
+      .eq("id", id)
+      .eq("company_id", companyId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return this.mapRow(data as Record<string, unknown>);
+    }
+    const cached = this.mem.find((a) => a.id === id && a.companyId === companyId);
+    return cached ?? null;
+  }
+
   async listActive(companyId: string, limit = 50): Promise<HebbMateAutomationRecord[]> {
     const { data, error } = await this.sb()
       .from("hr_hebb_mate_automations")

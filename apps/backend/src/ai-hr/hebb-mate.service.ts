@@ -30,6 +30,7 @@ import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
 import { HebbMateAutomationsStore } from "./hebb-mate-automations.store";
 import {
+  getAutomationCatalogById,
   getAutomationQuickExamplePrompts,
   selectAutomationProposalsFromCatalog
 } from "./hebb-mate-automation-catalog";
@@ -41,11 +42,16 @@ import {
   isHebbMateSuggestionIntent,
   routeHebbMateIntent
 } from "./hebb-mate-router";
-import { resolveEmployeesFromMessage, type HebbMateResolvedScope } from "./hebb-mate-scope.util";
+import {
+  isCompanyWideEmployeeRequest,
+  resolveEmployeesFromMessage,
+  type HebbMateResolvedScope
+} from "./hebb-mate-scope.util";
 import { HebbMateUndoService } from "./hebb-mate-undo.service";
 import type {
   HebbMateAction,
   HebbMateActivateAutomationsResult,
+  HebbMateAutomationTestResult,
   HebbMateApplyResponse,
   HebbMateAutomationDto,
   HebbMateAutomationProposal,
@@ -103,13 +109,15 @@ export class HebbMateService {
     private readonly undoService: HebbMateUndoService
   ) {}
 
-  listCapabilities(auth: { userId: string; role: AuthRole }): {
+  async listCapabilities(auth: AuthContext): Promise<{
     capabilities: typeof HEBB_MATE_CAPABILITY_CARDS;
     llmActive: boolean;
-  } {
+    canManageAutomations: boolean;
+  }> {
     return {
       capabilities: HEBB_MATE_CAPABILITY_CARDS,
-      llmActive: this.openAi.isActive()
+      llmActive: this.openAi.isActive(),
+      canManageAutomations: await this.canManageAutomations(auth)
     };
   }
 
@@ -203,10 +211,18 @@ export class HebbMateService {
     };
   }
 
-  async apply(auth: AuthContext, proposalId: string): Promise<HebbMateApplyResponse> {
+  async apply(
+    auth: AuthContext,
+    proposalId: string,
+    selectedProposalIds?: string[]
+  ): Promise<HebbMateApplyResponse> {
     const me = await this.store.getUser(auth.userId);
     const companyId = me.companyId || auth.tenantId || "comp-1";
     const proposal = this.proposals.get(proposalId, companyId, auth.userId);
+
+    if (proposal.capability === "automation_proposals") {
+      await this.assertAutomationManageAccess(auth);
+    }
 
     const scopeKind =
       (proposal.params.scopeKind as HebbMateResolvedScope["scopeKind"] | undefined) ??
@@ -225,7 +241,7 @@ export class HebbMateService {
       documentKind: (proposal.params.documentKind as HebbMateDocumentKind) ?? "generic"
     };
 
-    const result = await this.executeCapability(auth, proposal.capability, ctx, false, proposal);
+    const result = await this.executeCapability(auth, proposal.capability, ctx, false, proposal, selectedProposalIds);
     const applyLogIds = await this.recordApplyLogs(auth, companyId, proposal, result.result);
 
     this.proposals.markApplied(proposalId);
@@ -524,12 +540,69 @@ export class HebbMateService {
     };
   }
 
-  async listAutomations(auth: AuthContext): Promise<HebbMateAutomationsListResponse> {
+  async listAutomations(auth: AuthContext): Promise<HebbMateAutomationsListResponse & { canManage: boolean }> {
     await this.assertMateAccess(auth);
     const me = await this.store.getUser(auth.userId);
     const companyId = me.companyId || auth.tenantId || "comp-1";
     const rows = await this.automations.listActive(companyId);
-    return { automations: rows.map((row) => this.toAutomationDto(row)) };
+    return {
+      automations: rows.map((row) => this.toAutomationDto(row)),
+      canManage: await this.canManageAutomations(auth)
+    };
+  }
+
+  async testAutomation(
+    auth: AuthContext,
+    automationOrCatalogId: string,
+    dryRun = true
+  ): Promise<HebbMateAutomationTestResult> {
+    await this.assertAutomationManageAccess(auth);
+    if (!dryRun) {
+      throw new BadRequestException("Solo dry-run supportato per il test automazioni.");
+    }
+
+    const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId || auth.tenantId || "comp-1";
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === companyId);
+
+    const active = await this.automations.getById(automationOrCatalogId, companyId);
+    if (active) {
+      return this.buildAutomationDryRunResult({
+        automationId: active.id,
+        title: active.title,
+        workArea: active.workArea,
+        frequency: active.frequency,
+        scheduleHint: active.scheduleHint,
+        scopeKind: active.scopeKind,
+        subjectUserIds: active.subjectUserIds,
+        actions: active.actions,
+        companyUserCount: companyUsers.length
+      });
+    }
+
+    const catalogId = automationOrCatalogId.startsWith("catalog-")
+      ? automationOrCatalogId.slice("catalog-".length)
+      : automationOrCatalogId.replace(/^auto-/, "");
+    const catalogEntry = getAutomationCatalogById(catalogId);
+    if (!catalogEntry) {
+      throw new BadRequestException("Automazione non trovata per il test dry-run.");
+    }
+
+    return this.buildAutomationDryRunResult({
+      automationId: automationOrCatalogId,
+      title: catalogEntry.title,
+      workArea: catalogEntry.workArea,
+      frequency: catalogEntry.frequency,
+      scheduleHint: catalogEntry.scheduleHint,
+      scopeKind: "company",
+      subjectUserIds: companyUsers.map((u) => u.id),
+      actions: catalogEntry.actions.map((a) => ({
+        type: a.type,
+        label: a.label,
+        toolId: a.toolId
+      })),
+      companyUserCount: companyUsers.length
+    });
   }
 
   private toAutomationDto(row: {
@@ -570,17 +643,23 @@ export class HebbMateService {
       subjectUserIds: string[];
       params: Record<string, unknown>;
       preview: unknown;
-    }
+    },
+    selectedProposalIds?: string[]
   ): Promise<HebbMateActivateAutomationsResult> {
     const previewEnvelope = proposal.preview as { proposals?: HebbMateAutomationProposal[] } | HebbMateAutomationProposal[];
-    const proposals = Array.isArray(previewEnvelope)
+    const allProposals = Array.isArray(previewEnvelope)
       ? previewEnvelope
       : Array.isArray(previewEnvelope?.proposals)
         ? previewEnvelope.proposals
         : [];
 
-    if (!proposals.length) {
+    if (!allProposals.length) {
       throw new BadRequestException("Nessuna automazione da attivare nella proposta.");
+    }
+
+    const proposals = this.filterAutomationProposals(allProposals, selectedProposalIds);
+    if (!proposals.length) {
+      throw new BadRequestException("Nessuna automazione selezionata da attivare.");
     }
 
     const scopeKind =
@@ -608,8 +687,106 @@ export class HebbMateService {
 
     return {
       created: created.length,
+      skipped: allProposals.length - proposals.length,
       automations: created.map((row) => this.toAutomationDto(row))
     };
+  }
+
+  private filterAutomationProposals(
+    proposals: HebbMateAutomationProposal[],
+    selectedProposalIds?: string[]
+  ): HebbMateAutomationProposal[] {
+    if (!selectedProposalIds?.length) {
+      return proposals;
+    }
+    const selected = new Set(selectedProposalIds);
+    const filtered = proposals.filter(
+      (p) =>
+        selected.has(p.id) ||
+        (p.catalogId != null && selected.has(p.catalogId)) ||
+        (p.catalogId != null && selected.has(`catalog-${p.catalogId}`))
+    );
+    return filtered.length ? filtered : proposals.filter((p) => selected.has(p.id));
+  }
+
+  private async buildAutomationDryRunResult(input: {
+    automationId: string;
+    title: string;
+    workArea: string;
+    frequency: HebbMateAutomationProposal["frequency"];
+    scheduleHint: string;
+    scopeKind: "self" | "employees" | "company";
+    subjectUserIds: string[];
+    actions: Array<{ type: string; label: string; toolId?: string }>;
+    companyUserCount: number;
+  }): Promise<HebbMateAutomationTestResult> {
+    const subjectCount =
+      input.scopeKind === "company"
+        ? input.companyUserCount
+        : input.subjectUserIds.length || 1;
+
+    const samples: HebbMateAutomationTestResult["samples"] = [
+      {
+        label: "Persone nel perimetro",
+        count: subjectCount
+      },
+      {
+        label: "Azioni pianificate",
+        count: input.actions.length,
+        detail: input.actions.map((a) => a.label).join(" · ")
+      }
+    ];
+
+    if (input.workArea === "attendance" || /timbr|presenz|attendanc/i.test(input.title)) {
+      samples.push({
+        label: "Alert timbrature (stima)",
+        count: Math.max(0, Math.min(subjectCount, Math.ceil(subjectCount * 0.08))),
+        detail: "Timbrature mancanti o fuori soglia nel perimetro simulato"
+      });
+    }
+    if (input.workArea === "lifecycle" || /contratt|determinat|scadenza/i.test(input.title)) {
+      samples.push({
+        label: "Contratti in scadenza (stima)",
+        count: Math.max(0, Math.min(12, Math.ceil(subjectCount * 0.03))),
+        detail: "Rapporti a termine entro 60 giorni"
+      });
+    }
+    if (input.workArea === "documents" || /firma|document/i.test(input.title)) {
+      samples.push({
+        label: "Documenti in attesa (stima)",
+        count: Math.max(0, Math.min(20, Math.ceil(subjectCount * 0.05))),
+        detail: "Workflow firma non completati"
+      });
+    }
+
+    const summary = `Dry-run: verrebbero eseguite ${input.actions.length} azioni su ${subjectCount} persone (${input.frequency}, ${input.scheduleHint}). Nessuna modifica persistita.`;
+
+    return {
+      dryRun: true,
+      automationId: input.automationId,
+      title: input.title,
+      workArea: input.workArea,
+      frequency: input.frequency,
+      scheduleHint: input.scheduleHint,
+      scopeKind: input.scopeKind,
+      subjectCount,
+      plannedActions: input.actions,
+      summary,
+      samples,
+      wouldPersist: false
+    };
+  }
+
+  async canManageAutomations(auth: AuthContext): Promise<boolean> {
+    if (auth.role === "superuser") return true;
+    return this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:write"]);
+  }
+
+  private async assertAutomationManageAccess(auth: AuthContext): Promise<void> {
+    if (await this.canManageAutomations(auth)) return;
+    throw new ForbiddenException(
+      "Permesso nexa.lifecycle:write (o ruolo superuser) richiesto per gestire le automazioni Mate."
+    );
   }
 
   private async resolveChatScope(
@@ -634,7 +811,21 @@ export class HebbMateService {
       return managedSet.has(userId);
     };
 
-    const resolvedScope = resolveEmployeesFromMessage(message, companyUsers, auth.userId, canView);
+    let resolvedScope = resolveEmployeesFromMessage(message, companyUsers, auth.userId, canView);
+
+    if (resolvedScope.scopeKind === "company" && isCompanyWideEmployeeRequest(message)) {
+      if (!org) {
+        throw new ForbiddenException(
+          "Per operare su tutti i dipendenti serve permesso ambito organizzazione (nexa.ai_assistant:scope_org) o ruolo superuser."
+        );
+      }
+      const activeCompanyIds = companyUsers.filter((u) => u.employmentState !== "offboarding").map((u) => u.id);
+      resolvedScope = {
+        subjectUserIds: activeCompanyIds.length ? activeCompanyIds : [auth.userId],
+        scopeKind: "company",
+        resolvedNames: []
+      };
+    }
 
     for (const uid of resolvedScope.subjectUserIds) {
       if (uid !== auth.userId && !canView(uid)) {
@@ -815,7 +1006,8 @@ export class HebbMateService {
       subjectUserIds: string[];
       params: Record<string, unknown>;
       preview: unknown;
-    }
+    },
+    selectedProposalIds?: string[]
   ): Promise<Omit<HebbMateChatResponse, "llm">> {
     const subjectCtx = {
       subjectUserIds: ctx.subjectUserIds,
@@ -1007,11 +1199,18 @@ export class HebbMateService {
         if (!previewOnly && storedProposal) {
           const me = await this.store.getUser(auth.userId);
           const companyId = me.companyId || auth.tenantId || "comp-1";
-          const activated = await this.activateAutomationsFromProposal(auth, companyId, storedProposal);
+          const activated = await this.activateAutomationsFromProposal(
+            auth,
+            companyId,
+            storedProposal,
+            selectedProposalIds
+          );
           const scopeLabel = ctx.scopeKind === "company" ? "tutta l'azienda" : `${ctx.subjectUserIds.length} persone`;
+          const skippedNote =
+            activated.skipped && activated.skipped > 0 ? ` (${activated.skipped} non selezionate)` : "";
           return {
             capability,
-            reply: `${activated.created} automazioni attivate per ${scopeLabel}.`,
+            reply: `${activated.created} automazioni attivate per ${scopeLabel}${skippedNote}.`,
             result: activated
           };
         }
@@ -1071,8 +1270,11 @@ export class HebbMateService {
           )
         ).subjectUserIds;
     const scopeKind = input.scopeKind ?? "self";
-    if (subjectUserIds.length > 50 && !input.dryRun) {
-      throw new BadRequestException("Massimo 50 persone per generazione contratti; usa dryRun o restringi il perimetro.");
+    const maxBatch = scopeKind === "company" ? 500 : 50;
+    if (subjectUserIds.length > maxBatch && !input.dryRun) {
+      throw new BadRequestException(
+        `Massimo ${maxBatch} persone per generazione contratti; usa anteprima HITL o restringi il perimetro.`
+      );
     }
 
     const company = await this.store.getCompanySettings(companyId);

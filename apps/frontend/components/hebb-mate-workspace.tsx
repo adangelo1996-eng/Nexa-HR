@@ -7,6 +7,7 @@ import {
   CalendarClock,
   FileSignature,
   FileText,
+  FlaskConical,
   Loader2,
   Mail,
   RotateCcw,
@@ -20,11 +21,13 @@ import {
   fetchHebbMateCapabilities,
   fetchHebbMateHistory,
   postHebbMateApply,
+  postHebbMateAutomationTest,
   postHebbMateCancel,
   postHebbMateChat,
   postHebbMateUndo,
   type HebbMateActionDto,
   type HebbMateAutomationDto,
+  type HebbMateAutomationTestResultDto,
   type HebbMateCapabilityCardDto,
   type HebbMateChatResponseDto,
   type HebbMateCapabilityId,
@@ -96,6 +99,12 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HebbMateHistoryEntryDto[]>([]);
   const [automations, setAutomations] = useState<HebbMateAutomationDto[]>([]);
+  const [canManageAutomations, setCanManageAutomations] = useState(false);
+  const [selectedAutomationIds, setSelectedAutomationIds] = useState<Set<string>>(new Set());
+  const [activeAutomationTests, setActiveAutomationTests] = useState<
+    Record<string, HebbMateAutomationTestResultDto>
+  >({});
+  const [testingAutomationId, setTestingAutomationId] = useState<string | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HebbMateHistoryEntryDto | null>(null);
 
@@ -103,8 +112,14 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     const token = getToken();
     if (!token) return;
     void fetchHebbMateCapabilities(token)
-      .then((r) => setCapabilities(r.capabilities))
-      .catch(() => setCapabilities([]));
+      .then((r) => {
+        setCapabilities(r.capabilities);
+        setCanManageAutomations(r.canManageAutomations);
+      })
+      .catch(() => {
+        setCapabilities([]);
+        setCanManageAutomations(false);
+      });
     void loadHistory();
     void loadAutomations();
   }, []);
@@ -126,6 +141,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     try {
       const res = await fetchHebbMateAutomations(token);
       setAutomations(res.automations);
+      setCanManageAutomations((prev) => prev || res.canManage);
     } catch {
       setAutomations([]);
     }
@@ -142,6 +158,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       setBusy(true);
       setError(null);
       setPreview(null);
+      setSelectedAutomationIds(new Set());
       try {
         const response = await postHebbMateChat(token, {
           message: msg,
@@ -185,21 +202,23 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     const proposalId = preview?.hitl?.proposalId;
     if (!token || !proposalId || !preview?.hitl?.requiresConfirm) return;
 
+    const isAutomationProposal = preview.capability === "automation_proposals";
+    const selectedIds =
+      isAutomationProposal && selectedAutomationIds.size > 0
+        ? Array.from(selectedAutomationIds)
+        : undefined;
+    if (isAutomationProposal && canManageAutomations && (!selectedIds || selectedIds.length === 0)) {
+      setError("Seleziona almeno un'automazione da attivare.");
+      return;
+    }
+
     setApplying(true);
     setError(null);
     try {
-      const applied = await postHebbMateApply(token, proposalId);
-      setPreview((p) =>
-        p
-          ? {
-              ...p,
-              reply: applied.reply,
-              result: applied.result,
-              hitl: p.hitl ? { ...p.hitl, requiresConfirm: false } : undefined
-            }
-          : p
-      );
+      const applied = await postHebbMateApply(token, proposalId, selectedIds);
       setThread((prev) => [...prev, { role: "assistant", text: applied.reply }]);
+      setPreview(null);
+      setSelectedAutomationIds(new Set());
       await loadHistory();
       await loadAutomations();
     } catch (e) {
@@ -207,7 +226,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     } finally {
       setApplying(false);
     }
-  }, [loadAutomations, loadHistory, preview]);
+  }, [canManageAutomations, loadAutomations, loadHistory, preview, selectedAutomationIds]);
 
   const cancelPreview = useCallback(async () => {
     const token = getToken();
@@ -220,7 +239,34 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       }
     }
     setPreview(null);
+    setSelectedAutomationIds(new Set());
   }, [preview]);
+
+  const testAutomationProposal = useCallback(async (proposalKey: string) => {
+    const token = getToken();
+    if (!token) return null;
+    try {
+      return await postHebbMateAutomationTest(token, proposalKey, true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Test automazione non riuscito");
+      return null;
+    }
+  }, []);
+
+  const testActiveAutomation = useCallback(async (automationId: string) => {
+    const token = getToken();
+    if (!token) return;
+    setTestingAutomationId(automationId);
+    setError(null);
+    try {
+      const result = await postHebbMateAutomationTest(token, automationId, true);
+      setActiveAutomationTests((prev) => ({ ...prev, [automationId]: result }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Test automazione non riuscito");
+    } finally {
+      setTestingAutomationId(null);
+    }
+  }, []);
 
   const runUndo = useCallback(async () => {
     const token = getToken();
@@ -289,10 +335,10 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
                 onClick={() => onCardClick(card)}
                 className="rounded-2xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-4 text-left transition hover:border-[var(--prom-accent)]"
               >
-                <Icon className="h-5 w-5 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden />
+                <Icon className="h-5 w-5 text-teal-600 dark:text-teal-300" aria-hidden />
                 <p className="mt-2 text-sm font-semibold text-[var(--prom-text)]">{card.title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-[var(--prom-muted)]">{card.description}</p>
-                <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-fuchsia-600 dark:text-fuchsia-300">
+                <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-teal-600 dark:text-teal-300">
                   Suggerimento
                 </p>
               </button>
@@ -325,7 +371,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
               key={`${turn.role}-${i}`}
               className={`rounded-2xl px-4 py-3 text-sm ${
                 turn.role === "user"
-                  ? "ml-8 bg-[color-mix(in_srgb,fuchsia_10%,transparent)] text-[var(--prom-text)]"
+                  ? "ml-8 bg-[color-mix(in_srgb,teal_10%,transparent)] text-[var(--prom-text)]"
                   : "mr-4 border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] text-[var(--prom-muted)]"
               }`}
             >
@@ -373,7 +419,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Es. Genera report per Marco Rossi e Laura Bianchi…"
-            className="flex-1 rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm outline-none focus:border-fuchsia-500"
+            className="flex-1 rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm outline-none focus:border-teal-500"
             disabled={busy}
           />
           <LoadingButton type="submit" loading={busy} disabled={!input.trim()} className="gap-1.5">
@@ -428,6 +474,10 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
               <HebbMatePreviewPanel
                 capability={preview.capability}
                 payload={preview.hitl?.preview ?? preview.result}
+                canManageAutomations={canManageAutomations}
+                selectedAutomationIds={selectedAutomationIds}
+                onAutomationSelectionChange={setSelectedAutomationIds}
+                onTestAutomationProposal={testAutomationProposal}
               />
             ) : null}
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--prom-line)] pt-4">
@@ -436,8 +486,19 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
                   <Button type="button" variant="outline" size="sm" disabled={applying} onClick={() => void cancelPreview()}>
                     Annulla
                   </Button>
-                  <LoadingButton loading={applying} onClick={() => void confirmApply()}>
+                  <LoadingButton
+                    loading={applying}
+                    disabled={
+                      preview.capability === "automation_proposals" &&
+                      canManageAutomations &&
+                      selectedAutomationIds.size === 0
+                    }
+                    onClick={() => void confirmApply()}
+                  >
                     Conferma e applica
+                    {preview.capability === "automation_proposals" && selectedAutomationIds.size > 0
+                      ? ` (${selectedAutomationIds.size})`
+                      : ""}
                   </LoadingButton>
                 </>
               ) : null}
@@ -454,7 +515,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
               Automazioni HR in corso: frequenza, area di lavoro e azioni programmate.
             </p>
           </div>
-          <CalendarClock className="h-5 w-5 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden />
+          <CalendarClock className="h-5 w-5 text-teal-600 dark:text-teal-300" aria-hidden />
         </div>
         {automations.length === 0 ? (
           <p className="mt-6 rounded-xl border border-dashed border-[var(--prom-line)] px-6 py-10 text-center text-sm text-[var(--prom-muted)]">
@@ -494,6 +555,36 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {canManageAutomations ? (
+                  <div className="mt-3">
+                    <LoadingButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-xs"
+                      loading={testingAutomationId === auto.id}
+                      onClick={() => void testActiveAutomation(auto.id)}
+                    >
+                      <FlaskConical className="h-3.5 w-3.5" aria-hidden />
+                      Test
+                    </LoadingButton>
+                    {activeAutomationTests[auto.id] ? (
+                      <div className="mt-2 rounded-lg border border-dashed border-teal-400/40 bg-[color-mix(in_srgb,teal_6%,transparent)] p-3 text-xs text-[var(--prom-muted)]">
+                        <p className="text-sm text-[var(--prom-text)]">{activeAutomationTests[auto.id].summary}</p>
+                        <ul className="mt-2 space-y-1">
+                          {activeAutomationTests[auto.id].samples.map((sample) => (
+                            <li key={sample.label} className="flex justify-between gap-2">
+                              <span>{sample.label}</span>
+                              <span className="font-semibold text-teal-600 dark:text-teal-300">
+                                {sample.count}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </li>
             ))}

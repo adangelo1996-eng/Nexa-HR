@@ -919,7 +919,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
             onClick={() => setActiveTab(id)}
             className={`rounded-full px-4 py-2 text-sm font-medium transition ${
               activeTab === id
-                ? "bg-fuchsia-600 text-white shadow-sm dark:bg-fuchsia-500"
+                ? "bg-teal-600 text-white shadow-sm dark:bg-teal-500"
                 : "border border-[var(--prom-line)] text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
             }`}
           >

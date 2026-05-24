@@ -137,11 +137,6 @@ const PILLAR_DEFS: Array<{
     portalCategory: "Analytics",
     subgroups: [
       {
-        id: "a-assist",
-        title: "Assistente AI",
-        items: [{ href: "/nexa-hr-copilot" as Route, label: "NEXA HR Copilot", icon: Sparkles }]
-      },
-      {
         id: "a-hub",
         title: "Centro analisi",
         items: [
@@ -168,6 +163,7 @@ const PILLAR_DEFS: Array<{
         title: "Documenti e policy",
         items: [
           { href: "/admin/contratti" as Route, label: "Contratti", icon: FileText },
+          { href: "/admin/dati-azienda" as Route, label: "Dati azienda", icon: Building2 },
           { href: "/corporate-policies" as Route, label: "Corporate Policies", icon: FileText },
           { href: "/tools/third-party-licenses" as Route, label: "Licenze terze", icon: KeyRound }
         ]
@@ -228,7 +224,7 @@ export function buildHrNavPillars(user: SessionUser | null, hideSensitiveHr: boo
 }
 
 export const HR_NAV_DASHBOARD: HrNavItem = {
-  href: "/hr/dashboard" as Route,
+  href: "/" as Route,
   label: "Dashboard",
   icon: LayoutDashboard
 };

@@ -1,15 +1,19 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import {
   BarChart3,
   CalendarClock,
   FileSignature,
   FileText,
+  FlaskConical,
   Mail,
   Sparkles,
   UserSearch
 } from "lucide-react";
 import { HebbAiGlassTile } from "@/components/hebb-ai-experience-shell";
+import { LoadingButton } from "@/components/ui/loading-button";
+import type { HebbMateAutomationTestResultDto } from "@/lib/api";
 
 const FREQUENCY_LABELS: Record<string, string> = {
   daily: "Giornaliera",
@@ -143,6 +147,10 @@ function extractAutomationProposals(data: unknown): AutomationProposal[] {
   return [];
 }
 
+function proposalSelectionKey(p: AutomationProposal): string {
+  return p.catalogId ?? p.id;
+}
+
 function PreviewSection({
   icon: Icon,
   title,
@@ -155,7 +163,7 @@ function PreviewSection({
   return (
     <HebbAiGlassTile className="space-y-3">
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden />
+        <Icon className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-300" aria-hidden />
         <p className="text-sm font-semibold text-[var(--prom-text)]">{title}</p>
       </div>
       {children}
@@ -171,7 +179,67 @@ function Badge({ children }: { children: React.ReactNode }): React.JSX.Element {
   );
 }
 
-function AutomationProposalsPreview({ proposals }: { proposals: AutomationProposal[] }): React.JSX.Element {
+function AutomationDryRunResult({ result }: { result: HebbMateAutomationTestResultDto }): React.JSX.Element {
+  return (
+    <div className="mt-3 rounded-xl border border-dashed border-teal-400/40 bg-[color-mix(in_srgb,teal_6%,transparent)] p-3 text-sm">
+      <p className="font-medium text-[var(--prom-text)]">{result.summary}</p>
+      <ul className="mt-2 space-y-1.5">
+        {result.samples.map((sample) => (
+          <li key={sample.label} className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-[var(--prom-muted)]">
+            <span>{sample.label}</span>
+            <span className="font-semibold text-teal-600 dark:text-teal-300">
+              {sample.count}
+              {sample.detail ? ` · ${sample.detail}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AutomationProposalsPreview({
+  proposals,
+  canManage,
+  selectedIds,
+  onSelectionChange,
+  onTestProposal
+}: {
+  proposals: AutomationProposal[];
+  canManage: boolean;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+  onTestProposal?: (proposalKey: string) => Promise<HebbMateAutomationTestResultDto | null>;
+}): React.JSX.Element {
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [dryRunByKey, setDryRunByKey] = useState<Record<string, HebbMateAutomationTestResultDto>>({});
+
+  const toggle = useCallback(
+    (key: string, checked: boolean) => {
+      const next = new Set(selectedIds);
+      if (checked) next.add(key);
+      else next.delete(key);
+      onSelectionChange(next);
+    },
+    [onSelectionChange, selectedIds]
+  );
+
+  const runTest = useCallback(
+    async (key: string) => {
+      if (!onTestProposal) return;
+      setTestingKey(key);
+      try {
+        const result = await onTestProposal(key);
+        if (result) {
+          setDryRunByKey((prev) => ({ ...prev, [key]: result }));
+        }
+      } finally {
+        setTestingKey(null);
+      }
+    },
+    [onTestProposal]
+  );
+
   if (proposals.length === 0) {
     return (
       <PreviewSection icon={CalendarClock} title="Automazioni">
@@ -182,32 +250,70 @@ function AutomationProposalsPreview({ proposals }: { proposals: AutomationPropos
 
   return (
     <PreviewSection icon={CalendarClock} title={`${proposals.length} proposte di automazione`}>
+      {canManage ? (
+        <p className="text-xs text-[var(--prom-muted)]">
+          Seleziona le automazioni da attivare. Usa <strong>Test</strong> per un dry-run senza effetti sul sistema.
+        </p>
+      ) : null}
       <ul className="space-y-3">
-        {proposals.map((p) => (
-          <li
-            key={p.id}
-            className="rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-4"
-          >
-            <p className="font-medium text-[var(--prom-text)]">{p.title}</p>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{p.description}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge>{FREQUENCY_LABELS[p.frequency] ?? p.frequency}</Badge>
-              {p.triggerType ? <Badge>{TRIGGER_LABELS[p.triggerType] ?? p.triggerType}</Badge> : null}
-              {p.scheduleHint ? <Badge>{p.scheduleHint}</Badge> : null}
-              <Badge>Area: {p.workArea === "all" ? "Tutta l'app" : p.workArea}</Badge>
-            </div>
-            {p.estimatedImpact ? (
-              <p className="mt-2 text-xs text-fuchsia-600 dark:text-fuchsia-300">{p.estimatedImpact}</p>
-            ) : null}
-            {p.actions && p.actions.length > 0 ? (
-              <ul className="mt-3 space-y-1 border-t border-[var(--prom-line)] pt-3 text-xs text-[var(--prom-muted)]">
-                {p.actions.map((action, idx) => (
-                  <li key={`${p.id}-action-${idx}`}>• {action.label}</li>
-                ))}
-              </ul>
-            ) : null}
-          </li>
-        ))}
+        {proposals.map((p) => {
+          const key = proposalSelectionKey(p);
+          const checked = selectedIds.has(key);
+          return (
+            <li
+              key={p.id}
+              className={`rounded-xl border bg-[var(--prom-surface-soft)] p-4 ${
+                checked ? "border-teal-400/50" : "border-[var(--prom-line)]"
+              }`}
+            >
+              <div className="flex flex-wrap items-start gap-3">
+                {canManage ? (
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-[var(--prom-line)]"
+                    checked={checked}
+                    aria-label={`Seleziona ${p.title}`}
+                    onChange={(e) => toggle(key, e.target.checked)}
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-[var(--prom-text)]">{p.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{p.description}</p>
+                </div>
+                {canManage && onTestProposal ? (
+                  <LoadingButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    loading={testingKey === key}
+                    className="shrink-0 gap-1 text-xs"
+                    onClick={() => void runTest(key)}
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" aria-hidden />
+                    Test
+                  </LoadingButton>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge>{FREQUENCY_LABELS[p.frequency] ?? p.frequency}</Badge>
+                {p.triggerType ? <Badge>{TRIGGER_LABELS[p.triggerType] ?? p.triggerType}</Badge> : null}
+                {p.scheduleHint ? <Badge>{p.scheduleHint}</Badge> : null}
+                <Badge>Area: {p.workArea === "all" ? "Tutta l'app" : p.workArea}</Badge>
+              </div>
+              {p.estimatedImpact ? (
+                <p className="mt-2 text-xs text-teal-600 dark:text-teal-300">{p.estimatedImpact}</p>
+              ) : null}
+              {p.actions && p.actions.length > 0 ? (
+                <ul className="mt-3 space-y-1 border-t border-[var(--prom-line)] pt-3 text-xs text-[var(--prom-muted)]">
+                  {p.actions.map((action, idx) => (
+                    <li key={`${p.id}-action-${idx}`}>• {action.label}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {dryRunByKey[key] ? <AutomationDryRunResult result={dryRunByKey[key]} /> : null}
+            </li>
+          );
+        })}
       </ul>
     </PreviewSection>
   );
@@ -288,7 +394,7 @@ function ReportsPreview({ data }: { data: ReportResult }): React.JSX.Element {
               key={key}
               className="rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-center"
             >
-              <p className="text-lg font-semibold text-fuchsia-600 dark:text-fuchsia-300">{String(value)}</p>
+              <p className="text-lg font-semibold text-teal-600 dark:text-teal-300">{String(value)}</p>
               <p className="text-[10px] uppercase tracking-wide text-[var(--prom-muted)]">
                 {METRIC_LABELS[key] ?? key}
               </p>
@@ -325,7 +431,7 @@ function SkillsPreview({ data }: { data: SkillResult }): React.JSX.Element {
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="font-medium text-[var(--prom-text)]">{s.skillName}</span>
-              <span className="text-xs text-fuchsia-600 dark:text-fuchsia-300">Livello {s.suggestedLevel}</span>
+              <span className="text-xs text-teal-600 dark:text-teal-300">Livello {s.suggestedLevel}</span>
             </div>
             <p className="mt-1 text-xs text-[var(--prom-muted)]">{s.reason}</p>
           </li>
@@ -404,7 +510,7 @@ function CvScreeningPreview({ data }: { data: CvScreeningResult }): React.JSX.El
     <PreviewSection icon={UserSearch} title="Screening CV completato">
       {typeof score === "number" ? (
         <div className="flex items-center gap-3">
-          <span className="text-3xl font-bold text-fuchsia-600 dark:text-fuchsia-300">{score}</span>
+          <span className="text-3xl font-bold text-teal-600 dark:text-teal-300">{score}</span>
           <span className="text-sm text-[var(--prom-muted)]">/ 100</span>
         </div>
       ) : null}
@@ -416,14 +522,54 @@ function CvScreeningPreview({ data }: { data: CvScreeningResult }): React.JSX.El
 export type HebbMatePreviewPanelProps = {
   capability: string;
   payload: unknown;
+  canManageAutomations?: boolean;
+  selectedAutomationIds?: Set<string>;
+  onAutomationSelectionChange?: (ids: Set<string>) => void;
+  onTestAutomationProposal?: (proposalKey: string) => Promise<HebbMateAutomationTestResultDto | null>;
 };
 
-export function HebbMatePreviewPanel({ capability, payload }: HebbMatePreviewPanelProps): React.JSX.Element | null {
+export function HebbMatePreviewPanel({
+  capability,
+  payload,
+  canManageAutomations = false,
+  selectedAutomationIds,
+  onAutomationSelectionChange,
+  onTestAutomationProposal
+}: HebbMatePreviewPanelProps): React.JSX.Element | null {
+  const proposals = capability === "automation_proposals" ? extractAutomationProposals(payload) : [];
+  const [localSelected, setLocalSelected] = useState<Set<string>>(() => new Set(proposals.map(proposalSelectionKey)));
+
+  useEffect(() => {
+    if (capability !== "automation_proposals") return;
+    const keys = proposals.map(proposalSelectionKey);
+    const next = new Set(keys);
+    setLocalSelected(next);
+    onAutomationSelectionChange?.(next);
+  }, [capability, payload]);
+
+  const selected = selectedAutomationIds ?? localSelected;
+
+  const handleSelectionChange = useCallback(
+    (ids: Set<string>) => {
+      setLocalSelected(ids);
+      onAutomationSelectionChange?.(ids);
+    },
+    [onAutomationSelectionChange]
+  );
+
   if (payload == null) return null;
 
   switch (capability) {
     case "automation_proposals":
-      return <AutomationProposalsPreview proposals={extractAutomationProposals(payload)} />;
+      return (
+        <AutomationProposalsPreview
+          proposals={proposals}
+          canManage={canManageAutomations}
+          selectedIds={selected}
+          onSelectionChange={handleSelectionChange}
+          onTestProposal={canManageAutomations ? onTestAutomationProposal : undefined}
+        />
+      );
     case "contract_generation":
       if (isRecord(payload) && "contractKind" in payload) {
         return <ContractsPreview data={payload as ContractResult} />;

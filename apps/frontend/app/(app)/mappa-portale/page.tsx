@@ -30,7 +30,6 @@ import {
   type PortalMapNavItem,
   type PortalMapNavSection
 } from "@/lib/nexa-portal-map-nav";
-import { HR_NAV_DASHBOARD } from "@/lib/nexa-hr-nav";
 import { portalBlurbForHref } from "@/lib/portal-tile-blurb";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
@@ -145,7 +144,7 @@ export default function MappaPortalePage(): React.JSX.Element {
     return buildHrPortalMapNavSections(user, hideSensitiveHr);
   }, [user, hideSensitiveHr, usesHrNav, usesEmployeeNav]);
 
-  const dashboardHref = usesHrNav ? HR_NAV_DASHBOARD.href : ("/" as Route);
+  const dashboardHref = "/" as Route;
   const dashboardLabel = "Dashboard";
 
   return (

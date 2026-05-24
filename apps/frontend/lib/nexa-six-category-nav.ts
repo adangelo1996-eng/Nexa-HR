@@ -67,7 +67,6 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/hr-center/budget-report": Wallet2,
   "/hebb-ai-support": MessageCircle,
   "/ai-hub": Wand2,
-  "/nexa-hr-copilot": Sparkles,
   "/analytics/advanced": TrendingUp,
   "/analytics/advanced/retention": TrendingUp,
   "/recruiting": UserRoundSearch,

@@ -236,6 +236,12 @@ export class HrContractsController {
     return { items };
   }
 
+  @Get("company-party-defaults")
+  @RequireNexaPermissions("nexa.standard_contracts:read")
+  async companyPartyDefaults(@CurrentAuth() auth: AuthContext): Promise<Record<string, unknown>> {
+    return this.svc.getCompanyPartyDefaults(auth.tenantId ?? "comp-1");
+  }
+
   @Post("generate-all")
   @RequireNexaPermissions("nexa.standard_contracts:write")
   async generateAll(@CurrentAuth() auth: AuthContext, @Body() dto: GenerateAllContractsDto): Promise<unknown> {
