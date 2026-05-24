@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { IsArray, IsBoolean, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
-import { CurrentAuth, type AuthContext } from "../platform/auth";
+import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import type { HrOnboardingWizardStepKey } from "./hr-onboarding.constants";
+import { HrOnboardingBuddyService } from "./hr-onboarding-buddy.service";
 import { HrOnboardingService } from "./hr-onboarding.service";
 
 class StartFromCandidateDto {
@@ -50,10 +51,35 @@ class LinkCandidateDto {
   userId!: string;
 }
 
+class PatchChecklistDto {
+  @IsString()
+  itemId!: string;
+
+  @IsBoolean()
+  done!: boolean;
+}
+
+class ConfirmBuddyDto {
+  @IsString()
+  buddyUserId!: string;
+
+  @IsOptional()
+  @IsNumber()
+  matchScore?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  matchReason?: string;
+}
+
 @Controller("hr-onboarding")
-@UseGuards(NexaPermissionGuard)
+@UseGuards(RoleGuard, NexaPermissionGuard)
 export class HrOnboardingController {
-  constructor(private readonly svc: HrOnboardingService) {}
+  constructor(
+    private readonly svc: HrOnboardingService,
+    private readonly buddy: HrOnboardingBuddyService
+  ) {}
 
   @Post("start-from-candidate")
   @RequireNexaPermissions("nexa.lifecycle:write")
@@ -87,6 +113,40 @@ export class HrOnboardingController {
     return this.svc.getWizard(userId);
   }
 
+  @Get("wizard/:userId/buddy-suggestions")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async buddySuggestions(@CurrentAuth() auth: AuthContext, @Param("userId") userId: string): Promise<unknown> {
+    return this.buddy.suggestBuddies(userId, auth.userId);
+  }
+
+  @Get("wizard/:userId/buddy-assignment")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async buddyAssignment(@Param("userId") userId: string): Promise<unknown> {
+    return this.buddy.getAssignment(userId);
+  }
+
+  @Post("wizard/:userId/buddy/confirm")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async confirmBuddy(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string,
+    @Body() dto: ConfirmBuddyDto
+  ): Promise<unknown> {
+    return this.buddy.confirmBuddy({
+      newHireUserId: userId,
+      buddyUserId: dto.buddyUserId,
+      actorUserId: auth.userId,
+      matchScore: dto.matchScore,
+      matchReason: dto.matchReason
+    });
+  }
+
+  @Post("wizard/:userId/complete")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async completeWizard(@CurrentAuth() auth: AuthContext, @Param("userId") userId: string): Promise<unknown> {
+    return this.svc.finalizeWizard(userId, auth.userId);
+  }
+
   @Post("wizard/:userId/reminder")
   @RequireNexaPermissions("nexa.lifecycle:read")
   async sendWizardReminder(
@@ -114,5 +174,30 @@ export class HrOnboardingController {
       markDone: dto.markDone,
       actorUserId: auth.userId
     });
+  }
+
+  /** Checklist onboarding per dipendente (self-service). */
+  @Get("my/checklist")
+  @RequireRole("user")
+  async myChecklist(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return this.svc.getEmployeeChecklist(auth.userId);
+  }
+
+  @Patch("my/checklist")
+  @RequireRole("user")
+  async patchMyChecklist(@CurrentAuth() auth: AuthContext, @Body() dto: PatchChecklistDto): Promise<unknown> {
+    return this.svc.patchEmployeeChecklistItem(
+      auth.userId,
+      dto.itemId,
+      dto.done,
+      auth.userId,
+      auth.role
+    );
+  }
+
+  @Post("my/complete")
+  @RequireRole("user")
+  async completeMyOnboarding(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return this.svc.completeEmployeeOnboarding(auth.userId, auth.userId);
   }
 }

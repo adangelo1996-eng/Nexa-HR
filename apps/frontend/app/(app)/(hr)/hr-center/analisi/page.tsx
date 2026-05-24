@@ -96,17 +96,22 @@ export default function HrCenterAnalyticsPage(): React.JSX.Element {
     }
     void (async () => {
       try {
-        const [m, me, users] = await Promise.all([
-          fetchHrCenterMeta(t),
-          fetchCurrentUser(t),
-          fetchUsers(t).catch(() => [] as User[])
-        ]);
+        const [m, me] = await Promise.all([fetchHrCenterMeta(t), fetchCurrentUser(t)]);
         setMeta(m);
         if (m.scopeMode === "team") {
+          const users = await fetchUsers(t).catch(() => [] as User[]);
           const allowed = new Set(filterManagerRows(me, users).map((r) => r.id));
           setUsersForSelect(users.filter((u) => allowed.has(u.id)));
-        } else {
-          setUsersForSelect(users);
+        } else if (m.employeeOptions?.length) {
+          setUsersForSelect(
+            m.employeeOptions.map((o) => ({
+              id: o.id,
+              fullName: o.label,
+              email: "",
+              role: "user" as const,
+              companyId: ""
+            }))
+          );
         }
       } catch {
         setMeta({ canAccess: false, llmActive: false });

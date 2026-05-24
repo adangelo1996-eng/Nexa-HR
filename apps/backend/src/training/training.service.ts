@@ -21,6 +21,24 @@ export interface TrainingCourseDto {
   durationMinutes: number;
   hasQuizPlaceholder: boolean;
   courseContent: TrainingCourseModule[];
+  /** Mesi di validità dopo completamento; null = senza scadenza copertura. */
+  validityMonths: number | null;
+}
+
+export const DEFAULT_TRAINING_VALIDITY_ALERT_DAYS = 30;
+
+export type TrainingValidityAlertStatus = "expiring" | "expired";
+
+export interface TrainingValidityAlertDto {
+  assignmentId: string;
+  userId: string;
+  courseId: string;
+  courseTitle: string;
+  completedAt: string;
+  coverageEndDate: string;
+  daysUntilExpiry: number;
+  status: TrainingValidityAlertStatus;
+  course?: TrainingCourseDto;
 }
 
 export const NEXA_HR_PLATFORM_COURSE_CODE = "nexa-hr-piattaforma";
@@ -64,7 +82,8 @@ export class TrainingService {
         category: "mandatory",
         durationMinutes: 90,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: 36
       },
       {
         id: "tc-gdpr",
@@ -75,7 +94,8 @@ export class TrainingService {
         category: "mandatory",
         durationMinutes: 60,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: 24
       },
       {
         id: "tc-etico",
@@ -86,7 +106,8 @@ export class TrainingService {
         category: "mandatory",
         durationMinutes: 45,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: 24
       },
       {
         id: "tc-harass",
@@ -97,7 +118,8 @@ export class TrainingService {
         category: "mandatory",
         durationMinutes: 50,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: 36
       },
       {
         id: "tc-excel",
@@ -108,7 +130,8 @@ export class TrainingService {
         category: "optional",
         durationMinutes: 120,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: null
       },
       {
         id: "tc-speaking",
@@ -119,7 +142,8 @@ export class TrainingService {
         category: "optional",
         durationMinutes: 90,
         hasQuizPlaceholder: true,
-        courseContent: []
+        courseContent: [],
+        validityMonths: null
       },
       {
         id: "tc-nexa-platform",
@@ -137,11 +161,53 @@ export class TrainingService {
             summary: "Registra entrate/uscite dalla sezione Presenze.",
             steps: ["Apri Presenze.", "Avvia/Termina timbratura.", "Rettifiche via Workflow se necessario."]
           }
-        ]
+        ],
+        validityMonths: null
       }
     ];
     this.memCourses.set(companyId, seeded);
     return seeded;
+  }
+
+  private parseValidityMonths(raw: unknown): number | null {
+    if (raw == null) {
+      return null;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1) {
+      return null;
+    }
+    return Math.min(120, Math.round(n));
+  }
+
+  coverageEndDate(completedAt: string, validityMonths: number | null): string | null {
+    if (!validityMonths || !completedAt) {
+      return null;
+    }
+    const base = new Date(completedAt);
+    if (Number.isNaN(base.getTime())) {
+      return null;
+    }
+    const end = new Date(base);
+    end.setMonth(end.getMonth() + validityMonths);
+    return end.toISOString().slice(0, 10);
+  }
+
+  daysUntilDate(isoDate: string, from = new Date()): number {
+    const target = new Date(isoDate);
+    if (Number.isNaN(target.getTime())) {
+      return 0;
+    }
+    const start = new Date(from);
+    start.setHours(0, 0, 0, 0);
+    target.setHours(0, 0, 0, 0);
+    return Math.round((target.getTime() - start.getTime()) / 86400000);
+  }
+
+  addDaysIso(fromIso: string, days: number): string {
+    const d = new Date(fromIso);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
   }
 
   private mapCourseContent(raw: unknown): TrainingCourseModule[] {
@@ -172,7 +238,8 @@ export class TrainingService {
       category: row.category as TrainingCourseCategory,
       durationMinutes: Number(row.duration_minutes ?? 60),
       hasQuizPlaceholder: Boolean(row.has_quiz_placeholder ?? true),
-      courseContent: this.mapCourseContent(row.course_content)
+      courseContent: this.mapCourseContent(row.course_content),
+      validityMonths: this.parseValidityMonths(row.validity_months)
     };
   }
 
@@ -487,35 +554,187 @@ export class TrainingService {
     }
     const courseTitle = assignment.course?.title ?? "corso assegnato";
     const dueLabel = assignment.dueDate;
-    const title = "Promemoria formazione";
-    const body = `Ti ricordiamo di completare «${courseTitle}» entro il ${dueLabel}. Apri Formazione dal menu Percorso.`;
-    const notificationId = `n-tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const row = {
-      id: notificationId,
+    await this.insertTrainingNotification({
       userId: assignment.userId,
-      title,
-      body,
-      read: false,
-      kind: "training_reminder",
-      createdAt: new Date().toISOString(),
-      actionPath: "/percorso/formazione"
-    };
-    if (!sb) {
-      return { ok: true };
-    }
-    const { error: insErr } = await sb.from("user_notifications").insert({
-      id: row.id,
-      userId: row.userId,
-      title: row.title,
-      body: row.body,
-      read: row.read,
-      kind: row.kind,
-      createdAt: row.createdAt,
-      actionPath: row.actionPath
+      title: "Promemoria formazione",
+      body: `Ti ricordiamo di completare «${courseTitle}» entro il ${dueLabel}. Apri Formazione dal menu Percorso.`,
+      kind: "training_reminder"
     });
-    if (insErr) {
-      throw new InternalServerErrorException(insErr.message);
-    }
     return { ok: true };
+  }
+
+  listValidityAlerts(
+    assignments: TrainingAssignmentDto[],
+    thresholdDays = DEFAULT_TRAINING_VALIDITY_ALERT_DAYS
+  ): TrainingValidityAlertDto[] {
+    const safeThreshold = Math.max(1, Math.min(365, Math.round(thresholdDays)));
+    const alerts: TrainingValidityAlertDto[] = [];
+    for (const assignment of assignments) {
+      if (assignment.status !== "completed" || !assignment.completedAt) {
+        continue;
+      }
+      const course = assignment.course;
+      const validityMonths = course?.validityMonths ?? null;
+      if (!validityMonths) {
+        continue;
+      }
+      const coverageEndDate = this.coverageEndDate(assignment.completedAt, validityMonths);
+      if (!coverageEndDate) {
+        continue;
+      }
+      const daysUntilExpiry = this.daysUntilDate(coverageEndDate);
+      if (daysUntilExpiry > safeThreshold) {
+        continue;
+      }
+      alerts.push({
+        assignmentId: assignment.id,
+        userId: assignment.userId,
+        courseId: assignment.courseId,
+        courseTitle: course?.title ?? "Corso formazione",
+        completedAt: assignment.completedAt.slice(0, 10),
+        coverageEndDate,
+        daysUntilExpiry,
+        status: daysUntilExpiry < 0 ? "expired" : "expiring",
+        course
+      });
+    }
+    return alerts.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+  }
+
+  async listExpiringValidities(input: {
+    companyId: string;
+    thresholdDays?: number;
+  }): Promise<{ items: TrainingValidityAlertDto[]; thresholdDays: number }> {
+    const thresholdDays = input.thresholdDays ?? DEFAULT_TRAINING_VALIDITY_ALERT_DAYS;
+    const assignments = await this.listAssignmentsForCompany(input.companyId);
+    const items = this.listValidityAlerts(assignments, thresholdDays);
+    return { items, thresholdDays: Math.max(1, Math.min(365, Math.round(thresholdDays))) };
+  }
+
+  private async insertTrainingNotification(input: {
+    userId: string;
+    title: string;
+    body: string;
+    kind: string;
+    actionPath?: string;
+  }): Promise<void> {
+    const sb = this.sb();
+    if (!sb) {
+      return;
+    }
+    const notificationId = `n-tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const { error } = await sb.from("user_notifications").insert({
+      id: notificationId,
+      userId: input.userId,
+      title: input.title,
+      body: input.body,
+      read: false,
+      kind: input.kind,
+      createdAt: new Date().toISOString(),
+      actionPath: input.actionPath ?? "/percorso/formazione"
+    });
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
+  async renewAssignmentForExpiringValidity(input: {
+    companyId: string;
+    assignmentId: string;
+    requestedByUserId: string;
+    dueDate?: string;
+  }): Promise<{ assignment: TrainingAssignmentDto; notified: true }> {
+    const sb = this.sb();
+    let assignment: TrainingAssignmentDto | null = null;
+    if (!sb) {
+      for (const list of this.memAssignments.values()) {
+        const hit = list.find((a) => a.id === input.assignmentId);
+        if (hit) {
+          assignment = hit;
+          break;
+        }
+      }
+    } else {
+      const { data, error } = await sb
+        .from("training_assignments")
+        .select("*, training_courses (*)")
+        .eq("id", input.assignmentId)
+        .eq("company_id", input.companyId)
+        .maybeSingle();
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      if (data) {
+        const raw = data as Record<string, unknown>;
+        const nested = raw.training_courses as Record<string, unknown> | null;
+        assignment = this.mapAssignment(raw, nested ? this.mapCourse(nested) : undefined);
+      }
+    }
+    if (!assignment) {
+      throw new NotFoundException("Assegnazione non trovata");
+    }
+    if (assignment.status !== "completed" || !assignment.completedAt) {
+      throw new NotFoundException("Il corso non risulta completato con validità da rinnovare");
+    }
+    const validityMonths = assignment.course?.validityMonths ?? null;
+    if (!validityMonths) {
+      throw new NotFoundException("Corso senza validità configurata");
+    }
+    const coverageEndDate = this.coverageEndDate(assignment.completedAt, validityMonths);
+    if (!coverageEndDate) {
+      throw new NotFoundException("Impossibile calcolare la scadenza copertura");
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultDue = this.addDaysIso(today, DEFAULT_TRAINING_VALIDITY_ALERT_DAYS);
+    const dueDate =
+      input.dueDate ??
+      (coverageEndDate < today ? defaultDue : coverageEndDate < defaultDue ? coverageEndDate : defaultDue);
+
+    let renewed: TrainingAssignmentDto;
+    if (!sb) {
+      const list = this.memAssignments.get(assignment.userId) ?? [];
+      const idx = list.findIndex((a) => a.id === assignment!.id);
+      if (idx < 0) {
+        throw new NotFoundException("Assegnazione non trovata");
+      }
+      list[idx] = {
+        ...list[idx],
+        status: "not_started",
+        completedAt: null,
+        dueDate
+      };
+      renewed = list[idx];
+    } else {
+      const { data, error } = await sb
+        .from("training_assignments")
+        .update({
+          status: "not_started",
+          completed_at: null,
+          due_date: dueDate,
+          assigned_by: input.requestedByUserId
+        })
+        .eq("id", assignment.id)
+        .eq("company_id", input.companyId)
+        .select("*, training_courses (*)")
+        .single();
+      if (error || !data) {
+        throw new InternalServerErrorException(`Rinnovo assegnazione: ${error?.message ?? "nessun dato"}`);
+      }
+      const raw = data as Record<string, unknown>;
+      const nested = raw.training_courses as Record<string, unknown> | null;
+      renewed = this.mapAssignment(raw, nested ? this.mapCourse(nested) : undefined);
+    }
+
+    const courseTitle = assignment.course?.title ?? "corso assegnato";
+    const endLabel = coverageEndDate;
+    await this.insertTrainingNotification({
+      userId: assignment.userId,
+      title: "Rinnovo formazione obbligatoria",
+      body: `La copertura del corso «${courseTitle}» scade il ${endLabel}. Completa il rinnovo entro il ${dueDate}. Apri Formazione dal menu Percorso.`,
+      kind: "training_validity_renewal",
+      actionPath: "/percorso/formazione"
+    });
+
+    return { assignment: renewed, notified: true };
   }
 }

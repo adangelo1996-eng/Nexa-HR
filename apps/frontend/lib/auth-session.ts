@@ -405,6 +405,11 @@ export function getSessionUser(): SessionUser | null {
 }
 
 export function clearSession(): void {
+  if (typeof window !== "undefined") {
+    void import("./api")
+      .then(({ invalidateCurrentUserCache }) => invalidateCurrentUserCache())
+      .catch(() => undefined);
+  }
   // Best-effort server logout to revoke refresh token cookie.
   try {
     const env = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim();

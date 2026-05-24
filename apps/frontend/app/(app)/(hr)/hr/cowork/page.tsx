@@ -42,6 +42,7 @@ import {
 } from "@/components/hebb-ai-experience-shell";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { HebbMateDocumentsPanel } from "@/components/hebb-mate-documents-panel";
+import { HebbMateWorkspace } from "@/components/hebb-mate-workspace";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -575,6 +576,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
     category: CoworkHistoryCategoryDto;
   } | null>(null);
   const [cancelTargetPlanId, setCancelTargetPlanId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"mate" | "batch" | "vault">("mate");
 
   useEffect(() => {
     const t = getToken();
@@ -895,14 +897,49 @@ export default function NexaCoworkPage(): React.JSX.Element {
       title="Hebb AI Mate"
       subtitle={
         <>
-          Workspace per modifiche di massa guidate da linguaggio naturale. Ogni operazione passa da preview con
-          nominativi e conferma HR; i dati inviati al modello sono solo aggregati pseudonimizzati.
+          Workspace HR completo: agente Mate con 7 capability (contratti, documenti, CV, email, report, competenze,
+          automazioni), batch Cowork HITL e vault documenti — con scope persona, team o centro di costo.
         </>
       }
       headerTrailing={<NexaPageHelpButton pageKey="hr-cowork" />}
     >
       {error ? <HebbAiErrorBanner>{error}</HebbAiErrorBanner> : null}
 
+      <HebbAiGlassPanel className="flex flex-wrap gap-2 p-3">
+        {(
+          [
+            ["mate", "Agente Mate"],
+            ["batch", "Cowork batch"],
+            ["vault", "Vault documenti"]
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveTab(id)}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === id
+                ? "bg-fuchsia-600 text-white shadow-sm dark:bg-fuchsia-500"
+                : "border border-[var(--prom-line)] text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </HebbAiGlassPanel>
+
+      {activeTab === "mate" ? (
+        <HebbMateWorkspace
+          costCenterId={costCenterId}
+          teamId={teamId}
+          onOpenCoworkTab={() => setActiveTab("batch")}
+        />
+      ) : null}
+
+      {activeTab === "vault" ? <HebbMateDocumentsPanel costCenterId={costCenterId} teamId={teamId} /> : null}
+
+      {activeTab === "batch" ? (
+        <>
       <HebbAiGlassPanel className="flex items-start gap-3 border-[color-mix(in_srgb,var(--prom-accent)_25%,var(--glass-border))] bg-[color-mix(in_srgb,var(--prom-accent)_6%,var(--card-bg))]">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-accent)]" aria-hidden />
         <p className="text-sm leading-relaxed text-[var(--prom-muted)]">
@@ -949,8 +986,6 @@ export default function NexaCoworkPage(): React.JSX.Element {
           </select>
         </div>
       </HebbAiGlassPanel>
-
-      <HebbMateDocumentsPanel costCenterId={costCenterId} teamId={teamId} />
 
       <div className="flex w-full flex-col gap-6">
         <HebbAiGlassPanel className="flex min-h-[360px] w-full flex-col">
@@ -1242,6 +1277,9 @@ export default function NexaCoworkPage(): React.JSX.Element {
           ) : null}
         </HebbAiGlassPanel>
       </div>
+
+        </>
+      ) : null}
 
       <GlassConfirmDialog
         open={bulkUndoTarget !== null}

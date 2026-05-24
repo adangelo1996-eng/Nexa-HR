@@ -4,8 +4,6 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
-  fetchAdminCostCenters,
-  fetchAdminWorkTeams,
   fetchAttendanceEntries,
   fetchAttendanceOvertimeAggregates,
   fetchAttendanceStatus,
@@ -56,7 +54,6 @@ async function warmAttendanceAndCalendarApis(token: string): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const { from: ucFrom, to: ucTo } = mergedPersonalCalendarRange();
   const { from: monthFrom, to: monthTo } = currentCalendarMonthRange();
-  const yearStart = `${y}-01-01`;
 
   const common = [
     fetchUserCalendar(token, ucFrom, ucTo).catch(() => {}),
@@ -78,25 +75,8 @@ async function warmAttendanceAndCalendarApis(token: string): Promise<void> {
   await Promise.all([
     ...common,
     fetchUsers(token).catch(() => {}),
-    fetchHrWorkCalendar(token, { from: monthFrom, to: monthTo }).catch(() => {}),
-    fetchHrWorkCalendar(token, { from: yearStart, to: monthTo }).catch(() => {})
+    fetchHrWorkCalendar(token, { from: monthFrom, to: monthTo }).catch(() => {})
   ]);
-
-  if (normalizeRole(me) === "superuser") {
-    const ccs = await fetchAdminCostCenters(token).catch(() => []);
-    await Promise.all(ccs.map((cc) => fetchAdminWorkTeams(token, cc.id).catch(() => {})));
-  }
-}
-
-function normalizeRole(u: SessionUser): "superuser" | "user" {
-  const r = String(u.role ?? "user");
-  if (r === "superuser") {
-    return "superuser";
-  }
-  if (r === "admin") {
-    return "superuser";
-  }
-  return "user";
 }
 
 /**
@@ -130,9 +110,9 @@ export function AppPrecache(): null {
 
     const w = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
     if (typeof w.requestIdleCallback === "function") {
-      w.requestIdleCallback(() => run(), { timeout: 3000 });
+      w.requestIdleCallback(() => run(), { timeout: 8000 });
     } else {
-      window.setTimeout(run, 400);
+      window.setTimeout(run, 1200);
     }
   }, [router]);
 

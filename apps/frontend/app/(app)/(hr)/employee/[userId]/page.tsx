@@ -40,15 +40,12 @@ export default function EmployeeProfilePage(): React.JSX.Element {
     setError(null);
     void (async () => {
       try {
-        const me = await fetchCurrentUser(t);
+        const [me, cv] = await Promise.all([fetchCurrentUser(t), fetchEmployeeCvProfile(t, userId)]);
         if (cancelled) {
           return;
         }
         setSessionUser(me);
-        const cv = await fetchEmployeeCvProfile(t, userId);
-        if (!cancelled) {
-          setProfile(cv);
-        }
+        setProfile(cv);
       } catch (e) {
         if (shouldClearSessionOnUnauthorizedApiError(e)) {
           clearSession();

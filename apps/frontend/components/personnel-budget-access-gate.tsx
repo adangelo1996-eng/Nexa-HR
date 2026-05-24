@@ -3,12 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanNexaAdmin } from "@/lib/auth-session";
+import { getToken, getSessionUser, sessionCanNexaAdmin } from "@/lib/auth-session";
 
 /** Blocca /personnel-budget agli utenti che non sono amministratori console Nexa. */
 export function PersonnelBudgetAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => sessionCanNexaAdmin(getSessionUser()));
 
   useEffect(() => {
     const token = getToken();

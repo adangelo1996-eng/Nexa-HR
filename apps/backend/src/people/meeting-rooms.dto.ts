@@ -1,4 +1,15 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min
+} from "class-validator";
 
 export class CreateMeetingRoomDto {
   @IsString()
@@ -49,5 +60,19 @@ export class CreateMeetingRoomBookingDto {
   @IsOptional()
   @IsString()
   title?: string;
+
+  /** Colleghi da invitare (multi-select). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  inviteeUserIds?: string[];
+
+  /** Email esterne (non in anagrafica). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsEmail({}, { each: true })
+  inviteeEmails?: string[];
 }
 

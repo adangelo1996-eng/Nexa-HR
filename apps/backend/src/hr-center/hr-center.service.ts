@@ -96,15 +96,19 @@ export class HrCenterService {
         .map((c) => ({ id: c.id, label: [c.code, c.name].filter(Boolean).join(" · ") || c.name }))
         .sort((a, b) => a.label.localeCompare(b.label, "it"));
       const teamOptionsAll: Array<{ id: string; label: string; costCenterId: string }> = [];
-      for (const cc of centersInTenant) {
-        try {
-          const teams = await this.store.listWorkTeamsByCostCenter(cc.id);
-          const pref = [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name;
-          for (const tm of teams) {
-            teamOptionsAll.push({ id: tm.id, label: `${pref} — ${tm.name}`, costCenterId: cc.id });
+      const teamLists = await Promise.all(
+        centersInTenant.map(async (cc) => {
+          try {
+            return { cc, teams: await this.store.listWorkTeamsByCostCenter(cc.id) };
+          } catch {
+            return { cc, teams: [] as Awaited<ReturnType<HrDataStore["listWorkTeamsByCostCenter"]>> };
           }
-        } catch {
-          /* work_teams assente */
+        })
+      );
+      for (const { cc, teams } of teamLists) {
+        const pref = [cc.code, cc.name].filter(Boolean).join(" · ") || cc.name;
+        for (const tm of teams) {
+          teamOptionsAll.push({ id: tm.id, label: `${pref} — ${tm.name}`, costCenterId: cc.id });
         }
       }
       teamOptionsAll.sort((a, b) => a.label.localeCompare(b.label, "it"));

@@ -1,15 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  ForbiddenException,
-  Get,
-  Param,
-  Post,
-  Query,
-  UseGuards
-} from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { HrDataStore } from "../platform/hr-data.store";
 import { NexaPermissionGuard } from "../platform/nexa-permission.guard";
@@ -43,6 +32,23 @@ export class MeetingRoomsController {
       throw new ForbiddenException("Solo superuser o amministratore Synapse possono creare sale riunioni");
     }
     return { item: await this.store.createMeetingRoom(auth.userId, dto) };
+  }
+
+  @Get("colleagues")
+  async listColleagues(
+    @CurrentAuth() auth: AuthContext
+  ): Promise<{ items: Awaited<ReturnType<HrDataStore["listMeetingRoomColleagues"]>> }> {
+    return { items: await this.store.listMeetingRoomColleagues(auth.userId) };
+  }
+
+  @Get(":roomId/availability")
+  async availability(
+    @CurrentAuth() auth: AuthContext,
+    @Param("roomId") roomId: string,
+    @Query("date") date?: string
+  ): Promise<Awaited<ReturnType<HrDataStore["getMeetingRoomAvailability"]>>> {
+    const day = date?.trim() || new Date().toISOString().slice(0, 10);
+    return this.store.getMeetingRoomAvailability(auth.userId, roomId, day);
   }
 
   @Get("bookings")

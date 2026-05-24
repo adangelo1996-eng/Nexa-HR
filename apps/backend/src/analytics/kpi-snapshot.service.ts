@@ -93,9 +93,10 @@ export class KpiSnapshotService {
     const costCenterId = query.costCenterId?.trim() || "";
     const teamId = query.teamId?.trim() || "";
 
-    for (const yearMonth of enumerateMonths(safeFrom, to)) {
-      await this.ensureMonthSnapshot(auth, card.id, companyId, yearMonth, costCenterId, teamId);
-    }
+    const months = [...enumerateMonths(safeFrom, to)];
+    await Promise.all(
+      months.map((yearMonth) => this.ensureMonthSnapshot(auth, card.id, companyId, yearMonth, costCenterId, teamId))
+    );
 
     const rows = await this.store.listKpiMonthlySnapshots({
       companyId,

@@ -6,8 +6,10 @@ import {
   cancelMeetingRoomBooking,
   createMeetingRoomBooking,
   fetchMeetingRoomBookingEvents,
+  fetchMeetingRoomColleagues,
   fetchMeetingRooms,
   type CalendarEventDto,
+  type MeetingRoomColleagueDto,
   type MeetingRoomDto
 } from "@/lib/api";
 import { getToken } from "@/lib/auth-session";
@@ -95,6 +97,9 @@ export default function SaleRiunioniPage(): React.JSX.Element {
     null
   );
   const [title, setTitle] = useState("");
+  const [colleagues, setColleagues] = useState<MeetingRoomColleagueDto[]>([]);
+  const [inviteeUserIds, setInviteeUserIds] = useState<string[]>([]);
+  const [inviteeEmailsRaw, setInviteeEmailsRaw] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -114,20 +119,26 @@ export default function SaleRiunioniPage(): React.JSX.Element {
     setBookings(events);
   }, [day]);
 
+  const loadColleagues = useCallback(async (): Promise<void> => {
+    const token = getToken();
+    if (!token) return;
+    const items = await fetchMeetingRoomColleagues(token);
+    setColleagues(items);
+  }, []);
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
       setErr(null);
       try {
-        await loadRooms();
-        await loadBookings();
+        await Promise.all([loadRooms(), loadBookings(), loadColleagues()]);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Caricamento non riuscito");
       } finally {
         setLoading(false);
       }
     })();
-  }, [loadRooms, loadBookings]);
+  }, [loadRooms, loadBookings, loadColleagues]);
 
   useEffect(() => {
     if (step === "slot" || step === "confirm") {
@@ -174,9 +185,16 @@ export default function SaleRiunioniPage(): React.JSX.Element {
       await createMeetingRoomBooking(token, selectedRoom.id, {
         startsAt: selectedSlot.startsAt,
         endsAt: selectedSlot.endsAt,
-        title: title.trim() || `Riunione — ${selectedRoom.name}`
+        title: title.trim() || `Riunione — ${selectedRoom.name}`,
+        inviteeUserIds,
+        inviteeEmails: inviteeEmailsRaw
+          .split(/[,;\s]+/)
+          .map((x) => x.trim())
+          .filter(Boolean)
       });
       setTitle("");
+      setInviteeUserIds([]);
+      setInviteeEmailsRaw("");
       setSelectedSlot(null);
       setSelectedRoom(null);
       setStep("room");
@@ -426,6 +444,45 @@ export default function SaleRiunioniPage(): React.JSX.Element {
               onChange={setTitle}
             />
             </HebbFieldAssistProvider>
+
+            <div className="mt-4 space-y-3">
+              <p className="text-sm font-medium text-[var(--prom-fg)]">Invita colleghi</p>
+              {colleagues.length === 0 ? (
+                <p className="text-xs text-[var(--prom-muted)]">Nessun collega disponibile in rubrica.</p>
+              ) : (
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-[var(--prom-line)] p-2 text-sm">
+                  {colleagues.map((c) => (
+                    <li key={c.id}>
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={inviteeUserIds.includes(c.id)}
+                          onChange={(e) => {
+                            setInviteeUserIds((prev) =>
+                              e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
+                            );
+                          }}
+                        />
+                        <span className="text-[var(--prom-fg)]">{c.fullName}</span>
+                        <span className="text-xs text-[var(--prom-muted)]">{c.email}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <label className="block text-sm text-[var(--prom-muted)]" htmlFor="invitee-emails">
+                Email esterne (separate da virgola)
+              </label>
+              <input
+                id="invitee-emails"
+                type="text"
+                placeholder="ospite@azienda.it, consulente@dominio.it"
+                className="mt-1 w-full rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface)] px-3 py-2 text-sm text-[var(--prom-fg)]"
+                value={inviteeEmailsRaw}
+                onChange={(e) => setInviteeEmailsRaw(e.target.value)}
+              />
+            </div>
+
             <Button
               type="button"
               className="mt-6 gap-2"

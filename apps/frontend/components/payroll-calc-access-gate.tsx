@@ -3,12 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanAccessPayrollArea } from "@/lib/auth-session";
+import { getToken, getSessionUser, sessionCanAccessPayrollArea } from "@/lib/auth-session";
 
 /** Blocca /payroll-hebb se il backend non concede `canAccessPayrollArea` (admin / HR). */
 export function PayrollCalcAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => sessionCanAccessPayrollArea(getSessionUser()));
 
   useEffect(() => {
     const token = getToken();

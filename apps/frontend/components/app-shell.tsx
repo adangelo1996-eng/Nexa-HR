@@ -17,7 +17,6 @@ import {
   Sun,
   User,
   UserCog,
-  MessageCircle,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import {
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
   sessionCanOpenEmployeeRecapPage,
-  sessionCanAccessHebbAiSupportSelf,
   sessionCanViewOrgExpenseClaims,
   sessionIsPlainEmployee,
   sessionUsesHrReorganizedNav,
@@ -82,6 +80,35 @@ type GlobalSearchHit = { href: Route; label: string; subtitle?: string };
 const NAV_EMPLOYEE_DASHBOARD: NavItem = { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard };
 const NAV_PORTAL_MAP: NavItem = { href: "/mappa-portale" as Route, label: "Mappa del portale", icon: Home };
 
+function SynapseNexaHrWordmark(props: { className?: string }): React.JSX.Element {
+  return (
+    <span
+      className={`inline-flex flex-wrap items-baseline gap-x-0 gap-y-0.5 ${props.className ?? ""}`}
+      aria-label="SYNAPSE Nexa HR"
+    >
+      <span
+        className="nexa-wordmark-face text-[clamp(0.95rem,2vw,1.2rem)] font-semibold uppercase leading-none tracking-[0.08em] text-[var(--prom-text)]"
+        style={synapseSuiteDisplayStyle}
+      >
+        SYNAPSE
+      </span>
+      <span
+        className="nexa-wordmark-face mx-[0.15em] text-[clamp(0.85rem,1.6vw,1rem)] font-semibold text-[var(--prom-text)]"
+        style={synapseSuiteDisplayStyle}
+        aria-hidden
+      >
+        {" - "}
+      </span>
+      <span
+        className="nexa-wordmark-face text-[clamp(0.72rem,1.4vw,0.88rem)] font-semibold uppercase leading-none tracking-[0.1em] text-[var(--prom-muted)]"
+        style={synapseSuiteDisplayStyle}
+      >
+        Nexa HR
+      </span>
+    </span>
+  );
+}
+
 const EMPLOYEE_PORTAL_CATEGORY: Record<string, string> = {
   home: "Oggi",
   io: "Io",
@@ -97,12 +124,6 @@ function portalSectionToHubTiles(section: PortalMapNavSection): HubTile[] {
     }))
   );
 }
-
-const NAV_HEBB_AI_SUPPORT: NavItem = {
-  href: "/hebb-ai-support" as Route,
-  label: "Hebb AI Support",
-  icon: MessageCircle
-};
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
   id: "profile",
@@ -264,7 +285,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     return () => {
       cancelled = true;
     };
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent): void {
@@ -303,7 +324,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
 
   useEffect(() => {
     const q = searchQ.trim().toLowerCase();
-    if (!q || q.length < 2 || !user || !sessionCanOpenEmployeeRecapPage(user)) {
+    if (!q || q.length < 3 || !user || !sessionCanOpenEmployeeRecapPage(user)) {
       setDirectorySearchHits([]);
       return;
     }
@@ -362,7 +383,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           setDirectorySearchHits(hits);
         }
       })();
-    }, 240);
+    }, 400);
     return () => {
       cancelled = true;
       clearTimeout(tmr);
@@ -555,12 +576,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           closeMobile();
         }}
       >
-        <span
-          className="nexa-wordmark-face text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-[var(--prom-text)]"
-          style={synapseSuiteDisplayStyle}
-        >
-          SYNAPSE
-        </span>
+        <SynapseNexaHrWordmark />
       </Link>
       <SidebarNavLink
         item={NAV_PORTAL_MAP}
@@ -574,14 +590,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
-      {sessionCanAccessHebbAiSupportSelf(user ?? undefined) ? (
-        <SidebarNavLink
-          item={NAV_HEBB_AI_SUPPORT}
-          pathname={pathname}
-          onNavigate={closeMobile}
-          beforeNavigate={persistSidebarScrollPositions}
-        />
-      ) : null}
       {showTopPinsBlock ? (
         <SidebarPillarNav
           availableTiles={allPinTiles}
@@ -751,15 +759,10 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
             <Link
               href="/mappa-portale"
               scroll={false}
-              className="hidden shrink-0 sm:block"
-              aria-label="Dashboard"
+              className="hidden shrink-0 sm:block transition-opacity hover:opacity-90"
+              aria-label="SYNAPSE Nexa HR"
             >
-              <span
-                className="nexa-wordmark-face text-[clamp(1.05rem,2.2vw,1.35rem)] font-semibold uppercase leading-none tracking-[0.08em] text-[var(--prom-text)]"
-                style={synapseSuiteDisplayStyle}
-              >
-                SYNAPSE
-              </span>
+              <SynapseNexaHrWordmark />
             </Link>
             <div ref={searchRef} className="relative min-w-0 flex-1 max-w-xl">
               <label className="sr-only" htmlFor="global-search">

@@ -58,10 +58,11 @@ export class HrRecapService {
     recruitingOnboardingCandidates: number;
   }> {
     const { companyId } = await this.assertHrRecap(auth);
-    const head = await this.store.getHrRecapHeadcount(companyId);
-    const contractsToSign = await this.store.countHrStandardContractsUnsigned(companyId);
-    const recruitingOnboardingCandidates = (await this.recruiting.listOnboardingCandidatesForCompany(companyId))
-      .length;
+    const [head, contractsToSign, recruitingOnboardingCandidates] = await Promise.all([
+      this.store.getHrRecapHeadcount(companyId),
+      this.store.countHrStandardContractsUnsigned(companyId),
+      this.recruiting.listOnboardingCandidatesForCompany(companyId).then((rows) => rows.length)
+    ]);
     return {
       ...head,
       contractsToSign,
@@ -71,10 +72,13 @@ export class HrRecapService {
 
   async listTasks(auth: AuthContext): Promise<{ tasks: HrRecapTaskDto[] }> {
     const { companyId, me } = await this.assertHrRecap(auth);
-    const approvals = await this.store.listCompanyPendingApprovalViewsForHrDashboard(companyId);
-    const expenses = await this.store.listCompanyExpenseClaimsPendingHr(companyId);
-    const contracts = await this.store.listHrStandardContractsUnsigned(companyId);
-    const usersById = new Map((await this.store.listUsers()).map((u) => [u.id, u]));
+    const [approvals, expenses, contracts, users] = await Promise.all([
+      this.store.listCompanyPendingApprovalViewsForHrDashboard(companyId),
+      this.store.listCompanyExpenseClaimsPendingHr(companyId),
+      this.store.listHrStandardContractsUnsigned(companyId),
+      this.store.listUsers()
+    ]);
+    const usersById = new Map(users.map((u) => [u.id, u]));
 
     const tasks: HrRecapTaskDto[] = [];
 
@@ -92,7 +96,8 @@ export class HrRecapService {
             : a.type === "travel"
               ? "Trasferta in attesa"
               : "Remote working in attesa";
-      const notifyUserId = a.approverId?.trim() || (await this.resolveManagerId(a.requestedBy));
+      const requester = usersById.get(a.requestedBy);
+      const notifyUserId = a.approverId?.trim() || requester?.managerId?.trim() || null;
       tasks.push({
         id: `appr:${a.id}`,
         kind: "approval",

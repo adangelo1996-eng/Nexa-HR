@@ -7,7 +7,7 @@ import { EmployeeSideDrawer, type EmployeeDrawerSubject } from "@/components/emp
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { OrgStructureTeamTree } from "@/components/org-structure-tree";
 import { Button } from "@/components/ui/button";
-import { fetchCurrentUser, fetchOrgStructure, type OrgStructureResponse, type OrgStructureTreeNode } from "@/lib/api";
+import { fetchOrgStructure, type OrgStructureResponse, type OrgStructureTreeNode } from "@/lib/api";
 import { clearSession, getToken, shouldClearSessionOnUnauthorizedApiError } from "@/lib/auth-session";
 
 export default function OrganigrammaPage(): React.JSX.Element {
@@ -41,7 +41,6 @@ export default function OrganigrammaPage(): React.JSX.Element {
     setError(null);
     setLoading(true);
     try {
-      await fetchCurrentUser(token);
       const structure = await fetchOrgStructure(token);
       setData(structure);
     } catch (e) {

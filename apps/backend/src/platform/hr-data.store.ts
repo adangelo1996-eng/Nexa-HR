@@ -4251,6 +4251,8 @@ export class HrDataStore {
       let leaveKind: "annual" | "rol" | undefined;
       let residualAnnualLeaveDays: number | undefined;
       let requestedCalendarDays: number | undefined;
+      let insufficientAnnualLeaveBalance: boolean | undefined;
+      let annualLeaveBalanceShortfallDays: number | undefined;
       let smartworkingWeekUsed: number | undefined;
       let smartworkingWeekQuota: number | undefined;
       let smartworkingMonthUsed: number | undefined;
@@ -4268,6 +4270,12 @@ export class HrDataStore {
           const year = Number(leave.startDate.slice(0, 4));
           const bal = await this.getLeaveBalance(leave.userId, year);
           residualAnnualLeaveDays = bal.residualDays;
+          if (requestedCalendarDays != null && residualAnnualLeaveDays < requestedCalendarDays) {
+            insufficientAnnualLeaveBalance = true;
+            annualLeaveBalanceShortfallDays = requestedCalendarDays - residualAnnualLeaveDays;
+          } else if (requestedCalendarDays != null) {
+            insufficientAnnualLeaveBalance = false;
+          }
         }
       } else if (sickness) {
         try {
@@ -4296,6 +4304,19 @@ export class HrDataStore {
       }
 
       const approverUser = item.approverId ? usersById.get(item.approverId) : undefined;
+      let teamCoverageFields: {
+        teamZeroCoverage?: boolean;
+        teamCoverageLabel?: string;
+        teamCoveragePeerCount?: number;
+        teamCoverageMinAvailable?: number;
+        teamCoverageZeroDays?: number;
+      } = {};
+      if (leave && item.status === "pending" && user) {
+        const coverage = await this.computeLeaveTeamCoverage(user, leave.startDate, leave.endDate);
+        if (coverage) {
+          teamCoverageFields = coverage;
+        }
+      }
       out.push({
         id: item.id,
         entityId: item.entityId,
@@ -4316,6 +4337,9 @@ export class HrDataStore {
         leaveKind,
         residualAnnualLeaveDays,
         requestedCalendarDays,
+        insufficientAnnualLeaveBalance,
+        annualLeaveBalanceShortfallDays,
+        ...teamCoverageFields,
         smartworkingWeekUsed,
         smartworkingWeekQuota,
         smartworkingMonthUsed,
@@ -4677,6 +4701,114 @@ export class HrDataStore {
       throw new BadRequestException("Intervallo date non valido");
     }
     return Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+  }
+
+  private calendarDaysInRange(startDate: string, endDate: string): string[] {
+    const startMs = new Date(`${startDate}T12:00:00.000Z`).getTime();
+    const endMs = new Date(`${endDate}T12:00:00.000Z`).getTime();
+    const days: string[] = [];
+    for (let t = startMs; t <= endMs; t += 86_400_000) {
+      days.push(new Date(t).toISOString().slice(0, 10));
+    }
+    return days;
+  }
+
+  private dayInInclusiveRange(day: string, start: string, end: string): boolean {
+    return day >= start && day <= end;
+  }
+
+  private userAbsentOnDay(
+    day: string,
+    leaves: LeavePlan[],
+    sickness: SicknessEvent[]
+  ): boolean {
+    for (const lv of leaves) {
+      if (lv.status !== "approved" && lv.status !== "pending") {
+        continue;
+      }
+      if (this.dayInInclusiveRange(day, lv.startDate, lv.endDate)) {
+        return true;
+      }
+    }
+    for (const sk of sickness) {
+      if (sk.status !== "approved" && sk.status !== "pending") {
+        continue;
+      }
+      if (this.dayInInclusiveRange(day, sk.fromDate, sk.toDate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async resolveTeamCoverageLabel(requester: User): Promise<{ peers: User[]; label: string }> {
+    const peers = await this.resolveWorkCalendarPeerUsers(requester);
+    const tid = requester.teamId?.trim();
+    if (tid) {
+      try {
+        const team = await this.getWorkTeam(tid);
+        return { peers, label: team.name };
+      } catch {
+        return { peers, label: "Team" };
+      }
+    }
+    if (peers.length > 1 && requester.managerId?.trim()) {
+      return { peers, label: "Gruppo responsabile" };
+    }
+    return { peers, label: "Centro di costo" };
+  }
+
+  private async computeLeaveTeamCoverage(
+    requester: User,
+    startDate: string,
+    endDate: string
+  ): Promise<{
+    teamCoverageLabel: string;
+    teamCoveragePeerCount: number;
+    teamCoverageMinAvailable: number;
+    teamCoverageZeroDays: number;
+    teamZeroCoverage: boolean;
+  } | null> {
+    if (!startDate?.trim() || !endDate?.trim()) {
+      return null;
+    }
+    const { peers, label } = await this.resolveTeamCoverageLabel(requester);
+    if (peers.length === 0) {
+      return null;
+    }
+    const absenceCache = new Map<string, { leaves: LeavePlan[]; sickness: SicknessEvent[] }>();
+    for (const peer of peers) {
+      const [leaves, sicknessEvents] = await Promise.all([
+        this.listLeave(peer.id),
+        this.listSickness(peer.id)
+      ]);
+      absenceCache.set(peer.id, { leaves, sickness: sicknessEvents });
+    }
+    const days = this.calendarDaysInRange(startDate, endDate);
+    let minAvailable = peers.length;
+    let zeroDays = 0;
+    for (const day of days) {
+      let available = 0;
+      for (const peer of peers) {
+        const cached = absenceCache.get(peer.id)!;
+        if (!this.userAbsentOnDay(day, cached.leaves, cached.sickness)) {
+          available += 1;
+        }
+      }
+      if (available < minAvailable) {
+        minAvailable = available;
+      }
+      if (available === 0) {
+        zeroDays += 1;
+      }
+    }
+    return {
+      teamCoverageLabel: label,
+      teamCoveragePeerCount: peers.length,
+      teamCoverageMinAvailable: minAvailable,
+      teamCoverageZeroDays: zeroDays,
+      teamZeroCoverage: zeroDays > 0
+    };
   }
 
   /** Oggi come YYYY-MM-DD (Europe/Rome), coerente con il calendario lavoro in UI. */
@@ -5184,7 +5316,13 @@ export class HrDataStore {
   async createMeetingRoomBookingEvent(
     requesterId: string,
     roomId: string,
-    input: { startsAt: string; endsAt: string; title?: string }
+    input: {
+      startsAt: string;
+      endsAt: string;
+      title?: string;
+      inviteeUserIds?: string[];
+      inviteeEmails?: string[];
+    }
   ): Promise<CalendarEvent> {
     const me = await this.getUser(requesterId);
     if (!this.useDb) {
@@ -5193,6 +5331,9 @@ export class HrDataStore {
     const startsAt = String(input.startsAt || "").trim();
     const endsAt = String(input.endsAt || "").trim();
     if (!startsAt || !endsAt) {
+      throw new BadRequestException("Orario non valido");
+    }
+    if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
       throw new BadRequestException("Orario non valido");
     }
     const title = input.title?.trim() || "";
@@ -5212,19 +5353,125 @@ export class HrDataStore {
       throw new InternalServerErrorException(`Prenotazione sala fallita: ${error?.message ?? "unknown"}`);
     }
     const row = data as Record<string, unknown>;
+    const bookingId = String(row.id);
+
+    const inviteeUserIds = [...new Set((input.inviteeUserIds ?? []).map((x) => x.trim()).filter(Boolean))].filter(
+      (id) => id !== me.id
+    );
+    const inviteeEmails = [
+      ...new Set((input.inviteeEmails ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean))
+    ].filter((email) => email !== me.email.toLowerCase());
+
+    if (inviteeUserIds.length > 0 || inviteeEmails.length > 0) {
+      const allUsers = await this.listUsers();
+      const companyUsers = new Map(allUsers.filter((u) => u.companyId === me.companyId).map((u) => [u.id, u]));
+      const inviteRows: Array<{ booking_id: string; user_id?: string; email?: string }> = [];
+      for (const uid of inviteeUserIds) {
+        if (!companyUsers.has(uid)) continue;
+        inviteRows.push({ booking_id: bookingId, user_id: uid });
+      }
+      for (const email of inviteeEmails) {
+        const match = allUsers.find((u) => u.companyId === me.companyId && u.email.toLowerCase() === email);
+        if (match && !inviteeUserIds.includes(match.id)) {
+          inviteRows.push({ booking_id: bookingId, user_id: match.id });
+        } else if (!match) {
+          inviteRows.push({ booking_id: bookingId, email });
+        }
+      }
+      if (inviteRows.length > 0) {
+        await this.supabase!.from("meeting_room_booking_invitees").insert(inviteRows);
+      }
+      const room = (await this.listMeetingRooms(requesterId)).find((r) => r.id === roomId);
+      const roomLabel = room?.name ?? "Sala riunioni";
+      const when = new Intl.DateTimeFormat("it-IT", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(startsAt));
+      for (const uid of inviteeUserIds) {
+        if (!companyUsers.has(uid)) continue;
+        await this.notifyUserInApp({
+          userId: uid,
+          title: "Invito riunione",
+          body: `${me.fullName} ti ha invitato a «${title || roomLabel}» (${when}).`,
+          kind: "meeting_room_invite",
+          actionPath: "/sale-riunioni"
+        });
+      }
+    }
+
     return {
-      id: `cal-room-${String(row.id)}`,
+      id: `cal-room-${bookingId}`,
       kind: "room_booking",
       title: String(row.title || "Prenotazione sala"),
       start: String(row.starts_at),
       end: String(row.ends_at),
       userId: `room:${String(row.room_id)}`,
       meta: {
-        bookingId: String(row.id),
+        bookingId,
         roomId: String(row.room_id),
-        bookedByUserId: String(row.booked_by_user_id)
+        bookedByUserId: String(row.booked_by_user_id),
+        inviteeCount: inviteeUserIds.length + inviteeEmails.length
       }
     };
+  }
+
+  async listMeetingRoomColleagues(
+    requesterId: string
+  ): Promise<Array<{ id: string; fullName: string; email: string }>> {
+    const me = await this.getUser(requesterId);
+    const all = await this.listUsers();
+    return all
+      .filter((u) => u.companyId === me.companyId && u.id !== me.id && u.employmentState !== "offboarding")
+      .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
+  }
+
+  async getMeetingRoomAvailability(
+    requesterId: string,
+    roomId: string,
+    day: string
+  ): Promise<{ slots: Array<{ startsAt: string; endsAt: string; available: boolean }> }> {
+    const me = await this.getUser(requesterId);
+    if (!this.useDb) return { slots: [] };
+    const base = day.slice(0, 10);
+    const { data: room } = await this.supabase!
+      .from("meeting_rooms")
+      .select("id")
+      .eq("id", roomId)
+      .eq("company_id", me.companyId)
+      .maybeSingle();
+    if (!room) throw new NotFoundException("Sala non trovata");
+
+    const { data: bookings, error } = await this.supabase!
+      .from("meeting_room_bookings")
+      .select("starts_at, ends_at")
+      .eq("room_id", roomId)
+      .is("canceled_at", null)
+      .gte("starts_at", `${base}T00:00:00.000Z`)
+      .lte("starts_at", `${base}T23:59:59.999Z`);
+    if (error) {
+      throw new InternalServerErrorException(`Disponibilità sala: ${error.message}`);
+    }
+
+    const slots: Array<{ startsAt: string; endsAt: string; available: boolean }> = [];
+    for (let h = 8; h < 19; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        const endM = m + 30;
+        const endH = endM >= 60 ? h + 1 : h;
+        const endMin = endM >= 60 ? 0 : endM;
+        if (endH > 19 || (endH === 19 && endMin > 0)) continue;
+        const startsAt = new Date(`${base}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`).toISOString();
+        const endsAt = new Date(`${base}T${String(endH).padStart(2, "0")}:${String(endMin).padStart(2, "0")}:00`).toISOString();
+        const overlap = ((bookings as { starts_at: string; ends_at: string }[]) ?? []).some(
+          (b) => startsAt < b.ends_at && b.starts_at < endsAt
+        );
+        slots.push({ startsAt, endsAt, available: !overlap });
+      }
+    }
+    return { slots };
   }
 
   async cancelMeetingRoomBooking(requesterId: string, bookingId: string): Promise<void> {
@@ -7034,7 +7281,13 @@ export class HrDataStore {
       { id: "ob-1", label: "Contratto firmato e archiviato", done: false },
       { id: "ob-2", label: "Account aziendali e accessi IT", done: false },
       { id: "ob-3", label: "Formazione sicurezza / compliance", done: false },
-      { id: "ob-4", label: "Badge / presenze configurate", done: false }
+      { id: "ob-4", label: "Badge / presenze configurate", done: false },
+      { id: "emp-welcome", label: "Leggi il messaggio di benvenuto", done: false },
+      { id: "emp-settings", label: "Completa profilo e recapiti", done: false },
+      { id: "emp-payslips", label: "Verifica accesso cedolini", done: false },
+      { id: "emp-policies", label: "Consulta policy aziendali", done: false },
+      { id: "emp-team", label: "Conosci manager e team", done: false },
+      { id: "emp-formazione", label: "Completa i corsi di formazione", done: false }
     ];
     return { userId, phase: "active", checklist, updatedAt: now };
   }

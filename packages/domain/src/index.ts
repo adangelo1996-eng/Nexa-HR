@@ -228,6 +228,20 @@ export interface ApprovalView {
   residualAnnualLeaveDays?: number;
   /** Giorni calendario richiesti (ferie/ROL/malattia). */
   requestedCalendarDays?: number;
+  /** Ferie annuali: residuo inferiore ai giorni richiesti. */
+  insufficientAnnualLeaveBalance?: boolean;
+  /** Giorni mancanti (richiesti − residuo) se `insufficientAnnualLeaveBalance`. */
+  annualLeaveBalanceShortfallDays?: number;
+  /** Team: almeno un giorno del periodo senza copertura in presenza. */
+  teamZeroCoverage?: boolean;
+  /** Etichetta team usata per l'alert copertura. */
+  teamCoverageLabel?: string;
+  /** Membri team considerati per la copertura. */
+  teamCoveragePeerCount?: number;
+  /** Minimo disponibili in un giorno del periodo (dopo approvazione). */
+  teamCoverageMinAvailable?: number;
+  /** Giorni del periodo con copertura zero. */
+  teamCoverageZeroDays?: number;
   /** Remote working (tipo `smartworking`): giorni già occupati nella settimana ISO del giorno richiesto. */
   smartworkingWeekUsed?: number;
   smartworkingWeekQuota?: number;

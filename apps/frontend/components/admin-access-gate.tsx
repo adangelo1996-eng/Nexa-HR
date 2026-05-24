@@ -3,14 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchCurrentUser } from "@/lib/api";
-import { getToken, sessionCanNexaAdmin } from "@/lib/auth-session";
+import { getToken, getSessionUser, sessionCanNexaAdmin } from "@/lib/auth-session";
 
 /**
  * Blocca `/admin` se la sessione non ha `canNexaAdmin` (solo account Synapse allowlist).
  */
 export function AdminAccessGate({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => sessionCanNexaAdmin(getSessionUser()));
 
   useEffect(() => {
     const token = getToken();

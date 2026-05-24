@@ -151,4 +151,33 @@ export class TrainingController {
       requestedByUserId: auth.userId
     });
   }
+
+  @Get("validity-alerts")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async validityAlerts(
+    @CurrentAuth() auth: AuthContext,
+    @Query("days") days?: string
+  ): Promise<{ items: unknown[]; thresholdDays: number }> {
+    const companyId = auth.tenantId ?? "comp-1";
+    const parsed = days != null ? Number(days) : undefined;
+    const thresholdDays =
+      parsed != null && Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : undefined;
+    return this.svc.listExpiringValidities({ companyId, thresholdDays });
+  }
+
+  @Post("validity-alerts/:assignmentId/renew")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async renewValidity(
+    @CurrentAuth() auth: AuthContext,
+    @Param("assignmentId") assignmentId: string,
+    @Body() body: { dueDate?: string }
+  ): Promise<{ assignment: unknown; notified: true }> {
+    const companyId = auth.tenantId ?? "comp-1";
+    return this.svc.renewAssignmentForExpiringValidity({
+      companyId,
+      assignmentId,
+      requestedByUserId: auth.userId,
+      dueDate: body?.dueDate
+    });
+  }
 }

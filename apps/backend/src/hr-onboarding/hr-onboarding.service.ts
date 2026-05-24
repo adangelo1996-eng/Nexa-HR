@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { OnboardingStatus } from "@payday/domain";
 import { HrDataStore } from "../platform/hr-data.store";
 import { RecruitingService } from "../recruiting/recruiting.service";
 import { TrainingService } from "../training/training.service";
+import { HrOnboardingBuddyService } from "./hr-onboarding-buddy.service";
 import {
+  EMPLOYEE_ONBOARDING_CHECKLIST,
   HR_ONBOARDING_WIZARD_STEP_COUNT,
   HR_ONBOARDING_WIZARD_STEPS,
+  WIZARD_STEP_TO_LIFECYCLE_ITEM,
   type HrOnboardingWizardStepKey
 } from "./hr-onboarding.constants";
 
@@ -29,7 +33,8 @@ export class HrOnboardingService {
   constructor(
     private readonly store: HrDataStore,
     private readonly recruiting: RecruitingService,
-    private readonly training: TrainingService
+    private readonly training: TrainingService,
+    private readonly buddy: HrOnboardingBuddyService
   ) {}
 
   private sb(): SupabaseClient | null {
@@ -258,11 +263,26 @@ export class HrOnboardingService {
 
     if (input.stepKey === "buddy_formazione" && input.markDone) {
       await this.applyTrainingAssignments(input.userId, wizard.companyId, input.data, input.actorUserId);
+      const buddyUserId =
+        typeof input.data.buddyUserId === "string" ? input.data.buddyUserId.trim() : "";
+      if (buddyUserId) {
+        await this.buddy.confirmBuddy({
+          newHireUserId: input.userId,
+          buddyUserId,
+          actorUserId: input.actorUserId,
+          matchScore:
+            typeof input.data.buddyMatchScore === "number" ? input.data.buddyMatchScore : undefined,
+          matchReason:
+            typeof input.data.buddyMatchReason === "string" ? input.data.buddyMatchReason : undefined
+        });
+      }
+    }
+
+    if (input.markDone) {
+      await this.syncLifecycleFromWizardStep(input.userId, input.stepKey);
     }
 
     const nextIndex = input.markDone ? Math.min(idx + 1, HR_ONBOARDING_WIZARD_STEP_COUNT - 1) : idx;
-    const allDone = HR_ONBOARDING_WIZARD_STEPS.every((s) => steps[s.key]?.done === true);
-    const completedAt = allDone ? new Date().toISOString() : null;
     const now = new Date().toISOString();
 
     const sb = this.sb();
@@ -271,18 +291,10 @@ export class HrOnboardingService {
         ...wizard,
         steps,
         currentStepIndex: nextIndex,
-        completedAt,
+        completedAt: wizard.completedAt,
         updatedAt: now
       };
       this.memWizard.set(input.userId, updated);
-      if (allDone) {
-        await this.store.updateUser(input.userId, { employmentState: "active" });
-        await this.training.ensureNexaPlatformCourseAssigned({
-          companyId: wizard.companyId,
-          userId: input.userId,
-          assignedBy: input.actorUserId
-        });
-      }
       return updated;
     }
 
@@ -291,7 +303,6 @@ export class HrOnboardingService {
       .update({
         steps_json: steps,
         current_step_index: nextIndex,
-        completed_at: completedAt,
         updated_at: now,
         updated_by_user_id: input.actorUserId
       })
@@ -300,21 +311,6 @@ export class HrOnboardingService {
       .single();
     if (error || !data) {
       throw new InternalServerErrorException(`Salvataggio passo onboarding: ${error?.message ?? "nessun dato"}`);
-    }
-    if (allDone) {
-      await this.store.updateUser(input.userId, { employmentState: "active" });
-      await this.training.ensureNexaPlatformCourseAssigned({
-        companyId: wizard.companyId,
-        userId: input.userId,
-        assignedBy: input.actorUserId
-      });
-      if (wizard.recruitCandidateId) {
-        await sb
-          .from("recruit_candidates")
-          .update({ onboarded_at: new Date().toISOString() })
-          .eq("id", wizard.recruitCandidateId)
-          .eq("company_id", wizard.companyId);
-      }
     }
     return this.mapRow(data as Record<string, unknown>);
   }
@@ -460,5 +456,139 @@ export class HrOnboardingService {
       actionPath: "/hr/onboarding"
     });
     return { ok: true };
+  }
+
+  private async syncLifecycleFromWizardStep(userId: string, stepKey: HrOnboardingWizardStepKey): Promise<void> {
+    const lifecycleId = WIZARD_STEP_TO_LIFECYCLE_ITEM[stepKey];
+    if (!lifecycleId) return;
+    try {
+      await this.store.patchOnboardingItem(userId, lifecycleId, true, userId, "superuser");
+    } catch {
+      /* checklist item may not exist yet */
+    }
+  }
+
+  async getEmployeeChecklist(userId: string): Promise<
+    OnboardingStatus & {
+      wizardCompleted: boolean;
+      allStepsDone: boolean;
+      progressPercent: number;
+    }
+  > {
+    const user = await this.store.getUser(userId);
+    if (!user) throw new NotFoundException("Utente non trovato");
+    const status = await this.store.getOrCreateOnboarding(userId);
+    const merged = this.mergeEmployeeChecklistItems(status);
+    let wizardCompleted = false;
+    let allStepsDone = merged.checklist.every((i) => i.done);
+    try {
+      const wizard = await this.getWizard(userId);
+      wizardCompleted = Boolean(wizard.completedAt);
+      allStepsDone = merged.checklist.every((i) => i.done);
+    } catch {
+      allStepsDone = merged.checklist.every((i) => i.done);
+    }
+    const doneCount = merged.checklist.filter((i) => i.done).length;
+    const progressPercent =
+      merged.checklist.length > 0 ? Math.round((doneCount / merged.checklist.length) * 100) : 0;
+    return {
+      ...merged,
+      wizardCompleted,
+      allStepsDone,
+      progressPercent
+    };
+  }
+
+  private mergeEmployeeChecklistItems(status: OnboardingStatus): OnboardingStatus {
+    const byId = new Map(status.checklist.map((i) => [i.id, i]));
+    for (const def of EMPLOYEE_ONBOARDING_CHECKLIST) {
+      if (!byId.has(def.id)) {
+        status.checklist.push({ id: def.id, label: def.label, done: false });
+      }
+    }
+    return status;
+  }
+
+  async patchEmployeeChecklistItem(
+    userId: string,
+    itemId: string,
+    done: boolean,
+    actorUserId: string,
+    actorRole: "superuser" | "user"
+  ): Promise<OnboardingStatus> {
+    if (userId === actorUserId && actorRole !== "superuser" && !itemId.startsWith("emp-")) {
+      throw new BadRequestException("Solo HR può aggiornare le voci gestite dal reparto");
+    }
+    return this.store.patchOnboardingItem(userId, itemId, done, actorUserId, actorRole);
+  }
+
+  async completeEmployeeOnboarding(userId: string, actorUserId: string): Promise<{ ok: true; phase: string }> {
+    const checklist = await this.getEmployeeChecklist(userId);
+    if (!checklist.allStepsDone) {
+      throw new BadRequestException("Completa tutti i passi della checklist prima di concludere");
+    }
+    const user = await this.store.getUser(userId);
+    if (!user) throw new NotFoundException("Utente non trovato");
+    if (user.employmentState === "hr_onboarding") {
+      await this.store.updateUser(userId, { employmentState: "active" });
+    }
+    const st = await this.store.getOrCreateOnboarding(userId);
+    st.phase = "completed";
+    st.updatedAt = new Date().toISOString();
+    const sb = this.sb();
+    if (sb) {
+      await sb
+        .from("lifecycle_onboarding")
+        .update({ phase: "completed", updatedAt: st.updatedAt })
+        .eq("userId", userId);
+    }
+    await this.store.notifyUserInApp({
+      userId,
+      title: "Onboarding completato",
+      body: "Hai concluso tutti i passi del percorso di ingresso. Benvenuto in azienda!",
+      kind: "onboarding_complete",
+      actionPath: "/percorso"
+    });
+    return { ok: true, phase: "completed" };
+  }
+
+  async finalizeWizard(userId: string, actorUserId: string): Promise<HrOnboardingWizardDto> {
+    const wizard = await this.getWizard(userId);
+    if (wizard.completedAt) return wizard;
+    const allDone = HR_ONBOARDING_WIZARD_STEPS.every((s) => wizard.steps[s.key]?.done === true);
+    if (!allDone) {
+      throw new BadRequestException("Completa tutti gli step del wizard prima di concludere");
+    }
+    const now = new Date().toISOString();
+    const sb = this.sb();
+    if (!sb) {
+      const updated: HrOnboardingWizardDto = { ...wizard, completedAt: now, updatedAt: now };
+      this.memWizard.set(userId, updated);
+      await this.store.updateUser(userId, { employmentState: "active" });
+      return updated;
+    }
+    const { data, error } = await sb
+      .from("hr_onboarding_wizard")
+      .update({ completed_at: now, updated_at: now, updated_by_user_id: actorUserId })
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(`Conclusione onboarding: ${error?.message ?? "nessun dato"}`);
+    }
+    await this.store.updateUser(userId, { employmentState: "active" });
+    await this.training.ensureNexaPlatformCourseAssigned({
+      companyId: wizard.companyId,
+      userId,
+      assignedBy: actorUserId
+    });
+    if (wizard.recruitCandidateId) {
+      await sb
+        .from("recruit_candidates")
+        .update({ onboarded_at: now })
+        .eq("id", wizard.recruitCandidateId)
+        .eq("company_id", wizard.companyId);
+    }
+    return this.mapRow(data as Record<string, unknown>);
   }
 }

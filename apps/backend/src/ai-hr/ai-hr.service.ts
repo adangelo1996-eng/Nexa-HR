@@ -312,6 +312,14 @@ export class AiHrService {
     return managedSet.has(subjectId);
   }
 
+  async resolveAssistantScope(
+    auth: { userId: string; role: AuthRole },
+    scope?: AssistantScopePayload
+  ): Promise<{ subjectUserIds: string[]; scopeKind: AssistantScopeMode }> {
+    const me = await this.store.getUser(auth.userId);
+    return this.resolveAssistantSubjectUserIds(auth, me, scope);
+  }
+
   private async resolveAssistantSubjectUserIds(
     auth: { userId: string; role: AuthRole },
     me: User,

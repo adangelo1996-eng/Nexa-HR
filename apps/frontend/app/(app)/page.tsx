@@ -130,24 +130,13 @@ export default function HomePage(): React.JSX.Element {
     setToken(tokenValue);
 
     async function load(): Promise<void> {
-      let me: LocalSessionUser;
-      try {
-        me = await fetchCurrentUser(tokenValue);
-      } catch {
-        const fallback = getSessionUser();
-        if (!fallback) {
-          clearSession();
-          window.location.assign("/login");
-          return;
-        }
-        me = fallback as LocalSessionUser;
-      }
-
-      setUser(me);
-
+      const permissionUser = cachedUser;
       const todayDate = new Date().toISOString().slice(0, 10);
+      const canSeeApprovals = sessionCanSeeApprovalsAndHrExtras(permissionUser);
+
       try {
         const [
+          me,
           todayEntries,
           todaySummary,
           statusResult,
@@ -157,6 +146,7 @@ export default function HomePage(): React.JSX.Element {
           workflowApprovals,
           notificationItems
         ] = await Promise.all([
+          fetchCurrentUser(tokenValue),
           fetchAttendanceEntries(tokenValue).catch(() => [] as TimeEntry[]),
           fetchAttendanceSummary(tokenValue).catch(() => [] as WorkdaySummary[]),
           fetchAttendanceStatus(tokenValue, todayDate)
@@ -167,11 +157,13 @@ export default function HomePage(): React.JSX.Element {
           ),
           fetchLeaveBalance(tokenValue, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
           fetchLeavePlans(tokenValue).catch(() => [] as LeavePlan[]),
-          me && sessionCanSeeApprovalsAndHrExtras(me)
+          canSeeApprovals
             ? fetchApprovals(tokenValue, "pending").catch(() => [] as ApprovalItem[])
             : Promise.resolve([] as ApprovalItem[]),
           fetchUserNotifications(tokenValue, 40).catch(() => [] as UserNotificationDto[])
         ]);
+
+        setUser(me);
 
         setAttendanceStatusFailed(!statusResult.ok);
         const todayStatus = statusResult.s;
@@ -186,6 +178,13 @@ export default function HomePage(): React.JSX.Element {
         setApprovals(workflowApprovals);
         setNotifications(notificationItems);
       } catch (loadError) {
+        const fallback = getSessionUser();
+        if (!fallback) {
+          clearSession();
+          window.location.assign("/login");
+          return;
+        }
+        setUser(fallback as LocalSessionUser);
         setError(loadError instanceof Error ? loadError.message : "Caricamento parziale");
       } finally {
         setLoading(false);
@@ -199,54 +198,53 @@ export default function HomePage(): React.JSX.Element {
     if (!token) {
       return;
     }
-    const tick = window.setInterval(() => {
+    const refreshAttendance = (): void => {
       const todayDate = new Date().toISOString().slice(0, 10);
-      void (async (): Promise<void> => {
-        try {
-          const [
-            entriesList,
-            summaryList,
-            statusValue,
-            overtimeAggregates,
-            yearBalance,
-            myLeaves,
-            workflowApprovals,
-            notificationItems
-          ] = await Promise.all([
-            fetchAttendanceEntries(token).catch(() => [] as TimeEntry[]),
-            fetchAttendanceSummary(token).catch(() => [] as WorkdaySummary[]),
-            fetchAttendanceStatus(token, todayDate).catch(() => null as AttendanceStatus | null),
-            fetchAttendanceOvertimeAggregates(token, todayDate).catch(
-              () => null as AttendanceOvertimeAggregates | null
-            ),
-            fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
-            fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
-            user && sessionCanSeeApprovalsAndHrExtras(user)
-              ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
-              : Promise.resolve([] as ApprovalItem[]),
-            fetchUserNotifications(token, 40).catch(() => [] as UserNotificationDto[])
-          ]);
-          setEntries(entriesList);
-          setSummary(summaryList);
-          if (statusValue) {
-            setStatus(statusValue);
-            setRemainingSeconds(statusValue.remainingSeconds);
-          }
-          if (overtimeAggregates) {
-            setAggregates(overtimeAggregates);
-          }
-          if (yearBalance) {
-            setLeaveBalance(yearBalance);
-          }
-          setLeavePlans(myLeaves);
-          setApprovals(workflowApprovals);
-          setNotifications(notificationItems);
-        } catch {
-          /* ignore */
+      void Promise.all([
+        fetchAttendanceEntries(token).catch(() => [] as TimeEntry[]),
+        fetchAttendanceSummary(token).catch(() => [] as WorkdaySummary[]),
+        fetchAttendanceStatus(token, todayDate).catch(() => null as AttendanceStatus | null),
+        fetchAttendanceOvertimeAggregates(token, todayDate).catch(() => null as AttendanceOvertimeAggregates | null)
+      ]).then(([entriesList, summaryList, statusValue, overtimeAggregates]) => {
+        setEntries(entriesList);
+        setSummary(summaryList);
+        if (statusValue) {
+          setStatus(statusValue);
+          setRemainingSeconds(statusValue.remainingSeconds);
         }
-      })();
-    }, 30_000);
-    return () => window.clearInterval(tick);
+        if (overtimeAggregates) {
+          setAggregates(overtimeAggregates);
+        }
+      });
+    };
+    const refreshSecondary = (): void => {
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const canSeeApprovals = sessionCanSeeApprovalsAndHrExtras(user);
+      void Promise.all([
+        fetchLeaveBalance(token, Number(todayDate.slice(0, 4))).catch(() => null as LeaveBalance | null),
+        fetchLeavePlans(token).catch(() => [] as LeavePlan[]),
+        canSeeApprovals
+          ? fetchApprovals(token, "pending").catch(() => [] as ApprovalItem[])
+          : Promise.resolve([] as ApprovalItem[]),
+        fetchUserNotifications(token, 40).catch(() => [] as UserNotificationDto[])
+      ]).then(([yearBalance, myLeaves, workflowApprovals, notificationItems]) => {
+        if (yearBalance) {
+          setLeaveBalance(yearBalance);
+        }
+        setLeavePlans(myLeaves);
+        setApprovals(workflowApprovals);
+        setNotifications(notificationItems);
+      });
+    };
+
+    refreshAttendance();
+    refreshSecondary();
+    const attendanceTick = window.setInterval(refreshAttendance, 30_000);
+    const secondaryTick = window.setInterval(refreshSecondary, 120_000);
+    return () => {
+      window.clearInterval(attendanceTick);
+      window.clearInterval(secondaryTick);
+    };
   }, [token, user]);
 
   useEffect(() => {

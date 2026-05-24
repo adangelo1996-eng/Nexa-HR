@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BookOpen, CalendarClock, Users } from "lucide-react";
+import { Bell, BookOpen, CalendarClock, ShieldAlert, Users } from "lucide-react";
 import { HebbFieldAssistButton, HebbFieldAssistProvider } from "@/components/hebb-field-assist";
 import { NexaHrAppPage } from "@/components/nexa-hr-app-page";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
@@ -13,10 +13,13 @@ import {
   assignTrainingCoursesBatch,
   fetchCompanyTrainingAssignments,
   fetchTrainingCourses,
+  fetchTrainingValidityAlerts,
   fetchUsers,
   postTrainingAssignmentReminder,
+  postTrainingValidityRenewal,
   type TrainingAssignmentDto,
   type TrainingCourseDto,
+  type TrainingValidityAlertDto,
   type User
 } from "@/lib/api";
 import { getSessionUser, getToken, sessionCanAccessHrRecapDashboard } from "@/lib/auth-session";
@@ -45,6 +48,25 @@ function formatDue(d: string): string {
   return dt.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function formatValidityMonths(months: number | null | undefined): string {
+  if (!months) return "Senza scadenza copertura";
+  if (months % 12 === 0 && months >= 12) {
+    const years = months / 12;
+    return years === 1 ? "Validità 1 anno" : `Validità ${years} anni`;
+  }
+  return `Validità ${months} mesi`;
+}
+
+function validityAlertLabel(alert: TrainingValidityAlertDto): string {
+  if (alert.status === "expired") {
+    const days = Math.abs(alert.daysUntilExpiry);
+    return days === 0 ? "Copertura scaduta oggi" : `Copertura scaduta da ${days} giorni`;
+  }
+  if (alert.daysUntilExpiry === 0) return "Copertura in scadenza oggi";
+  if (alert.daysUntilExpiry === 1) return "Copertura in scadenza domani";
+  return `Copertura in scadenza tra ${alert.daysUntilExpiry} giorni`;
+}
+
 export default function HrFormazionePage(): React.JSX.Element | null {
   const router = useRouter();
   const [tab, setTab] = useState<TabId>("catalog");
@@ -56,6 +78,9 @@ export default function HrFormazionePage(): React.JSX.Element | null {
   const [msg, setMsg] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [reminderBusyId, setReminderBusyId] = useState<string | null>(null);
+  const [renewBusyId, setRenewBusyId] = useState<string | null>(null);
+  const [validityAlerts, setValidityAlerts] = useState<TrainingValidityAlertDto[]>([]);
+  const [validityThresholdDays, setValidityThresholdDays] = useState(30);
   const [courseId, setCourseId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [assignAll, setAssignAll] = useState(false);
@@ -82,20 +107,25 @@ export default function HrFormazionePage(): React.JSX.Element | null {
     setLoading(true);
     setError(null);
     try {
-      const [catalog, assigned, people] = await Promise.all([
+      const [catalog, assigned, people, validity] = await Promise.all([
         fetchTrainingCourses(token),
         fetchCompanyTrainingAssignments(token),
-        fetchUsers(token).catch(() => [] as User[])
+        fetchUsers(token).catch(() => [] as User[]),
+        fetchTrainingValidityAlerts(token, validityThresholdDays).catch(() => ({
+          items: [] as TrainingValidityAlertDto[],
+          thresholdDays: validityThresholdDays
+        }))
       ]);
       setCourses(catalog.items);
       setAssignments(assigned.items);
       setUsers(people.filter((u) => u.role !== "superuser"));
+      setValidityAlerts(validity.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, validityThresholdDays]);
 
   useEffect(() => {
     void load();
@@ -191,6 +221,27 @@ export default function HrFormazionePage(): React.JSX.Element | null {
     }
   }
 
+  async function sendRenewalAssignment(assignmentId: string): Promise<void> {
+    const token = getToken();
+    if (!token || isSuperuser) return;
+    setRenewBusyId(assignmentId);
+    setError(null);
+    try {
+      await postTrainingValidityRenewal(token, assignmentId);
+      setMsg("Corso rinnovato e notifica inviata al dipendente (in app).");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rinnovo non inviato");
+    } finally {
+      setRenewBusyId(null);
+    }
+  }
+
+  const expiredValidityCount = useMemo(
+    () => validityAlerts.filter((a) => a.status === "expired").length,
+    [validityAlerts]
+  );
+
   return (
     <NexaHrAppPage
       eyebrow="Persone"
@@ -236,6 +287,78 @@ export default function HrFormazionePage(): React.JSX.Element | null {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
 
+      {!loading && validityAlerts.length > 0 ? (
+        <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--prom-text)]">
+                  Validità corsi in scadenza
+                  {expiredValidityCount > 0 ? (
+                    <span className="ml-2 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      {expiredValidityCount} scadute
+                    </span>
+                  ) : null}
+                </h2>
+                <p className="mt-1 text-xs text-[var(--prom-muted)]">
+                  Copertura normativa in esaurimento entro {validityThresholdDays} giorni. Invia il rinnovo al
+                  dipendente con assegnazione e notifica in app.
+                </p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-[var(--prom-muted)]">
+              Soglia alert
+              <select
+                className="rounded-lg border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm"
+                value={validityThresholdDays}
+                onChange={(e) => setValidityThresholdDays(Number(e.target.value))}
+              >
+                {[15, 30, 60, 90].map((d) => (
+                  <option key={d} value={d}>
+                    {d} giorni
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {validityAlerts.map((alert) => {
+              const employee = userById.get(alert.userId);
+              const employeeName = employee?.fullName ?? employee?.email ?? alert.userId;
+              return (
+                <li
+                  key={alert.assignmentId}
+                  className="flex flex-col gap-2 rounded-lg border border-amber-500/25 bg-[var(--card-bg)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--prom-text)]">
+                      {employeeName} · {alert.courseTitle}
+                    </p>
+                    <p
+                      className={`mt-0.5 text-xs ${alert.status === "expired" ? "font-semibold text-rose-700 dark:text-rose-300" : "text-amber-800 dark:text-amber-200"}`}
+                    >
+                      {validityAlertLabel(alert)} · Fine copertura {formatDue(alert.coverageEndDate)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1.5 border-amber-600/40"
+                    disabled={renewBusyId === alert.assignmentId || isSuperuser}
+                    onClick={() => void sendRenewalAssignment(alert.assignmentId)}
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {renewBusyId === alert.assignmentId ? "Invio…" : "Invia rinnovo corso"}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {!loading && tab === "catalog" ? (
         <section className="grid gap-4 md:grid-cols-2">
           {courses.map((c) => (
@@ -249,6 +372,7 @@ export default function HrFormazionePage(): React.JSX.Element | null {
                   <p className="mt-1 text-xs text-[var(--prom-muted)]">
                     {categoryLabel(c.category)} · {c.durationMinutes} min
                     {c.courseContent?.length ? ` · ${c.courseContent.length} moduli` : ""}
+                    {c.validityMonths != null ? ` · ${formatValidityMonths(c.validityMonths)}` : ""}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -433,6 +557,19 @@ export default function HrFormazionePage(): React.JSX.Element | null {
                             >
                               Scadenza {formatDue(a.dueDate)}
                               {overdue ? " · Scaduto" : ""} · {statusLabel(a.status)}
+                              {a.status === "completed" && a.completedAt && a.course?.validityMonths ? (
+                                <span>
+                                  {" "}
+                                  · Copertura fino al{" "}
+                                  {formatDue(
+                                    (() => {
+                                      const base = new Date(a.completedAt);
+                                      base.setMonth(base.getMonth() + (a.course?.validityMonths ?? 0));
+                                      return base.toISOString().slice(0, 10);
+                                    })()
+                                  )}
+                                </span>
+                              ) : null}
                             </p>
                             <div className="mt-2 flex items-center gap-2">
                               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--prom-line)]">

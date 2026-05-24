@@ -684,14 +684,29 @@ export class UserController {
   @Get("me")
   async me(@CurrentAuth() auth: AuthContext): Promise<unknown> {
     const user = await this.store.getUser(auth.userId);
-    const canNexaAdmin = await this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email);
-    const canAccessHrExtendedConsole = await this.permissions.canAccessHrExtendedConsole(
-      auth.userId,
-      auth.role,
-      user.email
-    );
-    const canManageTeamAttendance = await this.attendanceTeam.canManageTeamAttendance(auth.userId);
-    const workTeamIdsWhereLead = await this.store.listWorkTeamIdsWhereUserIsLead(auth.userId);
+    const [
+      canNexaAdmin,
+      canAccessHrExtendedConsole,
+      canManageTeamAttendance,
+      workTeamIdsWhereLead,
+      directReports,
+      companyRow,
+      personnelBudgetPerm,
+      reportsHrPerm,
+      aiAssistantPerm,
+      lifecyclePerm
+    ] = await Promise.all([
+      this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email),
+      this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, user.email),
+      this.attendanceTeam.canManageTeamAttendance(auth.userId),
+      this.store.listWorkTeamIdsWhereUserIsLead(auth.userId),
+      this.store.listUsersByManager(auth.userId),
+      this.store.getCompanySettings(user.companyId),
+      this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"),
+      this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]),
+      this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]),
+      this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"])
+    ]);
     const canAccessHrWorkflowExtras = await this.permissions.canAccessHrWorkflowExtras(
       auth.userId,
       auth.role,
@@ -707,25 +722,13 @@ export class UserController {
     /** Calcolo/simulazione cedolino: superuser, Synapse admin, o `nexa.admin_users:read`. */
     const canAccessPayrollArea = auth.role === "superuser" || canAccessHrExtendedConsole;
     const canAccessPersonnelBudgetArea =
-      auth.role === "superuser" ||
-      canAccessHrExtendedConsole ||
-      (await this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"));
+      auth.role === "superuser" || canAccessHrExtendedConsole || personnelBudgetPerm;
     const canAccessHrRecapDashboard =
-      auth.role === "superuser" ||
-      canAccessHrExtendedConsole ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]));
-    const canAccessNexaReportsHr =
-      auth.role === "superuser" ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]));
-    const canAccessNexaAiAssistant =
-      auth.role === "superuser" ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]));
-    const canAccessNexaLifecycleHr =
-      auth.role === "superuser" ||
-      (await this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"]));
+      auth.role === "superuser" || canAccessHrExtendedConsole || reportsHrPerm;
+    const canAccessNexaReportsHr = auth.role === "superuser" || reportsHrPerm;
+    const canAccessNexaAiAssistant = auth.role === "superuser" || aiAssistantPerm;
+    const canAccessNexaLifecycleHr = auth.role === "superuser" || lifecyclePerm;
     const canEditSelfPayrollProfileIt = auth.role === "superuser" || canAccessHrExtendedConsole;
-    const directReports = await this.store.listUsersByManager(auth.userId);
-    const companyRow = await this.store.getCompanySettings(user.companyId);
     return {
       ...user,
       nexaAiOpenAiEnabled: isNexaAiOpenAiLlmEnabled(),

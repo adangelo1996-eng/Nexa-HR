@@ -37,6 +37,7 @@ export default function HrDashboardPage(): React.JSX.Element | null {
   const [cards, setCards] = useState<AnalyticsHubCardDto[]>([]);
   const [varianceTrend, setVarianceTrend] = useState<KpiHistorySeriesDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [trendLoading, setTrendLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
@@ -51,27 +52,36 @@ export default function HrDashboardPage(): React.JSX.Element | null {
     }
     setError(null);
     setLoading(true);
+    setTrendLoading(true);
     try {
       const range = monthRange6();
-      const [s, tk, hub, hist] = await Promise.all([
+      const [s, tk, hub] = await Promise.all([
         fetchHrRecapSummary(token),
         fetchHrRecapTasks(token),
-        fetchAnalyticsHubCatalog(token).catch(() => ({ cards: [] as AnalyticsHubCardDto[] })),
-        fetchAdvancedAnalysisKpiHistory(token, "economico", range).catch(() => ({
+        fetchAnalyticsHubCatalog(token).catch(() => ({ cards: [] as AnalyticsHubCardDto[] }))
+      ]);
+      setSummary(s);
+      setTasks(tk.tasks.slice(0, 8));
+      setCards(hub.cards);
+      setLoading(false);
+
+      void fetchAdvancedAnalysisKpiHistory(token, "economico", range)
+        .catch(() => ({
           analysisId: "economico",
           from: range.from,
           to: range.to,
           series: [] as KpiHistorySeriesDto[]
         }))
-      ]);
-      setSummary(s);
-      setTasks(tk.tasks.slice(0, 8));
-      setCards(hub.cards);
-      setVarianceTrend(hist.series.find((s) => s.kpiKey === "variance") ?? hist.series[0] ?? null);
+        .then((hist) => {
+          setVarianceTrend(hist.series.find((s) => s.kpiKey === "variance") ?? hist.series[0] ?? null);
+        })
+        .finally(() => {
+          setTrendLoading(false);
+        });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento dashboard");
-    } finally {
       setLoading(false);
+      setTrendLoading(false);
     }
   }, [router]);
 
@@ -156,7 +166,14 @@ export default function HrDashboardPage(): React.JSX.Element | null {
             </section>
           </div>
 
-          {varianceTrend ? (
+          {trendLoading ? (
+            <section
+              className="mb-8 rounded-2xl border border-[var(--card-border)] p-4"
+              style={{ background: "var(--card-bg)" }}
+            >
+              <p className="text-sm text-[var(--prom-muted)]">Caricamento trend budget…</p>
+            </section>
+          ) : varianceTrend ? (
             <section className="mb-8 rounded-2xl border border-[var(--card-border)] p-4" style={{ background: "var(--card-bg)" }}>
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-base font-semibold text-[var(--prom-text)]">Trend varianza budget</h2>

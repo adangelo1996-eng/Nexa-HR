@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { AiHrModule } from "../ai-hr/ai-hr.module";
 import { AiPrivacyModule } from "../ai-privacy/ai-privacy.module";
 import { PlatformModule } from "../platform/platform.module";
@@ -9,7 +9,7 @@ import { RecruitingController } from "./recruiting.controller";
 import { RecruitingService } from "./recruiting.service";
 
 @Module({
-  imports: [PlatformModule, AiPrivacyModule, AiHrModule],
+  imports: [PlatformModule, AiPrivacyModule, forwardRef(() => AiHrModule)],
   controllers: [RecruitingController, RecruitingLinkedInController],
   providers: [RecruitingService, RecruitCvScreenService, LinkedInJobSyncService],
   exports: [RecruitingService, RecruitCvScreenService, LinkedInJobSyncService]

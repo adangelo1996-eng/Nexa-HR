@@ -368,6 +368,13 @@ export interface ApprovalItem {
   leaveKind?: "annual" | "rol";
   residualAnnualLeaveDays?: number;
   requestedCalendarDays?: number;
+  insufficientAnnualLeaveBalance?: boolean;
+  annualLeaveBalanceShortfallDays?: number;
+  teamZeroCoverage?: boolean;
+  teamCoverageLabel?: string;
+  teamCoveragePeerCount?: number;
+  teamCoverageMinAvailable?: number;
+  teamCoverageZeroDays?: number;
   smartworkingWeekUsed?: number;
   smartworkingWeekQuota?: number;
   smartworkingMonthUsed?: number;
@@ -1109,27 +1116,64 @@ function parsePlatformAgentStructuredDto(raw: unknown): PlatformAgentStructuredD
   return sections.length > 0 ? { sections } : null;
 }
 
-export async function fetchCurrentUser(token: string): Promise<SessionUser> {
-  const response = await fetch(buildApiUrl("/users/me"), {
-    method: "GET",
-    headers: getAuthHeaders(token)
-  });
-  if (!response.ok) {
-    /** 401: token scaduto — non mascherare con cache locale (es. workforce planning chiamava API con JWT invalido). */
-    if (response.status === 401) {
+const CURRENT_USER_CACHE_TTL_MS = 60_000;
+
+let currentUserInFlight: { token: string; promise: Promise<SessionUser> } | null = null;
+let currentUserCache: { token: string; user: SessionUser; at: number } | null = null;
+
+/** Invalidates in-memory `/users/me` cache (e.g. after logout). */
+export function invalidateCurrentUserCache(): void {
+  currentUserInFlight = null;
+  currentUserCache = null;
+}
+
+export async function fetchCurrentUser(token: string, opts?: { fresh?: boolean }): Promise<SessionUser> {
+  const now = Date.now();
+  if (
+    !opts?.fresh &&
+    currentUserCache &&
+    currentUserCache.token === token &&
+    now - currentUserCache.at < CURRENT_USER_CACHE_TTL_MS
+  ) {
+    return currentUserCache.user;
+  }
+  if (currentUserInFlight && currentUserInFlight.token === token) {
+    return currentUserInFlight.promise;
+  }
+
+  const promise = (async (): Promise<SessionUser> => {
+    const response = await fetch(buildApiUrl("/users/me"), {
+      method: "GET",
+      headers: getAuthHeaders(token)
+    });
+    if (!response.ok) {
+      /** 401: token scaduto — non mascherare con cache locale (es. workforce planning chiamava API con JWT invalido). */
+      if (response.status === 401) {
+        invalidateCurrentUserCache();
+        await parseError(response);
+      }
+      const cached = getSessionUser();
+      if (cached) {
+        return cached;
+      }
       await parseError(response);
     }
-    const cached = getSessionUser();
-    if (cached) {
-      return cached;
+    const me = (await response.json()) as SessionUser;
+    if (typeof window !== "undefined") {
+      saveSession(token, me);
     }
-    await parseError(response);
+    currentUserCache = { token, user: me, at: Date.now() };
+    return me;
+  })();
+
+  currentUserInFlight = { token, promise };
+  try {
+    return await promise;
+  } finally {
+    if (currentUserInFlight?.promise === promise) {
+      currentUserInFlight = null;
+    }
   }
-  const me = (await response.json()) as SessionUser;
-  if (typeof window !== "undefined") {
-    saveSession(token, me);
-  }
-  return me;
 }
 
 export type PayrollProfileItPatch = Partial<{
@@ -2682,7 +2726,13 @@ export async function fetchMeetingRoomBookingEvents(
 export async function createMeetingRoomBooking(
   token: string,
   roomId: string,
-  input: { startsAt: string; endsAt: string; title?: string }
+  input: {
+    startsAt: string;
+    endsAt: string;
+    title?: string;
+    inviteeUserIds?: string[];
+    inviteeEmails?: string[];
+  }
 ): Promise<CalendarEventDto> {
   const response = await fetch(buildApiUrl(`/meeting-rooms/${roomId}/bookings`), {
     method: "POST",
@@ -2700,6 +2750,36 @@ export async function cancelMeetingRoomBooking(token: string, bookingId: string)
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
+}
+
+export interface MeetingRoomColleagueDto {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export async function fetchMeetingRoomColleagues(token: string): Promise<MeetingRoomColleagueDto[]> {
+  const response = await fetch(buildApiUrl("/meeting-rooms/colleagues"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  const body = (await response.json()) as { items: MeetingRoomColleagueDto[] };
+  return body.items ?? [];
+}
+
+export async function fetchMeetingRoomAvailability(
+  token: string,
+  roomId: string,
+  date: string
+): Promise<{ slots: Array<{ startsAt: string; endsAt: string; available: boolean }> }> {
+  const q = new URLSearchParams({ date });
+  const response = await fetch(buildApiUrl(`/meeting-rooms/${roomId}/availability?${q}`), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ slots: Array<{ startsAt: string; endsAt: string; available: boolean }> }>;
 }
 
 export interface UserNotificationDto {
@@ -3580,6 +3660,106 @@ export async function saveHrOnboardingWizardStep(
   return response.json() as Promise<HrOnboardingWizardDto>;
 }
 
+export type OnboardingChecklistStatusDto = {
+  userId: string;
+  phase: "preboarding" | "active" | "completed";
+  checklist: Array<{ id: string; label: string; done: boolean }>;
+  updatedAt: string;
+  wizardCompleted: boolean;
+  allStepsDone: boolean;
+  progressPercent: number;
+};
+
+export type BuddySuggestionDto = {
+  userId: string;
+  fullName: string;
+  email: string;
+  score: number;
+  reason: string;
+  age?: number | null;
+};
+
+export async function fetchMyOnboardingChecklist(token: string): Promise<OnboardingChecklistStatusDto> {
+  const response = await fetch(buildApiUrl("/hr-onboarding/my/checklist"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<OnboardingChecklistStatusDto>;
+}
+
+export async function patchMyOnboardingChecklistItem(
+  token: string,
+  itemId: string,
+  done: boolean
+): Promise<OnboardingChecklistStatusDto> {
+  const response = await fetch(buildApiUrl("/hr-onboarding/my/checklist"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ itemId, done })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<OnboardingChecklistStatusDto>;
+}
+
+export async function completeMyOnboarding(token: string): Promise<{ ok: true; phase: string }> {
+  const response = await fetch(buildApiUrl("/hr-onboarding/my/complete"), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true; phase: string }>;
+}
+
+export async function fetchOnboardingBuddySuggestions(
+  token: string,
+  userId: string
+): Promise<{ items: BuddySuggestionDto[] }> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy-suggestions`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: BuddySuggestionDto[] }>;
+}
+
+export async function fetchOnboardingBuddyAssignment(
+  token: string,
+  userId: string
+): Promise<{ buddyUserId: string | null; buddyFullName: string | null; status: string | null; matchReason: string | null }> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy-assignment`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    buddyUserId: string | null;
+    buddyFullName: string | null;
+    status: string | null;
+    matchReason: string | null;
+  }>;
+}
+
+export async function confirmOnboardingBuddy(
+  token: string,
+  userId: string,
+  payload: { buddyUserId: string; matchScore?: number; matchReason?: string }
+): Promise<{ ok: true; buddyUserId: string; buddyFullName: string }> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy/confirm`), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true; buddyUserId: string; buddyFullName: string }>;
+}
+
+export async function completeHrOnboardingWizard(token: string, userId: string): Promise<HrOnboardingWizardDto> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/complete`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HrOnboardingWizardDto>;
+}
+
 export type HrOffboardingWizardStepDef = {
   key: string;
   titleIt: string;
@@ -3897,6 +4077,19 @@ export type TrainingCourseDto = {
   durationMinutes: number;
   hasQuizPlaceholder: boolean;
   courseContent?: TrainingCourseModuleDto[];
+  validityMonths?: number | null;
+};
+
+export type TrainingValidityAlertDto = {
+  assignmentId: string;
+  userId: string;
+  courseId: string;
+  courseTitle: string;
+  completedAt: string;
+  coverageEndDate: string;
+  daysUntilExpiry: number;
+  status: "expiring" | "expired";
+  course?: TrainingCourseDto;
 };
 
 export type TrainingAssignmentDto = {
@@ -4010,6 +4203,30 @@ export async function postTrainingAssignmentReminder(
   );
   if (!response.ok) await parseError(response);
   return response.json() as Promise<{ ok: true }>;
+}
+
+export async function fetchTrainingValidityAlerts(
+  token: string,
+  days = 30
+): Promise<{ items: TrainingValidityAlertDto[]; thresholdDays: number }> {
+  const q = Number.isFinite(days) ? `?days=${encodeURIComponent(String(days))}` : "";
+  const response = await fetch(buildApiUrl(`/training/validity-alerts${q}`), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ items: TrainingValidityAlertDto[]; thresholdDays: number }>;
+}
+
+export async function postTrainingValidityRenewal(
+  token: string,
+  assignmentId: string
+): Promise<{ assignment: TrainingAssignmentDto; notified: true }> {
+  const response = await fetch(
+    buildApiUrl(`/training/validity-alerts/${encodeURIComponent(assignmentId)}/renew`),
+    { method: "POST", headers: getAuthHeaders(token), body: JSON.stringify({}) }
+  );
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ assignment: TrainingAssignmentDto; notified: true }>;
 }
 
 export type HrRecapSummaryDto = {
@@ -6399,4 +6616,68 @@ export async function postAiTriage(
     suggestedPath: string | null;
     llm: { configured: boolean; refineApplied: boolean };
   }>;
+}
+
+export type HebbMateCapabilityId =
+  | "contract_generation"
+  | "document_generation"
+  | "cv_screening"
+  | "document_email"
+  | "reports"
+  | "skill_suggestions"
+  | "automation_proposals";
+
+export interface HebbMateCapabilityCardDto {
+  id: HebbMateCapabilityId;
+  title: string;
+  description: string;
+  icon: string;
+  requiredPermissions: string[];
+  examplePrompts: string[];
+}
+
+export interface HebbMateActionDto {
+  type: string;
+  label: string;
+  payload: Record<string, unknown>;
+}
+
+export interface HebbMateChatResponseDto {
+  capability: string;
+  reply: string;
+  result?: unknown;
+  actions?: HebbMateActionDto[];
+  llm: { configured: boolean; routedBy: string };
+}
+
+export async function fetchHebbMateCapabilities(token: string): Promise<{
+  capabilities: HebbMateCapabilityCardDto[];
+  llmActive: boolean;
+}> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/capabilities"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ capabilities: HebbMateCapabilityCardDto[]; llmActive: boolean }>;
+}
+
+export async function postHebbMateChat(
+  token: string,
+  payload: {
+    message: string;
+    capability?: HebbMateCapabilityId;
+    scope?: { mode: "self" | "user" | "team" | "cost_center"; userId?: string; teamId?: string; costCenterId?: string };
+    dryRun?: boolean;
+    candidateId?: string;
+    positionId?: string;
+    documentId?: string;
+    contractKind?: "employment" | "remote_working";
+    documentKind?: string;
+  }
+): Promise<HebbMateChatResponseDto> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/chat"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HebbMateChatResponseDto>;
 }

@@ -30,6 +30,13 @@ import {
   sortMine,
   sortToApprove
 } from "@/lib/workflow-approval-groups";
+import {
+  buildLeaveApprovalConfirmMessage,
+  hasInsufficientLeaveBalance,
+  hasTeamZeroCoverageAlert,
+  leaveApprovalHasPreConfirmWarnings,
+  leaveBalanceShortfallDays
+} from "@/lib/leave-approval-alerts";
 
 function requestTypeLabel(item: ApprovalItem): string {
   if (item.type === "leave") {
@@ -79,6 +86,9 @@ function ApprovalRow(props: {
 }): React.JSX.Element {
   const { item, variant, focused, rowRef, reasons, setReasons, onApprove, onReject } = props;
   const urgent = variant !== "history" && isHighPriorityPending(item);
+  const insufficientLeave = variant === "full" && hasInsufficientLeaveBalance(item);
+  const teamZeroCoverage = variant === "full" && hasTeamZeroCoverageAlert(item);
+  const leaveShortfall = leaveBalanceShortfallDays(item);
   const showAvatar = true;
   const showMetrics = variant === "full";
 
@@ -88,8 +98,19 @@ function ApprovalRow(props: {
       ? "bg-[color-mix(in_srgb,var(--prom-surface-soft)_50%,transparent)]"
       : "bg-[color-mix(in_srgb,var(--prom-surface-soft)_75%,transparent)]",
     focused ? "ring-2 ring-[var(--prom-gold)] ring-offset-2 ring-offset-[var(--prom-surface)]" : "",
-    urgent ? "border-amber-500/70 ring-1 ring-amber-500/40" : ""
+    urgent ? "border-amber-500/70 ring-1 ring-amber-500/40" : "",
+    insufficientLeave ? "border-rose-500/70 ring-1 ring-rose-500/35" : "",
+    teamZeroCoverage && !insufficientLeave ? "border-orange-500/65 ring-1 ring-orange-500/30" : ""
   ].join(" ");
+
+  function handleApproveClick(): void {
+    if (leaveApprovalHasPreConfirmWarnings(item)) {
+      if (!window.confirm(buildLeaveApprovalConfirmMessage(item))) {
+        return;
+      }
+    }
+    onApprove(item.id);
+  }
 
   return (
     <div ref={rowRef} className={shellClass}>
@@ -114,6 +135,16 @@ function ApprovalRow(props: {
                 Priorità alta
               </span>
             ) : null}
+            {insufficientLeave ? (
+              <span className="rounded bg-rose-200/90 px-2 py-0.5 text-xs font-semibold text-rose-950 dark:bg-rose-900/70 dark:text-rose-100">
+                Residuo ferie −{leaveShortfall} gg
+              </span>
+            ) : null}
+            {teamZeroCoverage ? (
+              <span className="rounded bg-orange-200/90 px-2 py-0.5 text-xs font-semibold text-orange-950 dark:bg-orange-900/65 dark:text-orange-100">
+                Copertura team 0
+              </span>
+            ) : null}
             <span
               className={`rounded px-2 py-0.5 text-xs ${
                 item.status === "approved"
@@ -132,11 +163,34 @@ function ApprovalRow(props: {
             <span>{periodLabel(item)}</span>
           </p>
           {showMetrics && item.type === "leave" && item.leaveKind === "annual" && item.residualAnnualLeaveDays != null ? (
-            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+            <p className={`mt-1 text-xs ${insufficientLeave ? "text-rose-700 dark:text-rose-300" : "text-[var(--prom-muted)]"}`}>
               Residuo ferie:{" "}
-              <span className="font-medium text-[var(--prom-text)]">{item.residualAnnualLeaveDays} gg</span>
+              <span className={`font-semibold ${insufficientLeave ? "text-rose-800 dark:text-rose-200" : "text-[var(--prom-text)]"}`}>
+                {item.residualAnnualLeaveDays} gg
+              </span>
               {item.requestedCalendarDays != null ? (
-                <> · richiesta {item.requestedCalendarDays} gg</>
+                <>
+                  {" "}
+                  · richiesta{" "}
+                  <span className={insufficientLeave ? "font-semibold text-rose-800 dark:text-rose-200" : ""}>
+                    {item.requestedCalendarDays} gg
+                  </span>
+                </>
+              ) : null}
+              {insufficientLeave ? (
+                <span className="ml-1 font-semibold text-rose-800 dark:text-rose-200">
+                  (−{leaveShortfall} gg disponibili)
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+          {showMetrics && teamZeroCoverage ? (
+            <p className="mt-2 rounded-lg border border-orange-500/45 bg-orange-500/12 px-3 py-2 text-sm font-medium text-orange-950 dark:text-orange-100">
+              <span className="font-semibold">Copertura {item.teamCoverageLabel ?? "team"} assente</span>
+              {": "}
+              {item.teamCoverageZeroDays ?? 0} giorno/i del periodo senza presenze
+              {item.teamCoveragePeerCount != null ? (
+                <> · {item.teamCoveragePeerCount} membri · min. disponibili {item.teamCoverageMinAvailable ?? 0}</>
               ) : null}
             </p>
           ) : null}
@@ -194,7 +248,7 @@ function ApprovalRow(props: {
             className="mt-3 w-full max-w-md rounded border border-[var(--prom-line)] bg-transparent px-2 py-1 text-sm text-[var(--prom-text)]"
           />
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => onApprove(item.id)}>
+            <Button type="button" size="sm" onClick={handleApproveClick}>
               Approva
             </Button>
             <Button type="button" size="sm" variant="secondary" onClick={() => onReject(item.id)}>
