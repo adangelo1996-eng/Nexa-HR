@@ -11,14 +11,7 @@ export const PORTAL_COLUMN_SUBGROUPS: Record<(typeof PORTAL_CATEGORY_ORDER)[numb
     {
       id: "q-presenza",
       title: "Presenza e pianificazione",
-      hrefs: [
-        "/",
-        "/hebb-ai-support" as Route,
-        "/attendance",
-        "/work-calendar",
-        "/sale-riunioni" as Route,
-        "/workflow"
-      ]
+      hrefs: ["/", "/attendance", "/work-calendar", "/sale-riunioni" as Route, "/workflow"]
     },
     {
       id: "q-retrib",

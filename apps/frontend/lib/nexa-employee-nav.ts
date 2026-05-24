@@ -8,7 +8,6 @@ import {
   FileText,
   Home,
   LayoutDashboard,
-  MessageCircle,
   Laptop,
   Receipt,
   Route as RouteIcon,
@@ -36,10 +35,7 @@ const ALL_SECTIONS: Omit<EmployeeNavSection, "hubHref">[] = [
     id: "emp-home",
     title: "Oggi",
     sectionIcon: Home,
-    items: [
-      { href: "/" as Route, label: "Dashboard", icon: LayoutDashboard },
-      { href: "/hebb-ai-support" as Route, label: "Hebb AI Support", icon: MessageCircle }
-    ]
+    items: [{ href: "/" as Route, label: "Dashboard", icon: LayoutDashboard }]
   },
   {
     id: "emp-io",

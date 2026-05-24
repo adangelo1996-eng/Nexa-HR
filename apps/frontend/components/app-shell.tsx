@@ -18,8 +18,6 @@ import {
   User,
   UserCog,
   MessageCircle,
-  Sparkles,
-  Wand2,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,10 +30,7 @@ import {
   sessionCanAccessPayrollArea,
   sessionCanNexaAdmin,
   sessionCanOpenEmployeeRecapPage,
-  sessionCanAccessNexaAiAssistant,
-  sessionCanAccessNexaLifecycleHr,
-  sessionCanAccessNexaReportsHr,
-  sessionCanUseNexaAiOpenAiLlm,
+  sessionCanAccessHebbAiSupportSelf,
   sessionCanViewOrgExpenseClaims,
   sessionIsPlainEmployee,
   sessionUsesHrReorganizedNav,
@@ -50,7 +45,9 @@ import { fetchAdminCostCenters, fetchCurrentUser, fetchUsers } from "@/lib/api";
 import { NEXA_NAV_ROUTE_CATALOG, navCatalogLabelForHref } from "@/lib/nav-routes-catalog";
 import {
   portalAccentCategoryForNavSection,
-  portalCategoryGlassColumnHeaderClass
+  portalCategoryGlassColumnHeaderClass,
+  portalMapAdminOutlineHeaderClass,
+  isPortalMapAdminCategory
 } from "@/lib/nav-visual-accents";
 import { NexaNavSectionFlyout, type NexaNavFlyoutSection } from "@/components/nexa-nav-section-flyout";
 import { buildSixCatNavSections, type SixCatNavItem } from "@/lib/nexa-six-category-nav";
@@ -101,22 +98,10 @@ function portalSectionToHubTiles(section: PortalMapNavSection): HubTile[] {
   );
 }
 
-const NAV_HEBB_AI_MATE: NavItem = {
-  href: "/hr/cowork" as Route,
-  label: "Hebb AI Mate",
-  icon: Sparkles
-};
-
 const NAV_HEBB_AI_SUPPORT: NavItem = {
   href: "/hebb-ai-support" as Route,
   label: "Hebb AI Support",
   icon: MessageCircle
-};
-
-const NAV_HEBB_AI_ANALYTICS: NavItem = {
-  href: "/analytics" as Route,
-  label: "AI Analytics",
-  icon: Wand2
 };
 
 const NAV_PROFILE_SECTION: { id: string; title: string; items: NavItem[] } = {
@@ -189,6 +174,7 @@ function SidebarMacroSectionButton(props: {
   const pc = section.portalCategory;
 
   const accentCategory = pc ?? portalAccentCategoryForNavSection(section.id, section.title);
+  const adminOutline = isPortalMapAdminCategory(accentCategory);
 
   return (
     <button
@@ -196,9 +182,11 @@ function SidebarMacroSectionButton(props: {
       aria-expanded={flyoutOpen}
       aria-haspopup="dialog"
       onClick={() => onToggle(section.id)}
-      className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${portalCategoryGlassColumnHeaderClass(accentCategory, "compact")} ${
-        flyoutOpen || active ? "ring-1 ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]" : ""
-      }`}
+      className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer list-none items-center justify-between gap-1.5 rounded-xl py-1 text-left transition-opacity duration-300 ${
+        adminOutline
+          ? portalMapAdminOutlineHeaderClass("compact")
+          : portalCategoryGlassColumnHeaderClass(accentCategory, "compact")
+      } ${flyoutOpen || active ? "ring-1 ring-[color-mix(in_srgb,var(--prom-gold)_25%,transparent)]" : ""}`}
     >
       <span className="min-w-0 flex-1 pr-1">{section.title}</span>
       <ChevronRight
@@ -586,7 +574,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
-      {sessionCanAccessNexaAiAssistant(user ?? undefined) ? (
+      {sessionCanAccessHebbAiSupportSelf(user ?? undefined) ? (
         <SidebarNavLink
           item={NAV_HEBB_AI_SUPPORT}
           pathname={pathname}
@@ -623,27 +611,6 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           onToggle={toggleFlyoutSection}
         />
       ))}
-      {usesHrNav ? (
-        <>
-          {sessionCanAccessNexaLifecycleHr(user ?? undefined) ? (
-            <SidebarNavLink
-              item={NAV_HEBB_AI_MATE}
-              pathname={pathname}
-              onNavigate={closeMobile}
-              beforeNavigate={persistSidebarScrollPositions}
-            />
-          ) : null}
-          {sessionCanAccessNexaReportsHr(user ?? undefined) &&
-          sessionCanUseNexaAiOpenAiLlm(user ?? undefined) ? (
-            <SidebarNavLink
-              item={NAV_HEBB_AI_ANALYTICS}
-              pathname={pathname}
-              onNavigate={closeMobile}
-              beforeNavigate={persistSidebarScrollPositions}
-            />
-          ) : null}
-        </>
-      ) : null}
       {showCategoryNav ? <div className="my-2 border-t border-[var(--prom-line)]" /> : null}
       {NAV_PROFILE_SECTION.items.map((item) => (
         <SidebarNavLink

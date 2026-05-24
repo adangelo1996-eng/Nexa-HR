@@ -108,10 +108,17 @@ export class AiHrService {
     privacy: { pseudonymizedTokenCount: number; schemaVersion: string };
   }> {
     const me = await this.store.getUser(auth.userId);
+    const hasAssistantPerm =
+      auth.role === "superuser" ||
+      (await this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]));
+    if (!hasAssistantPerm && body.scope && body.scope.mode !== "self") {
+      throw new ForbiddenException("Ambito limitato al tuo profilo.");
+    }
+    const scopedBody = hasAssistantPerm ? body : { ...body, scope: undefined };
     const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
-    assertHebbUserMessageAllowed(body.message, companyUsers);
+    assertHebbUserMessageAllowed(scopedBody.message, companyUsers);
 
-    const { subjectUserIds, scopeKind } = await this.resolveAssistantSubjectUserIds(auth, me, body.scope);
+    const { subjectUserIds, scopeKind } = await this.resolveAssistantSubjectUserIds(auth, me, scopedBody.scope);
     const org = await this.hasOrgAiScope(auth, me);
     const managed = await this.hasManagedAiScope(auth.userId);
     const managedSet = managed ? await this.store.listManagedMemberIdsForApprover(auth.userId) : new Set<string>();
@@ -119,14 +126,14 @@ export class AiHrService {
     const { sessionId } = await this.gateway.beginSession(me.companyId, auth.userId);
     try {
       const sources: string[] = [];
-      const pageContext = this.mergePageContextForUser(me, normalizeHebbPageContext(body.pageContext));
+      const pageContext = this.mergePageContextForUser(me, normalizeHebbPageContext(scopedBody.pageContext));
       const facts: Record<string, unknown> = {
-        message: body.message,
+        message: scopedBody.message,
         scopeKind,
         scopeSubjects: subjectUserIds.map((id) => ({ id })),
         subjectCount: subjectUserIds.length
       };
-      applyHebbPageContextToRecord(facts, pageContext, body.page ?? null);
+      applyHebbPageContextToRecord(facts, pageContext, scopedBody.page ?? null);
       if (pageContext) {
         sources.push("page_context");
       }

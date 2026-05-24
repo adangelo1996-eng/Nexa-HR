@@ -74,7 +74,7 @@ export function canAccessNexaPortalRoute(
     return !hide && sessionCanAccessNexaLifecycleHr(user);
   }
   if (r === "/hebb-ai-support" || r.startsWith("/hebb-ai-support/")) {
-    return sessionCanAccessNexaAiAssistant(user);
+    return true;
   }
   if (r === "/nexa-hr-copilot" || r.startsWith("/nexa-hr-copilot/")) {
     return !hide && sessionCanUseNexaAiOpenAiLlm(user) && sessionCanAccessNexaAiAssistant(user);

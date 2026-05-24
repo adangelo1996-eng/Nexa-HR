@@ -154,7 +154,6 @@ export class AiHrController {
   }
 
   @Post("assistant")
-  @RequireNexaPermissions("nexa.ai_assistant:read")
   postAssistant(
     @CurrentAuth() auth: AuthContext,
     @Body() body: AssistantDto

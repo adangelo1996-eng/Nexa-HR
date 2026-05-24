@@ -207,12 +207,30 @@ export function portalAccentCategoryForNavSection(sectionId: string, title: stri
     "hr-documenti": "Selezione e documenti",
     "hr-analisi": "Analisi e budget",
     "hr-admin": "Amministrazione",
+    "hr-hebb-ai": "HEBB AI for HR",
     "hr-persone": "Persone",
     "hr-operazioni": "Operazioni",
     "hr-analytics": "Analytics",
     "hr-hire": "Assumere e Onboarding"
   };
   return byId[sectionId] ?? title;
+}
+
+/** Amministrazione in mappa portale: solo bordo arancione, senza riempimento. */
+export function portalMapAdminOutlineSectionClass(): string {
+  return "border-orange-500/55 bg-transparent shadow-none";
+}
+
+export function portalMapAdminOutlineHeaderClass(density: "compact" | "default" = "default"): string {
+  const sizing =
+    density === "compact"
+      ? "w-full px-2 py-2 text-left text-[9px] font-semibold uppercase leading-tight tracking-[0.12em]"
+      : "w-full px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em]";
+  return `rounded-xl border-2 border-orange-500/70 bg-transparent text-orange-700 dark:border-orange-400/60 dark:text-orange-200 ${sizing}`;
+}
+
+export function isPortalMapAdminCategory(category: string): boolean {
+  return category === "Amministrazione" || category === "Amministrazione e dati";
 }
 
 /** Contenitore sezione mappa portale: tinta morbida, leggibile su dark. */
@@ -250,10 +268,8 @@ export function portalMapSectionSurfaceClass(category: string): string {
       "border-sky-500/20 bg-[color-mix(in_srgb,sky-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(56,189,248,0.12)]",
     "Analisi e budget":
       "border-sky-500/20 bg-[color-mix(in_srgb,sky-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(56,189,248,0.12)]",
-    "Amministrazione e dati":
-      "border-orange-500/20 bg-[color-mix(in_srgb,orange-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(251,146,60,0.12)]",
-    Amministrazione:
-      "border-orange-500/20 bg-[color-mix(in_srgb,orange-500_10%,var(--prom-surface-soft))] shadow-[inset_0_1px_0_0_rgba(251,146,60,0.12)]"
+    "Amministrazione e dati": portalMapAdminOutlineSectionClass(),
+    Amministrazione: portalMapAdminOutlineSectionClass()
   };
   return (
     map[category] ??
@@ -284,6 +300,7 @@ export function navSectionTitleAccentClass(sectionId: string): string {
     "hr-documenti": "text-lime-600 dark:text-lime-300",
     "hr-analisi": "text-sky-600 dark:text-sky-300",
     "hr-admin": "text-stone-600 dark:text-stone-300",
+    "hr-hebb-ai": "text-violet-600 dark:text-violet-300",
     "hr-persone": "text-emerald-600 dark:text-emerald-300",
     "hr-operazioni": "text-cyan-600 dark:text-cyan-300",
     "hr-analytics": "text-violet-600 dark:text-violet-300",
@@ -316,6 +333,7 @@ export function navSectionSidebarAccentBarClass(sectionId: string): string {
     "hr-documenti": "bg-lime-500 dark:bg-lime-400",
     "hr-analisi": "bg-sky-500 dark:bg-sky-400",
     "hr-admin": "bg-stone-500 dark:bg-stone-400",
+    "hr-hebb-ai": "bg-violet-500 dark:bg-violet-400",
     "hr-persone": "bg-emerald-500 dark:bg-emerald-400",
     "hr-operazioni": "bg-cyan-500 dark:bg-cyan-400",
     "hr-analytics": "bg-violet-500 dark:bg-violet-400",

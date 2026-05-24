@@ -38,15 +38,15 @@ const HELP: Record<HebbAiPageKey, HebbAiPageHelpContent> = {
   "hebb-ai-support": {
     title: "Hebb AI Support",
     summary:
-      "Assistente HR, interrogazioni guidate, controlli e triage richieste — con pseudonimizzazione obbligatoria. Richiede `nexa.ai_assistant:read`.",
+      "Assistente personale su ferie, presenze, documenti e profilo — sempre limitato ai dati dell'utente connesso, con pseudonimizzazione obbligatoria.",
     howToUse: [
-      "«Chiedi» per ferie, cedolini, policy e percorsi nell’app.",
-      "«I tuoi numeri» per query NL approvate; «Controlli» e triage per classificare messaggi.",
-      "Per brief operativo HRBP usa NEXA HR Copilot; per insight analitici usa AI Analytics."
+      "Scrivi in linguaggio naturale o scegli un suggerimento.",
+      "Le risposte riguardano solo il tuo profilo Nexa HR.",
+      "Per guide su come usare la piattaforma apri Nexa Guide (⌘K)."
     ],
     bestPractices: [
       "Non incollare codici fiscali, IBAN o dati sanitari se non necessari.",
-      "Per operazioni ufficiali usa Workflow, Approvazioni o Hebb AI Mate (lifecycle)."
+      "Per richieste ufficiali usa Workflow o le pagine dedicate nell'app."
     ]
   },
   "payroll-hebb": {

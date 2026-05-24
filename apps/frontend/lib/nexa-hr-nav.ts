@@ -21,6 +21,7 @@ import {
   UserRoundSearch,
   Users,
   GraduationCap,
+  Wand2,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
@@ -177,6 +178,23 @@ const PILLAR_DEFS: Array<{
           { href: "/admin" as Route, label: "Console utenti", icon: UserCog, exact: true },
           { href: "/admin/data-export" as Route, label: "Export Excel", icon: FileText },
           { href: "/admin/cost-centers" as Route, label: "Centri di costo", icon: Building2 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "hr-hebb-ai",
+    title: "Hebb AI",
+    hubSlug: "hebb-ai",
+    portalCategory: "HEBB AI for HR",
+    subgroups: [
+      {
+        id: "hb-tools",
+        title: "Assistente e analisi",
+        items: [
+          { href: "/hebb-ai-support" as Route, label: "Hebb AI Support", icon: MessageCircle },
+          { href: "/hr/cowork" as Route, label: "Hebb AI Mate", icon: Sparkles },
+          { href: "/analytics" as Route, label: "AI Analytics", icon: Wand2, exact: true }
         ]
       }
     ]

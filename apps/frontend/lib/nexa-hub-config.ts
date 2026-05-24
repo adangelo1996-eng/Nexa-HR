@@ -25,12 +25,16 @@ import {
   UserRoundSearch,
   Users,
   Wallet2,
+  MessageCircle,
+  Wand2,
   Workflow
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth-session";
 import { buildEmployeeNavSections } from "@/lib/nexa-employee-nav";
+import { buildHrNavPillars } from "@/lib/nexa-hr-nav";
 import { employeeSectionIdForHubSlug } from "@/lib/nexa-hub-paths";
 import { buildHrLinearPortalSteps } from "@/lib/portal-mappa-linear";
+import { filterPortalHref } from "@/lib/nexa-route-access";
 import type { PortalTile } from "@/lib/portal-mappa";
 
 export type HubTile = {
@@ -97,6 +101,12 @@ export const HR_HUB_SECTIONS: HubSectionDef[] = [
     title: "Amministrazione",
     subtitle: "Payroll, policy, export e console utenti.",
     portalCategory: "Amministrazione"
+  },
+  {
+    slug: "hebb-ai",
+    title: "Hebb AI",
+    subtitle: "Assistente personale, automazioni lifecycle e analytics.",
+    portalCategory: "HEBB AI for HR"
   }
 ];
 
@@ -143,7 +153,9 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/admin/cost-centers": Building2,
   "/hr/formazione": GraduationCap,
   "/il-mio-team": Users,
-  "/percorso": RouteIcon
+  "/percorso": RouteIcon,
+  "/hebb-ai-support": MessageCircle,
+  "/hr/cowork": Sparkles
 };
 
 const ALL_HUB_SLUGS = new Set([
@@ -171,8 +183,40 @@ export function buildHrHubPageModel(
   hideSensitiveHr: boolean
 ): HubPageModel | null {
   const meta = HR_HUB_SECTIONS.find((s) => s.slug === slug);
+  if (!meta) {
+    return null;
+  }
+  if (slug === "hebb-ai") {
+    const pillar = buildHrNavPillars(user, hideSensitiveHr).find((p) => p.hubSlug === "hebb-ai");
+    if (!pillar) {
+      return null;
+    }
+    const tiles: HubTile[] = [];
+    for (const sg of pillar.subgroups) {
+      for (const item of sg.items) {
+        if (!filterPortalHref(item.href, user, hideSensitiveHr)) {
+          continue;
+        }
+        tiles.push({
+          href: item.href,
+          label: item.label,
+          blurb: "",
+          icon: item.icon
+        });
+      }
+    }
+    if (!tiles.length) {
+      return null;
+    }
+    return {
+      title: meta.title,
+      subtitle: meta.subtitle,
+      portalCategory: meta.portalCategory,
+      tiles
+    };
+  }
   const step = buildHrLinearPortalSteps(user, hideSensitiveHr).find((s) => s.id === slug);
-  if (!meta || !step) {
+  if (!step) {
     return null;
   }
   return {

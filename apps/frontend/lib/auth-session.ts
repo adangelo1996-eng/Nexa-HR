@@ -298,6 +298,13 @@ export function sessionCanAccessNexaAiAssistant(
   return u?.canAccessNexaAiAssistant === true || u?.canNexaAdmin === true;
 }
 
+/** Hebb AI Support personale: ogni dipendente autenticato (solo dati propri). */
+export function sessionCanAccessHebbAiSupportSelf(
+  u: Pick<SessionUser, "id"> | null | undefined
+): boolean {
+  return Boolean(u?.id);
+}
+
 /** Hebb AI Mate / batch lifecycle (`nexa.lifecycle:read`). */
 export function sessionCanAccessNexaLifecycleHr(
   u: Pick<SessionUser, "canAccessNexaLifecycleHr" | "canNexaAdmin"> | null | undefined

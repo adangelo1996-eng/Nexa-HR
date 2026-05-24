@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+import { ArrowUpRight, ChevronDown, LayoutDashboard } from "lucide-react";
 import { useTrackAsyncLoad } from "@/components/nexa-async-loading-provider";
 import { NexaPageHelpButton } from "@/components/nexa-page-help-button";
 import { fetchCurrentUser } from "@/lib/api";
@@ -19,6 +19,8 @@ import {
   portalAccentCategoryForNavSection,
   portalCategoryGlassColumnHeaderClass,
   portalCategoryTileTopAccentClass,
+  portalMapAdminOutlineHeaderClass,
+  isPortalMapAdminCategory,
   portalMapSectionSurfaceClass,
   portalSubgroupGlassClass
 } from "@/lib/nav-visual-accents";
@@ -28,6 +30,7 @@ import {
   type PortalMapNavItem,
   type PortalMapNavSection
 } from "@/lib/nexa-portal-map-nav";
+import { HR_NAV_DASHBOARD } from "@/lib/nexa-hr-nav";
 import { portalBlurbForHref } from "@/lib/portal-tile-blurb";
 
 const EMPLOYEE_VIEW_KEY = "nexa_hr_employee_view";
@@ -65,6 +68,7 @@ function CollapsibleSection(props: { section: PortalMapNavSection }): React.JSX.
   const accent =
     props.section.portalCategory ??
     portalAccentCategoryForNavSection(props.section.id, props.section.title);
+  const adminOutline = isPortalMapAdminCategory(accent);
 
   return (
     <details
@@ -72,7 +76,13 @@ function CollapsibleSection(props: { section: PortalMapNavSection }): React.JSX.
     >
       <summary className="cursor-pointer list-none p-4 sm:p-5 md:p-6 [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-3">
-          <div className={`min-w-0 flex-1 ${portalCategoryGlassColumnHeaderClass(accent, "default")}`}>
+          <div
+            className={`min-w-0 flex-1 ${
+              adminOutline
+                ? portalMapAdminOutlineHeaderClass("default")
+                : portalCategoryGlassColumnHeaderClass(accent, "default")
+            }`}
+          >
             {props.section.title}
           </div>
           <ChevronDown
@@ -135,6 +145,9 @@ export default function MappaPortalePage(): React.JSX.Element {
     return buildHrPortalMapNavSections(user, hideSensitiveHr);
   }, [user, hideSensitiveHr, usesHrNav, usesEmployeeNav]);
 
+  const dashboardHref = usesHrNav ? HR_NAV_DASHBOARD.href : ("/" as Route);
+  const dashboardLabel = "Dashboard";
+
   return (
     <div className="relative isolate min-h-[72vh] overflow-hidden rounded-[2rem] border border-[color-mix(in_srgb,#002D72_14%,var(--prom-line))] bg-[color-mix(in_srgb,var(--prom-surface)_90%,var(--prom-bg))] px-5 py-10 sm:px-10">
       <header className="relative z-[1] mx-auto max-w-5xl text-center">
@@ -155,6 +168,16 @@ export default function MappaPortalePage(): React.JSX.Element {
       </header>
 
       <div className="relative z-[1] mx-auto mt-12 max-w-5xl space-y-4">
+        <div className="flex justify-center pb-2">
+          <Link
+            href={dashboardHref}
+            scroll={false}
+            className="inline-flex items-center gap-2.5 rounded-2xl border-2 border-[color-mix(in_srgb,#002D72_35%,var(--prom-line))] bg-[var(--card-bg)] px-6 py-3 text-sm font-semibold text-[#002D72] shadow-[var(--card-shadow)] transition hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,#002D72_50%,var(--prom-line))] dark:text-white"
+          >
+            <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+            {dashboardLabel}
+          </Link>
+        </div>
         {sections.map((section) => (
           <CollapsibleSection key={section.id} section={section} />
         ))}
