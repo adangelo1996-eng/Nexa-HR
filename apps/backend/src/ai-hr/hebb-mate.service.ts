@@ -5,6 +5,7 @@ import {
   Logger
 } from "@nestjs/common";
 import type { User } from "@payday/domain";
+import type { PersonDirectoryEntry } from "../ai-privacy/pseudonymize-free-text";
 import type { AuthContext, AuthRole } from "../platform/auth";
 import { AiPrivacyGateway } from "../ai-privacy/ai-privacy-gateway.service";
 import { COWORK_TOOL_LIST } from "../cowork/cowork-tool-catalog";
@@ -27,14 +28,19 @@ import { AiAuditService } from "./ai-audit.service";
 import { assertHebbUserMessageAllowed } from "./ai-hr-message-policy";
 import { AiHrService, type AssistantScopePayload } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
+import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
 import { HEBB_MATE_CAPABILITY_CARDS } from "./hebb-mate-capabilities";
+import { HebbMateProposalsStore } from "./hebb-mate-proposals.store";
 import {
   extractContractKind,
   extractDocumentKind,
   routeHebbMateIntent
 } from "./hebb-mate-router";
+import { resolveEmployeesFromMessage, type HebbMateResolvedScope } from "./hebb-mate-scope.util";
+import { HebbMateUndoService } from "./hebb-mate-undo.service";
 import type {
   HebbMateAction,
+  HebbMateApplyResponse,
   HebbMateAutomationProposal,
   HebbMateCapabilityId,
   HebbMateChatResponse,
@@ -43,12 +49,20 @@ import type {
   HebbMateDocumentEmailResult,
   HebbMateDocumentGenerateResult,
   HebbMateDocumentKind,
+  HebbMateHistoryResponse,
   HebbMateReportResult,
+  HebbMateScopeSummary,
   HebbMateSkillSuggestResult,
   HebbMateSkillSuggestion
 } from "./hebb-mate.types";
 
 const SCHEMA_MATE_AUTOMATION = "ai_mate_automation_v1";
+
+const HITL_CONFIRM_CAPABILITIES = new Set<HebbMateCapabilityId>([
+  "contract_generation",
+  "document_generation",
+  "document_email"
+]);
 
 @Injectable()
 export class HebbMateService {
@@ -62,7 +76,10 @@ export class HebbMateService {
     private readonly openAi: AiOpenAiRefinementService,
     private readonly audit: AiAuditService,
     private readonly contracts: HrContractsService,
-    private readonly cvScreen: RecruitCvScreenService
+    private readonly cvScreen: RecruitCvScreenService,
+    private readonly proposals: HebbMateProposalsStore,
+    private readonly applyLog: HebbMateApplyLogStore,
+    private readonly undoService: HebbMateUndoService
   ) {}
 
   listCapabilities(auth: { userId: string; role: AuthRole }): {
@@ -80,7 +97,6 @@ export class HebbMateService {
     body: {
       message: string;
       capability?: HebbMateCapabilityId;
-      scope?: AssistantScopePayload;
       dryRun?: boolean;
       candidateId?: string;
       positionId?: string;
@@ -90,18 +106,24 @@ export class HebbMateService {
     }
   ): Promise<HebbMateChatResponse> {
     const me = await this.store.getUser(auth.userId);
-    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === me.companyId);
+    const companyId = me.companyId || auth.tenantId || "comp-1";
+    const companyUsers = (await this.store.listUsers()).filter((u) => u.companyId === companyId);
     assertHebbUserMessageAllowed(body.message, companyUsers);
 
-    const intent = routeHebbMateIntent(body.message, body.capability);
-    const scope = body.scope ?? { mode: "self" as const };
+    const { resolvedScope, privacy } = await this.resolveChatScope(auth, body.message, companyUsers);
+    const scopeSummary = this.scopeSummary(resolvedScope);
+    const pseudonymizedMessage = privacy.pseudonymizedMessage;
+
+    const intent = routeHebbMateIntent(pseudonymizedMessage, body.capability);
     const llm = { configured: this.openAi.isActive(), routedBy: "rules" as const };
 
     if (intent === "general") {
       return {
         capability: "general",
         reply:
-          "Sono Hebb AI Mate. Scegli una capability dalla griglia o chiedi: contratti, documenti, screening CV, invio email, report, competenze o automazioni. Per batch lifecycle usa la scheda Cowork.",
+          "Sono Hebb AI Mate. Usa i suggerimenti o descrivi l'operazione HR citando i nominativi nel testo. Per batch lifecycle usa la scheda Cowork.",
+        scope: scopeSummary,
+        privacy: { pseudonymizedTokenCount: privacy.tokenCount },
         llm
       };
     }
@@ -112,22 +134,257 @@ export class HebbMateService {
         reply:
           "Per operazioni batch (rinnovi SW, approvazioni multiple) usa la scheda Cowork batch: genera un piano HITL e approva riga per riga.",
         actions: [{ type: "open_cowork", label: "Apri Cowork batch", payload: {} }],
+        scope: scopeSummary,
+        privacy: { pseudonymizedTokenCount: privacy.tokenCount },
         llm
       };
     }
 
-    const result = await this.executeCapability(auth, intent, {
+    const ctx = {
       message: body.message,
-      scope,
-      dryRun: body.dryRun,
+      pseudonymizedMessage,
+      subjectUserIds: resolvedScope.subjectUserIds,
+      scopeKind: resolvedScope.scopeKind,
+      dryRun: true,
       candidateId: body.candidateId,
       positionId: body.positionId,
       documentId: body.documentId,
       contractKind: body.contractKind ?? extractContractKind(body.message),
       documentKind: body.documentKind ?? extractDocumentKind(body.message)
+    };
+
+    const result = await this.executeCapability(auth, intent, ctx, true);
+    const requiresConfirm = HITL_CONFIRM_CAPABILITIES.has(intent);
+
+    const proposal = this.proposals.save({
+      companyId,
+      actorUserId: auth.userId,
+      capability: intent,
+      message: body.message,
+      subjectUserIds: resolvedScope.subjectUserIds,
+      resolvedNames: resolvedScope.resolvedNames,
+      params: {
+        contractKind: ctx.contractKind,
+        documentKind: ctx.documentKind,
+        candidateId: ctx.candidateId,
+        positionId: ctx.positionId,
+        documentId: ctx.documentId
+      },
+      preview: result.result ?? result,
+      requiresConfirm
     });
 
-    return { ...result, llm };
+    return {
+      ...result,
+      scope: scopeSummary,
+      privacy: { pseudonymizedTokenCount: privacy.tokenCount },
+      hitl: {
+        proposalId: proposal.proposalId,
+        requiresConfirm,
+        preview: result.result ?? result,
+        scope: scopeSummary
+      },
+      llm
+    };
+  }
+
+  async apply(auth: AuthContext, proposalId: string): Promise<HebbMateApplyResponse> {
+    const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId || auth.tenantId || "comp-1";
+    const proposal = this.proposals.get(proposalId, companyId, auth.userId);
+
+    const ctx = {
+      message: proposal.message,
+      pseudonymizedMessage: proposal.message,
+      subjectUserIds: proposal.subjectUserIds,
+      scopeKind: proposal.resolvedNames.length > 0 ? ("employees" as const) : ("self" as const),
+      dryRun: false,
+      candidateId: proposal.params.candidateId as string | undefined,
+      positionId: proposal.params.positionId as string | undefined,
+      documentId: proposal.params.documentId as string | undefined,
+      contractKind: (proposal.params.contractKind as HebbMateContractKind) ?? "employment",
+      documentKind: (proposal.params.documentKind as HebbMateDocumentKind) ?? "generic"
+    };
+
+    const result = await this.executeCapability(auth, proposal.capability, ctx, false);
+    const applyLogIds = await this.recordApplyLogs(auth, companyId, proposal, result.result);
+
+    this.proposals.markApplied(proposalId);
+
+    return {
+      ok: true,
+      proposalId,
+      capability: proposal.capability,
+      reply: result.reply,
+      result: result.result,
+      applyLogIds
+    };
+  }
+
+  async cancelProposal(auth: AuthContext, proposalId: string): Promise<{ ok: boolean }> {
+    const user = await this.store.getUser(auth.userId);
+    const companyId = user.companyId || auth.tenantId || "comp-1";
+    this.proposals.get(proposalId, companyId, auth.userId);
+    this.proposals.markCancelled(proposalId);
+    return { ok: true };
+  }
+
+  async undo(auth: AuthContext, logId: string): Promise<{ ok: boolean; logId: string; message: string }> {
+    return this.undoService.undo(auth, logId);
+  }
+
+  async listHistory(auth: AuthContext): Promise<HebbMateHistoryResponse> {
+    const me = await this.store.getUser(auth.userId);
+    const companyId = me.companyId || auth.tenantId || "comp-1";
+    const entries = await this.applyLog.listRecent(companyId, 50);
+    return {
+      entries: entries.map((e) => ({
+        logId: e.id,
+        proposalId: e.proposalId,
+        capability: e.capability,
+        subjectFullName: e.subjectFullName,
+        detail: e.detail,
+        undoStatus: e.undoStatus,
+        undoBlockedReason: e.undoBlockedReason,
+        appliedAt: e.appliedAt
+      }))
+    };
+  }
+
+  private scopeSummary(resolved: HebbMateResolvedScope): HebbMateScopeSummary {
+    return {
+      scopeKind: resolved.scopeKind,
+      subjectCount: resolved.subjectUserIds.length,
+      resolvedNames: resolved.resolvedNames
+    };
+  }
+
+  private async resolveChatScope(
+    auth: AuthContext,
+    message: string,
+    companyUsers: User[]
+  ): Promise<{
+    resolvedScope: HebbMateResolvedScope;
+    privacy: { pseudonymizedMessage: string; tokenCount: number };
+  }> {
+    const me = await this.store.getUser(auth.userId);
+    const org = auth.role === "superuser" || (await this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:scope_org"]));
+    const managed = await this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:scope_managed"]);
+    const managedSet = managed ? await this.store.listManagedMemberIdsForApprover(auth.userId) : new Set<string>();
+
+    const canView = (userId: string): boolean => {
+      if (userId === auth.userId) return true;
+      if (org) {
+        const sub = companyUsers.find((u) => u.id === userId);
+        return sub?.companyId === me.companyId;
+      }
+      return managedSet.has(userId);
+    };
+
+    const resolvedScope = resolveEmployeesFromMessage(message, companyUsers, auth.userId, canView);
+
+    for (const uid of resolvedScope.subjectUserIds) {
+      if (uid !== auth.userId && !canView(uid)) {
+        throw new ForbiddenException("Non puoi analizzare uno o più nominativi citati.");
+      }
+    }
+
+    const personDirectory: PersonDirectoryEntry[] = companyUsers
+      .filter((u) => canView(u.id))
+      .map((u) => ({
+        fullName: u.fullName,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email
+      }));
+
+    const companyId = me.companyId || auth.tenantId || "comp-1";
+    const { sessionId } = await this.gateway.beginSession(companyId, auth.userId);
+    try {
+      const pseudo = await this.gateway.pseudonymizeFreeText(sessionId, message, personDirectory);
+      return {
+        resolvedScope,
+        privacy: { pseudonymizedMessage: pseudo.text, tokenCount: pseudo.replacementCount }
+      };
+    } finally {
+      await this.gateway.endSession(sessionId);
+    }
+  }
+
+  private async recordApplyLogs(
+    auth: AuthContext,
+    companyId: string,
+    proposal: { proposalId: string; capability: HebbMateCapabilityId },
+    result: unknown
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    const undoMeta = this.undoService.buildUndoMeta(proposal.capability);
+
+    if (proposal.capability === "contract_generation") {
+      const gen = result as HebbMateContractGenerateResult;
+      for (const item of gen.items.filter((i) => i.status === "created")) {
+        const entry = await this.applyLog.append({
+          companyId,
+          proposalId: proposal.proposalId,
+          actorUserId: auth.userId,
+          capability: proposal.capability,
+          subjectUserId: item.userId,
+          subjectFullName: item.fullName,
+          entityType: item.contractId ? "contract" : null,
+          entityId: item.contractId ?? null,
+          previousState: null,
+          appliedPayload: { documentId: item.documentId, contractId: item.contractId },
+          detail: item.detail ?? "Contratto generato",
+          ...undoMeta
+        });
+        ids.push(entry.id);
+      }
+      return ids;
+    }
+
+    if (proposal.capability === "document_generation") {
+      const gen = result as HebbMateDocumentGenerateResult;
+      for (const item of gen.items) {
+        const entry = await this.applyLog.append({
+          companyId,
+          proposalId: proposal.proposalId,
+          actorUserId: auth.userId,
+          capability: proposal.capability,
+          subjectUserId: item.userId,
+          subjectFullName: item.fullName,
+          entityType: "employee_document",
+          entityId: item.documentId,
+          previousState: null,
+          appliedPayload: { documentId: item.documentId, title: item.title },
+          detail: `Documento: ${item.title}`,
+          ...undoMeta
+        });
+        ids.push(entry.id);
+      }
+      return ids;
+    }
+
+    if (proposal.capability === "document_email") {
+      const sent = result as HebbMateDocumentEmailResult;
+      const user = await this.store.getUser(sent.targetUserId);
+      const entry = await this.applyLog.append({
+        companyId,
+        proposalId: proposal.proposalId,
+        actorUserId: auth.userId,
+        capability: proposal.capability,
+        subjectUserId: sent.targetUserId,
+        subjectFullName: user.fullName,
+        entityType: "document_email",
+        entityId: sent.documentId,
+        previousState: null,
+        appliedPayload: { documentId: sent.documentId, delivery: sent.delivery },
+        detail: `Notifica documento (${sent.delivery})`,
+        ...undoMeta
+      });
+      ids.push(entry.id);
+    }
+
+    return ids;
   }
 
   private async executeCapability(
@@ -135,26 +392,36 @@ export class HebbMateService {
     capability: HebbMateCapabilityId,
     ctx: {
       message: string;
-      scope: AssistantScopePayload;
+      pseudonymizedMessage: string;
+      subjectUserIds: string[];
+      scopeKind: "self" | "employees";
       dryRun?: boolean;
       candidateId?: string;
       positionId?: string;
       documentId?: string;
       contractKind: HebbMateContractKind;
       documentKind: HebbMateDocumentKind;
-    }
+    },
+    previewOnly: boolean
   ): Promise<Omit<HebbMateChatResponse, "llm">> {
+    const subjectCtx = {
+      subjectUserIds: ctx.subjectUserIds,
+      scopeKind: ctx.scopeKind
+    };
+
     switch (capability) {
       case "contract_generation": {
         const result = await this.generateContracts(auth, {
-          scope: ctx.scope,
+          subjectUserIds: ctx.subjectUserIds,
+          scopeKind: ctx.scopeKind,
           contractKind: ctx.contractKind,
-          dryRun: ctx.dryRun,
+          dryRun: previewOnly || ctx.dryRun,
           requestSummary: ctx.message
         });
+        const verb = previewOnly ? "Anteprima" : "Generati";
         return {
           capability,
-          reply: `Generati ${result.created} contratti (${result.contractKind}), ${result.skipped} già presenti, ${result.errors} errori su ${result.subjectCount} persone.`,
+          reply: `${verb}: ${result.created} contratti (${result.contractKind}), ${result.skipped} già presenti, ${result.errors} errori su ${result.subjectCount} persone.`,
           result,
           actions: result.items
             .filter((i) => i.documentId)
@@ -167,14 +434,24 @@ export class HebbMateService {
         };
       }
       case "document_generation": {
-        const result = await this.generateDocuments(auth, {
-          scope: ctx.scope,
-          documentKind: ctx.documentKind,
-          titleHint: ctx.message
-        });
+        const result = previewOnly
+          ? await this.previewDocuments(auth, {
+              subjectUserIds: ctx.subjectUserIds,
+              scopeKind: ctx.scopeKind,
+              documentKind: ctx.documentKind,
+              titleHint: ctx.message
+            })
+          : await this.generateDocuments(auth, {
+              subjectUserIds: ctx.subjectUserIds,
+              scopeKind: ctx.scopeKind,
+              documentKind: ctx.documentKind,
+              titleHint: ctx.message
+            });
         return {
           capability,
-          reply: `Creati ${result.created} documenti «${result.title}» nel vault.`,
+          reply: previewOnly
+            ? `Anteprima: ${result.created} documenti «${result.title}» per ${result.scopeKind}.`
+            : `Creati ${result.created} documenti «${result.title}» nel vault.`,
           result,
           actions: result.items.slice(0, 5).map((i) => ({
             type: "preview_document" as const,
@@ -188,8 +465,15 @@ export class HebbMateService {
           return {
             capability,
             reply:
-              "Per lo screening CV indica il candidato (candidateId) e opzionalmente la posizione. Puoi avviarlo anche dalla card Screening CV.",
+              "Per lo screening CV indica il candidato nel messaggio o fornisci candidateId. Es.: «Screening CV candidato … per posizione …».",
             result: { needsCandidateId: true }
+          };
+        }
+        if (previewOnly) {
+          return {
+            capability,
+            reply: `Anteprima screening CV per candidato ${ctx.candidateId}. Conferma per avviare la valutazione.`,
+            result: { candidateId: ctx.candidateId, positionId: ctx.positionId, preview: true }
           };
         }
         const screened = await this.cvScreen.screenCandidateCv(auth, {
@@ -210,9 +494,26 @@ export class HebbMateService {
         };
       }
       case "document_email": {
+        if (previewOnly) {
+          const preview = await this.previewDocuments(auth, {
+            subjectUserIds: ctx.subjectUserIds,
+            scopeKind: ctx.scopeKind,
+            documentKind: ctx.documentKind,
+            titleHint: ctx.message
+          });
+          const first = preview.items[0];
+          return {
+            capability,
+            reply: first
+              ? `Anteprima invio documento a ${first.fullName}. Conferma per generare e notificare.`
+              : "Anteprima invio: nessun destinatario nel perimetro.",
+            result: { preview, targetUserId: first?.userId, documentKind: ctx.documentKind }
+          };
+        }
         if (!ctx.documentId?.trim()) {
           const gen = await this.generateDocuments(auth, {
-            scope: ctx.scope,
+            subjectUserIds: ctx.subjectUserIds,
+            scopeKind: ctx.scopeKind,
             documentKind: ctx.documentKind,
             titleHint: ctx.message
           });
@@ -239,13 +540,9 @@ export class HebbMateService {
             ]
           };
         }
-        const scopeResolved = await this.aiHr.resolveAssistantScope(
-          { userId: auth.userId, role: auth.role as AuthRole },
-          ctx.scope
-        );
-        const targetUserId = scopeResolved.subjectUserIds[0];
+        const targetUserId = ctx.subjectUserIds[0];
         if (!targetUserId) {
-          throw new BadRequestException("Seleziona un destinatario.");
+          throw new BadRequestException("Cita un destinatario nel messaggio.");
         }
         const sent = await this.sendDocumentEmail(auth, {
           documentId: ctx.documentId.trim(),
@@ -267,7 +564,7 @@ export class HebbMateService {
         };
       }
       case "reports": {
-        const report = await this.generateReport(auth, { scope: ctx.scope, message: ctx.message });
+        const report = await this.generateReport(auth, { ...subjectCtx, message: ctx.message });
         return {
           capability,
           reply: report.summary,
@@ -276,7 +573,10 @@ export class HebbMateService {
         };
       }
       case "skill_suggestions": {
-        const skills = await this.suggestSkills(auth, { scope: ctx.scope, message: ctx.message });
+        const skills = await this.suggestSkills(auth, {
+          ...subjectCtx,
+          message: ctx.pseudonymizedMessage
+        });
         return {
           capability,
           reply: `${skills.suggestions.length} competenze suggerite per ${skills.roleName}.`,
@@ -291,7 +591,10 @@ export class HebbMateService {
         };
       }
       case "automation_proposals": {
-        const proposals = await this.proposeAutomations(auth, { scope: ctx.scope, message: ctx.message });
+        const proposals = await this.proposeAutomations(auth, {
+          ...subjectCtx,
+          message: ctx.pseudonymizedMessage
+        });
         return {
           capability,
           reply: `${proposals.length} proposte di automazione per l'area richiesta.`,
@@ -311,19 +614,26 @@ export class HebbMateService {
   async generateContracts(
     auth: AuthContext,
     input: {
-      scope: AssistantScopePayload;
+      subjectUserIds?: string[];
+      scopeKind?: string;
       contractKind: HebbMateContractKind;
       dryRun?: boolean;
       requestSummary?: string;
       force?: boolean;
+      scope?: AssistantScopePayload;
     }
   ): Promise<HebbMateContractGenerateResult> {
     await this.assertMateAccess(auth);
     const companyId = auth.tenantId ?? "comp-1";
-    const { subjectUserIds, scopeKind } = await this.aiHr.resolveAssistantScope(
-      { userId: auth.userId, role: auth.role as AuthRole },
-      input.scope
-    );
+    const subjectUserIds = input.subjectUserIds?.length
+      ? input.subjectUserIds
+      : (
+          await this.aiHr.resolveAssistantScope(
+            { userId: auth.userId, role: auth.role as AuthRole },
+            input.scope!
+          )
+        ).subjectUserIds;
+    const scopeKind = input.scopeKind ?? "self";
     if (subjectUserIds.length > 50 && !input.dryRun) {
       throw new BadRequestException("Massimo 50 persone per generazione contratti; usa dryRun o restringi il perimetro.");
     }
@@ -448,19 +758,60 @@ export class HebbMateService {
     return result;
   }
 
+  async previewDocuments(
+    auth: AuthContext,
+    input: {
+      subjectUserIds?: string[];
+      scopeKind?: string;
+      documentKind: HebbMateDocumentKind;
+      titleHint?: string;
+    }
+  ): Promise<HebbMateDocumentGenerateResult> {
+    await this.assertMateAccess(auth);
+    const title = this.documentTitleForKind(input.documentKind, input.titleHint);
+    const items: HebbMateDocumentGenerateResult["items"] = [];
+    for (const uid of (input.subjectUserIds ?? []).slice(0, 30)) {
+      const user = await this.store.getUser(uid);
+      items.push({
+        userId: uid,
+        fullName: user.fullName,
+        documentId: `preview-${uid}`,
+        title
+      });
+    }
+    return {
+      scopeKind: input.scopeKind ?? "self",
+      documentKind: input.documentKind,
+      title,
+      created: items.length,
+      items
+    };
+  }
+
   async generateDocuments(
     auth: AuthContext,
-    input: { scope: AssistantScopePayload; documentKind: HebbMateDocumentKind; titleHint?: string }
+    input: {
+      subjectUserIds?: string[];
+      scopeKind?: string;
+      documentKind: HebbMateDocumentKind;
+      titleHint?: string;
+      scope?: AssistantScopePayload;
+    }
   ): Promise<HebbMateDocumentGenerateResult> {
     await this.assertMateAccess(auth);
     if (!(await this.permissions.userHasAll(auth.userId, ["nexa.documents:write"]))) {
       throw new ForbiddenException("Permesso nexa.documents:write richiesto.");
     }
 
-    const { subjectUserIds, scopeKind } = await this.aiHr.resolveAssistantScope(
-      { userId: auth.userId, role: auth.role as AuthRole },
-      input.scope
-    );
+    const subjectUserIds = input.subjectUserIds?.length
+      ? input.subjectUserIds
+      : (
+          await this.aiHr.resolveAssistantScope(
+            { userId: auth.userId, role: auth.role as AuthRole },
+            input.scope!
+          )
+        ).subjectUserIds;
+    const scopeKind = input.scopeKind ?? "self";
     const company = await this.store.getCompanySettings(auth.tenantId ?? "comp-1");
     const title = this.documentTitleForKind(input.documentKind, input.titleHint);
     const blocks = this.documentBlocksForKind(input.documentKind, company.companyLegalName ?? "Azienda");
@@ -564,25 +915,31 @@ export class HebbMateService {
 
   async generateReport(
     auth: AuthContext,
-    input: { scope: AssistantScopePayload; message?: string }
+    input: {
+      subjectUserIds?: string[];
+      scopeKind?: string;
+      message?: string;
+      scope?: AssistantScopePayload;
+    }
   ): Promise<HebbMateReportResult> {
     await this.assertMateAccess(auth);
     const companyId = auth.tenantId ?? "comp-1";
-    const { subjectUserIds, scopeKind } = await this.aiHr.resolveAssistantScope(
-      { userId: auth.userId, role: auth.role as AuthRole },
-      input.scope
-    );
+    const subjectUserIds = input.subjectUserIds?.length
+      ? input.subjectUserIds
+      : (
+          await this.aiHr.resolveAssistantScope(
+            { userId: auth.userId, role: auth.role as AuthRole },
+            input.scope!
+          )
+        ).subjectUserIds;
+    const scopeKind = input.scopeKind ?? "self";
 
     const reportType: HebbMateReportResult["reportType"] =
-      scopeKind === "cost_center" ? "cost_center" : scopeKind === "team" ? "team" : "employee";
+      subjectUserIds.length > 1 ? "team" : "employee";
 
     let scopeLabel = "Profilo personale";
-    if (scopeKind === "team" && input.scope?.teamId) {
-      const team = await this.store.getWorkTeam(input.scope.teamId);
-      scopeLabel = `Team ${team.name}`;
-    } else if (scopeKind === "cost_center" && input.scope?.costCenterId) {
-      const cc = await this.store.getCostCenterById(input.scope.costCenterId);
-      scopeLabel = cc ? `CDC ${cc.code} — ${cc.name}` : "Centro di costo";
+    if (subjectUserIds.length > 1) {
+      scopeLabel = `${subjectUserIds.length} dipendenti citati`;
     } else if (subjectUserIds.length === 1) {
       const u = await this.store.getUser(subjectUserIds[0]!);
       scopeLabel = u.fullName;
@@ -657,14 +1014,24 @@ export class HebbMateService {
 
   async suggestSkills(
     auth: AuthContext,
-    input: { scope: AssistantScopePayload; message?: string; roleId?: string }
+    input: {
+      subjectUserIds?: string[];
+      scopeKind?: string;
+      message?: string;
+      roleId?: string;
+      scope?: AssistantScopePayload;
+    }
   ): Promise<HebbMateSkillSuggestResult> {
     await this.assertMateAccess(auth);
     const companyId = auth.tenantId ?? "comp-1";
-    const { subjectUserIds } = await this.aiHr.resolveAssistantScope(
-      { userId: auth.userId, role: auth.role as AuthRole },
-      input.scope
-    );
+    const subjectUserIds = input.subjectUserIds?.length
+      ? input.subjectUserIds
+      : (
+          await this.aiHr.resolveAssistantScope(
+            { userId: auth.userId, role: auth.role as AuthRole },
+            input.scope!
+          )
+        ).subjectUserIds;
 
     let roleId = input.roleId?.trim();
     let roleName = "Ruolo generico";
@@ -745,7 +1112,13 @@ export class HebbMateService {
 
   async proposeAutomations(
     auth: AuthContext,
-    input: { scope: AssistantScopePayload; message?: string; workArea?: string }
+    input: {
+      subjectUserIds?: string[];
+      scopeKind?: string;
+      message?: string;
+      workArea?: string;
+      scope?: AssistantScopePayload;
+    }
   ): Promise<HebbMateAutomationProposal[]> {
     await this.assertMateAccess(auth);
     const allowedTools = COWORK_TOOL_LIST.filter((t) => t.executable);

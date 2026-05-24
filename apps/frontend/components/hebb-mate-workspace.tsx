@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BarChart3,
   Bot,
@@ -9,26 +9,28 @@ import {
   FileText,
   Loader2,
   Mail,
+  RotateCcw,
   Send,
+  ShieldCheck,
   Sparkles,
-  UserRound,
   UserSearch
 } from "lucide-react";
 import {
-  fetchAiAssistantScopeOptions,
   fetchHebbMateCapabilities,
-  fetchRecruitCandidates,
-  fetchRecruitPositions,
+  fetchHebbMateHistory,
+  postHebbMateApply,
+  postHebbMateCancel,
   postHebbMateChat,
-  type AiAssistantScopeOptionsDto,
+  postHebbMateUndo,
   type HebbMateActionDto,
   type HebbMateCapabilityCardDto,
-  type HebbMateCapabilityId,
-  type HebbMateChatResponseDto
+  type HebbMateChatResponseDto,
+  type HebbMateHistoryEntryDto
 } from "@/lib/api";
 import { getSessionUser, getToken } from "@/lib/auth-session";
 import { AssistantMarkdownLite } from "@/components/assistant-markdown-lite";
 import { HebbAiGlassPanel, HebbAiGlassTile } from "@/components/hebb-ai-experience-shell";
+import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
 
@@ -45,39 +47,23 @@ const CAPABILITY_ICONS: Record<string, React.ComponentType<{ className?: string 
 };
 
 export type HebbMateWorkspaceProps = {
-  costCenterId?: string;
-  teamId?: string;
   onOpenCoworkTab?: () => void;
 };
 
-export function HebbMateWorkspace({
-  costCenterId = "",
-  teamId = "",
-  onOpenCoworkTab
-}: HebbMateWorkspaceProps): React.JSX.Element {
+export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): React.JSX.Element {
   const me = getSessionUser();
+  const isSuperuser = me?.role === "superuser";
+
   const [capabilities, setCapabilities] = useState<HebbMateCapabilityCardDto[]>([]);
-  const [scopeOptions, setScopeOptions] = useState<AiAssistantScopeOptionsDto | null>(null);
-  const [scopeMode, setScopeMode] = useState<"self" | "user" | "team" | "cost_center">("self");
-  const [scopeUserId, setScopeUserId] = useState("");
-  const [scopeTeamId, setScopeTeamId] = useState(teamId);
-  const [scopeCostCenterId, setScopeCostCenterId] = useState(costCenterId);
-  const [activeCapability, setActiveCapability] = useState<HebbMateCapabilityId | null>(null);
-  const [candidateId, setCandidateId] = useState("");
-  const [positionId, setPositionId] = useState("");
-  const [candidates, setCandidates] = useState<Array<{ id: string; label: string }>>([]);
-  const [positions, setPositions] = useState<Array<{ id: string; label: string }>>([]);
   const [input, setInput] = useState("");
   const [thread, setThread] = useState<ChatTurn[]>([]);
-  const [lastResponse, setLastResponse] = useState<HebbMateChatResponseDto | null>(null);
+  const [preview, setPreview] = useState<HebbMateChatResponseDto | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dryRun, setDryRun] = useState(false);
-
-  useEffect(() => {
-    setScopeTeamId(teamId);
-    setScopeCostCenterId(costCenterId);
-  }, [teamId, costCenterId]);
+  const [history, setHistory] = useState<HebbMateHistoryEntryDto[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [undoTarget, setUndoTarget] = useState<HebbMateHistoryEntryDto | null>(null);
 
   useEffect(() => {
     const token = getToken();
@@ -85,60 +71,34 @@ export function HebbMateWorkspace({
     void fetchHebbMateCapabilities(token)
       .then((r) => setCapabilities(r.capabilities))
       .catch(() => setCapabilities([]));
-    void fetchAiAssistantScopeOptions(token)
-      .then(setScopeOptions)
-      .catch(() => setScopeOptions(null));
-    void fetchRecruitCandidates(token)
-      .then((items) =>
-        setCandidates(items.slice(0, 40).map((c) => ({
-          id: c.id,
-          label: `${c.first_name} ${c.last_name}`.trim() || c.email || c.id
-        })))
-      )
-      .catch(() => setCandidates([]));
-    void fetchRecruitPositions(token)
-      .then((items) => setPositions(items.map((p) => ({ id: p.id, label: p.title }))))
-      .catch(() => setPositions([]));
+    void loadHistory();
   }, []);
 
-  useEffect(() => {
-    if (me && !scopeUserId) setScopeUserId(me.id);
-  }, [me, scopeUserId]);
-
-  const scopePayload = useMemo(() => {
-    if (scopeMode === "user" && scopeUserId.trim()) {
-      return { mode: "user" as const, userId: scopeUserId.trim() };
+  const loadHistory = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetchHebbMateHistory(token);
+      setHistory(res.entries);
+    } catch {
+      setHistory([]);
     }
-    if (scopeMode === "team" && scopeTeamId.trim()) {
-      return { mode: "team" as const, teamId: scopeTeamId.trim() };
-    }
-    if (scopeMode === "cost_center" && scopeCostCenterId.trim()) {
-      return { mode: "cost_center" as const, costCenterId: scopeCostCenterId.trim() };
-    }
-    return { mode: "self" as const };
-  }, [scopeMode, scopeUserId, scopeTeamId, scopeCostCenterId]);
+  }, []);
 
   const send = useCallback(
-    async (messageOverride?: string, capabilityOverride?: HebbMateCapabilityId | null) => {
+    async (messageOverride?: string) => {
       const token = getToken();
       const msg = (messageOverride ?? input).trim();
-      const cap = capabilityOverride ?? activeCapability ?? undefined;
       if (!token || !msg || busy) return;
 
       setInput("");
       setThread((prev) => [...prev, { role: "user", text: msg }]);
       setBusy(true);
       setError(null);
+      setPreview(null);
       try {
-        const response = await postHebbMateChat(token, {
-          message: msg,
-          capability: cap,
-          scope: scopePayload,
-          dryRun,
-          candidateId: cap === "cv_screening" ? candidateId.trim() || undefined : undefined,
-          positionId: cap === "cv_screening" ? positionId.trim() || undefined : undefined
-        });
-        setLastResponse(response);
+        const response = await postHebbMateChat(token, { message: msg });
+        setPreview(response);
         setThread((prev) => [...prev, { role: "assistant", text: response.reply, response }]);
         if (response.capability === "cowork_batch" && onOpenCoworkTab) {
           onOpenCoworkTab();
@@ -151,17 +111,76 @@ export function HebbMateWorkspace({
         setBusy(false);
       }
     },
-    [activeCapability, busy, candidateId, dryRun, input, onOpenCoworkTab, positionId, scopePayload]
+    [busy, input, onOpenCoworkTab]
   );
 
-  const onCardClick = useCallback(
-    (card: HebbMateCapabilityCardDto) => {
-      setActiveCapability(card.id);
-      const starter = card.examplePrompts[0];
-      if (starter) void send(starter, card.id);
-    },
-    [send]
-  );
+  const onCardClick = useCallback((card: HebbMateCapabilityCardDto) => {
+    const starter = card.examplePrompts[0];
+    if (starter) {
+      setInput(starter);
+    }
+  }, []);
+
+  const onStarterClick = useCallback((prompt: string) => {
+    setInput(prompt);
+  }, []);
+
+  const confirmApply = useCallback(async () => {
+    const token = getToken();
+    const proposalId = preview?.hitl?.proposalId;
+    if (!token || !proposalId || !preview?.hitl?.requiresConfirm) return;
+
+    setApplying(true);
+    setError(null);
+    try {
+      const applied = await postHebbMateApply(token, proposalId);
+      setPreview((p) =>
+        p
+          ? {
+              ...p,
+              reply: applied.reply,
+              result: applied.result,
+              hitl: p.hitl ? { ...p.hitl, requiresConfirm: false } : undefined
+            }
+          : p
+      );
+      setThread((prev) => [...prev, { role: "assistant", text: applied.reply }]);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Conferma non riuscita");
+    } finally {
+      setApplying(false);
+    }
+  }, [loadHistory, preview]);
+
+  const cancelPreview = useCallback(async () => {
+    const token = getToken();
+    const proposalId = preview?.hitl?.proposalId;
+    if (token && proposalId) {
+      try {
+        await postHebbMateCancel(token, proposalId);
+      } catch {
+        /* best effort */
+      }
+    }
+    setPreview(null);
+  }, [preview]);
+
+  const runUndo = useCallback(async () => {
+    const token = getToken();
+    if (!token || !undoTarget) return;
+    setHistoryBusy(true);
+    setError(null);
+    try {
+      await postHebbMateUndo(token, undoTarget.logId);
+      setUndoTarget(null);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Annullamento non riuscito");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [loadHistory, undoTarget]);
 
   const renderAction = (action: HebbMateActionDto, idx: number) => (
     <Button
@@ -178,8 +197,10 @@ export function HebbMateWorkspace({
     </Button>
   );
 
+  const allStarters = capabilities.flatMap((c) => c.examplePrompts.slice(0, 1));
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <HebbAiGlassPanel className="border-[color-mix(in_srgb,var(--prom-accent)_22%,var(--glass-border))]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -189,8 +210,8 @@ export function HebbMateWorkspace({
             <div>
               <h2 className="text-lg font-semibold text-[var(--prom-text)]">Agente Mate</h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--prom-muted)]">
-                Workspace HR nativo: contratti, documenti, screening CV, email, report, competenze e automazioni —
-                con scope persona, team o centro di costo.
+                Contratti, documenti, screening CV, email, report, competenze e automazioni. Cita i nominativi nel
+                messaggio per definire il perimetro HR.
               </p>
             </div>
           </div>
@@ -199,232 +220,222 @@ export function HebbMateWorkspace({
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {capabilities.map((card) => {
             const Icon = CAPABILITY_ICONS[card.icon] ?? Sparkles;
-            const active = activeCapability === card.id;
             return (
               <button
                 key={card.id}
                 type="button"
                 disabled={busy}
                 onClick={() => onCardClick(card)}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  active
-                    ? "border-fuchsia-500/60 bg-[color-mix(in_srgb,fuchsia_8%,transparent)] shadow-sm"
-                    : "border-[var(--prom-line)] bg-[var(--prom-surface-soft)] hover:border-[var(--prom-accent)]"
-                }`}
+                className="rounded-2xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-4 text-left transition hover:border-[var(--prom-accent)]"
               >
                 <Icon className="h-5 w-5 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden />
                 <p className="mt-2 text-sm font-semibold text-[var(--prom-text)]">{card.title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-[var(--prom-muted)]">{card.description}</p>
+                <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-fuchsia-600 dark:text-fuchsia-300">
+                  Suggerimento
+                </p>
               </button>
             );
           })}
         </div>
       </HebbAiGlassPanel>
 
-      <HebbAiGlassPanel>
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Perimetro HR</p>
-        <div className="mt-3 grid gap-3 md:grid-cols-4">
-          <label className="block text-sm">
-            <span className="mb-1 text-[var(--prom-muted)]">Ambito</span>
-            <select
-              value={scopeMode}
-              onChange={(e) => setScopeMode(e.target.value as typeof scopeMode)}
-              className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-            >
-              {(scopeOptions?.modesAllowed ?? ["self"]).map((m) => (
-                <option key={m} value={m}>
-                  {m === "self"
-                    ? "Me stesso"
-                    : m === "user"
-                      ? "Persona"
-                      : m === "team"
-                        ? "Team"
-                        : "Centro di costo"}
-                </option>
-              ))}
-            </select>
-          </label>
-          {scopeMode === "user" ? (
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 flex items-center gap-1 text-[var(--prom-muted)]">
-                <UserRound className="h-3.5 w-3.5" aria-hidden /> Persona
-              </span>
-              <select
-                value={scopeUserId}
-                onChange={(e) => setScopeUserId(e.target.value)}
-                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-              >
-                {(scopeOptions?.managedUsers ?? [{ userId: me?.id ?? "", label: me?.fullName ?? "Tu" }]).map((u) => (
-                  <option key={u.userId} value={u.userId}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {scopeMode === "team" ? (
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 text-[var(--prom-muted)]">Team</span>
-              <select
-                value={scopeTeamId}
-                onChange={(e) => setScopeTeamId(e.target.value)}
-                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-              >
-                <option value="">Seleziona team</option>
-                {(scopeOptions?.teams ?? []).map((t) => (
-                  <option key={t.teamId} value={t.teamId}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {scopeMode === "cost_center" ? (
-            <label className="block text-sm md:col-span-2">
-              <span className="mb-1 text-[var(--prom-muted)]">Centro di costo</span>
-              <select
-                value={scopeCostCenterId}
-                onChange={(e) => setScopeCostCenterId(e.target.value)}
-                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-              >
-                <option value="">Seleziona CDC</option>
-                {(scopeOptions?.costCenters ?? []).map((c) => (
-                  <option key={c.costCenterId} value={c.costCenterId}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="flex items-end gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
-              className="h-4 w-4 rounded border-[var(--prom-line)]"
-            />
-            <span className="pb-2 text-[var(--prom-muted)]">Anteprima contratti (dry-run)</span>
-          </label>
-        </div>
-
-        {activeCapability === "cv_screening" ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 text-[var(--prom-muted)]">Candidato</span>
-              <select
-                value={candidateId}
-                onChange={(e) => setCandidateId(e.target.value)}
-                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-              >
-                <option value="">Seleziona candidato</option>
-                {candidates.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 text-[var(--prom-muted)]">Posizione (opz.)</span>
-              <select
-                value={positionId}
-                onChange={(e) => setPositionId(e.target.value)}
-                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm"
-              >
-                <option value="">Auto / prima posizione</option>
-                {positions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
+      <HebbAiGlassPanel className="flex items-start gap-3 border-[color-mix(in_srgb,var(--prom-accent)_25%,var(--glass-border))] bg-[color-mix(in_srgb,var(--prom-accent)_6%,var(--card-bg))]">
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--prom-accent)]" aria-hidden />
+        <p className="text-sm leading-relaxed text-[var(--prom-muted)]">
+          Puoi citare i nominativi nella richiesta: verso il modello vengono tradotti in pseudonimi stabili. I nomi
+          compaiono solo nella preview HR autorizzata sotto la chat.
+        </p>
       </HebbAiGlassPanel>
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <HebbAiGlassPanel className="flex min-h-[380px] flex-col lg:col-span-3">
-          <h3 className="text-base font-semibold text-[var(--prom-text)]">Chat agente</h3>
-          <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
-            {thread.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-8 text-center text-sm text-[var(--prom-muted)]">
-                Seleziona una capability o descrivi l&apos;operazione HR.
-              </p>
-            ) : null}
-            {thread.map((turn, i) => (
-              <div
-                key={`${turn.role}-${i}`}
-                className={`rounded-2xl px-4 py-3 text-sm ${
-                  turn.role === "user"
-                    ? "ml-8 bg-[color-mix(in_srgb,fuchsia_10%,transparent)] text-[var(--prom-text)]"
-                    : "mr-4 border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] text-[var(--prom-muted)]"
-                }`}
-              >
-                {turn.role === "assistant" ? (
-                  <AssistantMarkdownLite text={turn.text} />
-                ) : (
-                  turn.text
-                )}
-              </div>
-            ))}
-            {busy ? (
-              <div className="flex items-center gap-2 text-sm text-[var(--prom-muted)]">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Elaborazione…
-              </div>
-            ) : null}
-          </div>
-          {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
-          <form
-            className="mt-4 flex gap-2 border-t border-[var(--prom-line)] pt-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Es. Genera report team Marketing con ferie e competenze…"
-              className="flex-1 rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm outline-none focus:border-fuchsia-500"
-              disabled={busy}
-            />
-            <LoadingButton type="submit" loading={busy} disabled={!input.trim()} className="gap-1.5">
-              <Send className="h-4 w-4" aria-hidden />
-              Invia
-            </LoadingButton>
-          </form>
-        </HebbAiGlassPanel>
-
-        <HebbAiGlassPanel className="flex flex-col lg:col-span-2">
-          <h3 className="text-base font-semibold text-[var(--prom-text)]">Output azionabile</h3>
-          {!lastResponse ? (
-            <p className="mt-4 text-sm text-[var(--prom-muted)]">
-              Qui compaiono anteprime documenti, report, punteggi CV e proposte automazione.
+      <HebbAiGlassPanel className="flex min-h-[360px] w-full flex-col">
+        <h3 className="text-base font-semibold text-[var(--prom-text)]">Chat agente</h3>
+        <p className="mt-1 text-xs text-[var(--prom-muted)]">
+          Descrivi l&apos;operazione citando una o più persone; la preview HITL compare sotto.
+        </p>
+        <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
+          {thread.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[var(--prom-line)] px-4 py-8 text-center text-sm text-[var(--prom-muted)]">
+              Usa un suggerimento dalla griglia o descrivi l&apos;operazione HR.
             </p>
-          ) : (
-            <div className="mt-4 space-y-4">
-              <HebbAiGlassTile>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
-                  {lastResponse.capability}
-                </p>
-                <p className="mt-2 text-sm text-[var(--prom-text)]">{lastResponse.reply}</p>
-              </HebbAiGlassTile>
-              {lastResponse.actions && lastResponse.actions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {lastResponse.actions.map(renderAction)}
-                </div>
-              ) : null}
-              {lastResponse.result ? (
-                <pre className="max-h-64 overflow-auto rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-3 text-[11px] leading-relaxed text-[var(--prom-muted)]">
-                  {JSON.stringify(lastResponse.result, null, 2)}
-                </pre>
+          ) : null}
+          {thread.map((turn, i) => (
+            <div
+              key={`${turn.role}-${i}`}
+              className={`rounded-2xl px-4 py-3 text-sm ${
+                turn.role === "user"
+                  ? "ml-8 bg-[color-mix(in_srgb,fuchsia_10%,transparent)] text-[var(--prom-text)]"
+                  : "mr-4 border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] text-[var(--prom-muted)]"
+              }`}
+            >
+              {turn.role === "assistant" ? <AssistantMarkdownLite text={turn.text} /> : turn.text}
+            </div>
+          ))}
+          {busy ? (
+            <div className="flex items-center gap-2 text-sm text-[var(--prom-muted)]">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Elaborazione…
+            </div>
+          ) : null}
+        </div>
+
+        {allStarters.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Esempi rapidi</p>
+            <div className="flex flex-wrap gap-2">
+              {allStarters.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onStarterClick(ex)}
+                  className="rounded-full border border-[var(--prom-line)] px-3 py-1.5 text-xs text-[var(--prom-muted)] transition hover:border-[var(--prom-accent)] hover:text-[var(--prom-text)]"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+        <form
+          className="mt-4 flex gap-2 border-t border-[var(--prom-line)] pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Es. Genera report per Marco Rossi e Laura Bianchi…"
+            className="flex-1 rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm outline-none focus:border-fuchsia-500"
+            disabled={busy}
+          />
+          <LoadingButton type="submit" loading={busy} disabled={!input.trim()} className="gap-1.5">
+            <Send className="h-4 w-4" aria-hidden />
+            Invia
+          </LoadingButton>
+        </form>
+      </HebbAiGlassPanel>
+
+      <HebbAiGlassPanel className="flex min-h-[280px] w-full flex-col">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--prom-text)]">Preview operazioni (HITL)</h3>
+            <p className="mt-1 text-xs text-[var(--prom-muted)]">
+              Anteprima dei risultati prima di confermare operazioni con effetti sul sistema.
+            </p>
+          </div>
+          {preview?.scope ? (
+            <div className="flex flex-wrap gap-2 text-xs text-[var(--prom-muted)]">
+              <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                {preview.scope.subjectCount} {preview.scope.subjectCount === 1 ? "persona" : "persone"}
+              </span>
+              {preview.scope.resolvedNames.length > 0 ? (
+                <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
+                  {preview.scope.resolvedNames.join(", ")}
+                </span>
               ) : null}
             </div>
-          )}
+          ) : null}
+        </div>
+
+        {!preview ? (
+          <p className="mt-8 flex flex-1 items-center justify-center rounded-xl border border-dashed border-[var(--prom-line)] px-6 py-10 text-center text-sm text-[var(--prom-muted)]">
+            I risultati e le anteprime compariranno qui dopo l&apos;invio del messaggio.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <HebbAiGlassTile>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+                {preview.capability}
+              </p>
+              <p className="mt-2 text-sm text-[var(--prom-text)]">{preview.reply}</p>
+            </HebbAiGlassTile>
+            {preview.actions && preview.actions.length > 0 ? (
+              <div className="flex flex-wrap gap-2">{preview.actions.map(renderAction)}</div>
+            ) : null}
+            {preview.result ? (
+              <pre className="max-h-72 overflow-auto rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-3 text-[11px] leading-relaxed text-[var(--prom-muted)]">
+                {JSON.stringify(preview.hitl?.preview ?? preview.result, null, 2)}
+              </pre>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--prom-line)] pt-4">
+              {preview.hitl?.requiresConfirm ? (
+                <>
+                  <Button type="button" variant="outline" size="sm" disabled={applying} onClick={() => void cancelPreview()}>
+                    Annulla
+                  </Button>
+                  <LoadingButton loading={applying} onClick={() => void confirmApply()}>
+                    Conferma e applica
+                  </LoadingButton>
+                </>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </HebbAiGlassPanel>
+
+      {history.length > 0 ? (
+        <HebbAiGlassPanel className="flex w-full flex-col">
+          <h3 className="text-base font-semibold text-[var(--prom-text)]">Operazioni recenti</h3>
+          <p className="mt-1 text-xs text-[var(--prom-muted)]">
+            {isSuperuser
+              ? "Le operazioni Mate applicate possono essere annullate dal superuser."
+              : "Storico operazioni Mate confermate."}
+          </p>
+          <ul className="mt-4 divide-y divide-[var(--prom-line)]">
+            {history.slice(0, 12).map((entry) => (
+              <li key={entry.logId} className="flex flex-wrap items-start justify-between gap-2 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-[var(--prom-text)]">{entry.subjectFullName}</p>
+                  <p className="mt-1 text-sm text-[var(--prom-muted)]">{entry.detail}</p>
+                  <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--prom-muted)]">
+                    {entry.capability} · {new Date(entry.appliedAt).toLocaleString("it-IT")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full border border-[var(--prom-line)] px-2 py-0.5 text-[10px] font-semibold uppercase">
+                    {entry.undoStatus}
+                  </span>
+                  {isSuperuser && entry.undoStatus === "available" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={historyBusy}
+                      onClick={() => setUndoTarget(entry)}
+                    >
+                      <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden />
+                      Annulla
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
         </HebbAiGlassPanel>
-      </div>
+      ) : null}
+
+      <GlassConfirmDialog
+        open={undoTarget !== null}
+        title="Annullare l'operazione Mate?"
+        message={
+          undoTarget
+            ? `L'operazione su ${undoTarget.subjectFullName} verrà annullata dove possibile. Solo il superuser può eseguire l'undo.`
+            : ""
+        }
+        confirmLabel="Annulla operazione"
+        cancelLabel="Chiudi"
+        variant="danger"
+        busy={historyBusy}
+        onCancel={() => {
+          if (!historyBusy) setUndoTarget(null);
+        }}
+        onConfirm={() => void runUndo()}
+      />
     </div>
   );
 }

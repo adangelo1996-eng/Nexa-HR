@@ -9,8 +9,11 @@ import { AiHrController } from "./ai-hr.controller";
 import { AiHrService } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import { FieldSuggestService } from "./field-suggest.service";
+import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
 import { HebbMateController } from "./hebb-mate.controller";
+import { HebbMateProposalsStore } from "./hebb-mate-proposals.store";
 import { HebbMateService } from "./hebb-mate.service";
+import { HebbMateUndoService } from "./hebb-mate-undo.service";
 import { NexaPlatformAgentService } from "./nexa-platform-agent.service";
 
 @Module({
@@ -22,7 +25,10 @@ import { NexaPlatformAgentService } from "./nexa-platform-agent.service";
     AiOpenAiRefinementService,
     NexaPlatformAgentService,
     FieldSuggestService,
-    HebbMateService
+    HebbMateService,
+    HebbMateProposalsStore,
+    HebbMateApplyLogStore,
+    HebbMateUndoService
   ],
   exports: [AiAuditService, AiOpenAiRefinementService, NexaPlatformAgentService, FieldSuggestService, HebbMateService]
 })

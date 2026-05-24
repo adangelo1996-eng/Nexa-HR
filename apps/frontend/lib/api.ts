@@ -6642,12 +6642,48 @@ export interface HebbMateActionDto {
   payload: Record<string, unknown>;
 }
 
+export interface HebbMateScopeSummaryDto {
+  scopeKind: "self" | "employees";
+  subjectCount: number;
+  resolvedNames: string[];
+}
+
+export interface HebbMateHitlPreviewDto {
+  proposalId: string;
+  requiresConfirm: boolean;
+  preview: unknown;
+  scope: HebbMateScopeSummaryDto;
+}
+
 export interface HebbMateChatResponseDto {
   capability: string;
   reply: string;
   result?: unknown;
   actions?: HebbMateActionDto[];
+  hitl?: HebbMateHitlPreviewDto;
+  scope?: HebbMateScopeSummaryDto;
+  privacy?: { pseudonymizedTokenCount: number };
   llm: { configured: boolean; routedBy: string };
+}
+
+export interface HebbMateApplyResponseDto {
+  ok: boolean;
+  proposalId: string;
+  capability: HebbMateCapabilityId;
+  reply: string;
+  result?: unknown;
+  applyLogIds: string[];
+}
+
+export interface HebbMateHistoryEntryDto {
+  logId: string;
+  proposalId: string;
+  capability: HebbMateCapabilityId;
+  subjectFullName: string;
+  detail: string;
+  undoStatus: "available" | "undone" | "blocked" | "failed";
+  undoBlockedReason: string | null;
+  appliedAt: string;
 }
 
 export async function fetchHebbMateCapabilities(token: string): Promise<{
@@ -6664,7 +6700,6 @@ export async function postHebbMateChat(
   payload: {
     message: string;
     capability?: HebbMateCapabilityId;
-    scope?: { mode: "self" | "user" | "team" | "cost_center"; userId?: string; teamId?: string; costCenterId?: string };
     dryRun?: boolean;
     candidateId?: string;
     positionId?: string;
@@ -6680,4 +6715,46 @@ export async function postHebbMateChat(
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<HebbMateChatResponseDto>;
+}
+
+export async function postHebbMateApply(
+  token: string,
+  proposalId: string
+): Promise<HebbMateApplyResponseDto> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/apply"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ proposalId })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<HebbMateApplyResponseDto>;
+}
+
+export async function postHebbMateCancel(token: string, proposalId: string): Promise<{ ok: boolean }> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/cancel"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ proposalId })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: boolean }>;
+}
+
+export async function postHebbMateUndo(
+  token: string,
+  logId: string
+): Promise<{ ok: boolean; logId: string; message: string }> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/undo"), {
+    method: "POST",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ logId })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: boolean; logId: string; message: string }>;
+}
+
+export async function fetchHebbMateHistory(token: string): Promise<{ entries: HebbMateHistoryEntryDto[] }> {
+  const response = await fetch(buildApiUrl("/ai/hr/mate/history"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ entries: HebbMateHistoryEntryDto[] }>;
 }

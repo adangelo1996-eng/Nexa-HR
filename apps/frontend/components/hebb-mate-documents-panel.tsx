@@ -60,6 +60,28 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function textToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function isEditableTextMime(mime?: string): boolean {
+  if (!mime) return false;
+  const m = mime.toLowerCase();
+  return (
+    m.startsWith("text/") ||
+    m === "application/json" ||
+    m === "application/xml" ||
+    m === "application/javascript"
+  );
+}
+
+type VaultContentEditMode = "text" | "file" | "none";
+
 function triggerBrowserDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -97,6 +119,12 @@ export function HebbMateDocumentsPanel({
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [proposedTitle, setProposedTitle] = useState("");
   const [proposedKind, setProposedKind] = useState<EmployeeDocumentDto["kind"]>("other");
+  const [proposedContent, setProposedContent] = useState("");
+  const [originalContent, setOriginalContent] = useState("");
+  const [contentEditMode, setContentEditMode] = useState<VaultContentEditMode>("none");
+  const [contentLoading, setContentLoading] = useState(false);
+  const [replacementFile, setReplacementFile] = useState<File | null>(null);
+  const [replacementFileBase64, setReplacementFileBase64] = useState<string | undefined>();
   const [hitlPreviewOpen, setHitlPreviewOpen] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
   const [downloadBusyId, setDownloadBusyId] = useState<string | null>(null);
@@ -222,10 +250,57 @@ export function HebbMateDocumentsPanel({
     setSelectedDocId(doc.id);
     setProposedTitle(doc.title);
     setProposedKind(doc.kind);
+    setProposedContent("");
+    setOriginalContent("");
+    setContentEditMode("none");
+    setReplacementFile(null);
+    setReplacementFileBase64(undefined);
     setHitlPreviewOpen(false);
     setApplyError(null);
     setApplySuccess(null);
+
+    const token = getToken();
+    if (!token) return;
+    setContentLoading(true);
+    void downloadDocumentVaultFile(token, doc.id)
+      .then(async (blob) => {
+        const mime = doc.mimeType || blob.type;
+        if (isEditableTextMime(mime)) {
+          const text = await blob.text();
+          setProposedContent(text);
+          setOriginalContent(text);
+          setContentEditMode("text");
+        } else {
+          setContentEditMode("file");
+        }
+      })
+      .catch(() => {
+        setContentEditMode("none");
+      })
+      .finally(() => {
+        setContentLoading(false);
+      });
   }, []);
+
+  const handleReplacementFile = useCallback((file: File | null) => {
+    setReplacementFile(file);
+    setReplacementFileBase64(undefined);
+    if (!file) return;
+    void blobToBase64(file).then(setReplacementFileBase64).catch(() => {
+      setApplyError("Lettura del nuovo file non riuscita.");
+    });
+  }, []);
+
+  const contentChanged = useMemo(() => {
+    if (contentEditMode === "text") return proposedContent !== originalContent;
+    if (contentEditMode === "file") return Boolean(replacementFileBase64);
+    return false;
+  }, [contentEditMode, proposedContent, originalContent, replacementFileBase64]);
+
+  const metadataChanged = useMemo(() => {
+    if (!selectedDoc) return false;
+    return proposedTitle.trim() !== selectedDoc.title || proposedKind !== selectedDoc.kind;
+  }, [selectedDoc, proposedTitle, proposedKind]);
 
   const openHitlPreview = useCallback(() => {
     if (!selectedDoc) return;
@@ -233,9 +308,17 @@ export function HebbMateDocumentsPanel({
       setApplyError("Inserisci un titolo per la modifica proposta.");
       return;
     }
+    if (!metadataChanged && !contentChanged) {
+      setApplyError("Modifica titolo, tipologia o contenuto del documento prima di procedere.");
+      return;
+    }
+    if (contentEditMode === "file" && !replacementFileBase64) {
+      setApplyError("Carica un nuovo file per aggiornare il contenuto del documento.");
+      return;
+    }
     setApplyError(null);
     setHitlPreviewOpen(true);
-  }, [selectedDoc, proposedTitle]);
+  }, [selectedDoc, proposedTitle, metadataChanged, contentChanged, contentEditMode, replacementFileBase64]);
 
   const runDownload = useCallback(async (doc: EmployeeDocumentDto) => {
     const token = getToken();
@@ -263,12 +346,21 @@ export function HebbMateDocumentsPanel({
     try {
       let bodyBase64: string | undefined;
       let mimeType = selectedDoc.mimeType;
-      try {
-        const blob = await downloadDocumentVaultFile(token, selectedDoc.id);
-        bodyBase64 = await blobToBase64(blob);
-        mimeType = blob.type || mimeType;
-      } catch {
-        bodyBase64 = undefined;
+
+      if (contentEditMode === "text" && contentChanged) {
+        bodyBase64 = textToBase64(proposedContent);
+        mimeType = selectedDoc.mimeType || "text/plain";
+      } else if (contentEditMode === "file" && replacementFileBase64) {
+        bodyBase64 = replacementFileBase64;
+        mimeType = replacementFile?.type || mimeType;
+      } else {
+        try {
+          const blob = await downloadDocumentVaultFile(token, selectedDoc.id);
+          bodyBase64 = await blobToBase64(blob);
+          mimeType = blob.type || mimeType;
+        } catch {
+          bodyBase64 = undefined;
+        }
       }
       const created = await uploadDocumentToVault(token, {
         title: proposedTitle.trim(),
@@ -295,11 +387,23 @@ export function HebbMateDocumentsPanel({
     } finally {
       setApplyBusy(false);
     }
-  }, [selectedDoc, proposedTitle, proposedKind, targetUserId, loadDocuments, loadHrReturns]);
+  }, [
+    selectedDoc,
+    proposedTitle,
+    proposedKind,
+    proposedContent,
+    contentEditMode,
+    contentChanged,
+    replacementFile,
+    replacementFileBase64,
+    targetUserId,
+    loadDocuments,
+    loadHrReturns
+  ]);
 
   const partialForm = useMemo(
-    () => ({ title: proposedTitle, kind: proposedKind }),
-    [proposedTitle, proposedKind]
+    () => ({ title: proposedTitle, kind: proposedKind, body: proposedContent }),
+    [proposedTitle, proposedKind, proposedContent]
   );
 
   return (
@@ -547,6 +651,56 @@ export function HebbMateDocumentsPanel({
               </select>
             </label>
           </div>
+          {contentLoading ? (
+            <div className="mt-4 flex items-center gap-2 text-sm text-[var(--prom-muted)]">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Caricamento contenuto documento…
+            </div>
+          ) : contentEditMode === "text" ? (
+            <label className="mt-4 block text-sm">
+              <span className="mb-1 flex items-center justify-between gap-2 text-[var(--prom-muted)]">
+                Contenuto documento
+                <HebbFieldAssistButton
+                  fieldKey="body"
+                  formId={DOC_FORM_ID}
+                  partialForm={partialForm}
+                  context={{ documentKind: proposedKind }}
+                  onSuggest={(res) => setProposedContent(String(res.value ?? ""))}
+                />
+              </span>
+              <textarea
+                value={proposedContent}
+                onChange={(e) => setProposedContent(e.target.value)}
+                rows={10}
+                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 font-mono text-sm text-[var(--prom-text)]"
+                placeholder="Testo del documento…"
+              />
+            </label>
+          ) : contentEditMode === "file" ? (
+            <label className="mt-4 block text-sm">
+              <span className="mb-1 block text-[var(--prom-muted)]">Sostituisci file (PDF, immagine, ecc.)</span>
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt,.md"
+                onChange={(e) => handleReplacementFile(e.target.files?.[0] ?? null)}
+                className="w-full rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] px-3 py-2 text-sm text-[var(--prom-text)] file:mr-3 file:rounded-lg file:border-0 file:bg-[color-mix(in_srgb,var(--prom-accent)_12%,transparent)] file:px-3 file:py-1.5 file:text-xs file:font-semibold"
+              />
+              {replacementFile ? (
+                <p className="mt-1 text-[11px] text-[var(--prom-muted)]">
+                  Nuovo file: {replacementFile.name} ({Math.round(replacementFile.size / 1024)} KB)
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-[var(--prom-muted)]">
+                  Il documento attuale non è testo editabile: carica un file aggiornato per modificare il contenuto.
+                </p>
+              )}
+            </label>
+          ) : (
+            <p className="mt-4 text-[11px] text-[var(--prom-muted)]">
+              Contenuto non scaricabile: puoi aggiornare titolo e tipologia; per il file serve un documento con allegato
+              accessibile.
+            </p>
+          )}
           {hitlPreviewOpen ? (
             <div className="mt-4 grid gap-2 rounded-lg border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-3 text-sm">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Anteprima HITL</p>
@@ -556,12 +710,27 @@ export function HebbMateDocumentsPanel({
                   <p className="text-[var(--prom-text)]">
                     {selectedDoc.title} · {DOC_KIND_LABELS[selectedDoc.kind]}
                   </p>
+                  {contentEditMode === "text" ? (
+                    <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] text-[var(--prom-muted)]">
+                      {originalContent.slice(0, 280)}
+                      {originalContent.length > 280 ? "…" : ""}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <p className="text-[10px] font-medium text-[var(--prom-muted)]">Dopo (nuova scheda)</p>
                   <p className="text-[var(--prom-text)]">
                     {proposedTitle.trim()} · {DOC_KIND_LABELS[proposedKind]}
                   </p>
+                  {contentChanged ? (
+                    <p className="mt-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                      {contentEditMode === "text"
+                        ? "Contenuto testo aggiornato"
+                        : `Nuovo file: ${replacementFile?.name ?? "caricato"}`}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-[var(--prom-muted)]">Contenuto invariato</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -598,7 +767,13 @@ export function HebbMateDocumentsPanel({
         title="Confermare la modifica?"
         message={
           selectedDoc
-            ? `Pubblicare «${proposedTitle.trim()}» (${DOC_KIND_LABELS[proposedKind]}) al posto di «${selectedDoc.title}»? Verrà creata una nuova scheda in vault; il file viene ricopiato se scaricabile.`
+            ? `Pubblicare «${proposedTitle.trim()}» (${DOC_KIND_LABELS[proposedKind]}) al posto di «${selectedDoc.title}»? Verrà creata una nuova scheda in vault${
+                contentChanged
+                  ? contentEditMode === "text"
+                    ? " con il testo aggiornato"
+                    : " con il nuovo file caricato"
+                  : "; il file viene ricopiato se scaricabile"
+              }.`
             : ""
         }
         confirmLabel="Pubblica in vault"

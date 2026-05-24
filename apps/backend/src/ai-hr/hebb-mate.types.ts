@@ -42,12 +42,52 @@ export interface HebbMateChatTurn {
   content: string;
 }
 
+export interface HebbMateScopeSummary {
+  scopeKind: "self" | "employees";
+  subjectCount: number;
+  resolvedNames: string[];
+}
+
+export interface HebbMateHitlPreview {
+  proposalId: string;
+  requiresConfirm: boolean;
+  preview: unknown;
+  scope: HebbMateScopeSummary;
+}
+
 export interface HebbMateChatResponse {
   capability: HebbMateRoutedIntent;
   reply: string;
   result?: unknown;
   actions?: HebbMateAction[];
+  hitl?: HebbMateHitlPreview;
+  scope?: HebbMateScopeSummary;
+  privacy?: { pseudonymizedTokenCount: number };
   llm: { configured: boolean; routedBy: "rules" | "llm" };
+}
+
+export interface HebbMateApplyResponse {
+  ok: boolean;
+  proposalId: string;
+  capability: HebbMateCapabilityId;
+  reply: string;
+  result?: unknown;
+  applyLogIds: string[];
+}
+
+export interface HebbMateApplyLogDto {
+  logId: string;
+  proposalId: string;
+  capability: HebbMateCapabilityId;
+  subjectFullName: string;
+  detail: string;
+  undoStatus: "available" | "undone" | "blocked" | "failed";
+  undoBlockedReason: string | null;
+  appliedAt: string;
+}
+
+export interface HebbMateHistoryResponse {
+  entries: HebbMateApplyLogDto[];
 }
 
 export type HebbMateContractKind = "employment" | "remote_working";

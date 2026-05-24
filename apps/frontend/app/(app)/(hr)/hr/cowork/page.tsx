@@ -898,7 +898,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
       subtitle={
         <>
           Workspace HR completo: agente Mate con 7 capability (contratti, documenti, CV, email, report, competenze,
-          automazioni), batch Cowork HITL e vault documenti — con scope persona, team o centro di costo.
+          automazioni), batch Cowork HITL e vault documenti — perimetro definito via chat con preview HITL.
         </>
       }
       headerTrailing={<NexaPageHelpButton pageKey="hr-cowork" />}
@@ -928,13 +928,7 @@ export default function NexaCoworkPage(): React.JSX.Element {
         ))}
       </HebbAiGlassPanel>
 
-      {activeTab === "mate" ? (
-        <HebbMateWorkspace
-          costCenterId={costCenterId}
-          teamId={teamId}
-          onOpenCoworkTab={() => setActiveTab("batch")}
-        />
-      ) : null}
+      {activeTab === "mate" ? <HebbMateWorkspace onOpenCoworkTab={() => setActiveTab("batch")} /> : null}
 
       {activeTab === "vault" ? <HebbMateDocumentsPanel costCenterId={costCenterId} teamId={teamId} /> : null}
 

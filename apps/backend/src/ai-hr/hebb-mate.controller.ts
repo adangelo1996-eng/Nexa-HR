@@ -34,11 +34,6 @@ class MateChatDto {
   capability?: HebbMateCapabilityId;
 
   @IsOptional()
-  @ValidateNested()
-  @Type(() => AssistantScopeBodyDto)
-  scope?: AssistantScopeBodyDto;
-
-  @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
 
@@ -61,6 +56,16 @@ class MateChatDto {
   @IsOptional()
   @IsIn(["certificate_attendance", "certificate_training", "smartworking_letter", "employment_letter", "generic"])
   documentKind?: HebbMateDocumentKind;
+}
+
+class MateApplyDto {
+  @IsString()
+  proposalId!: string;
+}
+
+class MateUndoDto {
+  @IsString()
+  logId!: string;
 }
 
 class MateContractDto {
@@ -183,16 +188,49 @@ export class HebbMateController {
     return this.mate.chat(auth, body);
   }
 
+  @Post("apply")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  postApply(@CurrentAuth() auth: AuthContext, @Body() body: MateApplyDto) {
+    return this.mate.apply(auth, body.proposalId);
+  }
+
+  @Post("cancel")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  postCancel(@CurrentAuth() auth: AuthContext, @Body() body: MateApplyDto) {
+    return this.mate.cancelProposal(auth, body.proposalId);
+  }
+
+  @Post("undo")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  postUndo(@CurrentAuth() auth: AuthContext, @Body() body: MateUndoDto) {
+    return this.mate.undo(auth, body.logId);
+  }
+
+  @Get("history")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  getHistory(@CurrentAuth() auth: AuthContext) {
+    return this.mate.listHistory(auth);
+  }
+
   @Post("contracts/generate")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postGenerateContracts(@CurrentAuth() auth: AuthContext, @Body() body: MateContractDto) {
-    return this.mate.generateContracts(auth, body);
+    return this.mate.generateContracts(auth, {
+      scope: body.scope,
+      contractKind: body.contractKind,
+      dryRun: body.dryRun,
+      requestSummary: body.requestSummary
+    });
   }
 
   @Post("documents/generate")
   @RequireNexaPermissions("nexa.documents:write")
   postGenerateDocuments(@CurrentAuth() auth: AuthContext, @Body() body: MateDocumentDto) {
-    return this.mate.generateDocuments(auth, body);
+    return this.mate.generateDocuments(auth, {
+      scope: body.scope,
+      documentKind: body.documentKind,
+      titleHint: body.titleHint
+    });
   }
 
   @Post("cv/screen")
@@ -215,18 +253,26 @@ export class HebbMateController {
   @Post("reports/generate")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postGenerateReport(@CurrentAuth() auth: AuthContext, @Body() body: MateReportDto) {
-    return this.mate.generateReport(auth, body);
+    return this.mate.generateReport(auth, { scope: body.scope, message: body.message });
   }
 
   @Post("skills/suggest")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postSuggestSkills(@CurrentAuth() auth: AuthContext, @Body() body: MateSkillsDto) {
-    return this.mate.suggestSkills(auth, body);
+    return this.mate.suggestSkills(auth, {
+      scope: body.scope,
+      roleId: body.roleId,
+      message: body.message
+    });
   }
 
   @Post("automations/propose")
   @RequireNexaPermissions("nexa.lifecycle:read")
   postProposeAutomations(@CurrentAuth() auth: AuthContext, @Body() body: MateAutomationDto) {
-    return this.mate.proposeAutomations(auth, body);
+    return this.mate.proposeAutomations(auth, {
+      scope: body.scope,
+      message: body.message,
+      workArea: body.workArea
+    });
   }
 }
