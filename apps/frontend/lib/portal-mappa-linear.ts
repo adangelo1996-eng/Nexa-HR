@@ -71,7 +71,7 @@ const HR_LINEAR_STEPS: Array<{
     id: "admin",
     title: "Amministrazione",
     subtitle: "Payroll, policy, export e console utenti.",
-    hrefs: ["/payroll-hebb", "/corporate-policies", "/admin", "/expenses/org"]
+    hrefs: ["/payroll-hebb", "/corporate-policies", "/admin/contratti" as Route, "/admin", "/expenses/org"]
   },
   {
     id: "hebb-ai-hr",

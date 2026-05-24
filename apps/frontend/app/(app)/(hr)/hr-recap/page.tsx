@@ -361,11 +361,27 @@ export default function HrRecapPage(): React.JSX.Element {
                     </div>
                     <div className="text-xs text-synapse-muted dark:text-[#b4c9dc]">{u.email}</div>
                     {peopleCategory === "hr_onboarding" ? (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                        <Link
+                          href={`/hr/onboarding/wizard/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
+                          className="inline-block text-xs font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+                        >
+                          Wizard onboarding →
+                        </Link>
+                        <Link
+                          href={`/hr/onboarding/buddy/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
+                          className="inline-block text-xs font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
+                        >
+                          Buddy →
+                        </Link>
+                      </div>
+                    ) : null}
+                    {peopleCategory === "active" ? (
                       <Link
-                        href={`/hr/onboarding/wizard/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
+                        href={`/hr/onboarding/buddy/${encodeURIComponent(u.id)}?name=${encodeURIComponent(u.fullName)}` as Route}
                         className="mt-2 inline-block text-xs font-medium text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200"
                       >
-                        Apri wizard onboarding →
+                        Assegna / modifica buddy →
                       </Link>
                     ) : null}
                     {peopleCategory === "offboarding" ? (

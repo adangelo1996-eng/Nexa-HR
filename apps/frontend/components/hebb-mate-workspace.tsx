@@ -27,6 +27,7 @@ import {
   type HebbMateAutomationDto,
   type HebbMateCapabilityCardDto,
   type HebbMateChatResponseDto,
+  type HebbMateCapabilityId,
   type HebbMateHistoryEntryDto
 } from "@/lib/api";
 import { getSessionUser, getToken } from "@/lib/auth-session";
@@ -46,6 +47,20 @@ const FREQUENCY_LABELS: Record<string, string> = {
   quarterly: "Trimestrale",
   yearly: "Annuale",
   on_demand: "Su richiesta"
+};
+
+const WORK_AREA_LABELS: Record<string, string> = {
+  attendance: "Presenze / timbrature",
+  lifecycle: "Lifecycle",
+  training: "Formazione",
+  time_off: "Assenze e ferie",
+  documents: "Documenti",
+  onboarding: "Onboarding",
+  payroll: "Payroll",
+  analytics: "Analytics HR",
+  smartworking_agreements: "Smart working",
+  generic: "Generale",
+  all: "Tutta l'app"
 };
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -117,7 +132,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
   }, []);
 
   const send = useCallback(
-    async (messageOverride?: string) => {
+    async (messageOverride?: string, capabilityOverride?: HebbMateCapabilityId) => {
       const token = getToken();
       const msg = (messageOverride ?? input).trim();
       if (!token || !msg || busy) return;
@@ -128,7 +143,10 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
       setError(null);
       setPreview(null);
       try {
-        const response = await postHebbMateChat(token, { message: msg });
+        const response = await postHebbMateChat(token, {
+          message: msg,
+          capability: capabilityOverride
+        });
         setPreview(response);
         setThread((prev) => [...prev, { role: "assistant", text: response.reply, response }]);
         if (response.capability === "cowork_batch" && onOpenCoworkTab) {
@@ -145,16 +163,22 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     [busy, input, onOpenCoworkTab]
   );
 
-  const onCardClick = useCallback((card: HebbMateCapabilityCardDto) => {
-    const starter = card.examplePrompts[0];
-    if (starter) {
-      setInput(starter);
-    }
-  }, []);
+  const onCardClick = useCallback(
+    (card: HebbMateCapabilityCardDto) => {
+      const starter = card.examplePrompts[0];
+      if (starter) {
+        void send(starter, card.id);
+      }
+    },
+    [send]
+  );
 
-  const onStarterClick = useCallback((prompt: string) => {
-    setInput(prompt);
-  }, []);
+  const onStarterClick = useCallback(
+    (prompt: string) => {
+      void send(prompt);
+    },
+    [send]
+  );
 
   const confirmApply = useCallback(async () => {
     const token = getToken();
@@ -229,7 +253,12 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
     </Button>
   );
 
-  const allStarters = capabilities.flatMap((c) => c.examplePrompts.slice(0, 1));
+  const automationStarters =
+    capabilities.find((c) => c.id === "automation_proposals")?.examplePrompts ?? [];
+  const otherStarters = capabilities
+    .filter((c) => c.id !== "automation_proposals")
+    .flatMap((c) => c.examplePrompts.slice(0, 1));
+  const allStarters = [...automationStarters.slice(0, 4), ...otherStarters];
 
   return (
     <div className="flex flex-col gap-6">
@@ -313,7 +342,9 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
 
         {allStarters.length > 0 ? (
           <div className="mt-4 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">Esempi rapidi</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--prom-muted)]">
+              Esempi rapidi{automationStarters.length > 0 ? " · automazioni HR in evidenza" : ""}
+            </p>
             <div className="flex flex-wrap gap-2">
               {allStarters.map((ex) => (
                 <button
@@ -448,7 +479,7 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
                     {auto.scheduleHint ? ` · ${auto.scheduleHint}` : ""}
                   </span>
                   <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
-                    Area: {auto.workArea === "all" ? "Tutta l'app" : auto.workArea}
+                    Area: {WORK_AREA_LABELS[auto.workArea] ?? auto.workArea}
                   </span>
                   <span className="rounded-full border border-[var(--prom-line)] px-2.5 py-1">
                     {SCOPE_LABELS[auto.scopeKind] ?? auto.scopeKind} ({auto.subjectCount})

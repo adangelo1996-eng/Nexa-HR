@@ -11,11 +11,21 @@ function PersonList(props: {
   title: string;
   people: Array<{ id: string; fullName: string }>;
   empty: string;
+  highlight?: boolean;
+  subtitle?: string;
 }): React.JSX.Element {
-  const { title, people, empty } = props;
+  const { title, people, empty, highlight, subtitle } = props;
   return (
-    <section className="rounded-2xl border border-[var(--card-border)] p-4" style={{ background: "var(--card-bg)" }}>
+    <section
+      className={`rounded-2xl border p-4 ${
+        highlight
+          ? "border-[#002D72]/40 bg-[color-mix(in_srgb,#002D72_8%,var(--card-bg))] dark:border-sky-400/30"
+          : "border-[var(--card-border)]"
+      }`}
+      style={{ background: highlight ? undefined : "var(--card-bg)" }}
+    >
       <h2 className="text-sm font-semibold text-[var(--prom-text)]">{title}</h2>
+      {subtitle ? <p className="mt-1 text-xs text-[var(--prom-muted)]">{subtitle}</p> : null}
       {people.length === 0 ? (
         <p className="mt-2 text-sm text-[var(--prom-muted)]">{empty}</p>
       ) : (
@@ -93,6 +103,19 @@ export default function IlMioTeamPage(): React.JSX.Element {
             people={ctx.manager ? [ctx.manager] : []}
             empty="Nessun manager assegnato in anagrafica."
           />
+          {ctx.onboardingBuddy ? (
+            <PersonList
+              title="Buddy onboarding"
+              highlight
+              subtitle={
+                ctx.onboardingBuddy.aiRationale
+                  ? ctx.onboardingBuddy.aiRationale
+                  : ctx.onboardingBuddy.matchReason ?? "Referente per il tuo ingresso in azienda."
+              }
+              people={[ctx.onboardingBuddy]}
+              empty=""
+            />
+          ) : null}
           <PersonList title="Colleghi (stesso manager)" people={ctx.peers} empty="Nessun collega nel perimetro." />
           <PersonList
             title="Collaboratori diretti"

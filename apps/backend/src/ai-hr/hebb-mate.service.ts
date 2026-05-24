@@ -29,6 +29,10 @@ import { AiHrService, type AssistantScopePayload } from "./ai-hr.service";
 import { AiOpenAiRefinementService } from "./ai-openai-refinement.service";
 import { HebbMateApplyLogStore } from "./hebb-mate-apply-log.store";
 import { HebbMateAutomationsStore } from "./hebb-mate-automations.store";
+import {
+  getAutomationQuickExamplePrompts,
+  selectAutomationProposalsFromCatalog
+} from "./hebb-mate-automation-catalog";
 import { HEBB_MATE_CAPABILITY_CARDS } from "./hebb-mate-capabilities";
 import { HebbMateProposalsStore } from "./hebb-mate-proposals.store";
 import {
@@ -61,6 +65,17 @@ import type {
 } from "./hebb-mate.types";
 
 const SCHEMA_MATE_AUTOMATION = "ai_mate_automation_v1";
+const SCHEMA_MATE_ORCHESTRATOR = "ai_mate_orchestrator_v1";
+
+const MATE_CAPABILITY_IDS = new Set<HebbMateCapabilityId>([
+  "contract_generation",
+  "document_generation",
+  "cv_screening",
+  "document_email",
+  "reports",
+  "skill_suggestions",
+  "automation_proposals"
+]);
 
 const HITL_CONFIRM_CAPABILITIES = new Set<HebbMateCapabilityId>([
   "contract_generation",
@@ -119,21 +134,11 @@ export class HebbMateService {
     const scopeSummary = this.scopeSummary(resolvedScope);
     const pseudonymizedMessage = privacy.pseudonymizedMessage;
 
-    const intent = routeHebbMateIntent(pseudonymizedMessage, body.capability);
-    const llm = { configured: this.openAi.isActive(), routedBy: "rules" as const };
+    const intent = routeHebbMateIntent(body.message, body.capability, pseudonymizedMessage);
+    let llm: HebbMateChatResponse["llm"] = { configured: this.openAi.isActive(), routedBy: "rules" };
 
     if (intent === "general") {
-      if (isHebbMateSuggestionIntent(body.message)) {
-        return this.buildSuggestionsReply(scopeSummary, privacy.tokenCount, llm, resolvedScope);
-      }
-      return {
-        capability: "general",
-        reply:
-          "Sono Hebb AI Mate. Usa i suggerimenti o descrivi l'operazione HR citando i nominativi nel testo. Per batch lifecycle usa la scheda Cowork.",
-        scope: scopeSummary,
-        privacy: { pseudonymizedTokenCount: privacy.tokenCount },
-        llm
-      };
+      return this.handleGeneralChat(auth, body, companyId, resolvedScope, scopeSummary, privacy, llm);
     }
 
     if (intent === "cowork_batch") {
@@ -273,6 +278,190 @@ export class HebbMateService {
     };
   }
 
+  private async handleGeneralChat(
+    auth: AuthContext,
+    body: {
+      message: string;
+      capability?: HebbMateCapabilityId;
+      candidateId?: string;
+      positionId?: string;
+      documentId?: string;
+      contractKind?: HebbMateContractKind;
+      documentKind?: HebbMateDocumentKind;
+    },
+    companyId: string,
+    resolvedScope: HebbMateResolvedScope,
+    scopeSummary: HebbMateScopeSummary,
+    privacy: { pseudonymizedMessage: string; tokenCount: number; subjectContext?: unknown },
+    llm: HebbMateChatResponse["llm"]
+  ): Promise<HebbMateChatResponse> {
+    if (isHebbMateSuggestionIntent(body.message)) {
+      return this.buildSuggestionsReply(scopeSummary, privacy.tokenCount, llm, resolvedScope);
+    }
+
+    if (this.openAi.isActive()) {
+      const orchestrated = await this.orchestrateGeneralIntent(auth, body.message, privacy);
+      if (orchestrated.capability && MATE_CAPABILITY_IDS.has(orchestrated.capability)) {
+        llm = { configured: true, routedBy: "llm" };
+        const ctx = {
+          message: body.message,
+          pseudonymizedMessage: privacy.pseudonymizedMessage,
+          subjectUserIds: resolvedScope.subjectUserIds,
+          scopeKind: resolvedScope.scopeKind,
+          subjectContext: privacy.subjectContext,
+          dryRun: true,
+          candidateId: body.candidateId,
+          positionId: body.positionId,
+          documentId: body.documentId,
+          contractKind: body.contractKind ?? extractContractKind(body.message),
+          documentKind: body.documentKind ?? extractDocumentKind(body.message)
+        };
+        const result = await this.executeCapability(auth, orchestrated.capability, ctx, true);
+        const requiresConfirm = HITL_CONFIRM_CAPABILITIES.has(orchestrated.capability);
+        const proposal = this.proposals.save({
+          companyId,
+          actorUserId: auth.userId,
+          capability: orchestrated.capability,
+          message: body.message,
+          subjectUserIds: resolvedScope.subjectUserIds,
+          resolvedNames: resolvedScope.resolvedNames,
+          params: {
+            contractKind: ctx.contractKind,
+            documentKind: ctx.documentKind,
+            candidateId: ctx.candidateId,
+            positionId: ctx.positionId,
+            documentId: ctx.documentId,
+            scopeKind: resolvedScope.scopeKind
+          },
+          preview: result.result ?? result,
+          requiresConfirm
+        });
+        return {
+          ...result,
+          scope: scopeSummary,
+          privacy: { pseudonymizedTokenCount: privacy.tokenCount },
+          hitl: {
+            proposalId: proposal.proposalId,
+            requiresConfirm,
+            preview: result.result ?? result,
+            scope: scopeSummary
+          },
+          llm
+        };
+      }
+      if (orchestrated.reply?.trim()) {
+        return {
+          capability: "general",
+          reply: orchestrated.reply.trim(),
+          scope: scopeSummary,
+          privacy: { pseudonymizedTokenCount: privacy.tokenCount },
+          llm: { configured: true, routedBy: "llm" },
+          result: orchestrated.actions?.length ? { kind: "orchestrated", actions: orchestrated.actions } : undefined,
+          actions: orchestrated.actions
+        };
+      }
+    }
+
+    try {
+      const assistant = await this.aiHr.assistant(auth, {
+        message: body.message,
+        scope:
+          resolvedScope.scopeKind === "self"
+            ? { mode: "self" }
+            : {
+                mode: "user",
+                userId: resolvedScope.subjectUserIds[0] ?? auth.userId
+              }
+      });
+      return {
+        capability: "general",
+        reply: assistant.reply,
+        scope: scopeSummary,
+        privacy: { pseudonymizedTokenCount: privacy.tokenCount },
+        llm: { configured: assistant.llm.configured, routedBy: assistant.llm.refineApplied ? "llm" : "rules" },
+        result: { kind: "assistant", sources: assistant.sources }
+      };
+    } catch (err) {
+      this.log.warn(`Mate assistant fallback: ${err instanceof Error ? err.message : err}`);
+    }
+
+    return {
+      capability: "general",
+      reply:
+        "Non ho collegato la richiesta a un'operazione specifica. Prova un esempio rapido (automazioni, report, contratti) o cita i nominativi nel messaggio; per batch di massa usa **Cowork**.",
+      scope: scopeSummary,
+      privacy: { pseudonymizedTokenCount: privacy.tokenCount },
+      llm,
+      actions: getAutomationQuickExamplePrompts()
+        .slice(0, 3)
+        .map((prompt) => ({
+          type: "open_cowork" as const,
+          label: prompt.slice(0, 48),
+          payload: { examplePrompt: prompt }
+        }))
+    };
+  }
+
+  private async orchestrateGeneralIntent(
+    auth: AuthContext,
+    message: string,
+    privacy: { pseudonymizedMessage: string; subjectContext?: unknown }
+  ): Promise<{
+    capability?: HebbMateCapabilityId;
+    reply?: string;
+    actions?: HebbMateAction[];
+  }> {
+    const companyId = auth.tenantId ?? "comp-1";
+    const { sessionId } = await this.gateway.beginSession(companyId, auth.userId);
+    try {
+      const payload = {
+        message: privacy.pseudonymizedMessage,
+        subjectContext: privacy.subjectContext,
+        capabilities: HEBB_MATE_CAPABILITY_CARDS.map((c) => ({
+          id: c.id,
+          title: c.title,
+          examples: c.examplePrompts.slice(0, 2)
+        })),
+        automationExamples: getAutomationQuickExamplePrompts().slice(0, 6),
+        task: "Classify HR Mate intent or answer helpfully with actionable next steps"
+      };
+      const pseudo = await this.gateway.toModelPayload(sessionId, payload, SCHEMA_MATE_ORCHESTRATOR);
+      const refined = await this.openAi.refinePseudonymizedJson(pseudo.pseudonymized, SCHEMA_MATE_ORCHESTRATOR);
+      const raw = refined.ok ? refined.data : pseudo.pseudonymized;
+      const envelope =
+        raw && typeof raw === "object" && "envelope" in raw
+          ? (raw as { envelope?: Record<string, unknown> }).envelope
+          : (raw as Record<string, unknown>);
+      const env = (envelope ?? {}) as {
+        capability?: string;
+        confidence?: number;
+        reply?: string;
+        suggestedPrompts?: string[];
+      };
+      const confidence = Number(env.confidence ?? 0);
+      const capability =
+        typeof env.capability === "string" && MATE_CAPABILITY_IDS.has(env.capability as HebbMateCapabilityId)
+          ? (env.capability as HebbMateCapabilityId)
+          : undefined;
+      const actions =
+        Array.isArray(env.suggestedPrompts) && env.suggestedPrompts.length
+          ? env.suggestedPrompts.slice(0, 4).map((label) => ({
+              type: "open_cowork" as const,
+              label: label.slice(0, 56),
+              payload: { examplePrompt: label }
+            }))
+          : undefined;
+      if (capability && confidence >= 0.55) {
+        return { capability, reply: env.reply, actions };
+      }
+      return { reply: env.reply, actions };
+    } catch {
+      return {};
+    } finally {
+      await this.gateway.endSession(sessionId);
+    }
+  }
+
   private buildSuggestionsReply(
     scope: HebbMateScopeSummary,
     tokenCount: number,
@@ -293,11 +482,8 @@ export class HebbMateService {
       return `- **${card.title}** — ${card.description}${example ? `\n  Esempio: «${example}»` : ""}`;
     }).join("\n");
 
-    const automationIdeas = [
-      "Timbrature giornaliere in report automatico",
-      "Promemoria mensile documenti in scadenza",
-      "Report settimanale ferie del team"
-    ]
+    const automationIdeas = getAutomationQuickExamplePrompts()
+      .slice(0, 5)
       .map((idea) => `- ${idea}`)
       .join("\n");
 
@@ -401,7 +587,7 @@ export class HebbMateService {
       (proposal.params.scopeKind as HebbMateResolvedScope["scopeKind"] | undefined) ?? "company";
 
     const created = await this.automations.createMany(
-      proposals.map((p) => ({
+      proposals.map((p, index) => ({
         companyId,
         title: p.title,
         description: p.description,
@@ -411,12 +597,12 @@ export class HebbMateService {
         cronExpression: null,
         actions:
           p.actions ??
-          [{ type: "cowork_tool", label: p.title, toolId: p.toolId }],
+          [{ type: "cowork_tool", label: p.title, toolId: p.toolId, payload: { catalogId: p.catalogId } }],
         toolId: p.toolId ?? null,
         scopeKind,
         subjectUserIds: proposal.subjectUserIds,
         createdByUserId: auth.userId,
-        proposalId: proposal.proposalId
+        proposalId: proposals.length === 1 && index === 0 ? proposal.proposalId : null
       }))
     );
 
@@ -832,12 +1018,23 @@ export class HebbMateService {
         const proposals = await this.proposeAutomations(auth, {
           subjectUserIds: ctx.subjectUserIds,
           scopeKind: ctx.scopeKind,
-          message: ctx.pseudonymizedMessage,
+          message: ctx.message,
           subjectContext: ctx.subjectContext
         });
+        const areaLabel =
+          proposals.length > 0
+            ? [...new Set(proposals.map((p) => p.workArea))].slice(0, 3).join(", ")
+            : "HR";
+        const titlePreview = proposals
+          .slice(0, 5)
+          .map((p) => `• ${p.title}`)
+          .join("\n");
         return {
           capability,
-          reply: `${proposals.length} proposte di automazione per l'area richiesta.`,
+          reply:
+            proposals.length > 0
+              ? `${proposals.length} automazioni HR concrete (${areaLabel}). Anteprima:\n${titlePreview}\n\nConferma in preview HITL per attivarle sul perimetro selezionato.`
+              : "Nessuna automazione corrispondente al catalogo per questa richiesta.",
           result: { proposals },
           actions: proposals.slice(0, 3).map((p) => ({
             type: "open_cowork" as const,
@@ -1362,10 +1559,50 @@ export class HebbMateService {
     }
   ): Promise<HebbMateAutomationProposal[]> {
     await this.assertMateAccess(auth);
-    const allowedTools = COWORK_TOOL_LIST.filter((t) => t.executable);
-    const areaHint = (input.workArea ?? input.message ?? "").toLowerCase();
     const companyWide = input.scopeKind === "company";
+    const impact = companyWide
+      ? "Automazione per tutti i dipendenti dell'azienda"
+      : "Riduce lavoro manuale HR nel perimetro selezionato";
 
+    const fromCatalog = selectAutomationProposalsFromCatalog({
+      message: input.message,
+      workArea: input.workArea,
+      limit: 8
+    });
+
+    let proposals: HebbMateAutomationProposal[] = fromCatalog.map((p) => ({
+      ...p,
+      estimatedImpact: p.estimatedImpact || impact,
+      workArea: companyWide && p.workArea !== "all" ? p.workArea : p.workArea
+    }));
+
+    if (!proposals.length) {
+      proposals = this.fallbackCoworkToolAutomations(input.workArea ?? input.message ?? "", impact, companyWide);
+    }
+
+    if (this.openAi.isActive() && input.message?.trim() && proposals.length) {
+      const enriched = await this.llmAutomationEnrich(auth, input.message, proposals, input.subjectContext);
+      if (enriched.length) {
+        return enriched.map((row, i) => ({
+          ...proposals[i],
+          ...row,
+          catalogId: row.catalogId ?? proposals[i]?.catalogId,
+          triggerType: row.triggerType ?? proposals[i]?.triggerType,
+          actions: row.actions?.length ? row.actions : proposals[i]?.actions
+        }));
+      }
+    }
+
+    return proposals;
+  }
+
+  private fallbackCoworkToolAutomations(
+    areaHintRaw: string,
+    impact: string,
+    companyWide: boolean
+  ): HebbMateAutomationProposal[] {
+    const areaHint = areaHintRaw.toLowerCase();
+    const allowedTools = COWORK_TOOL_LIST.filter((t) => t.executable);
     const filtered = allowedTools.filter((t) => {
       if (!areaHint.trim()) return true;
       return (
@@ -1375,31 +1612,20 @@ export class HebbMateService {
         /smart|ferie|document|formaz|payroll|lifecycle|recruit|calendar|timbr|presenz|attendanc/i.test(areaHint)
       );
     });
-
-    const base = (filtered.length ? filtered : allowedTools).slice(0, 8);
-    const impact = companyWide
-      ? "Automazione per tutti i dipendenti dell'azienda"
-      : "Riduce lavoro manuale HR nel perimetro selezionato";
-
-    const proposals: HebbMateAutomationProposal[] = base.map((tool) => ({
+    const base = (filtered.length ? filtered : allowedTools).slice(0, 6);
+    return base.map((tool) => ({
       id: `auto-${tool.id}`,
       title: tool.labelIt,
       description: tool.hintIt,
       workArea: companyWide ? "all" : tool.areaId,
       frequency: this.inferFrequency(tool.id),
       scheduleHint: this.scheduleHintFor(tool.id),
+      triggerType: "schedule" as const,
       toolId: tool.id,
       permissions: tool.permissions ?? [],
       estimatedImpact: impact,
       actions: [{ type: "cowork_tool", label: tool.labelIt, toolId: tool.id }]
     }));
-
-    if (this.openAi.isActive() && input.message?.trim()) {
-      const enriched = await this.llmAutomationEnrich(auth, input.message, proposals, input.subjectContext);
-      if (enriched.length) return enriched;
-    }
-
-    return proposals;
   }
 
   private async llmSkillSuggestions(

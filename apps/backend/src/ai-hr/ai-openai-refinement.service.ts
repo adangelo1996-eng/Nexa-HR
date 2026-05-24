@@ -63,7 +63,11 @@ function tokensModelMustPreserve(schemaVersion: string, pseudonymizedInput: unkn
     // Il modello produce testo analitico strutturato: vincoli token troppo stretti causano fallback continui.
     return new Set();
   }
-  if (schemaVersion === "ai_payslip_explain_v1" || schemaVersion === "ai_field_suggest_v1") {
+  if (
+    schemaVersion === "ai_payslip_explain_v1" ||
+    schemaVersion === "ai_field_suggest_v1" ||
+    schemaVersion === "ai_onboarding_buddy_match_v1"
+  ) {
     return new Set();
   }
   return collectTokensFromJson(pseudonymizedInput);
@@ -266,6 +270,33 @@ function systemPromptForSchema(schemaVersion: string): string {
         "plainSummary: 3-6 frasi semplici per un dipendente. residenceDomicileNote: lega residenza/domicilio alle addizionali solo se plausibile dai dati, altrimenti 'verificare in CUD'. " +
         "addizionaliNote: se ci sono o meno voci riconducibili ad addizionali. lineHighlights: 3-8 voci su righe interessanti o trattenute; " +
         "non inventare codici o importi non presenti in facts.lines."
+      );
+    case "ai_onboarding_buddy_match_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"rankings\":[{\"candidateRef\":\"stringa (es. c0)\",\"aiScore\":number,\"aiRationale\":\"stringa\"}]}}. " +
+        " L'ingresso ha envelope.facts.newHire (età, team, anno assunzione) e envelope.facts.candidates (candidateRef, ruleScore, ruleReason, età, stesso team/CDC). " +
+        " Per OGNI candidateRef in ingresso produci una voce in rankings: aiScore 0-100 (compatibilità buddy onboarding), aiRationale in italiano (2-3 frasi, tono HR, niente nomi di persone). " +
+        " Non inventare candidateRef; non omettere candidati presenti in facts.candidates."
+      );
+    case "ai_mate_orchestrator_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"capability\":\"contract_generation|document_generation|cv_screening|document_email|reports|skill_suggestions|automation_proposals|null\"," +
+        "\"confidence\":number,\"reply\":\"stringa\",\"suggestedPrompts\":[\"stringa\"]}}. " +
+        " Sei Hebb AI Mate: classifica la richiesta HR verso una capability esistente (envelope.capabilities) oppure rispondi in italiano con passi concreti. " +
+        " Automazioni/scheduling/task ricorrenti → automation_proposals (confidence ≥ 0.75). Report → reports; contratti → contract_generation; documenti → document_generation; CV → cv_screening; email documento → document_email; competenze → skill_suggestions. " +
+        " Se ambiguo (confidence < 0.55): capability null, reply utile e suggestedPrompts (max 4) da capabilities/automationExamples. Non eseguire azioni; reply max 8 righe."
+      );
+    case "ai_mate_automation_v1":
+      return (
+        base +
+        " Schema: {\"envelope\":{\"proposals\":[" +
+        "{\"id\":\"stringa\",\"catalogId\":\"stringa opzionale\",\"title\":\"stringa\",\"description\":\"stringa\",\"workArea\":\"stringa\"," +
+        "\"frequency\":\"daily|weekly|monthly|quarterly|yearly|on_demand\",\"scheduleHint\":\"stringa\",\"toolId\":\"stringa opzionale\"," +
+        "\"permissions\":[\"stringa\"],\"estimatedImpact\":\"stringa\",\"actions\":[{\"type\":\"stringa\",\"label\":\"stringa\",\"toolId\":\"stringa opzionale\"}]}" +
+        "]}}. " +
+        " Riordina e affina proposte automazione HR in italiano; mantieni toolId da envelope.seedTools; adatta frequency al messaggio; max 8 proposals."
       );
     default:
       return base + " Mantieni la stessa struttura JSON del messaggio utente (solo chiavi già presenti).";

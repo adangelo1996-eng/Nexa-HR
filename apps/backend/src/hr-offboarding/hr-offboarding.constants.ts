@@ -44,3 +44,14 @@ export const HR_OFFBOARDING_WIZARD_STEPS = [
 export type HrOffboardingWizardStepKey = (typeof HR_OFFBOARDING_WIZARD_STEPS)[number]["key"];
 
 export const HR_OFFBOARDING_WIZARD_STEP_COUNT = HR_OFFBOARDING_WIZARD_STEPS.length;
+
+/** Checklist lato dipendente (percorso offboarding). */
+export const EMPLOYEE_OFFBOARDING_CHECKLIST = [
+  { id: "emp-workflow", label: "Chiudi richieste workflow aperte" },
+  { id: "emp-expenses", label: "Invia note spese in sospeso" },
+  { id: "emp-payslips", label: "Scarica ultimi cedolini" },
+  { id: "emp-settings", label: "Aggiorna recapiti per comunicazioni finali" },
+  { id: "emp-team", label: "Allinea passaggio con il manager" },
+  { id: "emp-assets", label: "Restituisci asset aziendali (PC, badge, telefono)" },
+  { id: "emp-handover", label: "Completa passaggio di consegna documentazione" }
+] as const;

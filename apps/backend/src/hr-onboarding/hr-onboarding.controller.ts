@@ -71,6 +71,19 @@ class ConfirmBuddyDto {
   @IsString()
   @MaxLength(500)
   matchReason?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  aiRationale?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  keyContact?: boolean;
+
+  @IsOptional()
+  @IsString()
+  expiresAt?: string | null;
 }
 
 @Controller("hr-onboarding")
@@ -137,8 +150,54 @@ export class HrOnboardingController {
       buddyUserId: dto.buddyUserId,
       actorUserId: auth.userId,
       matchScore: dto.matchScore,
-      matchReason: dto.matchReason
+      matchReason: dto.matchReason,
+      aiRationale: dto.aiRationale,
+      keyContact: dto.keyContact,
+      expiresAt: dto.expiresAt
     });
+  }
+
+  /** Buddy fuori dal wizard: suggerimenti AI + regole. */
+  @Get(":userId/buddy-suggestions")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async buddySuggestionsDirect(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string
+  ): Promise<unknown> {
+    return this.buddy.suggestBuddies(userId, auth.userId);
+  }
+
+  @Get(":userId/buddy-assignment")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async buddyAssignmentDirect(@Param("userId") userId: string): Promise<unknown> {
+    return this.buddy.getAssignment(userId);
+  }
+
+  @Post(":userId/buddy/confirm")
+  @RequireNexaPermissions("nexa.lifecycle:write")
+  async confirmBuddyDirect(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string,
+    @Body() dto: ConfirmBuddyDto
+  ): Promise<unknown> {
+    return this.buddy.confirmBuddy({
+      newHireUserId: userId,
+      buddyUserId: dto.buddyUserId,
+      actorUserId: auth.userId,
+      matchScore: dto.matchScore,
+      matchReason: dto.matchReason,
+      aiRationale: dto.aiRationale,
+      keyContact: dto.keyContact,
+      expiresAt: dto.expiresAt
+    });
+  }
+
+  /** Buddy attivo per il dipendente corrente (percorso / il mio team). */
+  @Get("my/buddy")
+  @RequireRole("user")
+  async myBuddy(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    const buddy = await this.buddy.getActiveBuddyForEmployee(auth.userId);
+    return { buddy };
   }
 
   @Post("wizard/:userId/complete")

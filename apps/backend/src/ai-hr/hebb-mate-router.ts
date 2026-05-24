@@ -1,5 +1,19 @@
 import type { HebbMateCapabilityId, HebbMateRoutedIntent } from "./hebb-mate.types";
 
+/** Italian + English automation/scheduling cues (not `\bautomat` — misses «automazioni»). */
+export const MATE_AUTOMATION_INTENT_PATTERNS: RegExp[] = [
+  /\bautomaz/i,
+  /\bautomat\b/i,
+  /\bschedul/i,
+  /\bpianifica/i,
+  /\bricorrent/i,
+  /\bfrequenz/i,
+  /\bcron\b/i,
+  /\btimbratur/i,
+  /\btask\s+ricorrent/i,
+  /\b(mensil|settimanal|giornalier|trimestral|annual)\w*\b/i
+];
+
 const ROUTE_RULES: Array<{ intent: HebbMateRoutedIntent; patterns: RegExp[] }> = [
   {
     intent: "contract_generation",
@@ -41,15 +55,7 @@ const ROUTE_RULES: Array<{ intent: HebbMateRoutedIntent; patterns: RegExp[] }> =
   },
   {
     intent: "automation_proposals",
-    patterns: [
-      /\bautomat/i,
-      /\bschedul/i,
-      /\bpianifica/i,
-      /\bricorrent/i,
-      /\bfrequenz/i,
-      /\bcron/i,
-      /\btimbratur/i
-    ]
+    patterns: MATE_AUTOMATION_INTENT_PATTERNS
   },
   {
     intent: "cowork_batch",
@@ -78,24 +84,40 @@ const SUGGESTION_INTENT_PATTERNS = [
   /\bquali\s+operazioni/i
 ];
 
+function routeHebbMateIntentFromText(text: string): HebbMateRoutedIntent {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "general";
+  }
+  for (const rule of ROUTE_RULES) {
+    if (rule.patterns.some((re) => re.test(trimmed))) {
+      return rule.intent;
+    }
+  }
+  return "general";
+}
+
 /** True when the user asks for help, examples, or what Mate can do (not a concrete HR action). */
 export function isHebbMateSuggestionIntent(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
+  if (routeHebbMateIntentFromText(text) !== "general") return false;
   return SUGGESTION_INTENT_PATTERNS.some((re) => re.test(text));
 }
 
-export function routeHebbMateIntent(message: string, explicitCapability?: HebbMateCapabilityId): HebbMateRoutedIntent {
+export function routeHebbMateIntent(
+  message: string,
+  explicitCapability?: HebbMateCapabilityId,
+  alternateMessage?: string
+): HebbMateRoutedIntent {
   if (explicitCapability) {
     return explicitCapability;
   }
-  const text = message.trim();
-  if (!text) {
-    return "general";
-  }
-  for (const rule of ROUTE_RULES) {
-    if (rule.patterns.some((re) => re.test(text))) {
-      return rule.intent;
+  for (const candidate of [message, alternateMessage]) {
+    if (typeof candidate !== "string") continue;
+    const intent = routeHebbMateIntentFromText(candidate);
+    if (intent !== "general") {
+      return intent;
     }
   }
   return "general";

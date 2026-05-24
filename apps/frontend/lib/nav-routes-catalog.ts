@@ -79,6 +79,7 @@ export const NEXA_NAV_ROUTE_CATALOG: { href: Route; label: string }[] = [
   { href: "/recruiting/candidates" as Route, label: "Candidati" },
   { href: "/recruiting/pipelines" as Route, label: "Pipeline posizione" },
   { href: "/admin/roles" as Route, label: "Admin — Ruoli" },
+  { href: "/admin/contratti" as Route, label: "Admin — Contratti" },
   { href: "/admin/cost-centers" as Route, label: "Admin — Centri di costo" }
 ];
 

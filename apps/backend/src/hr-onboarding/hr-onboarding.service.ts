@@ -273,7 +273,9 @@ export class HrOnboardingService {
           matchScore:
             typeof input.data.buddyMatchScore === "number" ? input.data.buddyMatchScore : undefined,
           matchReason:
-            typeof input.data.buddyMatchReason === "string" ? input.data.buddyMatchReason : undefined
+            typeof input.data.buddyMatchReason === "string" ? input.data.buddyMatchReason : undefined,
+          aiRationale:
+            typeof input.data.buddyAiRationale === "string" ? input.data.buddyAiRationale : undefined
         });
       }
     }

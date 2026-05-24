@@ -32,6 +32,7 @@ import { HrDataStore } from "../platform/hr-data.store";
 import { isNexaAiOpenAiLlmEnabled } from "../platform/nexa-ai-llm-env";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import { AttendanceTeamService } from "../workforce/attendance-team.service";
+import { HrOnboardingBuddyService } from "../hr-onboarding/hr-onboarding-buddy.service";
 import { NEXA_HR_PERMISSIONS } from "../platform/permission-catalog";
 import { PermissionsService } from "../platform/permissions.service";
 
@@ -608,7 +609,8 @@ export class UserController {
   constructor(
     private readonly store: HrDataStore,
     private readonly permissions: PermissionsService,
-    private readonly attendanceTeam: AttendanceTeamService
+    private readonly attendanceTeam: AttendanceTeamService,
+    private readonly onboardingBuddy: HrOnboardingBuddyService
   ) {}
 
   @Get()
@@ -642,6 +644,7 @@ export class UserController {
   async teamContext(@CurrentAuth() auth: AuthContext): Promise<{
     employmentState: "active" | "hr_onboarding" | "offboarding";
     manager: { id: string; fullName: string } | null;
+    onboardingBuddy: { id: string; fullName: string; matchReason: string | null; aiRationale: string | null } | null;
     peers: Array<{ id: string; fullName: string }>;
     directReports: Array<{ id: string; fullName: string }>;
   }> {
@@ -678,7 +681,16 @@ export class UserController {
       .filter((u) => u.companyId === me.companyId)
       .slice(0, 48)
       .map((u) => ({ id: u.id, fullName: u.fullName }));
-    return { employmentState, manager, peers, directReports };
+    const buddyRow = await this.onboardingBuddy.getActiveBuddyForEmployee(auth.userId);
+    const onboardingBuddy = buddyRow
+      ? {
+          id: buddyRow.id,
+          fullName: buddyRow.fullName,
+          matchReason: buddyRow.matchReason,
+          aiRationale: buddyRow.aiRationale
+        }
+      : null;
+    return { employmentState, manager, onboardingBuddy, peers, directReports };
   }
 
   @Get("me")

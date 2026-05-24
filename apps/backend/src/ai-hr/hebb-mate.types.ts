@@ -154,17 +154,22 @@ export interface HebbMateSkillSuggestResult {
   suggestions: HebbMateSkillSuggestion[];
 }
 
+export type HebbMateAutomationTriggerType = "schedule" | "event" | "threshold";
+
 export interface HebbMateAutomationProposal {
   id: string;
+  /** Riferimento template catalogo (`hebb-mate-automation-catalog`). */
+  catalogId?: string;
   title: string;
   description: string;
   workArea: string;
   frequency: "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "on_demand";
   scheduleHint: string;
+  triggerType?: HebbMateAutomationTriggerType;
   toolId?: string;
   permissions: string[];
   estimatedImpact: string;
-  actions?: Array<{ type: string; label: string; toolId?: string }>;
+  actions?: Array<{ type: string; label: string; toolId?: string; payload?: Record<string, unknown> }>;
 }
 
 export interface HebbMateAutomationDto {

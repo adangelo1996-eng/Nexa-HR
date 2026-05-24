@@ -1,3 +1,4 @@
+import { getAutomationQuickExamplePrompts } from "./hebb-mate-automation-catalog";
 import type { HebbMateCapabilityCard } from "./hebb-mate.types";
 
 export const HEBB_MATE_CAPABILITY_CARDS: HebbMateCapabilityCard[] = [
@@ -62,12 +63,10 @@ export const HEBB_MATE_CAPABILITY_CARDS: HebbMateCapabilityCard[] = [
   {
     id: "automation_proposals",
     title: "Automazioni HR",
-    description: "Proposte di task ricorrenti per area (presenze, documenti, lifecycle) con frequenza suggerita.",
+    description:
+      "Catalogo di automazioni aziendali (timbrature, contratti determinati, formazione, firme documenti, onboarding) con anteprima HITL.",
     icon: "calendar-clock",
     requiredPermissions: ["nexa.lifecycle:read"],
-    examplePrompts: [
-      "Suggerisci automazioni mensili per HR",
-      "Quali task posso schedulare per il team?"
-    ]
+    examplePrompts: getAutomationQuickExamplePrompts()
   }
 ];

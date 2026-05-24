@@ -649,6 +649,12 @@ export async function loginWithSynapseSso(synapseSsoToken: string): Promise<{ to
 export type TeamContextDto = {
   employmentState: "active" | "hr_onboarding" | "offboarding";
   manager: { id: string; fullName: string } | null;
+  onboardingBuddy: {
+    id: string;
+    fullName: string;
+    matchReason: string | null;
+    aiRationale: string | null;
+  } | null;
   peers: Array<{ id: string; fullName: string }>;
   directReports: Array<{ id: string; fullName: string }>;
 };
@@ -3676,7 +3682,25 @@ export type BuddySuggestionDto = {
   email: string;
   score: number;
   reason: string;
+  ruleScore: number;
+  ruleReason: string;
+  aiRationale: string | null;
   age?: number | null;
+  teamId?: string | null;
+  costCenterId?: string | null;
+};
+
+export type BuddyAssignmentDto = {
+  buddyUserId: string | null;
+  buddyFullName: string | null;
+  buddyEmail: string | null;
+  status: string | null;
+  matchReason: string | null;
+  aiRationale: string | null;
+  matchScore: number | null;
+  keyContact: boolean;
+  expiresAt: string | null;
+  active: boolean;
 };
 
 export async function fetchMyOnboardingChecklist(token: string): Promise<OnboardingChecklistStatusDto> {
@@ -3713,42 +3737,70 @@ export async function completeMyOnboarding(token: string): Promise<{ ok: true; p
 export async function fetchOnboardingBuddySuggestions(
   token: string,
   userId: string
-): Promise<{ items: BuddySuggestionDto[] }> {
-  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy-suggestions`), {
+): Promise<{ items: BuddySuggestionDto[]; llm?: { active: boolean; refineApplied: boolean } }> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/${encodeURIComponent(userId)}/buddy-suggestions`), {
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{ items: BuddySuggestionDto[] }>;
+  return response.json() as Promise<{ items: BuddySuggestionDto[]; llm?: { active: boolean; refineApplied: boolean } }>;
 }
 
 export async function fetchOnboardingBuddyAssignment(
   token: string,
   userId: string
-): Promise<{ buddyUserId: string | null; buddyFullName: string | null; status: string | null; matchReason: string | null }> {
-  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy-assignment`), {
+): Promise<BuddyAssignmentDto> {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/${encodeURIComponent(userId)}/buddy-assignment`), {
     headers: getAuthHeaders(token)
   });
   if (!response.ok) await parseError(response);
-  return response.json() as Promise<{
-    buddyUserId: string | null;
-    buddyFullName: string | null;
-    status: string | null;
-    matchReason: string | null;
-  }>;
+  return response.json() as Promise<BuddyAssignmentDto>;
 }
 
 export async function confirmOnboardingBuddy(
   token: string,
   userId: string,
-  payload: { buddyUserId: string; matchScore?: number; matchReason?: string }
+  payload: {
+    buddyUserId: string;
+    matchScore?: number;
+    matchReason?: string;
+    aiRationale?: string;
+    keyContact?: boolean;
+    expiresAt?: string | null;
+  }
 ): Promise<{ ok: true; buddyUserId: string; buddyFullName: string }> {
-  const response = await fetch(buildApiUrl(`/hr-onboarding/wizard/${encodeURIComponent(userId)}/buddy/confirm`), {
+  const response = await fetch(buildApiUrl(`/hr-onboarding/${encodeURIComponent(userId)}/buddy/confirm`), {
     method: "POST",
     headers: getAuthHeaders(token),
     body: JSON.stringify(payload)
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<{ ok: true; buddyUserId: string; buddyFullName: string }>;
+}
+
+export async function fetchMyOnboardingBuddy(
+  token: string
+): Promise<{
+  buddy: {
+    id: string;
+    fullName: string;
+    email: string;
+    matchReason: string | null;
+    aiRationale: string | null;
+  } | null;
+}> {
+  const response = await fetch(buildApiUrl("/hr-onboarding/my/buddy"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{
+    buddy: {
+      id: string;
+      fullName: string;
+      email: string;
+      matchReason: string | null;
+      aiRationale: string | null;
+    } | null;
+  }>;
 }
 
 export async function completeHrOnboardingWizard(token: string, userId: string): Promise<HrOnboardingWizardDto> {
@@ -3828,6 +3880,56 @@ export async function cancelHrOffboarding(token: string, userId: string): Promis
   });
   if (!response.ok) await parseError(response);
   return response.json() as Promise<HrOffboardingWizardDto>;
+}
+
+export async function sendHrOffboardingReminder(token: string, userId: string): Promise<{ ok: true }> {
+  const response = await fetch(buildApiUrl(`/hr-offboarding/wizard/${encodeURIComponent(userId)}/reminder`), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true }>;
+}
+
+export type OffboardingChecklistStatusDto = {
+  userId: string;
+  phase: "preboarding" | "active" | "completed";
+  checklist: Array<{ id: string; label: string; done: boolean }>;
+  updatedAt: string;
+  wizardCompleted: boolean;
+  allStepsDone: boolean;
+  progressPercent: number;
+};
+
+export async function fetchMyOffboardingChecklist(token: string): Promise<OffboardingChecklistStatusDto> {
+  const response = await fetch(buildApiUrl("/hr-offboarding/my/checklist"), {
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<OffboardingChecklistStatusDto>;
+}
+
+export async function patchMyOffboardingChecklistItem(
+  token: string,
+  itemId: string,
+  done: boolean
+): Promise<OffboardingChecklistStatusDto> {
+  const response = await fetch(buildApiUrl("/hr-offboarding/my/checklist"), {
+    method: "PATCH",
+    headers: getAuthHeaders(token),
+    body: JSON.stringify({ itemId, done })
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<OffboardingChecklistStatusDto>;
+}
+
+export async function completeMyOffboarding(token: string): Promise<{ ok: true; phase: string }> {
+  const response = await fetch(buildApiUrl("/hr-offboarding/my/complete"), {
+    method: "POST",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ ok: true; phase: string }>;
 }
 
 export type CoworkPlanRowDto = {
@@ -4325,6 +4427,30 @@ export async function fetchHrStandardContracts(token: string): Promise<HrStandar
   if (!response.ok) await parseError(response);
   const body = (await response.json()) as { items: HrStandardContractDto[] };
   return body.items ?? [];
+}
+
+export type HrContractCatalogItemDto = {
+  id: string;
+  source: "standard" | "smartworking" | "vault" | "amendment";
+  title: string;
+  status: string;
+  employeeUserId: string | null;
+  employeeName: string | null;
+  contractId: string | null;
+  documentId: string | null;
+  updatedAt: string;
+};
+
+export type HrContractCategoryGroupDto = {
+  categoryKey: string;
+  categoryLabel: string;
+  items: HrContractCatalogItemDto[];
+};
+
+export async function fetchHrContractsByCategory(token: string): Promise<{ categories: HrContractCategoryGroupDto[] }> {
+  const response = await fetch(buildApiUrl("/hr-contracts/by-category"), { headers: getAuthHeaders(token) });
+  if (!response.ok) await parseError(response);
+  return response.json() as Promise<{ categories: HrContractCategoryGroupDto[] }>;
 }
 
 export async function fetchHrStandardContract(token: string, id: string): Promise<HrStandardContractDto> {

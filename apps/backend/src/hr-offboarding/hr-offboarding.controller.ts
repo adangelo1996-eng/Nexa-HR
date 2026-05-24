@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { IsBoolean, IsObject, IsString } from "class-validator";
-import { CurrentAuth, type AuthContext } from "../platform/auth";
+import { CurrentAuth, type AuthContext, RequireRole, RoleGuard } from "../platform/auth";
 import { NexaPermissionGuard, RequireNexaPermissions } from "../platform/nexa-permission.guard";
 import type { HrOffboardingWizardStepKey } from "./hr-offboarding.constants";
 import { HrOffboardingService } from "./hr-offboarding.service";
@@ -21,8 +21,16 @@ class SaveOffboardStepDto {
   markDone!: boolean;
 }
 
+class PatchChecklistDto {
+  @IsString()
+  itemId!: string;
+
+  @IsBoolean()
+  done!: boolean;
+}
+
 @Controller("hr-offboarding")
-@UseGuards(NexaPermissionGuard)
+@UseGuards(RoleGuard, NexaPermissionGuard)
 export class HrOffboardingController {
   constructor(private readonly svc: HrOffboardingService) {}
 
@@ -66,5 +74,43 @@ export class HrOffboardingController {
       companyId: auth.tenantId ?? "comp-1",
       actorUserId: auth.userId
     });
+  }
+
+  @Post("wizard/:userId/reminder")
+  @RequireNexaPermissions("nexa.lifecycle:read")
+  async sendWizardReminder(
+    @CurrentAuth() auth: AuthContext,
+    @Param("userId") userId: string
+  ): Promise<{ ok: true }> {
+    return this.svc.sendWizardReminder({
+      companyId: auth.tenantId ?? "comp-1",
+      userId,
+      requestedByUserId: auth.userId
+    });
+  }
+
+  /** Checklist offboarding per dipendente (self-service). */
+  @Get("my/checklist")
+  @RequireRole("user")
+  async myChecklist(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return this.svc.getEmployeeChecklist(auth.userId);
+  }
+
+  @Patch("my/checklist")
+  @RequireRole("user")
+  async patchMyChecklist(@CurrentAuth() auth: AuthContext, @Body() dto: PatchChecklistDto): Promise<unknown> {
+    return this.svc.patchEmployeeChecklistItem(
+      auth.userId,
+      dto.itemId,
+      dto.done,
+      auth.userId,
+      auth.role
+    );
+  }
+
+  @Post("my/complete")
+  @RequireRole("user")
+  async completeMyOffboarding(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return this.svc.completeEmployeeOffboarding(auth.userId);
   }
 }

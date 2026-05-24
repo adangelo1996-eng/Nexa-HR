@@ -20,6 +20,12 @@ const FREQUENCY_LABELS: Record<string, string> = {
   on_demand: "Su richiesta"
 };
 
+const TRIGGER_LABELS: Record<string, string> = {
+  schedule: "Schedulata",
+  event: "Su evento HR",
+  threshold: "Soglia / scadenza"
+};
+
 const CONTRACT_KIND_LABELS: Record<string, string> = {
   employment: "Contratto di lavoro",
   remote_working: "Accordo smart working"
@@ -55,11 +61,13 @@ const METRIC_LABELS: Record<string, string> = {
 
 type AutomationProposal = {
   id: string;
+  catalogId?: string;
   title: string;
   description: string;
   workArea: string;
   frequency: string;
   scheduleHint: string;
+  triggerType?: string;
   estimatedImpact: string;
   actions?: Array<{ type: string; label: string; toolId?: string }>;
 };
@@ -184,6 +192,7 @@ function AutomationProposalsPreview({ proposals }: { proposals: AutomationPropos
             <p className="mt-1 text-sm leading-relaxed text-[var(--prom-muted)]">{p.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge>{FREQUENCY_LABELS[p.frequency] ?? p.frequency}</Badge>
+              {p.triggerType ? <Badge>{TRIGGER_LABELS[p.triggerType] ?? p.triggerType}</Badge> : null}
               {p.scheduleHint ? <Badge>{p.scheduleHint}</Badge> : null}
               <Badge>Area: {p.workArea === "all" ? "Tutta l'app" : p.workArea}</Badge>
             </div>

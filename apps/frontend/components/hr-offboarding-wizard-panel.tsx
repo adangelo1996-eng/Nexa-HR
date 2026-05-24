@@ -11,6 +11,7 @@ import {
   cancelHrOffboarding,
   fetchHrOffboardingWizard,
   saveHrOffboardingWizardStep,
+  sendHrOffboardingReminder,
   uploadDocumentToVault,
   type HrOffboardingWizardDto
 } from "@/lib/api";
@@ -164,6 +165,22 @@ export function HrOffboardingWizardPanel({ token, userId, employeeName }: Props)
             <Button type="button" variant="outline" size="sm" disabled={saving || Boolean(wizard.completedAt)} onClick={() => void onCancel()}>
               Annulla procedura
             </Button>
+            {!wizard.completedAt && !wizard.cancelledAt ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={saving}
+                onClick={() => {
+                  setSaving(true);
+                  void sendHrOffboardingReminder(token, userId)
+                    .catch((e) => setError(e instanceof Error ? e.message : "Promemoria non inviato"))
+                    .finally(() => setSaving(false));
+                }}
+              >
+                Invia promemoria
+              </Button>
+            ) : null}
             <Link href="/hr-recap" className="text-xs text-[#002D72] underline-offset-2 hover:underline dark:text-sky-200">
               Recap HR →
             </Link>

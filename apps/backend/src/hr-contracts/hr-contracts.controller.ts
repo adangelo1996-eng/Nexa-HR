@@ -223,6 +223,12 @@ export class HrContractsController {
     return { items };
   }
 
+  @Get("by-category")
+  @RequireNexaPermissions("nexa.standard_contracts:read")
+  async listByCategory(@CurrentAuth() auth: AuthContext): Promise<unknown> {
+    return this.svc.listGroupedByCategory(auth.tenantId ?? "comp-1");
+  }
+
   @Get("presets")
   @RequireNexaPermissions("nexa.standard_contracts:read")
   async listPresets(@CurrentAuth() auth: AuthContext): Promise<{ items: unknown[] }> {

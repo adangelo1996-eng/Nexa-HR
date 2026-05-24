@@ -40,6 +40,7 @@ export type AssistantScopeMode = "self" | "user" | "team" | "cost_center";
 export interface AssistantScopePayload {
   mode: AssistantScopeMode;
   userId?: string;
+  userIds?: string[];
   teamId?: string;
   costCenterId?: string;
 }

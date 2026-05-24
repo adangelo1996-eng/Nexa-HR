@@ -17,6 +17,8 @@ describe("hebb-mate-router", () => {
 
   it("routes automation", () => {
     expect(routeHebbMateIntent("Suggerisci automazioni mensili")).toBe("automation_proposals");
+    expect(routeHebbMateIntent("Suggerisci automazioni mensili per HR")).toBe("automation_proposals");
+    expect(routeHebbMateIntent("automazioni mensili")).toBe("automation_proposals");
   });
 
   it("respects explicit capability", () => {

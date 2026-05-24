@@ -739,6 +739,7 @@ export class HrDataStore {
   /** `false` se tabella migration 080 non ancora applicata su Supabase. */
   private documentSignatureDbEnabled: boolean | null = null;
   private readonly onboardingByUser = new Map<string, OnboardingStatus>();
+  private readonly offboardingByUser = new Map<string, OnboardingStatus>();
   private readonly innovationJobs: InnovationJob[] = [];
   private readonly userNotifications: UserNotification[] = [];
   /** Memoria dev: ordine budget CDC key `${year}|${costCenterId}` → sortOrder */
@@ -7358,6 +7359,86 @@ export class HrDataStore {
     return st;
   }
 
+  private defaultOffboarding(userId: string): OnboardingStatus {
+    const now = new Date().toISOString();
+    const checklist: OnboardingChecklistItem[] = [
+      { id: "emp-workflow", label: "Chiudi richieste workflow aperte", done: false },
+      { id: "emp-expenses", label: "Invia note spese in sospeso", done: false },
+      { id: "emp-payslips", label: "Scarica ultimi cedolini", done: false },
+      { id: "emp-settings", label: "Aggiorna recapiti per comunicazioni finali", done: false },
+      { id: "emp-team", label: "Allinea passaggio con il manager", done: false },
+      { id: "emp-assets", label: "Restituisci asset aziendali (PC, badge, telefono)", done: false },
+      { id: "emp-handover", label: "Completa passaggio di consegna documentazione", done: false }
+    ];
+    return { userId, phase: "active", checklist, updatedAt: now };
+  }
+
+  async getOrCreateOffboarding(userId: string): Promise<OnboardingStatus> {
+    if (!this.useDb) {
+      let st = this.offboardingByUser.get(userId);
+      if (!st) {
+        st = this.defaultOffboarding(userId);
+        this.offboardingByUser.set(userId, st);
+      }
+      return st;
+    }
+    const { data } = await this.supabase!.from("lifecycle_offboarding").select("*").eq("userId", userId).maybeSingle();
+    if (data) {
+      const raw = data.checklistJson as unknown;
+      const checklist = Array.isArray(raw)
+        ? (raw as OnboardingChecklistItem[])
+        : ([] as OnboardingChecklistItem[]);
+      return {
+        userId,
+        phase: data.phase as OnboardingStatus["phase"],
+        checklist,
+        updatedAt: String(data.updatedAt)
+      };
+    }
+    const st = this.defaultOffboarding(userId);
+    await this.supabase!.from("lifecycle_offboarding").insert({
+      userId,
+      phase: st.phase,
+      checklistJson: st.checklist,
+      updatedAt: st.updatedAt
+    });
+    return st;
+  }
+
+  async patchOffboardingItem(
+    userId: string,
+    itemId: string,
+    done: boolean,
+    requesterId: string,
+    requesterRole: User["role"]
+  ): Promise<OnboardingStatus> {
+    if (
+      userId !== requesterId &&
+      requesterRole !== "superuser" &&
+      !(await this.isManagerOf(requesterId, userId)) &&
+      !(await this.isUserLeadOfTeamContaining(requesterId, userId))
+    ) {
+      throw new BadRequestException("Non puoi modificare questo offboarding");
+    }
+    const st = await this.getOrCreateOffboarding(userId);
+    const item = st.checklist.find((i: OnboardingChecklistItem) => i.id === itemId);
+    if (!item) throw new NotFoundException("Voce checklist non trovata");
+    item.done = done;
+    st.updatedAt = new Date().toISOString();
+    const allDone = st.checklist.length > 0 && st.checklist.every((i: OnboardingChecklistItem) => i.done);
+    st.phase = allDone ? "completed" : "active";
+    if (!this.useDb) {
+      this.offboardingByUser.set(userId, st);
+      return st;
+    }
+    const { error } = await this.supabase!
+      .from("lifecycle_offboarding")
+      .update({ checklistJson: st.checklist, phase: st.phase, updatedAt: st.updatedAt })
+      .eq("userId", userId);
+    if (error) throw new InternalServerErrorException(`Aggiornamento offboarding fallito: ${error.message}`);
+    return st;
+  }
+
   private mapDocumentRow(r: Record<string, unknown>): EmployeeDocumentRow {
     const signatureMetadata = r.signatureMetadata;
     return {
@@ -10909,6 +10990,18 @@ export class HrDataStore {
       if (allDone) {
         await this.supabase!.from("users").update({ email: `offboarded+${targetUserId}@invalid.local` }).eq("id", targetUserId);
       }
+      const offSt = await this.getOrCreateOffboarding(targetUserId);
+      offSt.phase = "completed";
+      offSt.updatedAt = new Date().toISOString();
+      await this.supabase!
+        .from("lifecycle_offboarding")
+        .update({ phase: offSt.phase, updatedAt: offSt.updatedAt })
+        .eq("userId", targetUserId);
+    } else {
+      const offSt = await this.getOrCreateOffboarding(targetUserId);
+      offSt.phase = "completed";
+      offSt.updatedAt = new Date().toISOString();
+      this.offboardingByUser.set(targetUserId, offSt);
     }
     return { userId: targetUserId, checklist, accessDisabled: allDone };
   }

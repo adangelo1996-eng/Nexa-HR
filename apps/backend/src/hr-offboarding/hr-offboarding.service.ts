@@ -5,8 +5,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { OnboardingStatus } from "@payday/domain";
 import { HrDataStore } from "../platform/hr-data.store";
 import {
+  EMPLOYEE_OFFBOARDING_CHECKLIST,
   HR_OFFBOARDING_WIZARD_STEP_COUNT,
   HR_OFFBOARDING_WIZARD_STEPS,
   type HrOffboardingWizardStepKey
@@ -258,6 +260,7 @@ export class HrOffboardingService {
     };
 
     await this.store.updateUser(input.userId, { employmentState: "offboarding" });
+    await this.store.getOrCreateOffboarding(input.userId);
 
     const wizard = await this.createWizardRow({
       userId: input.userId,
@@ -265,6 +268,14 @@ export class HrOffboardingService {
       actorUserId: input.actorUserId,
       steps,
       prefilled
+    });
+
+    await this.store.notifyUserInApp({
+      userId: input.userId,
+      title: "Procedura di uscita avviata",
+      body: "HR ha avviato l'offboarding. Consulta il percorso per i passi da completare prima dell'ultimo giorno lavorativo.",
+      kind: "offboarding_started",
+      actionPath: "/percorso"
     });
 
     return {
@@ -422,6 +433,116 @@ export class HrOffboardingService {
   ): Promise<void> {
     const checklist = this.buildLifecycleChecklist(steps);
     await this.store.completeOffboard(actorUserId, userId, checklist);
+    await this.store.notifyUserInApp({
+      userId,
+      title: "Offboarding completato",
+      body: "La procedura di uscita è stata chiusa da HR. Verifica il percorso per eventuali passi residui.",
+      kind: "offboarding_complete",
+      actionPath: "/percorso"
+    });
+  }
+
+  async sendWizardReminder(input: {
+    companyId: string;
+    userId: string;
+    requestedByUserId: string;
+    pendingStepTitle?: string;
+  }): Promise<{ ok: true }> {
+    const wizard = await this.getWizard(input.userId);
+    if (wizard.companyId !== input.companyId) {
+      throw new NotFoundException("Wizard offboarding non trovato");
+    }
+    if (wizard.completedAt) {
+      throw new BadRequestException("Wizard offboarding già completato");
+    }
+    if (wizard.cancelledAt) {
+      throw new BadRequestException("Wizard offboarding annullato");
+    }
+    const pending =
+      (input.pendingStepTitle
+        ? HR_OFFBOARDING_WIZARD_STEPS.find((s) => s.titleIt === input.pendingStepTitle)
+        : undefined) ??
+      HR_OFFBOARDING_WIZARD_STEPS.find((s) => wizard.steps[s.key]?.done !== true);
+    const stepLabel = pending?.titleIt ?? "wizard offboarding";
+    await this.store.notifyUserInApp({
+      userId: input.userId,
+      title: "Promemoria offboarding HR",
+      body: `Completa lo step «${stepLabel}» nel wizard Offboarding.`,
+      kind: "offboarding_reminder",
+      actionPath: `/hr/offboarding/wizard/${input.userId}`
+    });
+    return { ok: true };
+  }
+
+  async getEmployeeChecklist(userId: string): Promise<
+    OnboardingStatus & {
+      wizardCompleted: boolean;
+      allStepsDone: boolean;
+      progressPercent: number;
+    }
+  > {
+    const user = await this.store.getUser(userId);
+    if (!user) throw new NotFoundException("Utente non trovato");
+    const status = await this.store.getOrCreateOffboarding(userId);
+    const merged = this.mergeEmployeeChecklistItems(status);
+    let wizardCompleted = false;
+    try {
+      const wizard = await this.getWizard(userId);
+      wizardCompleted = Boolean(wizard.completedAt);
+    } catch {
+      wizardCompleted = false;
+    }
+    const allStepsDone = merged.checklist.every((i) => i.done);
+    const doneCount = merged.checklist.filter((i) => i.done).length;
+    const progressPercent =
+      merged.checklist.length > 0 ? Math.round((doneCount / merged.checklist.length) * 100) : 0;
+    return {
+      ...merged,
+      wizardCompleted,
+      allStepsDone,
+      progressPercent
+    };
+  }
+
+  private mergeEmployeeChecklistItems(status: OnboardingStatus): OnboardingStatus {
+    const byId = new Map(status.checklist.map((i) => [i.id, i]));
+    for (const def of EMPLOYEE_OFFBOARDING_CHECKLIST) {
+      if (!byId.has(def.id)) {
+        status.checklist.push({ id: def.id, label: def.label, done: false });
+      }
+    }
+    return status;
+  }
+
+  async patchEmployeeChecklistItem(
+    userId: string,
+    itemId: string,
+    done: boolean,
+    actorUserId: string,
+    actorRole: "superuser" | "user"
+  ): Promise<OnboardingStatus> {
+    if (userId === actorUserId && actorRole !== "superuser" && !itemId.startsWith("emp-")) {
+      throw new BadRequestException("Solo HR può aggiornare le voci gestite dal reparto");
+    }
+    return this.store.patchOffboardingItem(userId, itemId, done, actorUserId, actorRole);
+  }
+
+  async completeEmployeeOffboarding(userId: string): Promise<{ ok: true; phase: string }> {
+    const checklist = await this.getEmployeeChecklist(userId);
+    if (!checklist.allStepsDone) {
+      throw new BadRequestException("Completa tutti i passi della checklist prima di confermare");
+    }
+    const st = await this.store.getOrCreateOffboarding(userId);
+    st.phase = "completed";
+    st.updatedAt = new Date().toISOString();
+    const sb = this.sb();
+    if (sb) {
+      await sb
+        .from("lifecycle_offboarding")
+        .update({ phase: "completed", updatedAt: st.updatedAt })
+        .eq("userId", userId);
+    }
+    return { ok: true, phase: st.phase };
   }
 
   async cancelOffboarding(input: { userId: string; companyId: string; actorUserId: string }): Promise<HrOffboardingWizardDto> {

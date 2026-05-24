@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { EmployeeCvProfile } from "@/components/employee-cv-profile";
+import { HrOnboardingBuddyPanel } from "@/components/hr-onboarding-buddy-panel";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchCurrentUser, fetchEmployeeCvProfile, type EmployeeCvProfileDto } from "@/lib/api";
 import {
   clearSession,
@@ -21,6 +23,7 @@ export default function EmployeeProfilePage(): React.JSX.Element {
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [profile, setProfile] = useState<EmployeeCvProfileDto | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +33,7 @@ export default function EmployeeProfilePage(): React.JSX.Element {
       router.replace("/login");
       return;
     }
+    setToken(t);
     if (!userId) {
       setError("Profilo non valido.");
       setLoading(false);
@@ -99,6 +103,17 @@ export default function EmployeeProfilePage(): React.JSX.Element {
           Indietro
         </Button>
       </div>
+      {token && (sessionUser?.canAccessHrExtendedConsole || sessionUser?.canAccessHrRecapDashboard) ? (
+        <Card className="border-[var(--card-border)]">
+          <CardHeader>
+            <CardTitle className="text-base">Buddy onboarding</CardTitle>
+            <CardDescription>Assegna o modifica il referente per l&apos;ingresso del dipendente.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HrOnboardingBuddyPanel token={token} userId={userId} employeeName={profile.subject.fullName} />
+          </CardContent>
+        </Card>
+      ) : null}
       <EmployeeCvProfile profile={profile} viewer={sessionUser} userId={userId} />
     </div>
   );

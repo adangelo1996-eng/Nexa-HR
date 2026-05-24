@@ -321,6 +321,12 @@ export const PORTAL_TILES: PortalTile[] = [
     category: "Amministrazione e dati"
   },
   {
+    href: "/admin/contratti" as Route,
+    title: "Contratti",
+    blurb: "Catalogo contratti per categoria: rapporti di lavoro, smart working, integrazioni e vault.",
+    category: "Amministrazione e dati"
+  },
+  {
     href: "/admin" as Route,
     title: "Console utenti",
     blurb: "Gestione account, ruoli e permessi Nexa.",

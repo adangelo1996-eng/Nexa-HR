@@ -28,7 +28,7 @@ export type HebbMateResolvedScope = {
 
 /** Richieste generiche HR (automazioni, timbrature, ecc.) senza nominativi → perimetro aziendale. */
 export function isGenericCompanyWideRequest(message: string): boolean {
-  return /\bautomat|schedul|pianifica|ricorrent|frequenz|cron|timbratur|presenz|tutti\s+i\s+dipendenti|tutta\s+l['']azienda|company.?wide|per\s+tutti\b/i.test(
+  return /\bautomaz|automat\b|schedul|pianifica|ricorrent|frequenz|cron|timbratur|presenz|tutti\s+i\s+dipendenti|tutta\s+l['']azienda|company.?wide|per\s+tutti\b/i.test(
     message
   );
 }

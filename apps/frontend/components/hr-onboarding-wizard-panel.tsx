@@ -6,16 +6,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HebbFieldAssistProvider, HebbInput, HebbTextarea } from "@/components/hebb-field-assist";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HrOnboardingBuddyPanel } from "@/components/hr-onboarding-buddy-panel";
 import {
   completeHrOnboardingWizard,
-  confirmOnboardingBuddy,
   fetchHrOnboardingWizard,
   fetchOnboardingBuddyAssignment,
-  fetchOnboardingBuddySuggestions,
   fetchTrainingCourses,
   saveHrOnboardingWizardStep,
   uploadDocumentToVault,
-  type BuddySuggestionDto,
   type HrOnboardingWizardDto,
   type TrainingCourseDto
 } from "@/lib/api";
@@ -47,12 +45,6 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
   const [error, setError] = useState<string | null>(null);
   const [courses, setCourses] = useState<TrainingCourseDto[]>([]);
   const [form, setForm] = useState<Record<string, unknown>>({});
-  const [buddySuggestions, setBuddySuggestions] = useState<BuddySuggestionDto[]>([]);
-  const [buddyLoading, setBuddyLoading] = useState(false);
-  const [buddyAssignment, setBuddyAssignment] = useState<{
-    buddyFullName: string | null;
-    matchReason: string | null;
-  } | null>(null);
 
   const steps = wizard?.stepDefinitions ?? [];
   const current = steps[stepIndex];
@@ -63,19 +55,18 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
   const loadBuddyContext = useCallback(async (): Promise<void> => {
     try {
       const assignment = await fetchOnboardingBuddyAssignment(token, userId);
-      setBuddyAssignment({
-        buddyFullName: assignment.buddyFullName,
-        matchReason: assignment.matchReason
-      });
       if (assignment.buddyUserId) {
         setForm((prev) => ({
           ...prev,
           buddyUserId: assignment.buddyUserId,
-          buddyName: assignment.buddyFullName ?? ""
+          buddyName: assignment.buddyFullName ?? "",
+          buddyMatchScore: assignment.matchScore ?? undefined,
+          buddyMatchReason: assignment.matchReason ?? undefined,
+          buddyAiRationale: assignment.aiRationale ?? undefined
         }));
       }
     } catch {
-      setBuddyAssignment(null);
+      /* assignment opzionale */
     }
   }, [token, userId]);
 
@@ -101,43 +92,6 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function loadBuddySuggestions(): Promise<void> {
-    setBuddyLoading(true);
-    setError(null);
-    try {
-      const res = await fetchOnboardingBuddySuggestions(token, userId);
-      setBuddySuggestions(res.items);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Suggerimenti buddy non disponibili");
-    } finally {
-      setBuddyLoading(false);
-    }
-  }
-
-  async function applyBuddySuggestion(s: BuddySuggestionDto): Promise<void> {
-    setSaving(true);
-    setError(null);
-    try {
-      const result = await confirmOnboardingBuddy(token, userId, {
-        buddyUserId: s.userId,
-        matchScore: s.score,
-        matchReason: s.reason
-      });
-      setForm((prev) => ({
-        ...prev,
-        buddyUserId: s.userId,
-        buddyName: result.buddyFullName,
-        buddyMatchScore: s.score,
-        buddyMatchReason: s.reason
-      }));
-      setBuddyAssignment({ buddyFullName: result.buddyFullName, matchReason: s.reason });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Conferma buddy non riuscita");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function finalizeOnboarding(): Promise<void> {
     setSaving(true);
@@ -417,39 +371,16 @@ export function HrOnboardingWizardPanel({ token, userId, employeeName }: Props):
 
           {currentKey === "buddy_formazione" ? (
             <div className="space-y-4">
-              <div className="rounded-lg border border-[var(--card-border)] bg-slate-50/50 p-3 dark:bg-slate-900/40">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-synapse-text dark:text-white">Buddy onboarding (AI)</p>
-                  <Button type="button" variant="secondary" size="sm" disabled={buddyLoading} onClick={() => void loadBuddySuggestions()}>
-                    {buddyLoading ? "Analisi…" : "Suggerisci buddy"}
-                  </Button>
-                </div>
-                {buddyAssignment?.buddyFullName ? (
-                  <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">
-                    Buddy confermato: <strong>{buddyAssignment.buddyFullName}</strong>
-                    {buddyAssignment.matchReason ? ` — ${buddyAssignment.matchReason}` : ""}
-                  </p>
-                ) : null}
-                {buddySuggestions.length > 0 ? (
-                  <ul className="mt-3 space-y-2">
-                    {buddySuggestions.map((s) => (
-                      <li
-                        key={s.userId}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--card-border)] px-3 py-2 text-sm"
-                      >
-                        <div>
-                          <span className="font-medium">{s.fullName}</span>
-                          <span className="ml-2 text-xs text-synapse-muted">Score {s.score}</span>
-                          <p className="text-xs text-synapse-muted">{s.reason}</p>
-                        </div>
-                        <Button type="button" size="sm" disabled={saving} onClick={() => void applyBuddySuggestion(s)}>
-                          Conferma
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+              <HrOnboardingBuddyPanel
+                token={token}
+                userId={userId}
+                employeeName={employeeName}
+                compact
+                onConfirmed={(buddyFullName) => {
+                  void loadBuddyContext();
+                  setForm((prev) => ({ ...prev, buddyName: buddyFullName }));
+                }}
+              />
               <HebbInput
                 label="Buddy assegnato (nome visualizzato)"
                 fieldKey="buddyName"
