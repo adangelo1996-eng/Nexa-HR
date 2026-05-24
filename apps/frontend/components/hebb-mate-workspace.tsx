@@ -32,6 +32,7 @@ import {
 import { getSessionUser, getToken } from "@/lib/auth-session";
 import { AssistantMarkdownLite } from "@/components/assistant-markdown-lite";
 import { HebbAiGlassPanel, HebbAiGlassTile } from "@/components/hebb-ai-experience-shell";
+import { HebbMatePreviewPanel } from "@/components/hebb-mate-preview-panel";
 import { GlassConfirmDialog } from "@/components/glass-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
@@ -392,10 +393,11 @@ export function HebbMateWorkspace({ onOpenCoworkTab }: HebbMateWorkspaceProps): 
             {preview.actions && preview.actions.length > 0 ? (
               <div className="flex flex-wrap gap-2">{preview.actions.map(renderAction)}</div>
             ) : null}
-            {preview.result ? (
-              <pre className="max-h-72 overflow-auto rounded-xl border border-[var(--prom-line)] bg-[var(--prom-surface-soft)] p-3 text-[11px] leading-relaxed text-[var(--prom-muted)]">
-                {JSON.stringify(preview.hitl?.preview ?? preview.result, null, 2)}
-              </pre>
+            {preview.result || preview.hitl?.preview ? (
+              <HebbMatePreviewPanel
+                capability={preview.capability}
+                payload={preview.hitl?.preview ?? preview.result}
+              />
             ) : null}
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--prom-line)] pt-4">
               {preview.hitl?.requiresConfirm ? (

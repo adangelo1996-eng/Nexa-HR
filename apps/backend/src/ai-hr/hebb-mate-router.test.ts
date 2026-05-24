@@ -1,4 +1,9 @@
-import { routeHebbMateIntent, extractContractKind, extractDocumentKind } from "./hebb-mate-router";
+import {
+  routeHebbMateIntent,
+  extractContractKind,
+  extractDocumentKind,
+  isHebbMateSuggestionIntent
+} from "./hebb-mate-router";
 
 describe("hebb-mate-router", () => {
   it("routes contract generation", () => {
@@ -20,5 +25,12 @@ describe("hebb-mate-router", () => {
 
   it("extracts document kind", () => {
     expect(extractDocumentKind("attestato formazione")).toBe("certificate_training");
+  });
+
+  it("detects suggestion intent without routing to automation", () => {
+    expect(isHebbMateSuggestionIntent("cosa posso fare?")).toBe(true);
+    expect(isHebbMateSuggestionIntent("dammi suggerimenti")).toBe(true);
+    expect(routeHebbMateIntent("cosa posso fare?")).toBe("general");
+    expect(routeHebbMateIntent("Suggerisci automazioni mensili")).toBe("automation_proposals");
   });
 });

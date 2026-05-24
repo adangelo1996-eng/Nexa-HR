@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CostCalculatorInputMode, CostCalculatorResult } from "@payday/domain";
-import { calculateItalyCompanyCost } from "@payday/domain";
-import { Loader2, Sparkles } from "lucide-react";
+import { calculateItalyCompanyCost, validateCostCalculatorInput } from "@payday/domain";
+import { Calculator, Loader2, Sparkles } from "lucide-react";
 import { HebbAiExperienceShell } from "@/components/hebb-ai-experience-shell";
 import { HebbAiPageHelpButton } from "@/components/hebb-ai-page-help-button";
 import { Button } from "@/components/ui/button";
@@ -32,8 +32,12 @@ const STEPS: { id: WizardStep; label: string }[] = [
   { id: "contratto", label: "Contratto" },
   { id: "agevolazioni", label: "Agevolazioni" },
   { id: "benefit", label: "Benefit" },
-  { id: "risultato", label: "Risultato" }
+  { id: "risultato", label: "Riepilogo" }
 ];
+
+function contractFixedTermFromType(contractType: string): boolean {
+  return contractType.trim().toLowerCase().includes("determinato");
+}
 
 export function HiringSimulatorWorkspace(): React.JSX.Element {
   const [step, setStep] = useState<WizardStep>("contratto");
@@ -61,9 +65,13 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
   const [smartWorking, setSmartWorking] = useState(0);
   const [otherBenefits, setOtherBenefits] = useState(0);
 
+  const [hasCalculated, setHasCalculated] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [result, setResult] = useState<CostCalculatorResult | null>(null);
+
   const [advise, setAdvise] = useState<HiringSimulatorAdviseResponse | null>(null);
   const [adviseLoading, setAdviseLoading] = useState(false);
-  const [serverResult, setServerResult] = useState<CostCalculatorResult | null>(null);
   const [scenarios, setScenarios] = useState<HiringSimulatorScenarioRow[]>([]);
   const [scenarioName, setScenarioName] = useState("");
 
@@ -119,8 +127,20 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
     otherBenefits
   ]);
 
-  const localResult = useMemo(() => calculateItalyCompanyCost(inputBody), [inputBody]);
-  const result = serverResult ?? localResult;
+  const domainInput = useMemo(
+    () => ({
+      ...inputBody,
+      contractFixedTerm: contractFixedTermFromType(contractType)
+    }),
+    [inputBody, contractType]
+  );
+
+  useEffect(() => {
+    setHasCalculated(false);
+    setResult(null);
+    setAdvise(null);
+    setValidationErrors([]);
+  }, [domainInput]);
 
   const loadScenarios = useCallback(async () => {
     const token = getToken();
@@ -145,7 +165,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
       try {
         const res = await postHiringSimulatorAdvise(token, { ...inputBody, phase });
         setAdvise(res);
-        setServerResult(res.compute);
+        setResult(res.compute);
       } catch {
         setAdvise(null);
       } finally {
@@ -155,14 +175,35 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
     [inputBody]
   );
 
-  useEffect(() => {
-    const phase: HiringSimulatorAdvisePhase =
-      step === "contratto" ? "criteria" : step === "agevolazioni" ? "agevolazioni" : step === "benefit" ? "benefits" : "validate";
-    const t = window.setTimeout(() => {
-      void runAdvise(phase);
-    }, step === "risultato" ? 400 : 900);
-    return () => window.clearTimeout(t);
-  }, [step, inputBody, runAdvise]);
+  const runCalculate = useCallback(async () => {
+    const errors = validateCostCalculatorInput(domainInput);
+    setValidationErrors(errors);
+    if (errors.length > 0) {
+      setHasCalculated(false);
+      setResult(null);
+      setAdvise(null);
+      return;
+    }
+
+    setCalculating(true);
+    const local = calculateItalyCompanyCost(domainInput);
+    setResult(local);
+
+    const token = getToken();
+    if (token) {
+      try {
+        const server = await postHiringSimulatorCompute(token, inputBody);
+        setResult(server);
+      } catch {
+        setResult(local);
+      }
+    }
+
+    setHasCalculated(true);
+    setCalculating(false);
+    setStep("risultato");
+    await runAdvise("validate");
+  }, [domainInput, inputBody, runAdvise]);
 
   const applyChip = (chip: string): void => {
     const c = chip.toLowerCase();
@@ -189,21 +230,10 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
       setStep("contratto");
       return;
     }
-    if (c.includes("valida")) {
-      setStep("risultato");
+    if (c.includes("valida") || c.includes("ricalcola")) {
+      void runCalculate();
     }
   };
-
-  useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-    const t = window.setTimeout(() => {
-      void postHiringSimulatorCompute(token, inputBody)
-        .then(setServerResult)
-        .catch(() => setServerResult(null));
-    }, 600);
-    return () => window.clearTimeout(t);
-  }, [inputBody]);
 
   const saveScenario = async (): Promise<void> => {
     const token = getToken();
@@ -243,7 +273,11 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
       setSmartWorking(b.smartWorkingMonthlyEuros ?? 0);
       setOtherBenefits(b.otherBenefitsMonthlyEuros ?? 0);
     }
-    setStep("risultato");
+    setStep("contratto");
+    void (async () => {
+      await new Promise((r) => setTimeout(r, 0));
+      await runCalculate();
+    })();
   };
 
   const prevStep = (): void => {
@@ -256,36 +290,42 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
     setStep(STEPS[Math.min(STEPS.length - 1, i + 1)]!.id);
   };
 
+  const totalsPlaceholder = "—";
+
   return (
     <HebbAiExperienceShell
       contentMax="wide"
       title="Simulatore costo azienda"
-      subtitle="Definisci criteri contrattuali, verifica agevolazioni e benefit con il consulente AI; il motore calcola costo azienda e netto in tempo reale."
+      subtitle="Inserisci i criteri contrattuali, calcola costo e netto con il motore aggiornato 2025–2026, poi attiva il consulente AI per agevolazioni e benefit."
       headerTrailing={<HebbAiPageHelpButton pageKey="hiring-simulator" />}
     >
-      <div className="mb-4 flex flex-wrap gap-2">
-        {STEPS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setStep(s.id)}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-              step === s.id
-                ? "bg-sky-600 text-white shadow-sm"
-                : "bg-[var(--prom-surface)] text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-6">
+        {/* 1 — Input */}
         <Card>
           <CardHeader>
-            <CardTitle>Input</CardTitle>
-            <CardDescription>Passo: {STEPS.find((s) => s.id === step)?.label}</CardDescription>
+            <CardTitle>Criteri di simulazione</CardTitle>
+            <CardDescription>
+              Passo: {STEPS.find((s) => s.id === step)?.label}. Completa i dati e clicca Calcola.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {STEPS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStep(s.id)}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    step === s.id
+                      ? "bg-sky-600 text-white shadow-sm"
+                      : "bg-[var(--prom-surface)] text-[var(--prom-muted)] hover:text-[var(--prom-text)]"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
             {step === "contratto" ? (
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1 text-sm md:col-span-2">
@@ -397,78 +437,74 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-2 pt-2">
+            {validationErrors.length > 0 ? (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-sm text-amber-100">
+                {validationErrors.map((err) => (
+                  <p key={err}>{err}</p>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2 border-t border-[var(--card-border)] pt-4">
               <Button type="button" variant="outline" size="sm" onClick={prevStep} disabled={step === "contratto"}>
                 Indietro
               </Button>
               {step !== "risultato" ? (
-                <Button type="button" size="sm" onClick={nextStep}>
+                <Button type="button" size="sm" variant="secondary" onClick={nextStep}>
                   Avanti
                 </Button>
-              ) : (
-                <Button type="button" size="sm" onClick={() => void saveScenario()}>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void runCalculate()}
+                disabled={calculating}
+              >
+                {calculating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Calculator className="h-4 w-4" aria-hidden />
+                )}
+                Calcola
+              </Button>
+              {hasCalculated ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void saveScenario()}>
                   Salva scenario
                 </Button>
-              )}
+              ) : null}
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Breakdown live</CardTitle>
-            <CardDescription>Aggiornamento immediato su ogni modifica.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Netto</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-                  {formatEuro(result.monthly.netEuros)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Lordo</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">{formatEuro(result.monthly.grossEuros)}</p>
-              </div>
-              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-3">
-                <p className="text-xs text-synapse-muted dark:text-[#b4c9dc]">Costo azienda</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">{formatEuro(result.monthly.companyCostEuros)}</p>
-              </div>
-            </div>
-            <details className="mt-4 rounded-lg border border-[var(--card-border)] p-3">
-              <summary className="cursor-pointer text-sm font-medium">Dettaglio voci</summary>
-              <div className="mt-2 space-y-1 text-sm">
-                {result.breakdownCompanyCost.map((row) => (
-                  <div key={row.key} className="flex justify-between gap-2">
-                    <span className="text-synapse-muted dark:text-[#b4c9dc]">{row.label}</span>
-                    <span className="tabular-nums">{formatEuro(row.euros)}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-            <p className="mt-3 text-xs text-synapse-muted dark:text-[#b4c9dc]">
-              Annuo: costo {formatEuro(result.annual.companyCostEuros)} · netto {formatEuro(result.annual.netEuros)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-sky-500/30 bg-gradient-to-br from-sky-950/20 to-transparent dark:from-sky-900/25">
+        {/* 2 — AI consultant (after Calcola) */}
+        <Card
+          className={`border-sky-500/30 bg-gradient-to-br from-sky-950/20 to-transparent dark:from-sky-900/25 ${
+            !hasCalculated ? "opacity-60" : ""
+          }`}
+          aria-disabled={!hasCalculated}
+        >
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-sky-400" aria-hidden />
               Consulente AI
             </CardTitle>
             <CardDescription>
-              {advise?.llm.refineApplied
-                ? "Analisi strutturata (LLM)"
-                : advise?.llm.active
-                  ? "Fallback offline"
-                  : "LLM non attivo — guida offline"}
+              {!hasCalculated
+                ? "Disponibile dopo il calcolo: completa i criteri e clicca Calcola."
+                : advise?.llm.refineApplied
+                  ? "Analisi strutturata (LLM)"
+                  : advise?.llm.active
+                    ? "Fallback offline"
+                    : "LLM non attivo — guida offline"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {adviseLoading ? (
+            {!hasCalculated ? (
+              <p className="text-sm text-synapse-muted dark:text-[#b4c9dc]">
+                Il consulente analizza agevolazioni, benefit e coerenza retributiva solo su dati validati dal motore di calcolo.
+              </p>
+            ) : adviseLoading ? (
               <p className="flex items-center gap-2 text-sm text-synapse-muted">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 Analisi in corso…
@@ -476,7 +512,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
             ) : (
               <p className="text-sm leading-relaxed text-synapse-text dark:text-white">{advise?.advise.advisorMessage}</p>
             )}
-            {advise?.advise.suggestedChips.length ? (
+            {hasCalculated && advise?.advise.suggestedChips.length ? (
               <div className="flex flex-wrap gap-2">
                 {advise.advise.suggestedChips.map((chip) => (
                   <button
@@ -490,7 +526,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
                 ))}
               </div>
             ) : null}
-            {advise?.advise.agevolazioniVerificate.length ? (
+            {hasCalculated && advise?.advise.agevolazioniVerificate.length ? (
               <ul className="space-y-2 text-xs">
                 {advise.advise.agevolazioniVerificate.map((a) => (
                   <li key={a.code} className="rounded-md border border-white/10 p-2">
@@ -503,7 +539,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
                 ))}
               </ul>
             ) : null}
-            {advise?.advise.benefitSuggestions.length ? (
+            {hasCalculated && advise?.advise.benefitSuggestions.length ? (
               <ul className="space-y-2 text-xs">
                 {advise.advise.benefitSuggestions.map((b) => (
                   <li key={b.key}>
@@ -516,7 +552,7 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
                 ))}
               </ul>
             ) : null}
-            {advise?.advise.validationNotes.length ? (
+            {hasCalculated && advise?.advise.validationNotes.length ? (
               <div className="rounded-lg border border-amber-500/40 bg-amber-950/20 p-2 text-xs text-amber-100">
                 {advise.advise.validationNotes.map((n, i) => (
                   <p key={i}>{n}</p>
@@ -525,45 +561,124 @@ export function HiringSimulatorWorkspace(): React.JSX.Element {
             ) : null}
           </CardContent>
         </Card>
-      </div>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Scenari salvati</CardTitle>
-          <CardDescription>Richiede permesso scrittura budget personale.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          {scenarios.map((s) => (
-            <div key={s.id} className="flex items-center gap-1">
-              <Button type="button" variant="outline" size="sm" onClick={() => loadScenario(s)}>
-                {s.name}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-red-400"
-                onClick={() => {
-                  const token = getToken();
-                  if (!token) return;
-                  void deleteHiringSimulatorScenario(token, s.id).then(() => loadScenarios());
-                }}
-              >
-                ×
-              </Button>
+        {/* 3 — Totals */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Risultati</CardTitle>
+            <CardDescription>
+              {hasCalculated && result
+                ? "Stima mensile e annuale (motore IT 2025–2026)."
+                : "Esegui Calcola per visualizzare netto, lordo e costo azienda."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-synapse-muted dark:text-[#b4c9dc]">Netto</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {hasCalculated && result ? formatEuro(result.monthly.netEuros) : totalsPlaceholder}
+                </p>
+                <p className="mt-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">mensile in busta (stima)</p>
+              </div>
+              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-synapse-muted dark:text-[#b4c9dc]">Lordo</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                  {hasCalculated && result ? formatEuro(result.monthly.grossEuros) : totalsPlaceholder}
+                </p>
+                <p className="mt-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">mensile imponibile</p>
+              </div>
+              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-synapse-muted dark:text-[#b4c9dc]">
+                  Costo azienda mensile
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+                  {hasCalculated && result ? formatEuro(result.monthly.companyCostEuros) : totalsPlaceholder}
+                </p>
+                <p className="mt-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">lordo + oneri datore + benefit</p>
+              </div>
+              <div className="rounded-lg border border-[var(--card-border)] bg-[var(--prom-surface)] p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-synapse-muted dark:text-[#b4c9dc]">
+                  Costo azienda annuale
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+                  {hasCalculated && result ? formatEuro(result.annual.companyCostEuros) : totalsPlaceholder}
+                </p>
+                <p className="mt-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                  {hasCalculated && result ? `RAL stimata ${formatEuro(result.annual.ralEuros)}` : "—"}
+                </p>
+              </div>
             </div>
-          ))}
-          <Input
-            className="max-w-[200px]"
-            placeholder="Nome scenario"
-            value={scenarioName}
-            onChange={(e) => setScenarioName(e.target.value)}
-          />
-          <Button type="button" size="sm" variant="secondary" onClick={() => void saveScenario()}>
-            Salva corrente
-          </Button>
-        </CardContent>
-      </Card>
+
+            {hasCalculated && result ? (
+              <>
+                <details className="mt-6 rounded-lg border border-[var(--card-border)] p-3">
+                  <summary className="cursor-pointer text-sm font-medium">Dettaglio voci costo datore</summary>
+                  <div className="mt-2 space-y-1 text-sm">
+                    {result.breakdownCompanyCost.map((row) => (
+                      <div key={row.key} className="flex justify-between gap-2">
+                        <span className="text-synapse-muted dark:text-[#b4c9dc]">{row.label}</span>
+                        <span className="tabular-nums">{formatEuro(row.euros)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+                {result.warnings.length > 0 ? (
+                  <ul className="mt-4 space-y-1 text-xs text-synapse-muted dark:text-[#b4c9dc]">
+                    {result.warnings.map((w) => (
+                      <li key={w}>· {w}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Scenari salvati</CardTitle>
+            <CardDescription>Richiede permesso scrittura budget personale.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            {scenarios.map((s) => (
+              <div key={s.id} className="flex items-center gap-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => loadScenario(s)}>
+                  {s.name}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-400"
+                  onClick={() => {
+                    const token = getToken();
+                    if (!token) return;
+                    void deleteHiringSimulatorScenario(token, s.id).then(() => loadScenarios());
+                  }}
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
+            <Input
+              className="max-w-[200px]"
+              placeholder="Nome scenario"
+              value={scenarioName}
+              onChange={(e) => setScenarioName(e.target.value)}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!hasCalculated}
+              onClick={() => void saveScenario()}
+            >
+              Salva corrente
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </HebbAiExperienceShell>
   );
 }

@@ -1,43 +1,21 @@
 export type ItalyIrpefBracket = { upToEuros: number; rate: number };
 
 export interface ItalyEmployeeCostAssumptions {
-  /**
-   * Contributi IVS lavoratore (stima): percentuale sul lordo.
-   * Nota: nella realtà dipende da gestione/settore e voci.
-   */
+  /** Contributi IVS lavoratore FPLD (9,19% su imponibile). */
   employeeInpsPercent: number;
-  /**
-   * Contributi datore (stima): percentuale sul lordo.
-   * Nota: nella realtà varia per settore/azienda/incentivi.
-   */
+  /** Contributi datore FPLD (23,81% standard privato; varia per settore/CCNL). */
   employerInpsPercent: number;
-  /**
-   * Premio INAIL (stima): percentuale sul lordo.
-   */
+  /** Premio INAIL indicativo (‰ su lordo; default 3‰). */
   inailPercent: number;
-  /**
-   * Accantonamento TFR annuo: lordo/`tfrDivisor` (stima). Default 13.5.
-   */
+  /** Accantonamento TFR: lordo / divisore (art. 2120 c.c.). */
   tfrDivisor: number;
-  /**
-   * IRPEF a scaglioni: semplificato e versionabile.
-   * IMPORTANTE: è una stima, non sostituisce consulente del lavoro.
-   */
+  /** IRPEF a tre scaglioni (strutturale dal 2025). */
   irpefBrackets: ItalyIrpefBracket[];
-  /**
-   * Addizionali stimate (comunale+regionale) come percentuale dell'imponibile annuo.
-   * MVP: valore medio indicativo.
-   */
-  addizionaliPercent: number;
-  /**
-   * Detrazioni annue base stimate (art. 13) come importo fisso.
-   * MVP: stima grossolana per rendere l’output meno “pessimista”.
-   */
-  detrazioniAnnueEuros: number;
-  /**
-   * Sconti contributivi/agevolazioni: riduzione % contributi datore (stima).
-   * MVP: solo mapping coarse.
-   */
+  /** Addizionale regionale su IRPEF netta mensile (stima media). */
+  addizionaleRegionalePercent: number;
+  /** Addizionale comunale su IRPEF netta mensile (stima media). */
+  addizionaleComunalePercent: number;
+  /** Sconti contributivi datore per agevolazioni (stima punti percentuali). */
   incentives: {
     femaleEmployerInpsDiscountPercent: number;
     under36EmployerInpsDiscountPercent: number;
@@ -45,21 +23,27 @@ export interface ItalyEmployeeCostAssumptions {
     naspiEmployerInpsDiscountPercent: number;
     protectedCategoriesEmployerInpsDiscountPercent: number;
   };
+  /** Anno normativo di riferimento (documentazione). */
+  regulatoryYear: number;
 }
 
+/**
+ * Preset 2026 — fonti: L. 207/2024, circ. AE 4/E/2025, INPS FPLD 33% (9,19% + 23,81%).
+ * Addizionali: stima media regionale/comunale su IRPEF netta.
+ */
 export const ITALY_EMPLOYEE_COST_ASSUMPTIONS_2026_MVP: ItalyEmployeeCostAssumptions = {
+  regulatoryYear: 2026,
   employeeInpsPercent: 9.19,
-  employerInpsPercent: 30.0,
-  inailPercent: 0.6,
+  employerInpsPercent: 23.81,
+  inailPercent: 0.3,
   tfrDivisor: 13.5,
-  // Brackets indicativi (semplificati). Aggiornabili senza toccare la UI.
   irpefBrackets: [
     { upToEuros: 28_000, rate: 0.23 },
     { upToEuros: 50_000, rate: 0.35 },
     { upToEuros: Number.POSITIVE_INFINITY, rate: 0.43 }
   ],
-  addizionaliPercent: 1.6 / 100,
-  detrazioniAnnueEuros: 1_200,
+  addizionaleRegionalePercent: 1.23,
+  addizionaleComunalePercent: 0.8,
   incentives: {
     femaleEmployerInpsDiscountPercent: 6,
     under36EmployerInpsDiscountPercent: 8,
@@ -68,4 +52,3 @@ export const ITALY_EMPLOYEE_COST_ASSUMPTIONS_2026_MVP: ItalyEmployeeCostAssumpti
     protectedCategoriesEmployerInpsDiscountPercent: 6
   }
 };
-

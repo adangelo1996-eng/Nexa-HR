@@ -1,4 +1,9 @@
 import { ITALY_EMPLOYEE_COST_ASSUMPTIONS_2026_MVP, type ItalyEmployeeCostAssumptions } from "./calculation-assumptions";
+import {
+  computeDetrazioneLavoroDipendenteIt2025,
+  computeTirAnnualEuros,
+  irpefLordaAnnualFromBrackets
+} from "./italy-tax-2025";
 
 export type CostCalculatorInputMode = "ral" | "net";
 
@@ -31,6 +36,8 @@ export interface CostCalculatorInput {
   /** Solo contesto contrattuale (non modifica aliquote nel motore MVP). */
   ccnlCode?: string;
   ccnlLevel?: string;
+  /** Contratto a tempo determinato (detrazioni art. 13). */
+  contractFixedTerm?: boolean;
   assumptions?: ItalyEmployeeCostAssumptions;
 }
 
@@ -47,6 +54,7 @@ export interface CostCalculatorResult {
     employeeInpsEuros: number;
     estimatedIrpefEuros: number;
     estimatedAddizionaliEuros: number;
+    tirEuros: number;
     employerInpsEuros: number;
     inailEuros: number;
     tfrAccrualEuros: number;
@@ -74,22 +82,6 @@ function safeNumber(x: unknown, fallback: number): number {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function irpefAnnualFromBrackets(imponibile: number, brackets: { upToEuros: number; rate: number }[]): number {
-  const base = Math.max(0, imponibile);
-  let prev = 0;
-  let tax = 0;
-  for (const b of brackets) {
-    const top = Math.max(prev, b.upToEuros);
-    const chunk = clamp(base, prev, top) - prev;
-    if (chunk > 0) {
-      tax += chunk * b.rate;
-    }
-    prev = top;
-    if (base <= top) break;
-  }
-  return tax;
 }
 
 function employerDiscountPercentFromAgevolazioni(
@@ -121,18 +113,27 @@ function computeFromRal(
 
   const grossMonthly = payMonths > 0 ? ralAdj / payMonths : 0;
   const employeeInpsMonthly = (grossMonthly * assumptions.employeeInpsPercent) / 100;
-  const imponibileIrpefAnnual = Math.max(0, ralAdj - employeeInpsMonthly * payMonths);
+  const employeeInpsAnnual = employeeInpsMonthly * payMonths;
+  const imponibileIrpefAnnual = Math.max(0, ralAdj - employeeInpsAnnual);
 
-  const irpefAnnual = Math.max(
-    0,
-    irpefAnnualFromBrackets(imponibileIrpefAnnual, assumptions.irpefBrackets) - assumptions.detrazioniAnnueEuros
+  const irpefLordaAnnual = irpefLordaAnnualFromBrackets(imponibileIrpefAnnual, assumptions.irpefBrackets);
+  const detrazioneLavoro = computeDetrazioneLavoroDipendenteIt2025(
+    imponibileIrpefAnnual,
+    input.contractFixedTerm ?? false
   );
-  const addizionaliAnnual = imponibileIrpefAnnual * assumptions.addizionaliPercent;
+  const irpefNetAnnual = Math.max(0, irpefLordaAnnual - detrazioneLavoro);
+  const tirAnnual = computeTirAnnualEuros(imponibileIrpefAnnual, irpefLordaAnnual, detrazioneLavoro);
 
-  const irpefMonthly = irpefAnnual / payMonths;
-  const addizionaliMonthly = addizionaliAnnual / payMonths;
+  const irpefMonthly = irpefNetAnnual / payMonths;
+  const tirMonthly = tirAnnual / payMonths;
+  const addRegMonthly = (irpefMonthly * assumptions.addizionaleRegionalePercent) / 100;
+  const addComMonthly = (irpefMonthly * assumptions.addizionaleComunalePercent) / 100;
+  const addizionaliMonthly = addRegMonthly + addComMonthly;
 
-  const netMonthly = Math.max(0, grossMonthly - employeeInpsMonthly - irpefMonthly - addizionaliMonthly);
+  const netMonthly = Math.max(
+    0,
+    grossMonthly - employeeInpsMonthly - irpefMonthly - addizionaliMonthly + tirMonthly
+  );
 
   const employerDiscount = employerDiscountPercentFromAgevolazioni(assumptions.incentives, input.agevolazioni);
   const employerInpsPercentEffective = Math.max(0, assumptions.employerInpsPercent - employerDiscount);
@@ -157,14 +158,16 @@ function computeFromRal(
   if (ptFactor !== 1) {
     warnings.push(`Calcolo pro-rata part-time: ${(ptFactor * 100).toFixed(1)}% (ore contratto / full-time).`);
   }
-  warnings.push("Stima indicativa: verificare con consulente del lavoro (aliquote/IRPEF/detrazioni semplificate).");
+  warnings.push(
+    `Stima indicativa ${assumptions.regulatoryYear}: IRPEF art. 11 TUIR, detrazioni art. 13, INPS FPLD 9,19%/23,81%, TIR semplificato. Verificare con consulente del lavoro.`
+  );
   if (employerDiscount > 0) {
-    warnings.push(`Agevolazioni: applicata riduzione contributi datore stimata di ${employerDiscount.toFixed(1)} punti.`);
+    warnings.push(`Agevolazioni: riduzione contributi datore stimata di ${employerDiscount.toFixed(1)} punti.`);
   }
 
   const breakdown: CostCalculatorBreakdownRow[] = [
     { key: "gross", label: "RAL / mensilità (lordo mese)", euros: grossMonthly },
-    { key: "employer_inps", label: "Contributi datore (stima)", euros: employerInpsMonthly },
+    { key: "employer_inps", label: "Contributi datore INPS (stima)", euros: employerInpsMonthly },
     { key: "inail", label: "INAIL (stima)", euros: inailMonthly },
     { key: "tfr", label: "TFR accantonato (stima)", euros: tfrMonthly }
   ];
@@ -190,6 +193,7 @@ function computeFromRal(
       employeeInpsEuros: round2(employeeInpsMonthly),
       estimatedIrpefEuros: round2(irpefMonthly),
       estimatedAddizionaliEuros: round2(addizionaliMonthly),
+      tirEuros: round2(tirMonthly),
       employerInpsEuros: round2(employerInpsMonthly),
       inailEuros: round2(inailMonthly),
       tfrAccrualEuros: round2(tfrMonthly),
@@ -247,3 +251,16 @@ export function calculateItalyCompanyCost(input: CostCalculatorInput): CostCalcu
   return computeFromRal(ral, input, assumptions);
 }
 
+export function validateCostCalculatorInput(input: CostCalculatorInput): string[] {
+  const errors: string[] = [];
+  const weekly = safeNumber(input.weeklyContractHours, 0);
+  if (weekly <= 0) errors.push("Indica ore settimanali contrattuali valide.");
+  if (input.mode === "ral") {
+    const ral = safeNumber(input.annualGrossSalaryEuros, 0);
+    if (ral <= 0) errors.push("Indica una RAL annua maggiore di zero.");
+  } else {
+    const net = safeNumber(input.targetNetMonthlyEuros, 0);
+    if (net <= 0) errors.push("Indica un netto mensile target maggiore di zero.");
+  }
+  return errors;
+}

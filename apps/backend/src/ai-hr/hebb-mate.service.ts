@@ -34,6 +34,7 @@ import { HebbMateProposalsStore } from "./hebb-mate-proposals.store";
 import {
   extractContractKind,
   extractDocumentKind,
+  isHebbMateSuggestionIntent,
   routeHebbMateIntent
 } from "./hebb-mate-router";
 import { resolveEmployeesFromMessage, type HebbMateResolvedScope } from "./hebb-mate-scope.util";
@@ -122,6 +123,9 @@ export class HebbMateService {
     const llm = { configured: this.openAi.isActive(), routedBy: "rules" as const };
 
     if (intent === "general") {
+      if (isHebbMateSuggestionIntent(body.message)) {
+        return this.buildSuggestionsReply(scopeSummary, privacy.tokenCount, llm, resolvedScope);
+      }
       return {
         capability: "general",
         reply:
@@ -266,6 +270,71 @@ export class HebbMateService {
       scopeKind: resolved.scopeKind,
       subjectCount: resolved.subjectUserIds.length,
       resolvedNames: resolved.resolvedNames
+    };
+  }
+
+  private buildSuggestionsReply(
+    scope: HebbMateScopeSummary,
+    tokenCount: number,
+    llm: HebbMateChatResponse["llm"],
+    resolvedScope: HebbMateResolvedScope
+  ): HebbMateChatResponse {
+    const scopeLine =
+      scope.resolvedNames.length > 0
+        ? `Perimetro attuale: **${scope.resolvedNames.join(", ")}** (${scope.subjectCount} ${scope.subjectCount === 1 ? "persona" : "persone"}).`
+        : scope.scopeKind === "company"
+          ? "Perimetro attuale: **tutta l'azienda**."
+          : scope.subjectCount === 1
+            ? "Perimetro attuale: **profilo personale**."
+            : `Perimetro attuale: **${scope.subjectCount} persone** nel team citato.`;
+
+    const capabilityLines = HEBB_MATE_CAPABILITY_CARDS.map((card) => {
+      const example = card.examplePrompts[0] ?? "";
+      return `- **${card.title}** — ${card.description}${example ? `\n  Esempio: «${example}»` : ""}`;
+    }).join("\n");
+
+    const automationIdeas = [
+      "Timbrature giornaliere in report automatico",
+      "Promemoria mensile documenti in scadenza",
+      "Report settimanale ferie del team"
+    ]
+      .map((idea) => `- ${idea}`)
+      .join("\n");
+
+    const reply = [
+      "Ecco cosa posso fare per te in **Hebb AI Mate** (nessuna azione eseguita finché non confermi in preview HITL):",
+      "",
+      scopeLine,
+      "",
+      "### Operazioni HR",
+      capabilityLines,
+      "",
+      "### Idee automazioni",
+      "Chiedi «Suggerisci automazioni mensili per HR» per proposte schedulabili, oppure prova:",
+      automationIdeas,
+      "",
+      "### Batch di massa",
+      "Per rinnovi smart working o approvazioni multiple usa la scheda **Cowork batch**.",
+      "",
+      "Cita i nominativi nel messaggio per definire il perimetro; nella chat verso il modello uso pseudonimi stabili."
+    ].join("\n");
+
+    return {
+      capability: "general",
+      reply,
+      scope,
+      privacy: { pseudonymizedTokenCount: tokenCount },
+      llm,
+      result: {
+        kind: "suggestions",
+        scopeKind: resolvedScope.scopeKind,
+        subjectCount: resolvedScope.subjectUserIds.length,
+        capabilities: HEBB_MATE_CAPABILITY_CARDS.map((c) => ({
+          id: c.id,
+          title: c.title,
+          examplePrompt: c.examplePrompts[0]
+        }))
+      }
     };
   }
 

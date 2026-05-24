@@ -51,6 +51,7 @@ export class HiringSimulatorService {
   }
 
   private toDomainInput(dto: HiringSimulatorInputDto): CostCalculatorInput {
+    const contractType = dto.contractType?.trim().toLowerCase() ?? "";
     return {
       mode: dto.mode,
       weeklyContractHours: dto.weeklyContractHours,
@@ -61,7 +62,8 @@ export class HiringSimulatorService {
       agevolazioni: dto.agevolazioni,
       benefits: dto.benefits,
       ccnlCode: dto.ccnlCode?.trim() || undefined,
-      ccnlLevel: dto.ccnlLevel?.trim() || undefined
+      ccnlLevel: dto.ccnlLevel?.trim() || undefined,
+      contractFixedTerm: contractType.includes("determinato")
     };
   }
 

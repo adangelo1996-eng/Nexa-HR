@@ -63,6 +63,28 @@ const ROUTE_RULES: Array<{ intent: HebbMateRoutedIntent; patterns: RegExp[] }> =
   }
 ];
 
+const SUGGESTION_INTENT_PATTERNS = [
+  /\bcosa\s+pu[oò]\s+(fare|automat|generare|chiedere)/i,
+  /\bcosa\s+(sa|sai)\s+fare/i,
+  /\bsuggeriment/i,
+  /\bhelp\b/i,
+  /\baiut(o|ami)?\b/i,
+  /\bcapabilit/i,
+  /\bidee?\s+(per|hr)/i,
+  /\bcome\s+funziona\b/i,
+  /\bmostra.*esempi/i,
+  /\besempi\s+di\s+(prompt|richieste?)/i,
+  /\bcosa\s+offr/i,
+  /\bquali\s+operazioni/i
+];
+
+/** True when the user asks for help, examples, or what Mate can do (not a concrete HR action). */
+export function isHebbMateSuggestionIntent(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return SUGGESTION_INTENT_PATTERNS.some((re) => re.test(text));
+}
+
 export function routeHebbMateIntent(message: string, explicitCapability?: HebbMateCapabilityId): HebbMateRoutedIntent {
   if (explicitCapability) {
     return explicitCapability;
