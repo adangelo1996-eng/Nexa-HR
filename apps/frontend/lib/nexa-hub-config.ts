@@ -149,6 +149,7 @@ const HREF_ICON: Record<string, LucideIcon> = {
   "/expenses/org": Receipt,
   "/payroll-hebb": Sparkles,
   "/admin": UserCog,
+  "/admin/pacchetto": LayoutDashboard,
   "/admin/data-export": FileText,
   "/admin/cost-centers": Building2,
   "/hr/formazione": GraduationCap,

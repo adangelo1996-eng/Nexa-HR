@@ -1,5 +1,6 @@
 "use client";
 
+import type { TenantPack, TenantPackCatalog } from "@payday/domain";
 import { clearSession, getSessionUser, saveSession, type SessionUser, type UserRole } from "./auth-session";
 import type { HebbPageContextPayload } from "./hebb-page-context";
 
@@ -239,6 +240,16 @@ export interface CompanySettingsDto {
 }
 
 export type CompanySettingsPatch = Partial<Omit<CompanySettingsDto, "companyId">>;
+
+export type TenantPackDto = TenantPack;
+
+export interface TenantPackCurrentResponse {
+  companyId: string;
+  pack: TenantPack;
+  appliedAt: string;
+  appliedByUserId: string | null;
+  catalog: TenantPackCatalog;
+}
 
 export interface OrgNode {
   id: string;
@@ -1298,6 +1309,37 @@ export async function publishPayrollPeriod(token: string, period: string): Promi
     await parseError(response);
   }
   return (await response.json()) as { updated: number };
+}
+
+export async function fetchTenantPack(token: string): Promise<TenantPackCurrentResponse> {
+  const response = await fetch(buildApiUrl("/tenant-pack"), {
+    method: "GET",
+    headers: getAuthHeaders(token)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as TenantPackCurrentResponse;
+}
+
+export async function applyTenantPack(
+  token: string,
+  body: {
+    templateId: string;
+    modules?: Record<string, boolean>;
+    limits?: { maxEmployees?: number; maxHrSeats?: number; plasticityMaxDatasets?: number };
+    customExceptions?: Array<{ id: string; reason: string; reviewBy: string }>;
+  }
+): Promise<{ companyId: string; pack: TenantPack; appliedAt: string }> {
+  const response = await fetch(buildApiUrl("/tenant-pack/apply"), {
+    method: "POST",
+    headers: { ...getAuthHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    await parseError(response);
+  }
+  return (await response.json()) as { companyId: string; pack: TenantPack; appliedAt: string };
 }
 
 export async function fetchCompanySettings(token: string): Promise<CompanySettingsDto> {

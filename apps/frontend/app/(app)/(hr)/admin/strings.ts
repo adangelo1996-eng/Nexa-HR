@@ -6,7 +6,8 @@ export const adminStrings = {
     approvals: "Approvazioni",
     expenseClaimsOrg: "Note spese (dipendenti)",
     payslipImport: "Import cedolini PDF",
-    companyProfile: "Dati azienda"
+    companyProfile: "Dati azienda",
+    tenantPack: "Pacchetto standard"
   },
   users: {
     title: "Amministrazione utenti",

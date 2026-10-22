@@ -1,5 +1,7 @@
 "use client";
 
+import type { TenantPack } from "@payday/domain";
+
 export type UserRole = "superuser" | "user";
 
 export interface SessionUser {
@@ -86,6 +88,8 @@ export interface SessionUser {
    * Da `GET /users/me` / login.
    */
   nexaAiOpenAiEnabled?: boolean;
+  /** Pacchetto standard tenant (Nexa + Plasticity). Assente = suite completa. */
+  tenantPack?: TenantPack;
 }
 
 function normalizeStoredRole(role: unknown): UserRole {

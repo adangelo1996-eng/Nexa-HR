@@ -2,6 +2,7 @@
 
 export * from "./hr-tools/cost-calculator";
 export * from "./hr-tools/calculation-assumptions";
+export * from "./tenant-pack";
 
 /** Ruolo accesso piattaforma (JWT / `users.role`). Il “responsabile team” non è un valore qui: vive in `work_teams.leadUserId`. */
 export type RoleName = "superuser" | "user";

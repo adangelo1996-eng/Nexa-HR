@@ -164,6 +164,7 @@ const PILLAR_DEFS: Array<{
         items: [
           { href: "/admin/contratti" as Route, label: "Contratti", icon: FileText },
           { href: "/admin/dati-azienda" as Route, label: "Dati azienda", icon: Building2 },
+          { href: "/admin/pacchetto" as Route, label: "Pacchetto standard", icon: LayoutDashboard },
           { href: "/corporate-policies" as Route, label: "Corporate Policies", icon: FileText },
           { href: "/tools/third-party-licenses" as Route, label: "Licenze terze", icon: KeyRound }
         ]

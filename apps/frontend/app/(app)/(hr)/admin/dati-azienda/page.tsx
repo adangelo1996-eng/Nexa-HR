@@ -217,6 +217,12 @@ export default function AdminDatiAziendaPage(): React.JSX.Element {
           Ricarica
         </Button>
         <Link
+          href={"/admin/pacchetto" as Route}
+          className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-[#002D72] hover:bg-[color-mix(in_srgb,#002D72_8%,transparent)] dark:text-sky-200"
+        >
+          Pacchetto standard →
+        </Link>
+        <Link
           href={"/admin/contratti" as Route}
           className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm text-[#002D72] hover:bg-[color-mix(in_srgb,#002D72_8%,transparent)] dark:text-sky-200"
         >

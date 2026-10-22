@@ -16,6 +16,7 @@ import {
   type SessionUser
 } from "@/lib/auth-session";
 import { EMPLOYEE_HUB_SECTIONS, HR_HUB_SECTIONS } from "@/lib/nexa-hub-config";
+import { capabilityForNexaRoute, isCapabilityEnabled } from "@payday/domain";
 
 function normalizePath(href: string): string {
   const base = (href.split("?")[0] ?? href).trim();
@@ -50,6 +51,10 @@ export function canAccessNexaPortalRoute(
   const hrTools = !hide && sessionCanNexaAdmin(user);
 
   const r = normalizePath(href);
+  const packCap = capabilityForNexaRoute(r);
+  if (packCap && !isCapabilityEnabled(user.tenantPack, packCap)) {
+    return false;
+  }
 
   /**
    * Route “sezione/*” reali (App Router): abilita per prefisso quando la pagina base è consentita.

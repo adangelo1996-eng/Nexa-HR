@@ -35,6 +35,7 @@ import { AttendanceTeamService } from "../workforce/attendance-team.service";
 import { HrOnboardingBuddyService } from "../hr-onboarding/hr-onboarding-buddy.service";
 import { NEXA_HR_PERMISSIONS } from "../platform/permission-catalog";
 import { PermissionsService } from "../platform/permissions.service";
+import { TenantPackService } from "../platform/tenant-pack.service";
 
 const PAYROLL_IT_SECTORS = [
   "industry",
@@ -610,7 +611,8 @@ export class UserController {
     private readonly store: HrDataStore,
     private readonly permissions: PermissionsService,
     private readonly attendanceTeam: AttendanceTeamService,
-    private readonly onboardingBuddy: HrOnboardingBuddyService
+    private readonly onboardingBuddy: HrOnboardingBuddyService,
+    private readonly tenantPacks: TenantPackService
   ) {}
 
   @Get()
@@ -706,7 +708,8 @@ export class UserController {
       personnelBudgetPerm,
       reportsHrPerm,
       aiAssistantPerm,
-      lifecyclePerm
+      lifecyclePerm,
+      tenantPack
     ] = await Promise.all([
       this.permissions.canAccessNexaAdminUi(auth.userId, auth.role, user.email),
       this.permissions.canAccessHrExtendedConsole(auth.userId, auth.role, user.email),
@@ -717,7 +720,8 @@ export class UserController {
       this.permissions.userHasExplicitReadCatalogKey(auth.userId, "nexa.personnel_budget:read"),
       this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]),
       this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]),
-      this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"])
+      this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"]),
+      this.tenantPacks.getEffective(user.companyId)
     ]);
     const canAccessHrWorkflowExtras = await this.permissions.canAccessHrWorkflowExtras(
       auth.userId,
@@ -760,7 +764,8 @@ export class UserController {
       canAccessNexaReportsHr,
       canAccessNexaAiAssistant,
       canAccessNexaLifecycleHr,
-      companyCcnl: companyRow.companyCcnl?.trim() || null
+      companyCcnl: companyRow.companyCcnl?.trim() || null,
+      tenantPack
     };
   }
 
