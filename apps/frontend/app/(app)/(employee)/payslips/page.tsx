@@ -160,15 +160,11 @@ export default function PayslipsPage(): React.JSX.Element {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-[var(--prom-line)] bg-gradient-to-br from-[color-mix(in_srgb,#002D72_8%,transparent)] to-[var(--prom-surface)]/60 p-5 shadow-sm">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-[var(--prom-line)] bg-white p-5 dark:bg-[var(--prom-surface)]">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#002D72] dark:text-sky-300">
-            Retribuzione
-          </p>
-          <h1 className="mt-1 font-synapse text-2xl font-semibold text-[var(--prom-text)]">Cedolini</h1>
-          <p className="mt-2 max-w-xl text-sm text-[var(--prom-muted)]">
-            Solo i tuoi cedolini pubblicati. L&apos;analisi AI commenta le voci del periodo selezionato — non è parere
-            fiscale.
+          <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Cedolini</h1>
+          <p className="mt-1 max-w-xl text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">
+            I cedolini pubblicati arrivano qui.
           </p>
         </div>
         <NexaPageHelpButton pageKey="payslips" />

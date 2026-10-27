@@ -29,19 +29,19 @@ const config: Config = {
         synapse: {
           /* Sfondo/superficie dark: scala da Pantone 288 C (#002d72) — 50-884 Blu marine */
           bg: "#011528",
-          "bg-light": "#ececec",
+          "bg-light": "#f2f2f7",
           surface: "#052642",
           "surface-light": "#ffffff",
-          gold: "#3a5466",
+          gold: "#002d72",
           "gold-bright": "#6eb0e0",
-          "gold-soft": "#2a3f4d",
-          "gold-soft-dark": "#4a6578",
-          text: "#1a1f18",
-          muted: "#4d5248"
+          "gold-soft": "#003a8c",
+          "gold-soft-dark": "#3d85b5",
+          text: "#1c1c1e",
+          muted: "#6e6e73"
         },
         bg: "#011528",
         card: "#052642",
-        accent: "#3a5466"
+        accent: "#002d72"
       },
       boxShadow: {
         soft: "0 10px 40px -20px rgba(58, 84, 102, 0.3)",

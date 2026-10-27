@@ -61,6 +61,7 @@ import {
   removeTopSidebarPin
 } from "@/lib/nexa-sidebar-pins";
 import { canAccessNexaPortalRoute } from "@/lib/nexa-route-access";
+import { jetCoreNav } from "@/lib/nexa-hr-nav";
 import {
   NEXA_HR_PREFS_CHANGED_EVENT,
   NEXA_HR_PREFS_STORAGE_KEY,
@@ -303,9 +304,13 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       return;
     }
     const normalized = (pathname.replace(/\/$/, "") || "/") as string;
+    if (sessionCanNexaAdmin(user) && user.intakeCompleted === false && normalized !== "/inizia") {
+      router.replace("/inizia");
+      return;
+    }
     const allowed = canAccessNexaPortalRoute(normalized, user, hideSensitiveHrBecausePreview);
     if (!allowed) {
-      router.replace("/mappa-portale");
+      router.replace(normalized === "/inizia" ? "/" : "/mappa-portale");
     }
   }, [pathname, router, user, hideSensitiveHrBecausePreview]);
 
@@ -550,6 +555,11 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
   const showTopPinsBlock = Boolean(sidebarPinsMode);
   const showCategoryNav = flyoutNavSections.length > 0;
 
+  const coreNav = useMemo(
+    () => jetCoreNav(user, hideSensitiveHrBecausePreview),
+    [user, hideSensitiveHrBecausePreview]
+  );
+
   const SidebarContent = (
     <div className="flex min-h-0 flex-col gap-1 py-4">
       <Link
@@ -575,6 +585,15 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         onNavigate={closeMobile}
         beforeNavigate={persistSidebarScrollPositions}
       />
+      {coreNav.map((item) => (
+        <SidebarNavLink
+          key={String(item.href)}
+          item={item}
+          pathname={pathname}
+          onNavigate={closeMobile}
+          beforeNavigate={persistSidebarScrollPositions}
+        />
+      ))}
       {showTopPinsBlock ? (
         <SidebarPillarNav
           availableTiles={allPinTiles}
@@ -616,6 +635,16 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
       ))}
     </div>
   );
+
+  const onInizia = (pathname.replace(/\/$/, "") || "/") === "/inizia";
+  if (onInizia) {
+    return (
+      <div className="min-h-[100dvh] bg-[var(--prom-bg)] text-[var(--prom-text)]">
+        <SessionIdleGuard />
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div

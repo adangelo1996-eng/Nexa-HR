@@ -7,6 +7,8 @@ export interface TenantPackRow {
   pack: TenantPack;
   appliedAt: string;
   appliedByUserId: string | null;
+  /** false = riga assente, pack sintetico. I tenant già salvati contano come questionario fatto. */
+  persisted: boolean;
 }
 
 @Injectable()
@@ -39,14 +41,16 @@ export class TenantPackStore {
       companyId: String(data.company_id),
       pack: (data.pack as TenantPack) ?? defaultTenantPack(),
       appliedAt: String(data.applied_at),
-      appliedByUserId: data.applied_by_user_id ? String(data.applied_by_user_id) : null
+      appliedByUserId: data.applied_by_user_id ? String(data.applied_by_user_id) : null,
+      persisted: true
     };
   }
 
   async upsert(row: TenantPackRow): Promise<TenantPackRow> {
+    const saved = { ...row, persisted: true };
     if (!this.hr.usesDatabase()) {
-      this.mem.set(row.companyId, row);
-      return row;
+      this.mem.set(row.companyId, saved);
+      return saved;
     }
     const { error } = await this.hr.getServiceRoleClient().from("tenant_packs").upsert(
       {
@@ -62,6 +66,6 @@ export class TenantPackStore {
     if (error) {
       throw new InternalServerErrorException(`Salvataggio pacchetto tenant: ${error.message}`);
     }
-    return row;
+    return saved;
   }
 }

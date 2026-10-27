@@ -43,12 +43,13 @@ export class TenantPackService {
           })
         : defaultTenantPack();
     const row: TenantPackRow = stored
-      ? { ...stored, pack }
+      ? { ...stored, pack, persisted: true }
       : {
           companyId: id,
           pack,
           appliedAt: new Date().toISOString(),
-          appliedByUserId: null
+          appliedByUserId: null,
+          persisted: false
         };
     this.cache.set(id, { at: Date.now(), row });
     return row;
@@ -67,7 +68,8 @@ export class TenantPackService {
       companyId,
       pack,
       appliedAt: new Date().toISOString(),
-      appliedByUserId: actorUserId
+      appliedByUserId: actorUserId,
+      persisted: true
     };
     const saved = await this.store.upsert(row);
     this.cache.set(companyId, { at: Date.now(), row: saved });

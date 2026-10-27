@@ -17,7 +17,7 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>): React.JSX.Element {
   return (
     <h2
-      className={cn("text-xl font-semibold tracking-tight text-synapse-text dark:text-white", className)}
+      className={cn("text-[17px] font-semibold tracking-tight text-[#1c1c1e] dark:text-white", className)}
       {...props}
     />
   );

@@ -6,6 +6,7 @@ import {
   capabilityForNexaRoute,
   defaultTenantPack,
   getTenantPackCatalog,
+  intakeToApplyInput,
   isCapabilityEnabled
 } from "@payday/domain";
 
@@ -66,5 +67,27 @@ describe("tenant pack SYN-246", () => {
     assert.equal(pack.templateId, "full_suite");
     assert.equal(pack.modules["nexa.recruiting"], true);
     assert.equal(pack.modules["plasticity.cf"], true);
+  });
+
+  it("il questionario hospitality accende payroll e turni", () => {
+    const input = intakeToApplyInput({
+      sector: "hospitality",
+      headcount: "up_to_150",
+      shifts: true,
+      payslips: true,
+      expenses: false,
+      hiring: false,
+      remote: false,
+      leaveApprover: "manager"
+    });
+    const pack = applyActivityTemplate(input);
+    assert.equal(pack.templateId, "hospitality");
+    assert.equal(pack.modules["nexa.payroll"], true);
+    assert.equal(pack.modules["nexa.payslips"], true);
+    assert.equal(pack.modules["nexa.scheduling"], true);
+    assert.equal(pack.modules["nexa.expenses"], false);
+    assert.equal(pack.modules["nexa.people"], true);
+    assert.equal(pack.limits.maxEmployees, 150);
+    assert.equal(pack.workflows.leaveApprover, "manager");
   });
 });

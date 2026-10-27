@@ -721,7 +721,7 @@ export class UserController {
       this.permissions.userHasAll(auth.userId, ["nexa.reports_hr:read"]),
       this.permissions.userHasAll(auth.userId, ["nexa.ai_assistant:read"]),
       this.permissions.userHasAll(auth.userId, ["nexa.lifecycle:read"]),
-      this.tenantPacks.getEffective(user.companyId)
+      this.tenantPacks.getRow(user.companyId)
     ]);
     const canAccessHrWorkflowExtras = await this.permissions.canAccessHrWorkflowExtras(
       auth.userId,
@@ -765,7 +765,8 @@ export class UserController {
       canAccessNexaAiAssistant,
       canAccessNexaLifecycleHr,
       companyCcnl: companyRow.companyCcnl?.trim() || null,
-      tenantPack
+      tenantPack: tenantPack.pack,
+      intakeCompleted: tenantPack.persisted === true
     };
   }
 

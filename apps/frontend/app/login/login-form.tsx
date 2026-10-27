@@ -172,7 +172,7 @@ export default function LoginForm(): React.JSX.Element {
             type="button"
             id="btn-open-login"
             onClick={() => setDialogOpen(true)}
-            className="inline-flex min-w-[min(240px,88vw)] cursor-pointer items-center justify-center rounded-full border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-surface)_92%,transparent)] px-8 py-3.5 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[var(--prom-text)] shadow-[0_12px_32px_rgba(26,31,24,0.1)] backdrop-blur-[12px] transition-[transform,border-color,box-shadow] duration-[250ms] ease-out hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--prom-gold)_40%,var(--prom-line-strong))] dark:border-white/28 dark:bg-gradient-to-br dark:from-white/[0.22] dark:to-white/[0.06] dark:text-[#fafafa] dark:shadow-[0_12px_36px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] dark:hover:border-white/[0.42]"
+            className="inline-flex min-w-[min(240px,88vw)] cursor-pointer items-center justify-center rounded-xl bg-[#002D72] px-8 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-[#003a8c]"
           >
             LOGIN
           </button>
@@ -199,7 +199,7 @@ export default function LoginForm(): React.JSX.Element {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-[400px] rounded-[18px] border border-[var(--prom-line-strong)] bg-[var(--prom-surface)] p-[clamp(22px,4vw,32px)] shadow-[0_16px_48px_rgba(26,31,24,0.12)] backdrop-blur-[18px] dark:border-white/22 dark:bg-gradient-to-br dark:from-white/[0.14] dark:to-white/[0.05] dark:shadow-[0_16px_48px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.14)]"
+              className="w-full max-w-[400px] rounded-2xl border border-[var(--prom-line)] bg-white p-[clamp(22px,4vw,32px)] shadow-[0_8px_24px_rgba(0,0,0,0.06)] dark:border-white/15 dark:bg-[#052642]"
               onClick={(e) => e.stopPropagation()}
             >
               <h2
@@ -257,7 +257,7 @@ export default function LoginForm(): React.JSX.Element {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="mt-2 w-full cursor-pointer rounded-full border border-[var(--prom-line-strong)] bg-[color-mix(in_srgb,var(--prom-gold)_12%,var(--prom-surface))] px-4 py-3 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[var(--prom-text)] backdrop-blur-[10px] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/35 dark:bg-gradient-to-br dark:from-white/28 dark:to-white/10 dark:text-white"
+                  className="mt-2 w-full cursor-pointer rounded-xl bg-[#002D72] px-4 py-3 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#6eb0e0] dark:text-[#011528]"
                 >
                   {phase === "redirecting"
                     ? "REINDIRIZZAMENTO…"

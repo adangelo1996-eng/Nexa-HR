@@ -371,10 +371,8 @@ export default function WorkflowPage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Workflow</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {user?.fullName} · {user?.role}
-          </p>
+          <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Ferie</h1>
+          <p className="text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">Approvi le richieste in due tap.</p>
         </div>
         <div className="flex items-center gap-2">
           <NexaPageHelpButton pageKey="workflow" />

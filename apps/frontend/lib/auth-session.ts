@@ -90,6 +90,8 @@ export interface SessionUser {
   nexaAiOpenAiEnabled?: boolean;
   /** Pacchetto standard tenant (Nexa + Plasticity). Assente = suite completa. */
   tenantPack?: TenantPack;
+  /** false solo se l'admin non ha ancora un pacchetto salvato. */
+  intakeCompleted?: boolean;
 }
 
 function normalizeStoredRole(role: unknown): UserRole {

@@ -241,3 +241,17 @@ export const HR_NAV_PORTAL_MAP: HrNavItem = {
   label: "Mappa del portale",
   icon: LayoutDashboard
 };
+
+const JET_CORE_NAV: HrNavItem[] = [
+  { href: "/org-chart", label: "Persone", icon: Users },
+  { href: "/attendance" as Route, label: "Presenze", icon: CalendarDays },
+  { href: "/workflow" as Route, label: "Ferie", icon: ClipboardList },
+  { href: "/payslips" as Route, label: "Cedolini", icon: Receipt },
+  { href: "/scheduling", label: "Turni", icon: CalendarDays },
+  { href: "/expenses" as Route, label: "Note spese", icon: Receipt }
+];
+
+/** Nucleo visibile: sempre-accesi più i moduli che il pacchetto ha acceso. */
+export function jetCoreNav(user: SessionUser | null, hideSensitiveHr: boolean): HrNavItem[] {
+  return JET_CORE_NAV.filter((item) => filterPortalHref(item.href, user, hideSensitiveHr));
+}

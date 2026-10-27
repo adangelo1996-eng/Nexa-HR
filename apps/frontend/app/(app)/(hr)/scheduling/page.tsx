@@ -485,6 +485,10 @@ export default function SchedulingPage(): React.JSX.Element {
 
   return (
     <div className="mx-auto max-w-[110rem] space-y-6 px-2 pb-10 sm:px-4">
+      <header className="px-2 pt-4">
+        <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Turni</h1>
+        <p className="text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">Pubblichi la settimana in un colpo.</p>
+      </header>
       <HebbAiGlassPanel>
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
           <div>

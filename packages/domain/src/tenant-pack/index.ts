@@ -13,6 +13,7 @@ export * from "./catalog";
 export * from "./templates";
 export * from "./policy";
 export * from "./apply";
+export * from "./intake";
 export * from "./route-map";
 
 export function getTenantPackCatalog(): TenantPackCatalog {

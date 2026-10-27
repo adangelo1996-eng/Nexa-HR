@@ -142,6 +142,8 @@ export function canAccessNexaPortalRoute(
     case "/smartworking":
     case "/sale-riunioni":
       return true;
+    case "/inizia":
+      return sessionCanNexaAdmin(user);
     case "/org-chart":
       return sessionUsesHrReorganizedNav(user, hideSensitiveHr);
     case "/organigramma":

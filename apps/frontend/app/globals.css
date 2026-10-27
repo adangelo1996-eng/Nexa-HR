@@ -49,29 +49,26 @@
  */
 :root {
   color-scheme: light;
-  --prom-bg: #ececec;
+  --prom-bg: #f2f2f7;
   --prom-surface: #ffffff;
-  --prom-surface-soft: #f2f5f7;
-  --prom-line: rgba(55, 48, 38, 0.12);
-  --prom-line-strong: rgba(55, 48, 38, 0.22);
-  --prom-text: #1a1f18;
-  --prom-muted: #4d5248;
-  /* Accento blu di Prussia / grigio (sostituisce l’oro suite) */
-  --prom-gold: #3a5466;
-  --prom-gold-soft: #2a3f4d;
-  --prom-accent: #0d9488;
-  --page-gradient: radial-gradient(1100px 640px at 100% -18%, rgba(255, 255, 255, 0.95), transparent 60%),
-    radial-gradient(900px 520px at 0% 108%, rgba(120, 120, 120, 0.18), transparent 65%),
-    linear-gradient(165deg, #f7f7f7, #e1e1e1 52%, var(--prom-bg) 100%);
-  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
-  --bar-border: rgba(20, 26, 38, 0.16);
-  --bar-shadow: 0 12px 24px rgba(17, 23, 35, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --card-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 250, 0.92));
-  --card-border: rgba(55, 48, 38, 0.12);
-  --card-shadow: 0 8px 32px rgba(26, 31, 24, 0.06);
-  --glass-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(242, 246, 249, 0.85));
-  --glass-border: rgba(55, 48, 38, 0.14);
-  --glass-shadow: 0 14px 36px rgba(26, 31, 24, 0.07);
+  --prom-surface-soft: #f2f2f7;
+  --prom-line: rgba(60, 60, 67, 0.12);
+  --prom-line-strong: rgba(60, 60, 67, 0.22);
+  --prom-text: #1c1c1e;
+  --prom-muted: #6e6e73;
+  --prom-gold: #002d72;
+  --prom-gold-soft: #003a8c;
+  --prom-accent: #002d72;
+  --page-gradient: #f2f2f7;
+  --bar-bg: rgba(255, 255, 255, 0.92);
+  --bar-border: rgba(60, 60, 67, 0.12);
+  --bar-shadow: 0 1px 0 rgba(60, 60, 67, 0.06);
+  --card-bg: #ffffff;
+  --card-border: rgba(60, 60, 67, 0.12);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --glass-bg: #ffffff;
+  --glass-border: rgba(60, 60, 67, 0.12);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* Tema scuro: 50-884 Blu marine — Pantone 288 C (#002D72) e scale derivate */
@@ -86,19 +83,17 @@ html.dark {
   --prom-muted: #b4c9dc;
   --prom-gold: #6eb0e0;
   --prom-gold-soft: #3d85b5;
-  --prom-accent: #2dd4bf;
-  --page-gradient: radial-gradient(1100px 640px at 100% -20%, rgba(0, 45, 114, 0.22), transparent 62%),
-    radial-gradient(900px 520px at 0% 110%, rgba(0, 35, 90, 0.18), transparent 64%),
-    linear-gradient(165deg, #000a18, #031b36 45%, var(--prom-bg) 85%);
-  --bar-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  --bar-border: rgba(200, 220, 240, 0.2);
-  --bar-shadow: 0 14px 32px rgba(0, 8, 24, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  --card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-  --card-border: rgba(200, 218, 235, 0.14);
-  --card-shadow: 0 20px 50px -20px rgba(0, 4, 16, 0.65), 0 0 28px rgba(0, 45, 114, 0.2);
-  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  --prom-accent: #6eb0e0;
+  --page-gradient: #011528;
+  --bar-bg: #052642;
+  --bar-border: rgba(200, 218, 235, 0.16);
+  --bar-shadow: none;
+  --card-bg: #052642;
+  --card-border: rgba(200, 218, 235, 0.16);
+  --card-shadow: none;
+  --glass-bg: #0a335a;
   --glass-border: rgba(200, 218, 235, 0.16);
-  --glass-shadow: 0 16px 40px rgba(0, 6, 20, 0.42);
+  --glass-shadow: none;
 }
 
 body {
@@ -124,15 +119,12 @@ body {
 
 html.dark .nexa-login-shell {
   color: #ffffff;
-  background:
-    radial-gradient(1100px 640px at 100% -20%, rgba(0, 45, 114, 0.22), transparent 62%),
-    radial-gradient(900px 520px at 0% 110%, rgba(0, 35, 90, 0.18), transparent 64%),
-    linear-gradient(165deg, #000a18, #031b36 45%, var(--prom-bg) 85%);
+  background: var(--prom-bg);
 }
 
 .card {
-  @apply rounded-3xl border p-5 shadow-[var(--card-shadow)] backdrop-blur-md transition-[border-color,background,box-shadow] duration-300;
-  border-color: var(--glass-border);
+  @apply rounded-2xl border p-5 transition-[border-color,background] duration-200;
+  border-color: var(--card-border);
   background: var(--card-bg);
   box-shadow: var(--card-shadow);
 }
@@ -142,12 +134,7 @@ html.dark .nexa-login-shell {
   border-radius: 0.75rem;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
-  box-shadow:
-    var(--glass-shadow),
-    0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 -1px 0 rgba(55, 48, 38, 0.06) inset;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--glass-shadow);
   transition:
     box-shadow 0.25s ease,
     transform 0.2s ease,
@@ -211,8 +198,7 @@ html.dark .dashboard-quick-action:hover:not(:disabled) {
     box-shadow: 0 8px 24px rgba(26, 31, 24, 0.08);
   }
   html.dark .synapse-nav-link:hover {
-    box-shadow: 0 12px 28px rgba(0, 8, 24, 0.45), 0 0 22px rgba(0, 45, 114, 0.28);
-    background: linear-gradient(140deg, rgba(110, 176, 224, 0.16), rgba(255, 255, 255, 0.04));
+    background: color-mix(in srgb, var(--prom-gold) 16%, var(--prom-surface));
   }
 
   .synapse-nav-link-compact {
@@ -236,9 +222,7 @@ html.dark .dashboard-quick-action:hover:not(:disabled) {
   /* Sidebar Nexa — stile macOS: spacing generoso, pill hover, indicatore attivo */
   .nexa-sidebar {
     --nexa-sidebar-width: 15.5rem;
-    background: color-mix(in srgb, var(--prom-surface-soft) 72%, transparent);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    background: var(--prom-surface-soft);
   }
 
   html.dark .nexa-sidebar {

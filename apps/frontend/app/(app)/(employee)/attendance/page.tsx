@@ -542,13 +542,9 @@ function AttendancePageContent(): React.JSX.Element {
       <header className="mb-6 space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Presenze</h1>
-            <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-slate-400">
-              Timbrature, riepilogo mensile e straordinario. Per timbrare usa la{" "}
-              <Link href="/" className="font-medium text-[#3a5466] underline-offset-2 hover:underline dark:text-[#8aa3b3]">
-                Dashboard
-              </Link>
-              .
+            <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Presenze</h1>
+            <p className="mt-1 max-w-xl text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">
+              Segni entrata e uscita. Il mese si legge da solo.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

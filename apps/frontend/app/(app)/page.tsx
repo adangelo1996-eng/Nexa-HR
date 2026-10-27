@@ -447,8 +447,8 @@ export default function HomePage(): React.JSX.Element {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-2xl font-semibold tracking-tight text-[var(--prom-text)]">{user.fullName}</p>
-          <p className="mt-1 text-sm text-[var(--prom-muted)]">Timbrature, ferie e notifiche della giornata.</p>
+          <p className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">{user.fullName}</p>
+          <p className="mt-1 text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">Entri, timbri, chiudi la giornata.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <NexaPageHelpButton pageKey="dashboard" />
@@ -681,7 +681,7 @@ export default function HomePage(): React.JSX.Element {
                   <li key={entry.id}>
                     <div
                       className={[
-                        "flex items-center gap-3 rounded-xl border px-4 py-3 backdrop-blur-sm",
+          "flex items-center gap-3 rounded-xl border px-4 py-3",
                         "border-[var(--glass-border)] bg-[color-mix(in_srgb,var(--prom-surface-soft)_55%,transparent)]",
                         isIn
                           ? "shadow-[0_2px_12px_-4px_rgba(58,84,102,0.2)]"

@@ -9,17 +9,17 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const baseClasses =
-  "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-synapse-gold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-not-allowed dark:focus-visible:ring-synapse-gold-bright/50 dark:focus-visible:ring-offset-[#011528]";
+  "inline-flex items-center justify-center rounded-xl font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#002D72]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f7] disabled:opacity-60 disabled:cursor-not-allowed dark:focus-visible:ring-synapse-gold-bright/50 dark:focus-visible:ring-offset-[#011528]";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-synapse-gold text-white shadow-sm hover:brightness-110 dark:bg-synapse-gold-bright dark:text-white dark:hover:brightness-110",
+    "bg-[#002D72] text-white hover:bg-[#003a8c] dark:bg-synapse-gold-bright dark:text-[#011528] dark:hover:brightness-110",
   secondary:
-    "border border-synapse-gold/30 bg-white/70 text-synapse-text hover:bg-slate-50 dark:border-white/20 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]",
+    "border border-[var(--prom-line)] bg-[#f2f2f7] text-[#1c1c1e] hover:bg-[#e5e5ea] dark:border-white/15 dark:bg-[#0a335a] dark:text-white dark:hover:bg-[#0d3d68]",
   ghost:
-    "text-synapse-muted hover:bg-black/[0.04] dark:text-[#b4c9dc] dark:hover:bg-white/[0.06]",
+    "text-[#6e6e73] hover:bg-black/[0.04] dark:text-[#b4c9dc] dark:hover:bg-white/[0.06]",
   outline:
-    "border border-synapse-gold/40 bg-transparent text-synapse-text hover:bg-slate-50 dark:border-white/25 dark:text-white dark:hover:bg-white/[0.06]",
+    "border border-[#002D72]/30 bg-white text-[#002D72] hover:bg-[#f2f2f7] dark:border-white/25 dark:bg-transparent dark:text-white dark:hover:bg-white/[0.06]",
   destructive:
     "border border-rose-600/40 bg-rose-600 text-white shadow-sm hover:bg-rose-700 dark:border-rose-500/50 dark:bg-rose-600 dark:hover:bg-rose-500"
 };

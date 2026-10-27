@@ -127,7 +127,7 @@ export default function OrgChartPage(): React.JSX.Element {
         </p>
         <Link
           href={"/il-mio-team" as Route}
-          className="mt-4 inline-flex rounded-lg bg-[var(--prom-gold)] px-4 py-2 text-sm font-medium text-[#0a1628]"
+          className="mt-4 inline-flex rounded-xl bg-[#002D72] px-4 py-2 text-sm font-medium text-white"
         >
           Vai a Il mio team
         </Link>
@@ -139,8 +139,8 @@ export default function OrgChartPage(): React.JSX.Element {
     <div className="relative space-y-6">
       <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Organigramma</h1>
-          <p className="text-sm text-[var(--prom-muted)]">Filtri e dettaglio persona</p>
+          <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Persone</h1>
+          <p className="text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">Trovi chi fa cosa, in un colpo d&apos;occhio.</p>
         </div>
         <NexaPageHelpButton pageKey="org-chart" />
         <label className="text-sm text-[var(--prom-muted)]">

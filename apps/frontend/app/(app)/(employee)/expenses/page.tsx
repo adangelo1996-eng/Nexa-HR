@@ -68,13 +68,9 @@ export default function ExpensesPage(): React.JSX.Element {
     <main className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold text-[var(--prom-text)]">Note spese</h1>
-          <p className="max-w-2xl text-sm text-[var(--prom-muted)]">
-            Carica ricevute, invia per rimborso e segui lo stato fino all&apos;approvazione manager e HR in{" "}
-            <Link href={"/workflow" as Route} className="font-medium text-emerald-700 underline dark:text-emerald-400">
-              Workflow
-            </Link>
-            .
+          <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1c1c1e] dark:text-white">Note spese</h1>
+          <p className="max-w-xl text-[15px] text-[#6e6e73] dark:text-[#b4c9dc]">
+            Chiedi un rimborso senza fogli sparsi.
           </p>
         </div>
         <NexaPageHelpButton pageKey="expenses" />

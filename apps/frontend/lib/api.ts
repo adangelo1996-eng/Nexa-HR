@@ -1328,6 +1328,7 @@ export async function applyTenantPack(
     templateId: string;
     modules?: Record<string, boolean>;
     limits?: { maxEmployees?: number; maxHrSeats?: number; plasticityMaxDatasets?: number };
+    workflows?: { leaveApprover?: "manager" | "hr"; expenseApproval?: "manager_then_hr" | "hr_only" };
     customExceptions?: Array<{ id: string; reason: string; reviewBy: string }>;
   }
 ): Promise<{ companyId: string; pack: TenantPack; appliedAt: string }> {

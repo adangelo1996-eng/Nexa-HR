@@ -13,7 +13,7 @@ export function GlassCard({ title, description, children, className }: GlassCard
   return (
     <section
       className={[
-        "rounded-2xl border p-5 shadow-lg backdrop-blur-xl transition-[border-color,background,box-shadow] duration-300",
+        "rounded-2xl border p-5 transition-[border-color,background] duration-200",
         "border-[color:var(--glass-border)] bg-[var(--glass-bg)] shadow-[var(--glass-shadow)]",
         className ?? ""
       ].join(" ")}
